@@ -17,6 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=KoHo"/> 
       <body className={inter.className}>
           <Nav/>
           {children}

@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.text-color-primary {
+  color: #422B46;
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
@@ -11,8 +15,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --background-start-rgb: 25, 0, 50;
+    --background-end-rgb: 25, 0, 50;
   }
 }
 
@@ -30,6 +34,33 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+.search-bar {
+  border-radius: 5px;
+}
+
+.koho-extralight {
+  font-family: "KoHo", sans-serif;
+  font-weight: 200;
+  font-style: normal;
+}
+
+.koho-light {
+  font-family: "KoHo", sans-serif;
+  font-weight: 300;
+  font-style: normal;
+}
+
+.pink-btn {
+  background-color: #EDADF8;
+  font-family: "KoHo", sans-serif;
+  border-radius: 5px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  padding-left: 30px;
+  padding-right: 30px;
+  font-size: 18px;
 }
 
 
