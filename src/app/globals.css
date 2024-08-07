@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 .text-color-primary {
-  color: #422B46;
+  color: #EDADF8;
 }
 
 :root {
@@ -54,6 +54,7 @@ body {
 
 .pink-btn {
   background-color: #EDADF8;
+  color: #422B46;
   font-family: "KoHo", sans-serif;
   border-radius: 5px;
   padding-top: 5px;

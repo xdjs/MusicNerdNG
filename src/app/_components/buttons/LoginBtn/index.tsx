@@ -1,6 +1,6 @@
 export default function LoginBtn() {
     
     return(
-        <button className="pink-btn text-color-primary">Log In</button>
+        <button className="pink-btn">Log In</button>
     )
 }

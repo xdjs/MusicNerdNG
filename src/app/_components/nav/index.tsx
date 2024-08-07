@@ -8,8 +8,8 @@ export default function Nav() {
                 <img src="/musicNerdLogo.png" className="w-24" alt="logo" />
             </Link>
             <div className="grid nav-grid grow gap-x-4 gap-y-4">
-                <input className="search-bar text-color-primary" type="text" />
-                <button className="pink-btn text-color-primary">Artist +</button>
+                <input className="search-bar" type="text" />
+                <button className="pink-btn">Artist +</button>
                 <LoginBtn/>
             </div>
         </nav>
