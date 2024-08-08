@@ -16,9 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=KoHo"/> 
-      <body className={inter.className}>
+    <html lang="en"> 
+      <body>
           <Nav/>
           {children}
       </body>
