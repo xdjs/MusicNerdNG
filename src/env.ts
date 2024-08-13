@@ -1,0 +1,4 @@
+export const PARSE_APP_ID = process.env.NEXT_PUBLIC_PARSE_APP_ID;
+export const PARSE_SERVER_URL = process.env.NEXT_PUBLIC_PARSE_SERVER_URL;
+export const SPOTIFY_WEB_CLIENT_ID = process.env.SPOTIFY_WEB_CLIENT_ID;
+export const SPOTIFY_WEB_CLIENT_SECRET = process.env.SPOTIFY_WEB_CLIENT_SECRET;
