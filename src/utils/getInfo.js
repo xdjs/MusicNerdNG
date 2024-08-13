@@ -1,6 +1,6 @@
 import queryString from 'querystring';
 import axios from 'axios'
-import { SPOTIFY_WEB_CLIENT_ID, SPOTIFY_WEB_CLIENT_SECRET } from "../env"
+import { SPOTIFY_WEB_CLIENT_ID, SPOTIFY_WEB_CLIENT_SECRET } from "@/env"
 
 const getWiki = async (id) => {
   try {
@@ -46,7 +46,7 @@ export const getSpotifyHeaders = async () => {
       client_id: SPOTIFY_WEB_CLIENT_ID,
       client_secret: SPOTIFY_WEB_CLIENT_SECRET,
     };
-    
+    debugger;    
 
     const { data } = await axios.post(
       "https://accounts.spotify.com/api/token",
@@ -64,6 +64,8 @@ export const getSpotifyHeaders = async () => {
 }
 
 const getSpotify = async (id) => {
+  debugger;
+  
   try {
     const headers = await getSpotifyHeaders();
     const albumData = await axios.get(
