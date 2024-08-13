@@ -46,7 +46,7 @@ export const getSpotifyHeaders = async () => {
       client_id: SPOTIFY_WEB_CLIENT_ID,
       client_secret: SPOTIFY_WEB_CLIENT_SECRET,
     };
-    console.log(client_id);    
+    console.log(SPOTIFY_WEB_CLIENT_ID);    
 
     const { data } = await axios.post(
       "https://accounts.spotify.com/api/token",
