@@ -29,7 +29,7 @@ export default function Spotlight({artist}: {artist: artistDataType}) {
     return (
         image ? (
             <Link href={`/artist/${artist.name}`}>
-                <img className="rounded w-full" src={image} alt="art1"/>
+                <img src={image} alt="art1"/>
             </Link>
         ) : (
             <div>no image</div>

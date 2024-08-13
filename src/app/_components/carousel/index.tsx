@@ -1,7 +1,10 @@
 "use client"
 import * as React from "react";
 import Link from "next/link";
-import Image from "next/image";
+import Image from "next/image"
+ 
+import { AspectRatio } from "@/components/ui/aspect-ratio"
+
 
 
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,16 +25,12 @@ export type artistDataType = {name: string, spotify: string}
 const direction = "forward"
 const speed = .5
 
-function ArtistProfileBtn({artist}: {artist: artistDataType}) {
+function ArtistFrame({artist}: {artist: artistDataType}) {
     return (
         <CarouselItem className="basis-1/2 md:basis-1/3 lg:basis-1/5 py-2">
-            <div>
-                <Card>
-                    <CardContent className="flex aspect-square items-center justify-center p-0">
-                        <Spotlight artist={artist} />
-                    </CardContent>
-                </Card>
-            </div>
+            <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden">
+                <Spotlight artist={artist} />
+            </AspectRatio>
         </CarouselItem>
     )
 }
@@ -56,7 +55,7 @@ export default function ArtistCarousel({speed, direction}: {speed: number, direc
             <CarouselContent>
                 {data ? (
                     data.map(artist => (
-                        <ArtistProfileBtn key={artist.spotify} artist={artist} />
+                        <ArtistFrame key={artist.spotify} artist={artist} />
                     ))
                 ) : (
                     <div>No artists available</div>
