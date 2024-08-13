@@ -36,7 +36,7 @@ function ArtistProfileBtn({artist}: {artist: artistDataType}) {
     )
 }
 
-export default function ArtistCarousel() {
+export default function ArtistCarousel({speed, direction}: {speed: number, direction: directionType}) {
     const [data, setData] = useState<Array<artistDataType>>();
 
     useEffect(() => {
