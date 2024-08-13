@@ -56,7 +56,7 @@ export default function ArtistCarousel({speed, direction}: {speed: number, direc
             <CarouselContent>
                 {data ? (
                     data.map(artist => (
-                        <ArtistProfileBtn artist={artist} />
+                        <ArtistProfileBtn key={artist.spotify} artist={artist} />
                     ))
                 ) : (
                     <div>No artists available</div>

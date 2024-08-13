@@ -24,7 +24,7 @@ function SearchBar({ cbk = () => { } }) {
             return (
                 <li key={result.name}>
                     <div className={`w-100 px-2 py-1`}>
-                        <button ref="" className="w-100" onMouseDown={() => selectSearchOption(result)} >
+                        <button className="w-100" onMouseDown={() => selectSearchOption(result)} >
                             <div >
                                 <span>{result.name}</span>
                             </div>
