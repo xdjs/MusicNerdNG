@@ -22,8 +22,6 @@ export default function Spotlight({artist}: {artist: artistDataType}) {
             );
             setImage(artistData.data.images[0].url);
         }
-
-        
         getSpotifyImage();
     }, [])
 

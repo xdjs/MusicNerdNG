@@ -46,14 +46,14 @@ export const getSpotifyHeaders = async () => {
       client_id: SPOTIFY_WEB_CLIENT_ID,
       client_secret: SPOTIFY_WEB_CLIENT_SECRET,
     };
-    debugger;    
+    console.log(client_id);    
 
     const { data } = await axios.post(
       "https://accounts.spotify.com/api/token",
       queryString.stringify(payload),
       headers
     )
-    debugger;
+    
     return {
       headers: { Authorization: `Bearer ${data.access_token}` }
     };
@@ -63,9 +63,7 @@ export const getSpotifyHeaders = async () => {
 
 }
 
-const getSpotify = async (id) => {
-  debugger;
-  
+const getSpotify = async (id) => {  
   try {
     const headers = await getSpotifyHeaders();
     const albumData = await axios.get(
