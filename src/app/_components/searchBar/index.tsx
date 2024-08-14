@@ -23,8 +23,8 @@ function SearchBar({ cbk = () => { } }) {
         return results.map(result => {
             return (
                 <li key={result.name}>
-                    <div className={`w-100 px-2 py-1`}>
-                        <button className="w-100" onMouseDown={() => selectSearchOption(result)} >
+                    <div className={`w-full px-2 py-1`}>
+                        <button className="w-full" onMouseDown={() => selectSearchOption(result)} >
                             <div >
                                 <span>{result.name}</span>
                             </div>
@@ -52,7 +52,7 @@ function SearchBar({ cbk = () => { } }) {
     }, [results])
 
     return (
-        <div className={`flex w-full`}>
+        <div>
             <input 
                 onClick={() => setIsSearchOpen(true)} 
                 onKeyDownCapture={() => setIsSearchOpen(true)} 
@@ -60,7 +60,7 @@ function SearchBar({ cbk = () => { } }) {
                 onChange={(e) => { setSearchString(e.target.value) }}
                 type="text" 
                 placeholder="Search for artist or collector" 
-                className={`px-2 py-2 corners-rounded login-check`} 
+                className={`w-full px-2 py-2 rounded-md login-check`} 
             />
             <div className={""}></div>
             {isSearchOpen && (

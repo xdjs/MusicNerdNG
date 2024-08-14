@@ -45,8 +45,7 @@ export const getSpotifyHeaders = async () => {
       redirectUri: "http://localhost:8000/callback",
       client_id: SPOTIFY_WEB_CLIENT_ID,
       client_secret: SPOTIFY_WEB_CLIENT_SECRET,
-    };
-    console.log(SPOTIFY_WEB_CLIENT_ID);    
+    };   
 
     const { data } = await axios.post(
       "https://accounts.spotify.com/api/token",
