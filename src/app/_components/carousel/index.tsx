@@ -2,18 +2,14 @@
 import * as React from "react";
 import {getSpotifyHeaders} from "@/utils/getInfo"
 import axios from "axios"
- 
 import { AspectRatio } from "@/components/ui/aspect-ratio"
-
 import AutoScroll from 'embla-carousel-auto-scroll'
 import {
     Carousel,
     CarouselContent,
     CarouselItem,
 } from "@/components/ui/carousel"
-
 import Spotlight from "@/app/_components/carousel/spotlight"
-
 import getFeaturedArtists from "@/utils/queries";
 import { useEffect, useState } from "react";
 
