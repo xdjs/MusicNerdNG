@@ -4,15 +4,14 @@
 // }
 import Parse from 'parse';
 
-export default async function getFeaturedArtists() {
-    // Some code 
+export default async function getFeaturedArtists() { 
     Parse.initialize("CaWyhf3u5yoMRusaurJaF82l7VsYiVVuZzD2nOXD",undefined);
     Parse.serverURL = 'https://api-staging.musicnerd.xyz/parse';
     Parse.AnonymousUtils.logIn();
     try{
         const featuredArtists = await Parse.Cloud.run("getFeaturedArtists");
         
-        console.log(featuredArtists)
+        // console.log(featuredArtists)
         
         return (featuredArtists)
         
@@ -21,8 +20,26 @@ export default async function getFeaturedArtists() {
     }
 }
 
-
-// get artist
+// {
+//     name: string,
+//     spotifyId: string,
+// }
+export async function getArtist( id ) { 
+    Parse.initialize("CaWyhf3u5yoMRusaurJaF82l7VsYiVVuZzD2nOXD",undefined);
+    Parse.serverURL = 'https://api-staging.musicnerd.xyz/parse';
+    Parse.AnonymousUtils.logIn();
+    try{
+        const params = { "objectId": id }
+        const artistData = await Parse.Cloud.run("getArtistByObjectId", params);
+        
+        // console.log(artistData)
+        
+        return (artistData)
+        
+    } catch (e) {
+        console.log(e)
+    }
+}
 
 // search 
 

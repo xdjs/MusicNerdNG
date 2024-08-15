@@ -14,15 +14,15 @@ import getFeaturedArtists from "@/utils/queries";
 import { useEffect, useState } from "react";
 
 type directionType = "forward" | "backward" | undefined
-export type artistDataType = {name: string, spotify: string}
+export type artistDataType = {name: string, spotify: string, id: string}
 const direction = "forward"
 const speed = .5
 
-function ArtistFrame({image}: {image: string}) {
+function ArtistFrame({image, id}: {image: string, id: string}) {
     return (
         <CarouselItem className="basis-1/2 md:basis-1/3 lg:basis-1/5 py-2">
             <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden">
-                <Spotlight image={image}/>
+                <Spotlight image={image} id={id}/>
             </AspectRatio>
         </CarouselItem>
     )
@@ -30,6 +30,7 @@ function ArtistFrame({image}: {image: string}) {
 
 export default function ArtistCarousel({speed, direction}: {speed: number, direction: directionType}) {
     const [images, setImages] = useState<Array<string>>([]);
+    const [ids, setIds] = useState<Array<string>>([]);
 
     useEffect(() => {
         const getArtists = async () => {
@@ -63,8 +64,14 @@ export default function ArtistCarousel({speed, direction}: {speed: number, direc
             setImages(imageUrls);
         };
 
+        const fetchIds = async (artists: Array<artistDataType>) => {
+            const ids = artists.map(artist => artist.id)
+            setIds(ids);
+        };
+
         const initialize = async () => {
             const artists = await getArtists();
+            fetchIds(artists)
             if (artists.length > 0) {
                 await fetchImages(artists);
             }
@@ -81,8 +88,8 @@ export default function ArtistCarousel({speed, direction}: {speed: number, direc
         >
             <CarouselContent>
                 {images ? (
-                    images.map(image => (
-                        <ArtistFrame key={image} image={image} />
+                    images.map((image, i) => (
+                        <ArtistFrame key={image} image={image} id={ids[i]} />
                     ))
                 ) : (
                     <div>No artists available</div>

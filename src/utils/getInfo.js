@@ -2,7 +2,7 @@ import queryString from 'querystring';
 import axios from 'axios'
 import { SPOTIFY_WEB_CLIENT_ID, SPOTIFY_WEB_CLIENT_SECRET } from "@/env"
 
-const getWiki = async (id) => {
+export const getWiki = async (id) => {
   try {
     const wikiUrl = 'https://en.wikipedia.org/w/api.php'
     const params = {
@@ -62,7 +62,7 @@ export const getSpotifyHeaders = async () => {
 
 }
 
-const getSpotify = async (id) => {  
+export const getSpotify = async (id) => {  
   try {
     const headers = await getSpotifyHeaders();
     const albumData = await axios.get(
@@ -85,7 +85,7 @@ const getSpotify = async (id) => {
   }
 }
 
-export default async function getInfo(spotifyId, wikiId) {
+export default async function getExpo(spotifyId, wikiId) {
   const wiki = wikiId === undefined ? null : await getWiki(wikiId);
   const spotifyData = spotifyId === undefined ? null : await getSpotify(spotifyId);
   return {
