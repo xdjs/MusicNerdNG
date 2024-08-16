@@ -126,7 +126,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         </AspectRatio>
                     </div>
                 </div>
-                <div className="px-10 pb-4">
+                <div className="px-10 pb-6">
                     {/* frame to crop out the artist image in spotify iframe */}
                     <div className="flex justify-center md:justify-end overflow-hidden w-full rounded-l-xl">
                         <div style={{
@@ -141,7 +141,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="right-0 h-full bg-white p-6 rounded-lg shadow-lg flex flex-col items-center min-w-64"
+            <div className="right-0 h-full bg-white p-6 rounded-lg shadow-lg flex flex-col items-center min-w-64 py-10"
                  style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
             >
                 <strong className="text-black text-2xl mb-4">
