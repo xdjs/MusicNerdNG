@@ -1,30 +1,29 @@
 "use client"
-import { useMemo, useState, useContext } from "react";
-import useFetchArtist from "@/custom_hooks/useFetch";
-import { useRouter } from "next/navigation";
 
-function SearchBar({ cbk = () => { } }) {
+import { useMemo, useState } from "react"
+import { useFetchArtist } from "@/utils/queries";
+import { artistDataType } from "@/app/artist/[id]/page";
+import Link from "next/link";
+import Styles from "./styles.module.scss"
+
+
+function SearchBar() {
     const [isSearchOpen, setIsSearchOpen] = useState(false)
     const [searchString, setSearchString] = useState("");
     const { isLoading, isError, results, isUrl } = useFetchArtist(searchString);
     const [isParsingResults, setIsParsingResults] = useState(false);
-    const router = useRouter();
 
     const noArtistsFound = <li style={{ pointerEvents: 'none' }}>No results found 🙁</li>
     const noInput = <li style={{ pointerEvents: 'none' }}>Start typing to search! 😊</li>
     const invalidInput = <li style={{ pointerEvents: 'none' }}>Invalid input, please enter something else</li>
 
-    function selectSearchOption(result: any) {
-        cbk();
-        router.push(`/search/${result.lcname}`)
-    }
-
-    const parseSearchResults = (results: Array<any>) => {
+    const parseSearchResults = (results: Array<artistDataType>) => {
         return results.map(result => {
+
             return (
                 <li key={result.name}>
-                    <div className={`w-100 px-2 py-1`}>
-                        <button className="w-100" onMouseDown={() => selectSearchOption(result)} >
+                    <div className={`px-2 py-1`}>
+                        <Link href={`/artist/${result.objectId}`} className="w-100" >
                             <div >
                                 <span>{result.name}</span>
                             </div>
@@ -33,7 +32,7 @@ function SearchBar({ cbk = () => { } }) {
                                     @{result.x} {result.ens ? "/ " + result.ens: null} 
                                 </span>
                             }
-                        </button>
+                        </Link>
                     </div>
                 </li>
             )
@@ -52,7 +51,7 @@ function SearchBar({ cbk = () => { } }) {
     }, [results])
 
     return (
-        <div className={`flex w-full`}>
+        <div className={`${Styles.searchWrapper}`}>
             <input 
                 onClick={() => setIsSearchOpen(true)} 
                 onKeyDownCapture={() => setIsSearchOpen(true)} 
@@ -60,14 +59,14 @@ function SearchBar({ cbk = () => { } }) {
                 onChange={(e) => { setSearchString(e.target.value) }}
                 type="text" 
                 placeholder="Search for artist or collector" 
-                className={`px-2 py-2 corners-rounded login-check`} 
+                className={`${Styles.search} px-2 py-2 rounded-md`} 
             />
-            <div className={""}></div>
+            <div className={`${Styles.searchBackground} ${!isSearchOpen ? Styles.hidden : ""}`}></div>
             {isSearchOpen && (
-                <ul className={`my-4 corners-rounded column-start-start pl-0`}>
+                <ul className={`${Styles.searchResults} my-4 rounded-md column-start-start pl-0 ${Styles.cursorHidden}`}>
                     {(isLoading || isParsingResults) && (
-                    <li className={`px-3`}>
-                        <img src="\spinner.svg" alt="missing" />
+                    <li className={`${Styles.loader} px-3`}>
+                        <img src="/spinner.svg" alt="" />
                     </li>
                     )}
                     {getSearchResults}
