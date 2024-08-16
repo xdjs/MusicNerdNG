@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useContext } from "react"
 import { useFetchArtist } from "@/utils/queries";
 import { artistDataType } from "@/app/artist/[id]/page";
 import Link from "next/link";
