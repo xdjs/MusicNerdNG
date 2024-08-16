@@ -1,5 +1,4 @@
 import Carousel from "./_components/carousel";
-import { useRouter } from 'next/router';
 
 export default async function HomePage() {
   return (

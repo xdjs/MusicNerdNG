@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useContext } from "react"
-import useFetchArtist from "@/custom_hooks/useFetch"
+import { useFetchArtist } from "@/utils/queries";
 import { artistDataType } from "@/app/artist/[id]/page";
 import Link from "next/link";
 import Styles from "./styles.module.scss"
@@ -10,7 +10,7 @@ import Styles from "./styles.module.scss"
 function SearchBar({ cbk = () => { } }) {
     const [isSearchOpen, setIsSearchOpen] = useState(false)
     const [searchString, setSearchString] = useState("");
-    const { isLoading, isError,     results, isUrl } = useFetchArtist(searchString);
+    const { isLoading, isError, results, isUrl } = useFetchArtist(searchString);
     const [isParsingResults, setIsParsingResults] = useState(false);
 
     const noArtistsFound = <li style={{ pointerEvents: 'none' }}>No results found 🙁</li>
@@ -19,10 +19,10 @@ function SearchBar({ cbk = () => { } }) {
 
     const parseSearchResults = (results: Array<artistDataType>) => {
         return results.map(result => {
-            debugger;
+
             return (
                 <li key={result.name}>
-                    <div className={`w-100 px-2 py-1`}>
+                    <div className={`px-2 py-1`}>
                         <Link href={`/artist/${result.objectId}`} className="w-100" >
                             <div >
                                 <span>{result.name}</span>
@@ -51,7 +51,7 @@ function SearchBar({ cbk = () => { } }) {
     }, [results])
 
     return (
-        <div className={`w-100 ${Styles.searchWrapper}`}>
+        <div className={`${Styles.searchWrapper}`}>
             <input 
                 onClick={() => setIsSearchOpen(true)} 
                 onKeyDownCapture={() => setIsSearchOpen(true)} 
@@ -59,11 +59,11 @@ function SearchBar({ cbk = () => { } }) {
                 onChange={(e) => { setSearchString(e.target.value) }}
                 type="text" 
                 placeholder="Search for artist or collector" 
-                className={`${Styles.search} px-2 py-2 corners-rounded login-check`} 
+                className={`${Styles.search} px-2 py-2 rounded-md`} 
             />
             <div className={`${Styles.searchBackground} ${!isSearchOpen ? Styles.hidden : ""}`}></div>
             {isSearchOpen && (
-                <ul className={`${Styles.searchResults} my-4 corners-rounded column-start-start pl-0 ${Styles.cursorHidden}`}>
+                <ul className={`${Styles.searchResults} my-4 rounded-md column-start-start pl-0 ${Styles.cursorHidden}`}>
                     {(isLoading || isParsingResults) && (
                     <li className={`${Styles.loader} px-3`}>
                         <img src="/spinner.svg" alt="" />

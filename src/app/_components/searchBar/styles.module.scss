@@ -2,6 +2,8 @@
 
 .searchWrapper {
     position: relative;
+    width: 100%;
+    z-index: 10;
 }
 
 .hidden {
@@ -13,14 +15,15 @@
 }
 
 .search, .searchResults {
-    width: 100%;
-    max-width: 450px;
     background-color: white !important;
+    width: 100%;
+    left: 0;
+    right: 0;
 }
 
 .search {
     position: relative;
-    border: 2px solid colors.$primary;
+    border: none;
     color: colors.$secondary;
     z-index: 10;
     background-color: rgb(250, 250, 250);
@@ -40,8 +43,8 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: white;
-    opacity: 0.9;
+    background: black;
+    opacity: 0.4;
 }
 
 .web3ArtistLabel {
@@ -55,10 +58,13 @@
 .searchResults {
     overflow: auto;
     position: absolute;
+    width: 100%;
+    left: 0;
+    right: 0; 
     opacity: 1;
     transition: opacity .15s ease-in;
     background-color: white;
-    border: 2px solid colors.$primary;
+    border: none;
     min-height: 35px;
     max-height: 500px;
 
