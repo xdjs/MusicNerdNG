@@ -96,7 +96,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             <div
                 className="bg-white rounded-lg"
             >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 py-10">
                     {/* Left Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2">
                         <strong className="text-black text-2xl mb-2">
@@ -116,7 +116,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                     </div>
     
                     {/* Right Column: Image and Song */}
-                    <div className="flex flex-col items-center md:items-end">
+                    <div className="px-10 py-10 flex flex-col items-center md:items-end">
                         <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden w-full mb-4">
                             <img src={image} alt="artist" className="object-cover w-full h-full"/>
                         </AspectRatio>
