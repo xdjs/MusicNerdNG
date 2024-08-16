@@ -127,11 +127,12 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                     </div>
                 </div>
                 <div className="px-10 pb-4">
+                    {/* frame to crop out the artist image in spotify iframe */}
                     <div className="flex justify-center md:justify-end overflow-hidden w-full rounded-l-xl">
                         <div style={{
-                            clipPath: 'inset(0 0 0 74px)',
-                            width: 'calc(100% + 80px)', // Extend the width to account for the clipping
-                            marginLeft: '-74px', // Move the iframe to the left
+                            clipPath: 'inset(0 0 0 72px)',
+                            width: 'calc(100% + 72px)',
+                            marginLeft: '-72px',
                         }}>
                             <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
                         </div>
