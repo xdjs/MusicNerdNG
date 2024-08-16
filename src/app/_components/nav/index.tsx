@@ -9,7 +9,9 @@ export default function Nav() {
                 <img src="/musicNerdLogo.png" className="w-24" alt="logo" />
             </Link>
             <div className="grid nav-grid grow gap-x-4 gap-y-4">
-                <SearchBar/>
+                <div className="SearchBar">
+                    <SearchBar/>
+                </div>
                 <button className="pink-btn">Artist +</button>
                 <LoginBtn/>
             </div>

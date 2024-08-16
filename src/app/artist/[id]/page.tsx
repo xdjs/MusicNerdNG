@@ -7,6 +7,7 @@ import axios from "axios";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import Link from "next/link";
 import { getArtistDetailsText } from "@/utils/getText"
+import { Spotify } from 'react-spotify-embed';
 
 export type artistDataType = {
     name: string, 
@@ -96,11 +97,9 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
     }, [])
 
     return (
-        <div className=" gap-3 px-3 sm:flex">
+        <div className=" gap-4 px-4 sm:flex">
             {/* Artist Info Box */}
-            <div
-                className="bg-white rounded-lg"
-            >
+            <div className="bg-white rounded-lg">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 py-10">
                     {/* Left Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2">
@@ -121,22 +120,27 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                     </div>
     
                     {/* Right Column: Image and Song */}
-                    <div className="px-10 py-10 flex flex-col items-center md:items-end">
+                    <div className="pt-4 flex flex-col items-center md:items-end">
                         <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden w-full mb-4">
                             <img src={image} alt="artist" className="object-cover w-full h-full"/>
                         </AspectRatio>
-                        <div className="flex items-center mt-4 w-full justify-center md:justify-end">
-                            <div className="bg-gray-300 p-2 rounded-lg text-black">
-                                Play Button Placeholder
-                            </div>
-                            <span className="ml-2 text-black">Day By Day</span>
+                    </div>
+                </div>
+                <div className="px-10 pb-4">
+                    <div className="flex justify-center md:justify-end overflow-hidden w-full rounded-l-xl">
+                        <div style={{
+                            clipPath: 'inset(0 0 0 74px)',
+                            width: 'calc(100% + 80px)', // Extend the width to account for the clipping
+                            marginLeft: '-74px', // Move the iframe to the left
+                        }}>
+                            <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
                         </div>
                     </div>
                 </div>
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="right-0 h-full bg-white p-6 rounded-lg shadow-lg flex flex-col items-center"
+            <div className="right-0 h-full bg-white p-6 rounded-lg shadow-lg flex flex-col items-center min-w-64"
                  style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
             >
                 <strong className="text-black text-2xl mb-4">
