@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState } from "react";
 
 // Number of artists that will appear in the search results
 const ARTISTLIMIT = 12;

@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { getArtist } from "@/utils/queries";
-import { getSpotifyHeaders, getSpotify, getWiki } from "@/utils/getInfo"
+import { getSpotifyHeaders, getWiki } from "@/utils/getInfo"
 import axios from "axios";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import Link from "next/link";
 
-type artistDataType = {
+export type artistDataType = {
     name: string, 
     spotify: string, 
     objectId: string,
@@ -15,6 +15,7 @@ type artistDataType = {
     bandsintown: string,
     catalog: string,
     ens: string,
+    x: string,
     facebook: string,
     instagram: string,
     lastfm: string,
@@ -35,12 +36,17 @@ type artistWikiType = {
     link: string,
 }
 
+type enabledLinks = {
+
+}
+
 
 export default function ArtistProfile({ params }: { params: { id: string } }) {
     const [artistData, setArtistData] = useState<artistDataType>(); 
     const [image, setImage] = useState<string>(); 
     const [spotify, setSpoify] = useState<string>();
     const [artistWiki, setArtistWiki] = useState<artistWikiType>();
+    const [links, setLinks] = useState<enabledLinks>()
 
     useEffect(()=> {
         const getArtistData = async () => {
@@ -78,6 +84,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             fetchImage(data);
             const data2 = await getWiki(data.wikipedia)
             setArtistWiki(data2);
+            console.log(data)
         };
 
         initialize();
@@ -105,6 +112,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
                             {(artistWiki) ? "WIKIPEDIA" : `${artistData?.name} currently has no attached wikipedia`}
                         </Link>
+
                     </div>
     
                     {/* Right Column: Image and Song */}

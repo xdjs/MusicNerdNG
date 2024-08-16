@@ -2,6 +2,7 @@
 //     name: string,
 //     spotifyId: string,
 // }
+import exp from 'constants';
 import Parse from 'parse';
 
 export default async function getFeaturedArtists() { 
@@ -18,6 +19,25 @@ export default async function getFeaturedArtists() {
     } catch (e) {
         console.log(e)
     }
+}
+
+export async function getEnabledLinks( id ) {
+    const artistQuery = new Parse.Query('Artist');
+    artistQuery.equalTo("lcname", id);
+    const { findResult: artistResult } = await encodeParseQuery(artistQuery);
+
+    if (artistResult.length <= 0) {
+        return {
+            props: {
+                isNotFound: true
+            }
+        }
+    }
+
+    const enabledLinksQuery = new Parse.Query("UrlMap");
+    const { findResult: enabledLinks } = await encodeParseQuery(enabledLinksQuery.addAscending("cardOrder"));
+
+    return { enabledLinks };
 }
 
 // {
