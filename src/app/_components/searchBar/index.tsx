@@ -1,13 +1,13 @@
 "use client"
 
-import { useMemo, useState, useContext } from "react"
+import { useMemo, useState } from "react"
 import { useFetchArtist } from "@/utils/queries";
 import { artistDataType } from "@/app/artist/[id]/page";
 import Link from "next/link";
 import Styles from "./styles.module.scss"
 
 
-function SearchBar({ cbk = () => { } }) {
+function SearchBar() {
     const [isSearchOpen, setIsSearchOpen] = useState(false)
     const [searchString, setSearchString] = useState("");
     const { isLoading, isError, results, isUrl } = useFetchArtist(searchString);

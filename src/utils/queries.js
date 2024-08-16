@@ -133,7 +133,7 @@ export const useFetchArtist = (searchString) => {
             clearTimeout(fetchData);
             setIsLoading(false);
         };
-    }, [searchString])
+    }, [searchString, isLoading])
 
 
     return { isLoading, isError, results, isUrl }
