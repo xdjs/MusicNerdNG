@@ -70,13 +70,7 @@ export const getSpotify = async (id) => {
       headers
     );
 
-    const artistData = await axios.get(
-      `https://api.spotify.com/v1/artists/${id}`,
-      headers
-    );
-
     return {
-      img: artistData.data.images[0].url,
       releases: albumData.data.total
     }
 

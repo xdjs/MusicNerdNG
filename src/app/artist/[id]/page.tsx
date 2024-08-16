@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { getArtist } from "@/utils/queries";
-import { getSpotifyHeaders, getWiki } from "@/utils/getInfo"
+import { getSpotifyHeaders, getWiki, getSpotify } from "@/utils/getInfo"
 import axios from "axios";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import Link from "next/link";
+import { getArtistDetailsText } from "@/utils/getText"
 
 export type artistDataType = {
     name: string, 
@@ -36,6 +37,10 @@ type artistWikiType = {
     link: string,
 }
 
+type spotifyDataType = {
+    releases: number
+}
+
 type enabledLinks = {
 
 }
@@ -44,7 +49,7 @@ type enabledLinks = {
 export default function ArtistProfile({ params }: { params: { id: string } }) {
     const [artistData, setArtistData] = useState<artistDataType>(); 
     const [image, setImage] = useState<string>(); 
-    const [spotify, setSpoify] = useState<string>();
+    const [spotifyData, setSpoifyData] = useState<spotifyDataType>();
     const [artistWiki, setArtistWiki] = useState<artistWikiType>();
     const [links, setLinks] = useState<enabledLinks>()
 
@@ -82,8 +87,8 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             const data = await getArtistData();
             setArtistData(data);
             fetchImage(data);
-            const data2 = await getWiki(data.wikipedia)
-            setArtistWiki(data2);
+            setArtistWiki(await getWiki(data.wikipedia));
+            setSpoifyData(await getSpotify(data.spotify))
             console.log(data)
         };
 
@@ -103,8 +108,8 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                             {artistData?.name}
                             <span className="text-purple-500"> !!</span>
                         </strong>
-                        <div className="text-blue-600 underline mb-4">
-                            Lorem ipsum dolor sit amet, consectetur adipisicing elit. Odit nemo ipsam repellendus quidem necessitatibus voluptas?
+                        <div className="text-black mb-4">
+                            {(artistData) && getArtistDetailsText(artistData, spotifyData)}
                         </div>
                         <p className="text-black mb-4">
                             {artistWiki?.blurb}
