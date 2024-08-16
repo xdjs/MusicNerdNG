@@ -19,7 +19,6 @@ function SearchBar() {
 
     const parseSearchResults = (results: Array<artistDataType>) => {
         return results.map(result => {
-
             return (
                 <li key={result.name}>
                     <div className={`px-2 py-1`}>
