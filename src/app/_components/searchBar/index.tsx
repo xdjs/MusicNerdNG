@@ -21,22 +21,15 @@ function SearchBar() {
         return results.map(result => {
             return (
                 <li key={result.name}>
-                    <div className={`px-2 py-1`}>
-                        <Link href={`/artist/${result.objectId}`} className="w-100" >
-                            <div >
-                                <span>{result.name}</span>
-                            </div>
-                            {result.x &&
-                                <span className="secondary-text mt-2">
-                                    @{result.x} {result.ens ? "/ " + result.ens: null} 
-                                </span>
-                            }
+                    <div className="px-2 py-1">
+                        <Link href={`/artist/${result.objectId}`} legacyBehavior>
+                            {result.name}
                         </Link>
                     </div>
                 </li>
-            )
-        })
-    }
+            );
+        });
+    };
 
     const getSearchResults = useMemo(() => {
         if (isLoading) return;
@@ -49,12 +42,18 @@ function SearchBar() {
         return searchResults;
     }, [results])
 
+    const handleBlur = () => {
+        setTimeout(() => {
+            setIsSearchOpen(false);
+        }, 100); // Delay to ensure the click registers
+    };
+
     return (
         <div className={`${Styles.searchWrapper}`}>
             <input 
                 onClick={() => setIsSearchOpen(true)} 
                 onKeyDownCapture={() => setIsSearchOpen(true)} 
-                onBlur={() => setIsSearchOpen(false)} 
+                onBlur={handleBlur} 
                 onChange={(e) => { setSearchString(e.target.value) }}
                 type="text" 
                 placeholder="Search for artist or collector" 

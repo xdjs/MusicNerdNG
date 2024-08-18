@@ -17,7 +17,7 @@ export const getWiki = async (id) => {
       gsrlimit: 1,
       gsrsearch: id
     }
-
+    
     const { data } = await axios.get(wikiUrl, { params });
     const pages = Object.values(data.query.pages);
 

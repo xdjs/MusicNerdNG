@@ -6,7 +6,7 @@ import { getSpotifyHeaders, getWiki, getSpotify } from "@/utils/getInfo"
 import axios from "axios";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import Link from "next/link";
-import { getArtistDetailsText, getArtistWeb3Platforms } from "@/utils/getText"
+import { getArtistDetailsText, getArtistSplitPlatforms } from "@/utils/getText"
 import { Spotify } from 'react-spotify-embed';
 
 export type artistDataType = {
@@ -52,7 +52,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
     const [image, setImage] = useState<string>(); 
     const [spotifyData, setSpoifyData] = useState<spotifyDataType>();
     const [artistWiki, setArtistWiki] = useState<artistWikiType>();
-    const [links, setLinks] = useState<Array<string>>([]);
+    const [supportLinks, setSupportLinks] = useState<Array<string>>([]);
 
     useEffect(()=> {
         const getArtistData = async () => {
@@ -68,7 +68,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
         const getWeb3Presences = async (artist: artistDataType) => {
             try {
                 console.log(`making web3 request`)
-                return await getArtistWeb3Platforms(artist);
+                return await getArtistSplitPlatforms(artist).web3Platforms;
             } catch (error) {
                 console.error("Error fetching web3", error);
                 return []
@@ -100,17 +100,16 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             fetchImage(data);
             setArtistWiki(await getWiki(data.wikipedia));
             setSpoifyData(await getSpotify(data.spotify));
-            setLinks(await getWeb3Presences(data));
+            setSupportLinks(await getWeb3Presences(data));
         };
 
         initialize();
     }, [])
 
-    console.log(links)
     return (
         <div className="gap-4 px-4 sm:flex">
             {/* Artist Info Box */}
-            <div className="bg-white rounded-lg w-2/3">
+            <div className="bg-white rounded-lg md:w-2/3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 py-10 w-full">
                     {/* Left Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2">
@@ -152,14 +151,14 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center w-1/3"
+            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center md:w-1/3"
                  style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
             >
                 <strong className="text-black text-2xl mb-4">
                     Support Artist
                 </strong>
                 <ul className="text-black flex flex-col gap-4 items-center">
-                    {links?.map(link => {
+                    {supportLinks?.map(link => {
                         return ( 
                             <Link href={"/"} key={link}> 
                                 {link}
