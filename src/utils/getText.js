@@ -1,11 +1,17 @@
 export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs'];
 
-export const getArtistDetailsText = (parseData, spotifyData) => {
+export const getArtistWeb3Platforms = (parseData) => {
   let web3Platforms = []
   artistWeb3Platforms.forEach(platform => {
     if (!parseData[platform]) return;
     web3Platforms.push((platform.charAt(0).toUpperCase() + platform.slice(1)))
   });
+  return web3Platforms;
+}
+
+
+export const getArtistDetailsText = (parseData, spotifyData) => {
+  let web3Platforms = getArtistWeb3Platforms(parseData)
   const numSpotifyReleases = ( spotifyData != null && spotifyData.releases != null ) ? spotifyData.releases : 0;
   if (web3Platforms.length <= 0 && numSpotifyReleases <= 0) return "";
 
