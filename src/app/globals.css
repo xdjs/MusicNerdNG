@@ -136,14 +136,13 @@ body {
   grid-template-columns: 1fr auto auto;
 }
 
-
 @media screen and (max-width: 768px) {
   .nav-grid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
   }
 
-  .nav-grid input {
+  .nav-grid .SearchBar {
     grid-column: span 2;
     grid-row-start: 2;
   }
