@@ -25,5 +25,6 @@ export default function LinkList({siteNames, artistData}: {siteNames: Array<stri
         //         )
         //     })}
         // </ul>
+        "return"
     )
 }
