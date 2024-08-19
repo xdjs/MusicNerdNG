@@ -2,7 +2,6 @@
 //     name: string,
 //     spotifyId: string,
 // }
-import exp from 'constants';
 import Parse from 'parse';
 
 export default async function getFeaturedArtists() { 
@@ -10,10 +9,7 @@ export default async function getFeaturedArtists() {
     Parse.serverURL = 'https://api-staging.musicnerd.xyz/parse';
     Parse.AnonymousUtils.logIn();
     try{
-        const featuredArtists = await Parse.Cloud.run("getFeaturedArtists");
-        
-        // console.log(featuredArtists)
-        
+        const featuredArtists = await Parse.Cloud.run("getFeaturedArtists");        
         return (featuredArtists)
         
     } catch (e) {
@@ -21,23 +17,38 @@ export default async function getFeaturedArtists() {
     }
 }
 
-export async function getEnabledLinks( id ) {
+import { encodeParseQuery } from '@parse/react-ssr';
+
+// {
+//     CardDescription: string,
+//     CardPlatformName: string,
+//     appStringFormat: string,
+//     cardOrder: number,
+//     className: string,
+//     createdAt: string,
+//     example: string,
+//     isEmbedEnabled: boolean,
+//     isIframeEnabled: boolean,
+//     objectId: string,
+//     siteName: string,
+//     siteUrl: string,
+//     updatedAt: string
+//  }
+// the server side function needs to be rewriten to take in objectId not lcname
+export async function getEnabledLinks( lcname ) {
     const artistQuery = new Parse.Query('Artist');
-    artistQuery.equalTo("lcname", id);
+    artistQuery.equalTo("lcname", lcname);
     const { findResult: artistResult } = await encodeParseQuery(artistQuery);
 
     if (artistResult.length <= 0) {
-        return {
-            props: {
-                isNotFound: true
-            }
-        }
+        return []
     }
 
     const enabledLinksQuery = new Parse.Query("UrlMap");
     const { findResult: enabledLinks } = await encodeParseQuery(enabledLinksQuery.addAscending("cardOrder"));
 
-    return { enabledLinks };
+    console.log(enabledLinks)
+    return enabledLinks;
 }
 
 // {

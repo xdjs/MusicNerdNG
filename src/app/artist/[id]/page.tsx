@@ -8,6 +8,7 @@ import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import Link from "next/link";
 import { getArtistDetailsText, getArtistSplitPlatforms } from "@/utils/getText"
 import { Spotify } from 'react-spotify-embed';
+import LinkList from "@/app/_components/linkList";
 
 export type artistDataType = {
     name: string, 
@@ -40,10 +41,6 @@ type artistWikiType = {
 
 type spotifyDataType = {
     releases: number
-}
-
-type enabledLinks = {
-
 }
 
 
@@ -157,15 +154,9 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                 <strong className="text-black text-2xl mb-4">
                     Support Artist
                 </strong>
-                <ul className="text-black flex flex-col gap-4 items-center">
-                    {supportLinks?.map(link => {
-                        return ( 
-                            <Link href={"/"} key={link}> 
-                                {link}
-                            </Link>
-                        )
-                    })}
-                </ul>
+                {(artistData) &&
+                    <LinkList support={true} artistData={artistData}/>
+                }
             </div>
         </div>
     );          
