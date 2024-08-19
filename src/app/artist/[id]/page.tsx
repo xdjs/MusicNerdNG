@@ -127,7 +127,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                     </div>
     
                     {/* Right Column: Image and Song */}
-                    <div className="pt-4 flex flex-col items-center md:items-end">
+                    <div className="pb-1 flex flex-col items-center md:items-end">
                         <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden w-full mb-4">
                             <img src={image} alt="artist" className="object-cover w-full h-full"/>
                         </AspectRatio>
@@ -145,24 +145,33 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         </div>
                     </div>
                 </div>
-                <div className="ml-10">
-                    {(artistData) &&
-                        <LinkList support={false} artistData={artistData}/>
-                    }
+                <div className="ml-10 py-10">
+                    <strong className="text-black text-2xl">
+                        Check out {artistData?.name} on other media platforms!
+                    </strong>
+                    <div className="pt-6">
+                        {(artistData) &&
+                            <LinkList support={false} artistData={artistData}/>
+                        }
+                    </div>
                 </div>
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col md:w-1/3"
-                 style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
+            <div className="bg-white px-6 pb-6 rounded-lg shadow-lg flex flex-col md:w-1/3"
+                style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
             >
-                <strong className="text-black text-2xl mb-4">
-                    Support Artist
-                </strong>
-                <div>
-                    {(artistData) &&
-                            <LinkList support={true} artistData={artistData}/>
-                    }
+                <div className="top-0 sticky">
+                    <div className="text-center pt-6">
+                        <strong className="text-black text-2xl">
+                            Support Artist
+                        </strong>
+                    </div>
+                    <div className="pl-4">
+                        {(artistData) &&
+                                <LinkList support={true} artistData={artistData}/>
+                            }
+                    </div>
                 </div>
             </div>
         </div>
