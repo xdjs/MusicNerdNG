@@ -145,18 +145,25 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         </div>
                     </div>
                 </div>
+                <div className="ml-10">
+                    {(artistData) &&
+                        <LinkList support={false} artistData={artistData}/>
+                    }
+                </div>
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center md:w-1/3"
+            <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col md:w-1/3"
                  style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
             >
                 <strong className="text-black text-2xl mb-4">
                     Support Artist
                 </strong>
-                {(artistData) &&
-                    <LinkList support={true} artistData={artistData}/>
-                }
+                <div>
+                    {(artistData) &&
+                            <LinkList support={true} artistData={artistData}/>
+                    }
+                </div>
             </div>
         </div>
     );          

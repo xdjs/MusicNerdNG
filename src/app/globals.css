@@ -136,6 +136,12 @@ body {
   grid-template-columns: 1fr auto auto;
 }
 
+.link-item-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center; /* Vertically center the items */
+}
+
 @media screen and (max-width: 768px) {
   .nav-grid {
     grid-template-columns: 1fr 1fr;

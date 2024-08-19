@@ -30,9 +30,11 @@ function isObjKey<T>(key: PropertyKey, obj: T): key is keyof T {
 function PlatformLink({ link, siteName, image }: { link: string, siteName: string, image: string}) {
     return (
         <li className={`mb-5`}>
-            <Link href={`${link}`} target="blank" className="text-black row-center-start">
-                <img src={image} alt="" height={50} width={50} />
-                <div>{siteName.charAt(0).toUpperCase() + siteName.slice(1)}</div>
+            <Link href={`${link}`} target="blank" className="text-black">
+                <div className="link-item-grid corners-rounded">
+                    <img className="mr-3" src={image} alt="" height={50} width={50} />
+                    <label>Check out their profile on {siteName.charAt(0).toUpperCase() + siteName.slice(1)}!</label>
+                </div>
             </Link>
         </li>
     )
@@ -64,7 +66,7 @@ export default function LinkList({support, artistData}: {support: boolean, artis
 
     function filterLinks( enabledLinks: Array<enabledLinkType>) {
         const toDisplayLinks = enabledLinks.filter((site) => {
-            if (!site.isWeb3Site) return false;
+            if (site.isWeb3Site !== support) return false;
             if (!isObjKey(site.siteName, artistData)) return false;
             if (artistData[site.siteName] === undefined) return false;
             return true;
