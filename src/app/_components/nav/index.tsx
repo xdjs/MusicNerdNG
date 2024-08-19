@@ -4,7 +4,7 @@ import SearchBar from "../searchBar"
 
 export default function Nav() {
     return (
-        <nav className="px-10 grow py-5 flex items-center gap-x-4">
+        <nav className="px-60 grow py-5 flex items-center gap-x-4">
             <Link href={"/"}>
                 <img src="/musicNerdLogo.png" className="w-24" alt="logo" />
             </Link>

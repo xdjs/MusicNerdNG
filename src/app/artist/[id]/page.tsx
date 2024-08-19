@@ -162,8 +162,8 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                 style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
             >
                 <div className="top-0 sticky">
-                    <div className="text-center pt-6">
-                        <strong className="text-black text-2xl">
+                    <div className="text-center pt-6 text-black text-2xl">
+                        <strong>
                             Support Artist
                         </strong>
                     </div>

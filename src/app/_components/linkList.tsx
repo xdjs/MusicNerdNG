@@ -27,13 +27,13 @@ function isObjKey<T>(key: PropertyKey, obj: T): key is keyof T {
     return key in obj;
 }
 
-function PlatformLink({ link, siteName, image }: { link: string, siteName: string, image: string}) {
+function PlatformLink({ link, descriptor, image }: { link: string, descriptor: string, image: string}) {
     return (
         <li className={`mb-5`}>
             <Link href={`${link}`} target="blank" className="text-black">
                 <div className="link-item-grid corners-rounded">
                     <img className="mr-3" src={image} alt="" height={50} width={50} />
-                    <label>Check out their profile on {siteName.charAt(0).toUpperCase() + siteName.slice(1)}!</label>
+                    <label> {descriptor} </label>
                 </div>
             </Link>
         </li>
@@ -77,7 +77,7 @@ export default function LinkList({support, artistData}: {support: boolean, artis
 
     return (
         artistSites?.map(el => {
-            return (<PlatformLink key={el.siteName} siteName={el.CardPlatformName} link={parseLink(el)} image={el.siteImageUrl} />)
+            return (<PlatformLink key={el.siteName} descriptor={el.CardDescription.replace('%@', el.CardPlatformName)} link={parseLink(el)} image={el.siteImageUrl} />)
         })
     )
 }
