@@ -31,7 +31,7 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
     return (
         <li className={`mb-5 list-none`}>
             <Link href={`${link}`} target="blank" className="text-black">
-                <div className="link-item-grid gap-x-4 py-2 corners-rounded">
+                <div className="link-item-grid gap-x-4 corners-rounded">
                     <img className="mr-3" src={image} alt="" height={50} width={50} />
                     <label className="pr-4"> {descriptor} </label>
                 </div>

@@ -108,26 +108,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             {/* Artist Info Box */}
             <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 py-10 w-full">
-                    {/* Left Column: Name and Description */}
-                    <div className="flex flex-col justify-start md:col-span-2">
-                        <strong className="text-black text-2xl mb-2">
-                            {artistData?.name}
-                        </strong>
-                        <div className="text-black pt-10 mb-4">
-                            {(artistData) && getArtistDetailsText(artistData, spotifyData)}
-                        </div>
-                        <p className="text-black mb-4">
-                            {artistWiki?.blurb}
-                        </p>
-                        {(artistWiki) &&
-                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
-                                {"WIKIPEDIA"}
-                            </Link>
-                        }
-
-                    </div>
-    
-                    {/* Right Column: Image and Song */}
+                    {/* Left Column: Image and Song */}
                     <div className="flex flex-col items-center md:items-end">
                         <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden w-full mb-4">
                             <img src={image} alt="artist" className="object-cover w-full h-full"/>
@@ -146,12 +127,30 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                             </div>
                         </div>
                     </div>
+                    {/* Right Column: Name and Description */}
+                    <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
+                        <strong className="text-black text-2xl mb-2">
+                            {artistData?.name}
+                        </strong>
+                        <div className="text-black pt-0 mb-4">
+                            {(artistData) && getArtistDetailsText(artistData, spotifyData)}
+                        </div>
+                        <p className="text-black mb-4">
+                            {artistWiki?.blurb}
+                        </p>
+                        {(artistWiki) &&
+                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
+                                {"WIKIPEDIA"}
+                            </Link>
+                        }
+
+                    </div>
                 </div>
                 <div className="ml-10 pb-20 pr-10">
                     <strong className="text-black text-2xl">
                         Check out {artistData?.name} on other media platforms!
                     </strong>
-                    <div className="pt-6">
+                    <div className="pt-4">
                         {(artistData) &&
                             <LinkList support={false} artistData={artistData}/>
                         }
@@ -160,9 +159,9 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="bg-white px-6 pb-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
+            <div className="bg-white px-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
                 <div className="top-0 sticky">
-                    <div className="pl-4 py-10 text-black text-2xl">
+                    <div className="pl-4 pt-10 pb-4 text-black text-2xl">
                         <strong>
                             Support Artist
                         </strong>
