@@ -23,7 +23,7 @@ type enabledLinkType = {
     siteImageUrl: string
 }
 
-function isObjKey<T>(key: PropertyKey, obj: T): key is keyof T {
+function isObjKey<T extends object>(key: PropertyKey, obj: T): key is keyof T {
     return key in obj;
 }
 
