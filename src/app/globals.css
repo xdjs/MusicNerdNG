@@ -153,12 +153,12 @@ body {
 .home-text {
   padding-left: 20px;
   padding-right: 20px;
-  padding-top: 30px;
-  padding-bottom: 80px;
+  padding-top: 0px;
+  padding-bottom: 100px;
 }
 
 .SearchBar {
-  max-width: 22rem;
+  max-width: 30rem;
   flex-grow: 1;
 }
 

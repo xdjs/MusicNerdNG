@@ -8,15 +8,17 @@ export default function Nav() {
             <Link href={"/"}>
                 <img src="/musicNerdLogo.png" className="w-24" alt="logo" />
             </Link>
-            <div className="grow"></div>
+
             {/* add nav-grid back in when login and add button implemented */}
             {/* <div className="grid nav-grid grow gap-x-4 gap-y-4">  */}
-                <div className="SearchBar">
-                    <SearchBar/>
-                </div>
+            <div className="pl-4 md:pl-10 SearchBar">
+                <SearchBar/>
+            </div>
                 {/* <button className="pink-btn">Artist +</button>
                 <LoginBtn/> */}
             {/* </div> */}
+
+            <div className="grow"></div>
         </nav>
     )
 }
