@@ -109,28 +109,31 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 pt-10 pb-0 md:pb-10 w-full">
                     {/* Left Column: Image and Song */}
-                    <div className="flex flex-col items-center md:items-end">
-                        <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                            {(image) ?
-                            <img src={image} alt="Image not available" className="object-cover w-full h-full"/>
-                            :
-                            <img className="" src="/spinner.svg" alt="whyyyyy" />
-                            }
+                    {(artistData?.spotify) &&
+                        <div className="flex flex-col items-center md:items-end">
+                            
+                            <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
+                                {(image) ?
+                                <img src={image} alt="Image not available" className="object-cover w-full h-full"/>
+                                :
+                                <img className="" src="/spinner.svg" alt="whyyyyy" />
+                                }
                             </AspectRatio>
-                        <div className="w-full">
-                            {/* frame to crop out the artist image in spotify iframe */}
-                            <div className="justify-center overflow-hidden rounded-xl">
-                                <div style={{
-                                    height: 'calc(100% + 32px)',
-                                    width: 'calc(100% + 72px)',
-                                    marginLeft: '-72px',
-                                    marginTop: '-32px',
-                                }}>
-                                    <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
+                            <div className="w-full">
+                                {/* frame to crop out the artist image in spotify iframe */}
+                                <div className="justify-center overflow-hidden rounded-xl">
+                                    <div style={{
+                                        height: 'calc(100% + 32px)',
+                                        width: 'calc(100% + 72px)',
+                                        marginLeft: '-72px',
+                                        marginTop: '-32px',
+                                    }}>
+                                        <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
                     {/* Right Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
                         <strong className="text-black text-2xl mb-2">
