@@ -119,38 +119,35 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         <p className="text-black mb-4">
                             {artistWiki?.blurb}
                         </p>
-                        {(artistWiki) ?
-                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4 pb-10">
+                        {(artistWiki) &&
+                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
                                 {"WIKIPEDIA"}
                             </Link>
-                            :
-                            <div className="text-black pb-10">
-                                Unfortunately {artistData?.name} currently has no attached wikipedia.
-                            </div>
                         }
 
                     </div>
     
                     {/* Right Column: Image and Song */}
-                    <div className="pb-1 flex flex-col items-center md:items-end">
+                    <div className="flex flex-col items-center md:items-end">
                         <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden w-full mb-4">
                             <img src={image} alt="artist" className="object-cover w-full h-full"/>
                         </AspectRatio>
-                    </div>
-                </div>
-                <div className="px-10 pb-6">
-                    {/* frame to crop out the artist image in spotify iframe */}
-                    <div className="flex justify-center md:justify-end overflow-hidden w-full rounded-l-xl">
-                        <div style={{
-                            clipPath: 'inset(0 0 0 72px)',
-                            width: 'calc(100% + 72px)',
-                            marginLeft: '-72px',
-                        }}>
-                            <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
+                        <div className="w-full">
+                            {/* frame to crop out the artist image in spotify iframe */}
+                            <div className="justify-center overflow-hidden rounded-xl">
+                                <div style={{
+                                    height: 'calc(100% + 32px)',
+                                    width: 'calc(100% + 72px)',
+                                    marginLeft: '-72px',
+                                    marginTop: '-32px',
+                                }}>
+                                    <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div className="ml-10 py-10 pr-10">
+                <div className="ml-10 pb-20 pr-10">
                     <strong className="text-black text-2xl">
                         Check out {artistData?.name} on other media platforms!
                     </strong>
