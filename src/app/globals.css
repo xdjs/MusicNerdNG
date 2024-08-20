@@ -143,12 +143,24 @@ body {
 }
 
 @media screen and (max-width: 768px) {
+  .nav-bar {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
   .nav-grid {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
   }
 
+  .pink-btn {
+    font-size: 14px;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
   .nav-grid .SearchBar {
+    font-size: 14px;
     grid-column: span 2;
     grid-row-start: 2;
   }
