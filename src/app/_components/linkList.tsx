@@ -29,7 +29,7 @@ function isObjKey<T extends object>(key: PropertyKey, obj: T): key is keyof T {
 
 function PlatformLink({ link, descriptor, image }: { link: string, descriptor: string, image: string}) {
     return (
-        <li className={`mb-5`}>
+        <li className={`mb-5 list-none`}>
             <Link href={`${link}`} target="blank" className="text-black">
                 <div className="link-item-grid corners-rounded">
                     <img className="mr-3" src={image} alt="" height={50} width={50} />
