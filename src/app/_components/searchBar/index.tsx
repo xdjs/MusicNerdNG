@@ -45,7 +45,7 @@ function SearchBar() {
     const handleBlur = () => {
         setTimeout(() => {
             setIsSearchOpen(false);
-        }, 100); // Delay to ensure the click registers
+        }, 200); // Delay to ensure the click registers
     };
 
     return (
