@@ -8,7 +8,7 @@ import Styles from "./styles.module.scss"
 
 
 function SearchBar() {
-    const [isSearchOpen, setIsSearchOpen] = useState(false)
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchString, setSearchString] = useState("");
     const { isLoading, isError, results, isUrl } = useFetchArtist(searchString);
     const [isParsingResults, setIsParsingResults] = useState(false);
@@ -38,13 +38,14 @@ function SearchBar() {
         if (results.length <= 0) return noArtistsFound;
         setIsParsingResults(true);
         const searchResults = parseSearchResults(results);
-        setIsParsingResults(false)
+        setIsParsingResults(false);
         return searchResults;
-    }, [results])
+    }, [results]);
 
     const handleBlur = () => {
         setTimeout(() => {
             setIsSearchOpen(false);
+            setSearchString('');
         }, 200); // Delay to ensure the click registers
     };
 
@@ -55,6 +56,7 @@ function SearchBar() {
                 onKeyDownCapture={() => setIsSearchOpen(true)} 
                 onBlur={handleBlur} 
                 onChange={(e) => { setSearchString(e.target.value) }}
+                value={searchString} // Bind input value to state
                 type="text" 
                 placeholder="Search for artist or collector" 
                 className={`${Styles.search} px-2 py-2 rounded-md`} 

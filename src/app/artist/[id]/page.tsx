@@ -165,7 +165,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             {/* Support Artist Box - Fixed Sidebar */}
             <div className="bg-white px-6 pb-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
                 <div className="top-0 sticky">
-                    <div className="text-center py-10 text-black text-2xl">
+                    <div className="pl-4 py-10 text-black text-2xl">
                         <strong>
                             Support Artist
                         </strong>
