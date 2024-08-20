@@ -58,7 +58,7 @@ function SearchBar() {
                 onChange={(e) => { setSearchString(e.target.value) }}
                 value={searchString} // Bind input value to state
                 type="text" 
-                placeholder="Search for artist or collector" 
+                placeholder="Search for an artist" 
                 className={`${Styles.search} px-2 py-2 rounded-md`} 
             />
             <div className={`${Styles.searchBackground} ${!isSearchOpen ? Styles.hidden : ""}`}></div>
