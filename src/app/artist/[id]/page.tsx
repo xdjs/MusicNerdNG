@@ -120,9 +120,15 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         <p className="text-black mb-4">
                             {artistWiki?.blurb}
                         </p>
-                        <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
-                            {(artistWiki) ? "WIKIPEDIA" : `${artistData?.name} currently has no attached wikipedia`}
-                        </Link>
+                        {(artistWiki) ?
+                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
+                                {"WIKIPEDIA"}
+                            </Link>
+                            :
+                            <div className="text-black">
+                                Unfortunately {artistData?.name} currently has no attached wikipedia.
+                            </div>
+                        }
 
                     </div>
     
