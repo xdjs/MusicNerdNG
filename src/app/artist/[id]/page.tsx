@@ -106,26 +106,25 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
     return (
         <div className="gap-4 px-4 sm:flex">
             {/* Artist Info Box */}
-            <div className="bg-white rounded-lg md:w-2/3">
+            <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 py-10 w-full">
                     {/* Left Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2">
                         <strong className="text-black text-2xl mb-2">
                             {artistData?.name}
-                            <span className="text-purple-500"> !!</span>
                         </strong>
-                        <div className="text-black mb-4">
+                        <div className="text-black pt-10 mb-4">
                             {(artistData) && getArtistDetailsText(artistData, spotifyData)}
                         </div>
                         <p className="text-black mb-4">
                             {artistWiki?.blurb}
                         </p>
                         {(artistWiki) ?
-                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
+                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4 pb-10">
                                 {"WIKIPEDIA"}
                             </Link>
                             :
-                            <div className="text-black">
+                            <div className="text-black pb-10">
                                 Unfortunately {artistData?.name} currently has no attached wikipedia.
                             </div>
                         }
@@ -151,7 +150,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         </div>
                     </div>
                 </div>
-                <div className="ml-10 py-10">
+                <div className="ml-10 py-10 pr-10">
                     <strong className="text-black text-2xl">
                         Check out {artistData?.name} on other media platforms!
                     </strong>
@@ -164,11 +163,9 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             </div>
     
             {/* Support Artist Box - Fixed Sidebar */}
-            <div className="bg-white px-6 pb-6 rounded-lg shadow-lg flex flex-col md:w-1/3"
-                style={{ top: '8.5rem' }} /* Adjusted top property for the sidebar */
-            >
+            <div className="bg-white px-6 pb-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
                 <div className="top-0 sticky">
-                    <div className="text-center pt-6 text-black text-2xl">
+                    <div className="text-center py-10 text-black text-2xl">
                         <strong>
                             Support Artist
                         </strong>
