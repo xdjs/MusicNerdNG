@@ -104,7 +104,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
     }, [])
 
     return (
-        <div className="gap-4 px-4 sm:flex">
+        <div className="gap-4 px-4 flex flex-col md:flex-row">
             {/* Artist Info Box */}
             <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 pt-10 pb-0 md:pb-10 w-full">
