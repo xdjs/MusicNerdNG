@@ -47,7 +47,6 @@ export async function getEnabledLinks( lcname ) {
     const enabledLinksQuery = new Parse.Query("UrlMap");
     const { findResult: enabledLinks } = await encodeParseQuery(enabledLinksQuery.addAscending("cardOrder"));
 
-    console.log(enabledLinks)
     return enabledLinks;
 }
 
@@ -62,8 +61,6 @@ export async function getArtist( id ) {
     try{
         const params = { "objectId": id }
         const artistData = await Parse.Cloud.run("getArtistByObjectId", params);
-        
-        // console.log(artistData)
         
         return (artistData)
         

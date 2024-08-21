@@ -1,12 +1,19 @@
+"use client"
+
 import Link from "next/link"
 import LoginBtn from "../buttons/LoginBtn"
 import SearchBar from "../searchBar"
+import { useState } from "react"
 
 export default function Nav() {
     return (
         <nav className="nav-bar grow flex items-center">
             <Link href={"/"}>
-                <img src="/musicNerdLogo.png" className="w-24" alt="logo" />
+                <img 
+                    src="/musicNerdLogo.png" 
+                    className="w-24" 
+                    alt="logo" 
+                />
             </Link>
 
             {/* add nav-grid back in when login and add button implemented */}

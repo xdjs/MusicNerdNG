@@ -6,11 +6,10 @@ import { artistDataType } from "@/app/artist/[id]/page";
 import Link from "next/link";
 import Styles from "./styles.module.scss"
 
-
 function SearchBar() {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchString, setSearchString] = useState("");
-    const { isLoading, isError, results, isUrl } = useFetchArtist(searchString);
+    const { isLoading, results, isUrl } = useFetchArtist(searchString);
     const [isParsingResults, setIsParsingResults] = useState(false);
 
     const noArtistsFound = <li style={{ pointerEvents: 'none' }}>No results found 🙁</li>
@@ -19,9 +18,13 @@ function SearchBar() {
 
     const parseSearchResults = (results: Array<artistDataType>) => {
         return results.map(result => {
+            const handleClick = () => {
+                setSearchString(result.name)
+            }
+            
             return (
                 <li key={result.name}>
-                    <Link href={`/artist/${result.objectId}`} legacyBehavior>
+                    <Link href={`/artist/${result.objectId}`} onClick={handleClick}>
                         <div className={`px-2 py-1 ${Styles.resultWrapper}`}>
                             {result.name}
                         </div>
@@ -45,13 +48,13 @@ function SearchBar() {
     const handleBlur = () => {
         setTimeout(() => {
             setIsSearchOpen(false);
-            setSearchString('');
         }, 200); // Delay to ensure the click registers
     };
 
     return (
         <div className={`${Styles.searchWrapper}`}>
             <input 
+                key={"searchbar"} 
                 onClick={() => setIsSearchOpen(true)} 
                 onKeyDownCapture={() => setIsSearchOpen(true)} 
                 onBlur={handleBlur} 

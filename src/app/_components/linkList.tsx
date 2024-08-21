@@ -77,7 +77,7 @@ export default function LinkList({support, artistData}: {support: boolean, artis
 
     return (
         artistSites?.map(el => {
-            return (<PlatformLink key={el.siteName} descriptor={el.CardDescription.replace('%@', el.CardPlatformName)} link={parseLink(el)} image={el.siteImageUrl} />)
+            return (<PlatformLink key={el.CardPlatformName} descriptor={el.CardDescription.replace('%@', el.CardPlatformName)} link={parseLink(el)} image={el.siteImageUrl} />)
         })
     )
 }
