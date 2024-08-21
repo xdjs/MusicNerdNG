@@ -21,11 +21,11 @@ function SearchBar() {
         return results.map(result => {
             return (
                 <li key={result.name}>
-                    <div className="px-2 py-1">
-                        <Link href={`/artist/${result.objectId}`} legacyBehavior>
+                    <Link href={`/artist/${result.objectId}`} legacyBehavior>
+                        <div className={`px-2 py-1 ${Styles.resultWrapper}`}>
                             {result.name}
-                        </Link>
-                    </div>
+                        </div>
+                    </Link>
                 </li>
             );
         });

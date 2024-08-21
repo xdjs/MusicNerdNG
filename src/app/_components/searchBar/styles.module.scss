@@ -1,4 +1,6 @@
-@use "@/app/_colors" as colors;
+// @use "@/app/_colors" as colors;
+@use "../../colors" as colors;
+// @use "@/srs/app/colors" as colors;
 
 .searchWrapper {
     position: relative;
@@ -83,7 +85,7 @@
         border-radius: 6px;
         min-height: 48px;
         &:hover {
-            background-color: rgba($color: colors.$primary, $alpha: .25);
+            background-color: rgba($color: colors.$lightpurple, $alpha: .15);
         }
     }
 
