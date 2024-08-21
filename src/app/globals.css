@@ -164,8 +164,8 @@ body {
 
 @media screen and (max-width: 768px) {
   .nav-bar {
-    padding-left: 10px;
-    padding-right: 10px;
+    padding-left: 18px;
+    padding-right: 18px;
     column-gap: 10px;
   }
 

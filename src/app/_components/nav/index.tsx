@@ -24,8 +24,6 @@ export default function Nav() {
                 {/* <button className="pink-btn">Artist +</button>
                 <LoginBtn/> */}
             {/* </div> */}
-
-            <div className="grow"></div>
         </nav>
     )
 }
