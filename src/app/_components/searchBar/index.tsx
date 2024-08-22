@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import { useMemo, useState, useContext } from "react"
+import { useMemo, useState, ChangeEvent, useEffect } from "react";
 import { useFetchArtist } from "@/utils/queries";
 import { artistDataType } from "@/app/artist/[id]/page";
 import Link from "next/link";
-import Styles from "./styles.module.scss"
+import Styles from "./styles.module.scss";
 
 function SearchBar() {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -12,15 +12,15 @@ function SearchBar() {
     const { isLoading, results, isUrl } = useFetchArtist(searchString);
     const [isParsingResults, setIsParsingResults] = useState(false);
 
-    const noArtistsFound = <li style={{ pointerEvents: 'none' }}>No results found 🙁</li>
-    const noInput = <li style={{ pointerEvents: 'none' }}>Start typing to search! 😊</li>
-    const invalidInput = <li style={{ pointerEvents: 'none' }}>Invalid input, please enter something else</li>
+    const noArtistsFound = <li style={{ pointerEvents: 'none' }}>No results found 🙁</li>;
+    const noInput = <li style={{ pointerEvents: 'none' }}>Start typing to search! 😊</li>;
+    const invalidInput = <li style={{ pointerEvents: 'none' }}>Invalid input, please enter something else</li>;
 
     const parseSearchResults = (results: Array<artistDataType>) => {
         return results.map(result => {
             const handleClick = () => {
-                setSearchString(result.name)
-            }
+                setSearchString(result.name);
+            };
             
             return (
                 <li key={result.name}>
@@ -76,7 +76,7 @@ function SearchBar() {
                 </ul>
             )}
         </div>
-    )
+    );
 }
 
 export default SearchBar;

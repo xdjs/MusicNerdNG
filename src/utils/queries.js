@@ -6,7 +6,7 @@ import Parse from 'parse';
 
 export default async function getFeaturedArtists() { 
     Parse.initialize("CaWyhf3u5yoMRusaurJaF82l7VsYiVVuZzD2nOXD",undefined);
-    Parse.serverURL = 'https://api-staging.musicnerd.xyz/parse';
+    Parse.serverURL = PARSE_SERVER_URL;
     Parse.AnonymousUtils.logIn();
     try{
         const featuredArtists = await Parse.Cloud.run("getFeaturedArtists");        
@@ -71,6 +71,7 @@ export async function getArtist( id ) {
 
 // search 
 import { useEffect, useState } from "react";
+import { PARSE_SERVER_URL } from '@/env';
 
 const ARTISTLIMIT = 12;
 
@@ -123,8 +124,8 @@ export const useFetchArtist = (searchString) => {
 
                 // Search for web3 artists
                 
-                const web3ArtistsResults = await Parse.Cloud.run('search', { 'q': searchString });;
-                
+                const web3ArtistsResults = await Parse.Cloud.run('search', { 'q': searchString });
+                console.log(web3ArtistsResults)
 
                 setResults(web3ArtistsResults);
                 setIsLoading(false);
