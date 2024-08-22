@@ -21,12 +21,20 @@ function SearchBar() {
             const handleClick = () => {
                 setSearchString(result.name);
             };
+            console.log(result)
             
             return (
                 <li key={result.name}>
                     <Link href={`/artist/${result.objectId}`} onClick={handleClick}>
                         <div className={`px-2 py-1 ${Styles.resultWrapper}`}>
                             {result.name}
+                            <div>
+                                {result.twitter &&
+                                    <span className="color-black mt-2">
+                                        @{result.twitter} {result.ens ? "/ " + result.ens: null} 
+                                    </span>
+                                }
+                            </div>
                         </div>
                     </Link>
                 </li>
