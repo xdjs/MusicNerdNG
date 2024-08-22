@@ -26,12 +26,12 @@
 .search {
     position: relative;
     border: colors.$primary;
-    color: colors.$secondary;
+    color: colors.$purple;
     z-index: 10;
     background-color: rgb(250, 250, 250);
 
     &::placeholder {
-        color: colors.$secondary;
+        color: colors.$purple;
     }
 
     &:focus {
@@ -66,6 +66,7 @@
     opacity: 1;
     transition: opacity .15s ease-in;
     background-color: white;
+    color: colors.$purple;
     border: none;
     min-height: 35px;
     max-height: 500px;
@@ -84,6 +85,7 @@
     .resultWrapper {
         border-radius: 6px;
         min-height: 48px;
+        color: colors.$purple;
         &:hover {
             background-color: rgba($color: colors.$lightpurple, $alpha: .15);
         }
@@ -92,7 +94,7 @@
     li {
         width: 100%;
         padding: 4px 8px;
-        color: colors.$secondary;
+        color: colors.$purple;
         &:first-child {
             padding-top: 8px;
         }
