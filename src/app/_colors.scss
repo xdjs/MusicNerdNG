@@ -1,0 +1,22 @@
+$primary: #2ad4fc;
+$secondary: #ef95ff;
+$tertiary: #19ffb8;
+$grey: rgb(184, 182, 182);
+$purple: rgb(25, 0, 50);
+$lightpurple: rgb(100, 0, 200);
+
+.text-color-primary {
+    color: $primary;
+}
+
+.text-color-secondary {
+    color: $secondary;
+}
+
+.text-color-tertiary {
+    color: $tertiary;
+}
+
+.text-color-white {
+    color: white;
+}
