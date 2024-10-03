@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Nav from "./_components/nav";
+import type { Session } from 'next-auth';
 
 export const metadata: Metadata = {
   title: "MusicNerd",
@@ -9,14 +10,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
+  pageProps
 }: {
   children: React.ReactNode;
+  pageProps: Session;
+
 }) {
   return (
     <html lang="en"> 
       <body>
-          <Nav/>
-          {children}
+          <Nav session={pageProps}/>
+          {/* {children} */}
       </body>
     </html>
   );
