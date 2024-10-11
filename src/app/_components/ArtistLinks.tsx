@@ -1,9 +1,9 @@
-import { artistDataType } from "@/app/artist/[id]/page";
-import { link } from "fs";
+
 import Link from "next/link";
 import { getEnabledLinks } from "@/server/utils/queries"
 import { useEffect, useState } from "react"; 
 import Image from "next/image";
+import { Artist } from "@/server/db/DbTypes";
 
 type enabledLinkType = {
     CardDescription: string,
@@ -40,13 +40,13 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
     )
 }
 
-export default function LinkList({support, artistData}: {support: boolean, artistData: artistDataType}) {
+export default function LinkList({support, artist}: {support: boolean, artist: Artist}) {
     const [artistSites, setArtistSites] = useState<Array<enabledLinkType>>()
 
     useEffect(()=> {
         const getArtistData = async () => {
             try {
-                const allEnabledLinks = await getEnabledLinks( artistData.lcname ) as Array<enabledLinkType>
+                const allEnabledLinks = await getEnabledLinks( artist.lcname ) as Array<enabledLinkType>
                 setArtistSites(filterLinks(allEnabledLinks))
                 
             } catch (error) {
@@ -58,8 +58,8 @@ export default function LinkList({support, artistData}: {support: boolean, artis
     }, [])
 
     function parseLink( enabledLink: enabledLinkType ) {
-        if(isObjKey(enabledLink.siteName, artistData)) {
-            return enabledLink.appStingFormat.replace("%@", artistData[enabledLink.siteName].toString())
+        if(isObjKey(enabledLink.siteName, artist)) {
+            return enabledLink.appStingFormat.replace("%@", artist[enabledLink.siteName as keyof Artist].toString())
         }
         return ""
     }
@@ -67,8 +67,8 @@ export default function LinkList({support, artistData}: {support: boolean, artis
     function filterLinks( enabledLinks: Array<enabledLinkType>) {
         const toDisplayLinks = enabledLinks.filter((site) => {
             if (site.isWeb3Site !== support) return false;
-            if (!isObjKey(site.siteName, artistData)) return false;
-            if (artistData[site.siteName] === undefined) return false;
+            if (!isObjKey(site.siteName, artist)) return false;
+            if (artist[site.siteName] === undefined) return false;
             return true;
         })
 

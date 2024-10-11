@@ -1,5 +1,5 @@
 import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean } from "drizzle-orm/pg-core"
-  import { sql } from "drizzle-orm"
+  import { relations, sql } from "drizzle-orm"
 
 
 
@@ -45,8 +45,8 @@ export const urlmap = pgTable("urlmap", {
 
 export const featured = pgTable("featured", {
 	id: uuid("id").default(sql`uuid_generate_v4()`),
-	featuredartist: uuid("featuredartist"),
-	featuredcollector: uuid("featuredcollector"),
+	featuredartist: uuid("featuredartist").references(() => artists.id),
+	featuredcollector: uuid("featuredcollector").references(() => artists.id),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }),
 },
@@ -64,6 +64,11 @@ export const featured = pgTable("featured", {
 		}),
 	}
 });
+
+export const featuredRelations = relations(featured, ({ one }) => ({
+	featuredArtist: one(artists, { fields: [featured.featuredartist], references: [artists.id], relationName: "featuredArtistObject" }),
+	featuredCollector: one(artists, { fields: [featured.featuredcollector], references: [artists.id], relationName: "featuredcollector" }),
+  }));
 
 export const users = pgTable("users", {
 	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),

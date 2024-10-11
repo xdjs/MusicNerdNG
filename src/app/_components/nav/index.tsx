@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import LoginBtn from "../buttons/LoginBtn"
-import SearchBar from "../searchBar"
+import SearchBar from "./components/SearchBar"
 import { useState } from "react"
 import Login from "./components/login"
 import { Session } from "next-auth"

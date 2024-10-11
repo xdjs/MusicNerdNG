@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react";
-import { getArtist } from "@/utils/queries";
-import { getSpotifyHeaders, getWiki, getSpotify } from "@/utils/getInfo"
+import { getArtist } from "@/server/utils/queries";
+import { getSpotifyHeaders, getWiki, getSpotify } from "@/server/utils/getInfo"
 import axios from "axios";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import Link from "next/link";
-import { getArtistDetailsText, getArtistSplitPlatforms } from "@/utils/getText"
+import { getArtistDetailsText, getArtistSplitPlatforms } from "@/server/utils/getText"
 import { Spotify } from 'react-spotify-embed';
 import LinkList from "@/app/_components/linkList";
 
