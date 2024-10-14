@@ -20,7 +20,7 @@ export default function RootLayout({
     <html lang="en"> 
       <body>
           <Nav session={pageProps}/>
-          {/* {children} */}
+          {children}
       </body>
     </html>
   );

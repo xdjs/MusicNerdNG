@@ -42,3 +42,8 @@ export const getArtistDetailsText = (artist: Artist, spotifyData: SpotifyDataTyp
         web3Platforms[-1] = `and ${web3Platforms[-1]}`
     return prefix + web3Platforms.join(", ")
 }
+
+export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is keyof T {
+    return key in obj;
+}
+

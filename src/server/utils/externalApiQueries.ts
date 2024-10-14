@@ -6,7 +6,7 @@ type SpotifyHeaderType = {
     headers: { Authorization: string }
 }
 
-export type FeaturedArtist = {
+export type ArtistSpotifyImage = {
     artistImage: string,
     artistId: string
 }
@@ -39,7 +39,7 @@ export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
     }
 }
 
-export async function getSpotifyImage(artistSpotifyId: string, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<FeaturedArtist> {
+export async function getSpotifyImage(artistSpotifyId: string, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> {
     try {
         const artistData = await axios.get(
             `https://api.spotify.com/v1/artists/${artistSpotifyId}`,

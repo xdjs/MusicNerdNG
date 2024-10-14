@@ -46,7 +46,6 @@ const getSiweMessageOptions: GetSiweMessageOptions = () => ({
 
 function InnerProviders() {
     const { status, data } = useSession();
-    console.log(data)
 
     return (
         <WagmiProvider config={config}>

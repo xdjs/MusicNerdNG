@@ -38,6 +38,10 @@ function Users({
     search: string
 }
 ) {
+    const router = useRouter();
+    function navigateToUser(id: string) {
+        router.push(`/artist/${id}`);
+    }
     return (
         <>
             {users && users.map(u => {
@@ -45,9 +49,9 @@ function Users({
                     <div key={u.id} >
                         <Link
                             className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                            // href={`/${u.id}`}
+                            onMouseDown={() => navigateToUser(u.id)}
                             href={{
-                                pathname: `/${u.id}`,
+                                pathname: `/artist/${u.id}`,
                                 query: {
                                     ...(search ? { search } : {}),
                                 }
@@ -86,7 +90,6 @@ const SearchBar = () => {
 
     const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
-        debugger
         setQuery(value);
     };
 
@@ -102,14 +105,10 @@ const SearchBar = () => {
         router.push(`?search=${query}`);
     }, [debouncedQuery])
 
-    function hideSearch(e: React.MouseEvent<HTMLInputElement>) {
-        console.log(e)
-    }
-
     return (
         <div className="relative w-full max-w-md z-30">
             <input
-                onMouseDown={hideSearch}
+                onBlur={() => setShowResults(false)}
                 onFocus={() => setShowResults(true)}
                 type="text"
                 value={query}

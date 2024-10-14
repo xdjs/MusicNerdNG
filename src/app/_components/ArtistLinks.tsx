@@ -1,33 +1,8 @@
-
 import Link from "next/link";
-import { getEnabledLinks } from "@/server/utils/queries"
-import { useEffect, useState } from "react"; 
-import Image from "next/image";
 import { Artist } from "@/server/db/DbTypes";
+import { getArtistLinks } from "@/server/utils/queriesTS";
 
-type enabledLinkType = {
-    CardDescription: string,
-    CardPlatformName: string,
-    appStingFormat: string,
-    cardOrder: number,
-    className: string,
-    createdAt: string,
-    example: string,
-    isEmbedEnabled: boolean,
-    isIframeEnabled: boolean,
-    objectId: string,
-    siteName: string,
-    siteUrl: string,
-    updatedAt: string,
-    isWeb3Site: boolean,
-    siteImageUrl: string
-}
-
-function isObjKey<T extends object>(key: PropertyKey, obj: T): key is keyof T {
-    return key in obj;
-}
-
-function PlatformLink({ link, descriptor, image }: { link: string, descriptor: string, image: string}) {
+function PlatformLink({ link, descriptor, image }: { link: string, descriptor: string, image: string }) {
     return (
         <li className={`mb-5 list-none`}>
             <Link href={`${link}`} target="blank" className="text-black">
@@ -40,44 +15,13 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
     )
 }
 
-export default function LinkList({support, artist}: {support: boolean, artist: Artist}) {
-    const [artistSites, setArtistSites] = useState<Array<enabledLinkType>>()
-
-    useEffect(()=> {
-        const getArtistData = async () => {
-            try {
-                const allEnabledLinks = await getEnabledLinks( artist.lcname ) as Array<enabledLinkType>
-                setArtistSites(filterLinks(allEnabledLinks))
-                
-            } catch (error) {
-                console.error("Error fetching links", error);
-            }
-        }
-
-        getArtistData()
-    }, [])
-
-    function parseLink( enabledLink: enabledLinkType ) {
-        if(isObjKey(enabledLink.siteName, artist)) {
-            return enabledLink.appStingFormat.replace("%@", artist[enabledLink.siteName as keyof Artist].toString())
-        }
-        return ""
-    }
-
-    function filterLinks( enabledLinks: Array<enabledLinkType>) {
-        const toDisplayLinks = enabledLinks.filter((site) => {
-            if (site.isWeb3Site !== support) return false;
-            if (!isObjKey(site.siteName, artist)) return false;
-            if (artist[site.siteName] === undefined) return false;
-            return true;
-        })
-
-        return toDisplayLinks
-    }
-
+export default async function ArtistLinks({ isOnlyWeb3Sites, artist }: { isOnlyWeb3Sites: boolean, artist: Artist }) {
+    let artistLinks = await getArtistLinks(artist);
+    artistLinks = artistLinks.filter(el => el.isweb3Site === isOnlyWeb3Sites);
+    
     return (
-        artistSites?.map(el => {
-            return (<PlatformLink key={el.CardPlatformName} descriptor={el.CardDescription.replace('%@', el.CardPlatformName)} link={parseLink(el)} image={el.siteImageUrl} />)
+        artistLinks?.map(el => {
+            return (<PlatformLink key={el.cardplatformname} descriptor={el.carddescription.replace('%@', el.cardplatformname)} link={el.artistUrl} image={""} />)
         })
     )
 }
