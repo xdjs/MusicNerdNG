@@ -10,6 +10,8 @@ import { getArtistDetailsText, getArtistSplitPlatforms } from "@/utils/getText"
 import { Spotify } from 'react-spotify-embed';
 import LinkList from "@/app/_components/linkList";
 
+// test
+
 export type artistDataType = {
     name: string, 
     spotify: string, 
