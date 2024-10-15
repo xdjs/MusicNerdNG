@@ -79,6 +79,7 @@ export const authOptions: NextAuthOptions = {
         try {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"))
           const nextAuthUrl = new URL(VERCEL_URL ?? "http://localhost:3000");
+          console.log(VERCEL_URL);
           const result = await siwe.verify({
             signature: credentials?.signature || "",
             domain: nextAuthUrl.host,
