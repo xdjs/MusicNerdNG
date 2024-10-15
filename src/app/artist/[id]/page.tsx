@@ -1,109 +1,28 @@
-"use client"
 
-import { useEffect, useState } from "react";
-import { getArtist } from "@/utils/queries";
-import { getSpotifyHeaders, getWiki, getSpotify } from "@/utils/getInfo"
-import axios from "axios";
+import { getArtistById } from "@/server/utils/queriesTS";
+import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
-import Link from "next/link";
-import { getArtistDetailsText, getArtistSplitPlatforms } from "@/utils/getText"
 import { Spotify } from 'react-spotify-embed';
-import LinkList from "@/app/_components/linkList";
+import ArtistLinks from "@/app/_components/ArtistLinks";
+import { getArtistDetailsText } from "@/server/utils/services";
+import Link from "next/link";
+import AddArtistData from "./_components/AddArtistData";
 
-// test
-
-export type artistDataType = {
-    name: string, 
-    spotify: string, 
-    objectId: string,
-    audius: string,
-    bandsintown: string,
-    catalog: string,
-    ens: string,
-    x: string,
-    facebook: string,
-    instagram: string,
-    lastfm: string,
-    lcname: string,
-    soundcloud: string,
-    soundcloudId: number,
-    tiktok: string,
-    twitter: string,
-    updatedAt: string,
-    wallets: Array<string>,
-    wikipedia: string,
-    youtubechannel: string,
-    zora: string
-}
-
-type artistWikiType = {
-    blurb: any,
-    link: string,
-}
-
-type spotifyDataType = {
-    releases: number
-}
-
-
-export default function ArtistProfile({ params }: { params: { id: string } }) {
-    const [artistData, setArtistData] = useState<artistDataType>(); 
-    const [image, setImage] = useState<string>(); 
-    const [spotifyData, setSpoifyData] = useState<spotifyDataType>();
-    const [artistWiki, setArtistWiki] = useState<artistWikiType>();
-    const [supportLinks, setSupportLinks] = useState<Array<string>>([]);
-
-    useEffect(()=> {
-        const getArtistData = async () => {
-            try {
-                console.log(`making request ${params.id}`)
-                return await getArtist(params.id);
-            } catch (error) {
-                console.error("Error fetching artists", error);
-                return []
-            }
-        }
-        
-        const getWeb3Presences = async (artist: artistDataType) => {
-            try {
-                console.log(`making web3 request`)
-                return await getArtistSplitPlatforms(artist).web3Platforms;
-            } catch (error) {
-                console.error("Error fetching web3", error);
-                return []
-            }
-        }
-
-        const getSpotifyImage = async (artist: artistDataType): Promise<string> => {
-            try {
-                const headers = await getSpotifyHeaders();
-                const artistData = await axios.get(
-                    `https://api.spotify.com/v1/artists/${artist.spotify}`,
-                    headers
-                );
-                return artistData.data.images[0].url;
-            } catch (error) {
-                console.error(`Error fetching image for artist ${artist.spotify}`, error);
-                return '';
-            }
-        };
-
-        const fetchImage = async (artistData: artistDataType) => {
-            const imageUrl = await getSpotifyImage(artistData);
-            setImage(imageUrl);
-        };
-
-        const initialize = async () => {
-            const data = await getArtistData();
-            setArtistData(data);
-            fetchImage(data);
-            setArtistWiki(await getWiki(data.wikipedia));
-            setSpoifyData(await getSpotify(data.spotify));
-            setSupportLinks(await getWeb3Presences(data));
-        };
-
-        initialize();
-    }, [])
+export default async function ArtistProfile({ params }: { params: { id: string } }) {
+    const artist = await getArtistById(params.id);
+    if (!artist) {
+        return (
+            <div>
+                <h1>Artist not found</h1>
+            </div>
+        )
+    }
+    const headers = await getSpotifyHeaders();
+    const [spotifyImg, numReleases, wiki] = await Promise.all([
+        getSpotifyImage(artist.spotify ?? "", undefined, headers),
+        getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
+        getArtistWiki(artist.wikipedia ?? "")
+    ]);
 
     return (
         <div className="gap-4 px-4 flex flex-col md:flex-row">
@@ -111,18 +30,17 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
             <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 pt-10 pb-0 md:pb-10 w-full">
                     {/* Left Column: Image and Song */}
-                    {(artistData?.spotify) &&
+                    {(spotifyImg) &&
                         <div className="flex flex-col items-center md:items-end">
-                            
+
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                                {(image) ?
-                                <img src={image} alt="Image not available" className="object-cover w-full h-full"/>
-                                :
-                                <img className="" src="/spinner.svg" alt="whyyyyy" />
+                                {(spotifyImg) ?
+                                    <img src={spotifyImg.artistImage} alt="Image not available" className="object-cover w-full h-full" />
+                                    :
+                                    <img className="" src="/spinner.svg" alt="whyyyyy" />
                                 }
                             </AspectRatio>
                             <div className="w-full">
-                                {/* frame to crop out the artist image in spotify iframe */}
                                 <div className="justify-center overflow-hidden rounded-xl">
                                     <div style={{
                                         height: 'calc(100% + 32px)',
@@ -130,7 +48,7 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                                         marginLeft: '-72px',
                                         marginTop: '-32px',
                                     }}>
-                                        <Spotify wide link={`https://open.spotify.com/artist/${artistData?.spotify}`} />
+                                        <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
                                     </div>
                                 </div>
                             </div>
@@ -138,17 +56,20 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                     }
                     {/* Right Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
-                        <strong className="text-black text-2xl mb-2">
-                            {artistData?.name}
-                        </strong>
+                        <div className="mb-2">
+                            <strong className="text-black text-2xl mr-2">
+                                {artist.name}
+                            </strong>
+                            <AddArtistData />
+                        </div>
                         <div className="text-black pt-0 mb-4">
-                            {(artistData) && getArtistDetailsText(artistData, spotifyData)}
+                            {(artist) && getArtistDetailsText(artist, numReleases)}
                         </div>
                         <p className="text-black mb-4">
-                            {artistWiki?.blurb}
+                            {wiki?.blurb}
                         </p>
-                        {(artistWiki) &&
-                            <Link href={`${artistWiki?.link}`} className="text-black underline mb-4">
+                        {(wiki) &&
+                            <Link href={`${wiki?.link}`} className="text-black underline mb-4">
                                 {"WIKIPEDIA"}
                             </Link>
                         }
@@ -157,16 +78,16 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                 </div>
                 <div className="ml-10 pb-4 pr-10">
                     <strong className="text-black text-2xl">
-                        Check out {artistData?.name} on other media platforms!
+                        Check out {artist?.name} on other media platforms!
                     </strong>
                     <div className="pt-4">
-                        {(artistData) &&
-                            <LinkList support={false} artistData={artistData}/>
+                        {(artist) &&
+                            <ArtistLinks isOnlyWeb3Sites={false} artist={artist} />
                         }
                     </div>
                 </div>
             </div>
-    
+
             {/* Support Artist Box - Fixed Sidebar */}
             <div className="bg-white px-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
                 <div className="top-0 sticky">
@@ -176,12 +97,12 @@ export default function ArtistProfile({ params }: { params: { id: string } }) {
                         </strong>
                     </div>
                     <div className="pl-4">
-                        {(artistData) &&
-                                <LinkList support={true} artistData={artistData}/>
-                            }
+                        {(artist) &&
+                            <ArtistLinks isOnlyWeb3Sites={true} artist={artist} />
+                        }
                     </div>
                 </div>
             </div>
         </div>
-    );          
+    );
 }

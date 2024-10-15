@@ -1,7 +1,7 @@
-import { artistDataType } from "@/app/artist/[id]/page";
+import { artistDataType } from "@/app/artist/[id]/pageLegacy";
 import { link } from "fs";
 import Link from "next/link";
-import { getEnabledLinks } from "@/utils/queries"
+import { getEnabledLinks } from "@/server/utils/queries"
 import { useEffect, useState } from "react"; 
 import Image from "next/image";
 
