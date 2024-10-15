@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useRef, ReactNode } from 'react';
+import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
@@ -13,7 +13,9 @@ const queryClient = new QueryClient()
 export default function wrapper() {
     return (
         <QueryClientProvider client={queryClient}>
-            <SearchBar />
+            <Suspense>
+                <SearchBar />
+            </Suspense>
         </QueryClientProvider>
     )
 }

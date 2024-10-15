@@ -21,7 +21,7 @@ export default function AddArtistData() {
                 <DialogHeader>
                     <DialogTitle>Add Artist Data!</DialogTitle>
                     <DialogDescription>
-                        Let's start by inputting their Spotify artist ID
+                        Let&apos;s start by inputting their Spotify artist ID
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
