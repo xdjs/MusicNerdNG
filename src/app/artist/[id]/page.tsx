@@ -6,10 +6,11 @@ import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
 import Link from "next/link";
+import AddArtistData from "./_components/AddArtistData";
 
 export default async function ArtistProfile({ params }: { params: { id: string } }) {
     const artist = await getArtistById(params.id);
-    if(!artist){
+    if (!artist) {
         return (
             <div>
                 <h1>Artist not found</h1>
@@ -18,9 +19,9 @@ export default async function ArtistProfile({ params }: { params: { id: string }
     }
     const headers = await getSpotifyHeaders();
     const [spotifyImg, numReleases, wiki] = await Promise.all([
-        getSpotifyImage(artist.spotify??"", undefined , headers), 
-        getNumberOfSpotifyReleases(artist.spotify??"", headers), 
-        getArtistWiki(artist.wikipedia??"")
+        getSpotifyImage(artist.spotify ?? "", undefined, headers),
+        getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
+        getArtistWiki(artist.wikipedia ?? "")
     ]);
 
     return (
@@ -31,16 +32,15 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                     {/* Left Column: Image and Song */}
                     {(spotifyImg) &&
                         <div className="flex flex-col items-center md:items-end">
-                            
+
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                 {(spotifyImg) ?
-                                <img src={spotifyImg.artistImage} alt="Image not available" className="object-cover w-full h-full"/>
-                                :
-                                <img className="" src="/spinner.svg" alt="whyyyyy" />
+                                    <img src={spotifyImg.artistImage} alt="Image not available" className="object-cover w-full h-full" />
+                                    :
+                                    <img className="" src="/spinner.svg" alt="whyyyyy" />
                                 }
                             </AspectRatio>
                             <div className="w-full">
-                                {/* frame to crop out the artist image in spotify iframe */}
                                 <div className="justify-center overflow-hidden rounded-xl">
                                     <div style={{
                                         height: 'calc(100% + 32px)',
@@ -56,9 +56,12 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                     }
                     {/* Right Column: Name and Description */}
                     <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
-                        <strong className="text-black text-2xl mb-2">
-                            {artist.name}
-                        </strong>
+                        <div className="mb-2">
+                            <strong className="text-black text-2xl mr-2">
+                                {artist.name}
+                            </strong>
+                            <AddArtistData />
+                        </div>
                         <div className="text-black pt-0 mb-4">
                             {(artist) && getArtistDetailsText(artist, numReleases)}
                         </div>
@@ -79,12 +82,12 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                     </strong>
                     <div className="pt-4">
                         {(artist) &&
-                            <ArtistLinks isOnlyWeb3Sites={false} artist={artist}/>
+                            <ArtistLinks isOnlyWeb3Sites={false} artist={artist} />
                         }
                     </div>
                 </div>
             </div>
-    
+
             {/* Support Artist Box - Fixed Sidebar */}
             <div className="bg-white px-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
                 <div className="top-0 sticky">
@@ -95,11 +98,11 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                     </div>
                     <div className="pl-4">
                         {(artist) &&
-                                <ArtistLinks isOnlyWeb3Sites={true} artist={artist}/>
-                            }
+                            <ArtistLinks isOnlyWeb3Sites={true} artist={artist} />
+                        }
                     </div>
                 </div>
             </div>
         </div>
-    );          
+    );
 }

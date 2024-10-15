@@ -57,3 +57,7 @@ export async function getArtistLinks(artist: Artist) {
         throw new Error("Error fetching artist links");
     }
 }
+
+export async function addArtist(spotifyLink: string) {
+    // Need to implement
+}
