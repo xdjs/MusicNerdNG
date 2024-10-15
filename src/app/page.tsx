@@ -3,6 +3,8 @@ import { getFeaturedArtistsTS } from "@/server/utils/queriesTS";
 
 export default async function HomePage() {
   const featuredArtists = await getFeaturedArtistsTS();
+  console.log("Sanity Check");
+  console.log("Sanity Check", featuredArtists);
   return (
     <div className="flex flex-col items-center w-full overflow-hidden">
       <div className="flex flex-col items-center w-full">
