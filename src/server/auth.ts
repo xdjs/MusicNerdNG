@@ -4,6 +4,7 @@ import {
   type NextAuthOptions,
 } from "next-auth";
 import { cookies } from 'next/headers';
+import { VERCEL_URL } from "@/env";
 
 import CredentialsProvider from "next-auth/providers/credentials"
 import { SiweMessage } from "siwe"
@@ -77,7 +78,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials): Promise<any> {
         try {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"))
-          const nextAuthUrl = new URL("http://localhost:3000");
+          const nextAuthUrl = new URL(VERCEL_URL ?? "http://localhost:3000");
           const result = await siwe.verify({
             signature: credentials?.signature || "",
             domain: nextAuthUrl.host,
