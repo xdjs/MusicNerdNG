@@ -12,7 +12,7 @@ import { SiweMessage } from "siwe";
 import { featured, artists, users } from '@/server/db/schema';
 import { db } from "./db/drizzle";
 import { eq } from "drizzle-orm";
-import {getUserByWallet, createUser, checkWhiteListStatusById} from "@/server/utils/queriesTS";
+import { getUserByWallet, createUser, checkWhiteListStatusById } from "@/server/utils/queriesTS";
 import { get } from "http";
 
 /**
@@ -53,7 +53,7 @@ export const authOptions: NextAuthOptions = {
     signIn() {
       return true;
     },
-    async session({session, token}) {
+    async session({ session, token }) {
       return {
         ...session,
         user: {
@@ -84,20 +84,19 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials): Promise<any> {
         try {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
-
-          const nextAuthUrl = new URL(HOST_URL);
           
           const result = await siwe.verify({
             signature: credentials?.signature || "",
-            domain: nextAuthUrl.host,
+            domain: "localhost:3000",
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           })
+
           let user = await getUserByWallet(siwe.address);
           if (!user) user = await createUser(siwe.address);
 
           if (result.success) {
             return {
-              id: siwe.address,
+              id: user.id,
               walletAddress: siwe.address,
             }
           }

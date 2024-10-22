@@ -20,7 +20,7 @@ export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
         };
         let payload = {
             grant_type: "client_credentials",
-            redirectUri: "http://localhost:8000/callback",
+            redirectUri: "https://localhost:8000/callback",
             client_id: SPOTIFY_WEB_CLIENT_ID,
             client_secret: SPOTIFY_WEB_CLIENT_SECRET,
         };

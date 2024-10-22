@@ -72,9 +72,21 @@ export async function addArtist(spotifyLink: string) {
     }
 }
 
+export async function addArtistData() {
+    return;
+}
+
 export async function getUserByWallet( wallet: string) {
     try {
         return await db.query.users.findFirst({where: eq(users.wallet, wallet)}); 
+    } catch (e) {
+        throw new Error("Error finding user");
+    }
+}
+
+export async function getUserById(id: string) {
+    try {
+        return await db.query.users.findFirst({where: eq(users.id, id)}); 
     } catch (e) {
         throw new Error("Error finding user");
     }
@@ -91,9 +103,9 @@ export async function createUser(wallet: string) {
 
 export async function checkWhiteListStatusById(id: string) {
     try {
-        const artist = await db.query.ugcwhitelist.findFirst({where: eq(ugcwhitelist.userid, id)});
-        return artist !== undefined;
+        const whiteListedUser = await db.query.ugcwhitelist.findFirst({where: eq(ugcwhitelist.userid, id)});
+        return whiteListedUser !== undefined;
     } catch (e) {
-        throw new Error("Error finding artist");
+        throw new Error("Error finding whitelistedUser");
     }
 }

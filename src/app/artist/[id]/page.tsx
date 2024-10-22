@@ -7,8 +7,10 @@ import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
 import Link from "next/link";
 import AddArtistData from "./_components/AddArtistData";
+import { getServerAuthSession } from "@/server/auth";
 
 export default async function ArtistProfile({ params }: { params: { id: string } }) {
+    const session = await getServerAuthSession();
     const artist = await getArtistById(params.id);
     if (!artist) {
         return (
@@ -17,7 +19,9 @@ export default async function ArtistProfile({ params }: { params: { id: string }
             </div>
         )
     }
+
     const headers = await getSpotifyHeaders();
+
     const [spotifyImg, numReleases, wiki] = await Promise.all([
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
@@ -25,6 +29,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
     ]);
 
     return (
+        <>
         <div className="gap-4 px-4 flex flex-col md:flex-row">
             {/* Artist Info Box */}
             <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
@@ -60,7 +65,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                             <strong className="text-black text-2xl mr-2">
                                 {artist.name}
                             </strong>
-                            <AddArtistData artist={artist} spotifyImg={spotifyImg.artistImage} />
+                            <AddArtistData artist={artist} spotifyImg={spotifyImg.artistImage} session={session}/>
                         </div>
                         <div className="text-black pt-0 mb-4">
                             {(artist) && getArtistDetailsText(artist, numReleases)}
@@ -104,5 +109,6 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                 </div>
             </div>
         </div>
+        </>
     );
 }

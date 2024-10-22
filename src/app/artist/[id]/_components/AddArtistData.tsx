@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button"
 import {
     Dialog,
     DialogContent,
-    DialogDescription,
     DialogFooter,
     DialogHeader,
     DialogTitle,
@@ -15,25 +14,15 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { useSession } from "next-auth/react"
 import { useState } from "react"
-import { SessionProvider } from "next-auth/react";
 import { Artist } from "@/server/db/DbTypes"
 import { AspectRatio } from "@radix-ui/react-aspect-ratio"
 import { Label } from "@radix-ui/react-label"
+import { Session } from "next-auth"
 
-export default function Wrapper({ artist, spotifyImg }: { artist: Artist, spotifyImg: string }) {
-    return (
-        <SessionProvider>
-            <AddArtistData artist={artist} spotifyImg={spotifyImg} />
-        </SessionProvider>
-    )
-}
-function AddArtistData({ artist, spotifyImg }: { artist: Artist, spotifyImg: string }) {
+
+export default function AddArtistData({ artist, spotifyImg, session }: { artist: Artist, spotifyImg: string, session: Session | null }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { data: session, status } = useSession();
-    console.log("session:", session);
-    console.log("status:", status);
     return (
         <>
             <TooltipProvider>
@@ -42,10 +31,10 @@ function AddArtistData({ artist, spotifyImg }: { artist: Artist, spotifyImg: str
                         <span tabIndex={0}>
                             <Button
                                 className=""
-                                disabled={session === null || status !== "authenticated"}
+                                disabled={session === null}
                                 onClick={() => setIsModalOpen(true)} variant="outline"
                             >
-                                Add Artist Data!
+                               Add Artist Data!
                             </Button>
                         </span>
                     </TooltipTrigger>

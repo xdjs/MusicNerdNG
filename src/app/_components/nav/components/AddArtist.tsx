@@ -10,30 +10,17 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input";
-import Login from "./login";
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { Session } from "next-auth";
-import { useSession } from "next-auth/react";
+} from "@/components/ui/tooltip";
 import { useState } from "react";
-import { SessionProvider } from "next-auth/react";
-export default function Wrapper({ pageProps }: { pageProps: Session }) {
-    return (
-        <SessionProvider>
-            <AddArtist pageProps={pageProps} />
-        </SessionProvider>
-    )
-}
+import { Session } from "next-auth";
 
-function AddArtist({ pageProps }: { pageProps: Session }) {
+export default function AddArtist({session}: {session: Session | null}) {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { data: session, status } = useSession();
-    console.log("session:", session);
-    console.log("status:", status); 
     return (
         <>
             <TooltipProvider>
@@ -42,7 +29,7 @@ function AddArtist({ pageProps }: { pageProps: Session }) {
                         <span tabIndex={0}>
                             <Button
                                 className="" 
-                                disabled={session === null || status !== "authenticated"} 
+                                disabled={session === null} 
                                 onClick={() => setIsModalOpen(true)} variant="outline"
                             >
                                     Add Artist
