@@ -32,7 +32,8 @@ export default function Wrapper({ artist, spotifyImg }: { artist: Artist, spotif
 function AddArtistData({ artist, spotifyImg }: { artist: Artist, spotifyImg: string }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const { data: session, status } = useSession();
-
+    console.log("session:", session);
+    console.log("status:", status);
     return (
         <>
             <TooltipProvider>
@@ -59,7 +60,7 @@ function AddArtistData({ artist, spotifyImg }: { artist: Artist, spotifyImg: str
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
                         <DialogTitle>
-                                Add Artist Data for {artist.name}
+                            Add Artist Data for {artist.name}
                         </DialogTitle>
                     </DialogHeader>
                     <div>
@@ -82,7 +83,7 @@ function AddArtistData({ artist, spotifyImg }: { artist: Artist, spotifyImg: str
                             className="col-span-3"
                         />
                         <p>
-                            Once you submit the card we'll look it over to make sure it all checks out!
+                            Once you submit the card we&apos;ll look it over to make sure it all checks out!
                         </p>
                     </div>
                     <DialogFooter>

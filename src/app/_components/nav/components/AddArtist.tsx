@@ -32,6 +32,8 @@ export default function Wrapper({ pageProps }: { pageProps: Session }) {
 function AddArtist({ pageProps }: { pageProps: Session }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const { data: session, status } = useSession();
+    console.log("session:", session);
+    console.log("status:", status); 
     return (
         <>
             <TooltipProvider>
