@@ -60,7 +60,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                             <strong className="text-black text-2xl mr-2">
                                 {artist.name}
                             </strong>
-                            <AddArtistData />
+                            <AddArtistData artist={artist} spotifyImg={spotifyImg.artistImage} />
                         </div>
                         <div className="text-black pt-0 mb-4">
                             {(artist) && getArtistDetailsText(artist, numReleases)}

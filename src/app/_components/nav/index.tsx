@@ -2,7 +2,6 @@ import Link from "next/link"
 import SearchBar from "./components/SearchBar"
 import Login from "./components/login"
 import { Session } from "next-auth"
-import { getServerAuthSession } from "@/server/auth";
 import AddArtist from "./components/AddArtist";
 
 export default function Nav({ session }: { session: Session }) {
@@ -18,8 +17,8 @@ export default function Nav({ session }: { session: Session }) {
             <div className="pl-4 md:pl-10 SearchBar">
                 <SearchBar />
             </div>
+            <AddArtist pageProps={session}/>
             <Login pageProps={session} />
-            <AddArtist/>
         </nav>
     )
 }

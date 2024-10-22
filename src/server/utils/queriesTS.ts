@@ -3,9 +3,11 @@
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq } from "drizzle-orm";
-import { featured, artists } from '@/server/db/schema';
+import { featured, artists, users, ugcwhitelist } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
 import { isObjKey } from './services';
+import { getServerAuthSession } from '../auth';
+
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -60,4 +62,38 @@ export async function getArtistLinks(artist: Artist) {
 
 export async function addArtist(spotifyLink: string) {
     // Need to implement
+    const session = await getServerAuthSession();
+    if (!session) throw new Error("Not authenticated");
+    const user = await db.query.users.findFirst({where: eq(users.wallet, session.user.id)}); 
+    try {
+        const [newArtist] = await db.insert(artists).values({spotify: spotifyLink}).returning();
+    } catch (e) {
+        throw new Error("Error adding artist");
+    }
+}
+
+export async function getUserByWallet( wallet: string) {
+    try {
+        return await db.query.users.findFirst({where: eq(users.wallet, wallet)}); 
+    } catch (e) {
+        throw new Error("Error finding user");
+    }
+}
+
+export async function createUser(wallet: string) {
+    try {
+        const [newUser] = await db.insert(users).values({wallet : wallet}).returning();
+        return newUser;
+    } catch (e) {
+        throw new Error("Error finding user");
+    }
+}
+
+export async function checkWhiteListStatusById(id: string) {
+    try {
+        const artist = await db.query.ugcwhitelist.findFirst({where: eq(ugcwhitelist.userid, id)});
+        return artist !== undefined;
+    } catch (e) {
+        throw new Error("Error finding artist");
+    }
 }

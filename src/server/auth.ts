@@ -4,10 +4,16 @@ import {
   type NextAuthOptions,
 } from "next-auth";
 import { cookies } from 'next/headers';
-import { VERCEL_URL } from "@/env";
+import { HOST_URL } from "@/env";
 
 import CredentialsProvider from "next-auth/providers/credentials"
-import { SiweMessage } from "siwe"
+import { SiweMessage } from "siwe";
+
+import { featured, artists, users } from '@/server/db/schema';
+import { db } from "./db/drizzle";
+import { eq } from "drizzle-orm";
+import {getUserByWallet, createUser, checkWhiteListStatusById} from "@/server/utils/queriesTS";
+import { get } from "http";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -47,7 +53,7 @@ export const authOptions: NextAuthOptions = {
     signIn() {
       return true;
     },
-    async session({session, token, user}) {
+    async session({session, token}) {
       return {
         ...session,
         user: {
@@ -77,19 +83,22 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials): Promise<any> {
         try {
-          const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"))
-          const nextAuthUrl = new URL(VERCEL_URL ?? "http://localhost:3000");
-          console.log(VERCEL_URL);
+          const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
+
+          const nextAuthUrl = new URL(HOST_URL);
+          
           const result = await siwe.verify({
             signature: credentials?.signature || "",
             domain: nextAuthUrl.host,
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           })
+          let user = await getUserByWallet(siwe.address);
+          if (!user) user = await createUser(siwe.address);
 
           if (result.success) {
             return {
               id: siwe.address,
-              walletAddress: siwe.address
+              walletAddress: siwe.address,
             }
           }
           return null
