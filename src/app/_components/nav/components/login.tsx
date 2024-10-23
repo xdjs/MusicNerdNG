@@ -67,12 +67,6 @@ function InnerProviders() {
                                         chain &&
                                         (authenticationStatus === 'authenticated');
 
-                                    useEffect(() => {
-                                       console.log(authenticationStatus)
-                                    }, [authenticationStatus]);
-
-                                    // useEffect(() => { console.log(connected)}, [connected]);
-
                                     return (
                                         <div
                                             {...(!ready && {
