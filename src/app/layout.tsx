@@ -14,7 +14,6 @@ export default async  function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const pageProps = await getServerAuthSession();
   return (
     <html lang="en"> 
       <body>

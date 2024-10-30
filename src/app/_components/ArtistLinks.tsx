@@ -21,7 +21,7 @@ export default async function ArtistLinks({ isOnlyWeb3Sites, artist }: { isOnlyW
     
     return (
         artistLinks?.map(el => {
-            return (<PlatformLink key={el.cardplatformname} descriptor={el.carddescription.replace('%@', el.cardplatformname)} link={el.artistUrl} image={""} />)
+            return (<PlatformLink key={el.cardplatformname} descriptor={el.carddescription.replace('%@', el.cardplatformname)} link={el.artistUrl} image={el.siteImage ?? ""} />)
         })
     )
 }

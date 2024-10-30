@@ -84,24 +84,23 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials): Promise<any> {
         try {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
-          
-          const result = await siwe.verify({
-            signature: credentials?.signature || "",
-            domain: "localhost:3000",
-            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
-          })
-
-          let user = await getUserByWallet(siwe.address);
-          if (!user) user = await createUser(siwe.address);
-
-          if (result.success) {
-            return {
-              id: user.id,
-              walletAddress: siwe.address,
+            const result = await siwe.verify({
+              signature: credentials?.signature || "",
+              domain: "localhost:3000",
+              nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
+            })
+            let user = await getUserByWallet(siwe.address);
+            if (!user) user = await createUser(siwe.address);
+  
+            if (result.success) {
+              return {
+                id: user.id,
+                walletAddress: siwe.address,
+              }
             }
-          }
-          return null
+            return null
         } catch (e) {
+          console.log(e)
           return null
         }
       },

@@ -1,13 +1,12 @@
 "use server"
 
 import { db } from '@/server/db/drizzle'
-import { getSpotifyHeaders, getSpotifyImage } from './externalApiQueries';
+import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq } from "drizzle-orm";
-import { featured, artists, users, ugcwhitelist } from '@/server/db/schema';
+import { featured, artists, users, ugcwhitelist, ugcresearch } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
-import { isObjKey } from './services';
+import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
-
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -47,11 +46,11 @@ export async function getAllLinks() {
 export async function getArtistLinks(artist: Artist) {
     try {
         const allLinkObjects = await getAllLinks();
-        if(!artist) throw new Error("Artist not found");
+        if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames = []
-        for(const platform of allLinkObjects) {
-            if(isObjKey(platform.sitename, artist) && artist[platform.sitename]) {
-                artistLinksSiteNames.push({...platform, artistUrl: platform.appstingformat.replace("%@", artist[platform.sitename]?.toString()?? "")});
+        for (const platform of allLinkObjects) {
+            if (isObjKey(platform.sitename, artist) && artist[platform.sitename]) {
+                artistLinksSiteNames.push({ ...platform, artistUrl: platform.appstingformat.replace("%@", artist[platform.sitename]?.toString() ?? "") });
             }
         }
         return artistLinksSiteNames;
@@ -60,25 +59,67 @@ export async function getArtistLinks(artist: Artist) {
     }
 }
 
-export async function addArtist(spotifyLink: string) {
+export type AddArtistResp = {
+    status: "success" | "error" | "exists",
+    artistId?: string
+}
+
+
+export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     // Need to implement
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
-    const user = await db.query.users.findFirst({where: eq(users.wallet, session.user.id)}); 
+    // Check if artist already exists
+    const headers = await getSpotifyHeaders();
+    const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
+    if (spotifyArtist.error) return { status: "error", artistId: undefined };
+    const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
+    if (artist) return { status: "exists", artistId: artist.id };
     try {
-        const [newArtist] = await db.insert(artists).values({spotify: spotifyLink}).returning();
+        const [newArtist] = await db.insert(artists).values(
+            {
+                spotify: spotifyId,
+                addedBy: session.user.id,
+                lcname: spotifyArtist.data?.name.toLowerCase(),
+                name: spotifyArtist.data?.name
+            }).returning();
+        return { status: "success", artistId: newArtist.id };
     } catch (e) {
         throw new Error("Error adding artist");
     }
 }
 
-export async function addArtistData() {
-    return;
+export type AddArtistDataResp = {
+    status: "success" | "error",
+    message: string
 }
 
-export async function getUserByWallet( wallet: string) {
+export async function addArtistData(artistUrl: string, artist: Artist): Promise<AddArtistDataResp> {
+    const session = await getServerAuthSession();
+    if (!session) throw new Error("Not authenticated");
+    const artistIdFromUrl = extractArtistId(artistUrl);
+    if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     try {
-        return await db.query.users.findFirst({where: eq(users.wallet, wallet)}); 
+        const existingArtistUGC = await db.query.ugcresearch.findFirst({ where: eq(ugcresearch.ugcUrl, artistUrl) });
+        if(existingArtistUGC) return { status: "error", message: "This artist data has already been added"};
+        await db.insert(ugcresearch).values(
+            {
+                ugcUrl: artistUrl,
+                siteName: artistIdFromUrl.sitename,
+                siteUsername: artistIdFromUrl.id,
+                artistId: artist.id,
+                name: artist.name,
+                userId: session.user.id
+            }).returning();
+        return { status: "success", message: "Thanks for adding, we'll review this addition before posting" };
+    } catch (e) {
+        return { status: "error", message: "Error adding artist data, please try again" };
+    }
+}
+
+export async function getUserByWallet(wallet: string) {
+    try {
+        return await db.query.users.findFirst({ where: eq(users.wallet, wallet) });
     } catch (e) {
         throw new Error("Error finding user");
     }
@@ -86,7 +127,7 @@ export async function getUserByWallet( wallet: string) {
 
 export async function getUserById(id: string) {
     try {
-        return await db.query.users.findFirst({where: eq(users.id, id)}); 
+        return await db.query.users.findFirst({ where: eq(users.id, id) });
     } catch (e) {
         throw new Error("Error finding user");
     }
@@ -94,7 +135,7 @@ export async function getUserById(id: string) {
 
 export async function createUser(wallet: string) {
     try {
-        const [newUser] = await db.insert(users).values({wallet : wallet}).returning();
+        const [newUser] = await db.insert(users).values({ wallet: wallet }).returning();
         return newUser;
     } catch (e) {
         throw new Error("Error finding user");
@@ -103,7 +144,7 @@ export async function createUser(wallet: string) {
 
 export async function checkWhiteListStatusById(id: string) {
     try {
-        const whiteListedUser = await db.query.ugcwhitelist.findFirst({where: eq(ugcwhitelist.userid, id)});
+        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userid, id) });
         return whiteListedUser !== undefined;
     } catch (e) {
         throw new Error("Error finding whitelistedUser");
