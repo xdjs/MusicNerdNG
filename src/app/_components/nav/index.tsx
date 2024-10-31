@@ -1,7 +1,7 @@
 import Link from "next/link"
 import SearchBar from "./components/SearchBar"
 import AddArtist from "./components/AddArtist";
-import Login from "./components/Login";
+import Login from "@/app/_components/nav/components/Login";
 import { getServerAuthSession } from "@/server/auth";
 
 export default async function Nav() {
