@@ -25,7 +25,6 @@ import {
     arbitrum,
     base,
 } from 'wagmi/chains';
-import { useEffect } from "react";
 const queryClient = new QueryClient();
 
 const config = getDefaultConfig({
@@ -39,7 +38,6 @@ const getSiweMessageOptions: GetSiweMessageOptions = () => ({
 });
 
 function InnerProviders() {
-
     return (
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>
