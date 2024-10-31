@@ -72,9 +72,6 @@ export function extractArtistId(artistUrl: string) {
 
       for (const { regex, sitename } of urlPatterns) {
         const match = artistUrl.match(regex);
-        if(sitename == "instagram") {
-            console.log("sdafd;lkajds")
-        }
         if (match) {
           return { sitename, id: match[1] }; // Return both site name and captured ID
         }

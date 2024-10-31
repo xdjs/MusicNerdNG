@@ -4,7 +4,7 @@ import {
   type NextAuthOptions,
 } from "next-auth";
 import { cookies } from 'next/headers';
-import { HOST_URL } from "@/env";
+import { NEXTAUTH_URL } from "@/env";
 
 import CredentialsProvider from "next-auth/providers/credentials"
 import { SiweMessage } from "siwe";
@@ -84,9 +84,11 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials): Promise<any> {
         try {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
+            const authUrl = new URL(NEXTAUTH_URL);
+            console.log(authUrl.hostname)
             const result = await siwe.verify({
               signature: credentials?.signature || "",
-              domain: "localhost:3000",
+              domain: authUrl.host,
               nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
             })
             let user = await getUserByWallet(siwe.address);

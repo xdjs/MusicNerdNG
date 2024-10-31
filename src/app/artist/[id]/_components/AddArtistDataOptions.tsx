@@ -11,9 +11,7 @@ import {
 import { UrlMap } from "@/server/db/DbTypes";
 
 export default function AddArtistDataOptions({availableLinks, setOption}: {availableLinks: UrlMap[], setOption: (option: string) => void}) {
-
-    const dataOptions = availableLinks.map(link => <DropdownMenuItem className="cursor-pointer" onClick={() => setOption(link.example.split(" ")[0])}>{link.example.split(" ")[0]}</DropdownMenuItem>);
-
+    const dataOptions = availableLinks.map(link => <DropdownMenuItem key={link.id} className="cursor-pointer" onClick={() => setOption(link.example.split(" ")[0])}>{link.example.split(" ")[0]}</DropdownMenuItem>);
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
