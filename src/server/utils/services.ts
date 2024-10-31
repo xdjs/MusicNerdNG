@@ -50,7 +50,7 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 export function extractArtistId(artistUrl: string) {
     const urlPatterns = [
         { regex: /^https:\/\/x\.com\/([^/]+)$/, sitename: "x" },
-        { regex: /^https:\/\/instagram\.com\/([^/]+)$/, sitename: "instagram" },
+        { regex: /^https:\/\/www\.instagram\.com\/([^/]+)(\/.*)?$/, sitename: "instagram" },
         { regex: /^https:\/\/www\.facebook\.com\/([^/]+)$/, sitename: "facebook" },
         { regex: /^https:\/\/supercollector\.xyz\/([^/]+)$/, sitename: "supercollector" },
         { regex: /^https:\/\/www\.bandsintown\.com\/a\/([^/]+)$/, sitename: "bandsintown" },
@@ -72,6 +72,9 @@ export function extractArtistId(artistUrl: string) {
 
       for (const { regex, sitename } of urlPatterns) {
         const match = artistUrl.match(regex);
+        if(sitename == "instagram") {
+            console.log("sdafd;lkajds")
+        }
         if (match) {
           return { sitename, id: match[1] }; // Return both site name and captured ID
         }

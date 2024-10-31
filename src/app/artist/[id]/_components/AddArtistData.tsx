@@ -50,11 +50,12 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         resolver: zodResolver(formSchema),
         mode: "onSubmit",
         defaultValues: {
-            artistDataUrl: "https://open.spotify.com/artist/YOURARTISTID",
+            artistDataUrl: "",
         },
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
+        console.log("values: ", values);
         setAddArtistResp(null);
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
@@ -113,13 +114,13 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                         name="artistDataUrl"
                                         render={({ field }) => (
                                             <FormItem>
-
                                                 <div className="flex gap-4">
                                                     <FormControl>
                                                         <Input
                                                             placeholder={selectedOption}
                                                             id="name"
                                                             className="col-span-3"
+                                                            {...field}
                                                         />
                                                     </FormControl>
                                                     <AddArtistDataOptions availableLinks={availableLinks} setOption={(option) => setSelectedOption(option)} />
