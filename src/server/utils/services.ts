@@ -31,6 +31,7 @@ type SpotifyDataType = {
 export const getArtistDetailsText = (artist: Artist, spotifyData: SpotifyDataType) => {
     let web3Platforms = getArtistSplitPlatforms(artist).web3Platforms
     const numSpotifyReleases = (spotifyData != null && spotifyData.releases != null) ? spotifyData.releases : 0;
+    
     if (web3Platforms.length <= 0 && numSpotifyReleases <= 0) return "";
 
     if (web3Platforms.length <= 0 && numSpotifyReleases > 0) return `${numSpotifyReleases} releases on Spotify`;
