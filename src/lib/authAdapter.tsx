@@ -1,0 +1,36 @@
+import { createAuthenticationAdapter } from '@rainbow-me/rainbowkit';
+import { SiweMessage } from 'siwe';
+import { getCsrfToken, signIn, signOut } from "next-auth/react"
+
+export const authenticationAdapter = createAuthenticationAdapter({
+  getNonce: async () => {
+    const token = await getCsrfToken() ?? "";
+    return token;
+  },
+  createMessage: ({ nonce, address, chainId }) => {
+    return new SiweMessage({
+      domain: window.location.host,
+      address,
+      statement: 'Sign in with Ethereum to the app.',
+      uri: window.location.origin,
+      version: '1',
+      chainId,
+      nonce,
+    });
+  },
+  getMessageBody: ({ message }) => {
+    return message.prepareMessage();
+  },
+  verify: async ({ message, signature }) => {
+    signIn("credentials", {
+        message: JSON.stringify(message),
+        signature,
+        redirect: true,
+        callbackUrl: window.location.origin + '/signup',
+      });
+    return true;
+  },
+  signOut: async () => {
+    await signOut({ callbackUrl: '/', redirect:true });
+  },
+});

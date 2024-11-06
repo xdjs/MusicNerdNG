@@ -23,7 +23,6 @@ const config = {
         pastyblue: "#2ad4fc",
         pastypink: "#ef95ff",
         jellygreen: "#19ffb8",
-
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
