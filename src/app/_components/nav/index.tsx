@@ -1,11 +1,11 @@
 import Link from "next/link"
 import SearchBar from "./components/SearchBar"
-import Login from "./components/login"
-import { Session } from "next-auth"
-import { getServerAuthSession } from "@/server/auth";
 import AddArtist from "./components/AddArtist";
+import Login from "@/app/_components/nav/components/Login";
+import { getServerAuthSession } from "@/server/auth";
 
-export default function Nav({ session }: { session: Session }) {
+export default async function Nav() {
+    const session = await getServerAuthSession();
     return (
         <nav className="nav-bar grow flex items-center">
             <Link href={"/"}>
@@ -18,8 +18,8 @@ export default function Nav({ session }: { session: Session }) {
             <div className="pl-4 md:pl-10 SearchBar">
                 <SearchBar />
             </div>
-            <Login pageProps={session} />
-            <AddArtist/>
+            <AddArtist session={session}/>
+            <Login />
         </nav>
     )
 }

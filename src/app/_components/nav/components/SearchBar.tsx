@@ -13,9 +13,7 @@ const queryClient = new QueryClient()
 export default function wrapper() {
     return (
         <QueryClientProvider client={queryClient}>
-            <Suspense>
                 <SearchBar />
-            </Suspense>
         </QueryClientProvider>
     )
 }
@@ -73,7 +71,7 @@ interface UserResults {
 }
 
 const SearchBar = () => {
-    const router = useRouter()
+    const router = useRouter();
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
@@ -98,14 +96,15 @@ const SearchBar = () => {
     const initialRender = useRef(true)
 
     useEffect(() => {
-        if (initialRender.current) {
-            setQuery(search ?? "")
-            initialRender.current = false
-            return
+
+        try {
+            router.push(`?search=${query}`);
+            console.log("this shit is not working what the fucking shit: ", query)
+        } catch (e) {
+            console.log(e)
         }
-        if (query.length < 3) router.push(`?search=`)
-        router.push(`?search=${query}`);
-    }, [debouncedQuery])
+        console.log("???????")
+    }, [query])
 
     return (
         <div className="relative w-full max-w-md z-30">

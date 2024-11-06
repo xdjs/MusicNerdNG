@@ -1,9 +1,6 @@
 import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean } from "drizzle-orm/pg-core"
   import { sql } from "drizzle-orm"
 
-
-
-
 export const ugcwhitelist = pgTable("ugcwhitelist", {
 	userid: uuid("userid"),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
@@ -23,6 +20,7 @@ export const urlmap = pgTable("urlmap", {
 	id: uuid("id").default(sql`uuid_generate_v4()`),
 	siteurl: text("siteurl").notNull(),
 	sitename: text("sitename").notNull(),
+	siteImage: text("siteImage"),
 	example: text("example").notNull(),
 	appstingformat: text("appstingformat").notNull(),
 	cardorder: integer("cardorder"),

@@ -11,6 +11,11 @@ export type ArtistSpotifyImage = {
     artistId: string
 }
 
+export type SpotifyHeaders = {
+    headers: { Authorization: string | null }
+}
+
+
 export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
     try {
         const headers = {
@@ -20,7 +25,7 @@ export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
         };
         let payload = {
             grant_type: "client_credentials",
-            redirectUri: "http://localhost:8000/callback",
+            redirectUri: "https://localhost:8000/callback",
             client_id: SPOTIFY_WEB_CLIENT_ID,
             client_secret: SPOTIFY_WEB_CLIENT_SECRET,
         };
@@ -36,6 +41,31 @@ export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
         };
     } catch (e) {
         throw new Error("Error fetching Spotify headers");
+    }
+}
+
+export type SpotifyArtistApiResponse = {
+    error: string | null,
+    data: SpotifyArtist | null
+}
+
+export type SpotifyArtist = {
+    name: string,
+    id:string,
+}
+
+export async function getSpotifyArtist(artistId: string, headers: SpotifyHeaderType) : Promise<SpotifyArtistApiResponse> {
+    try {
+        const {data}: {data: SpotifyArtist} = await axios.get(
+            `https://api.spotify.com/v1/artists/${artistId}`,
+            headers
+        );
+        return {data, error: null};
+    } catch (e:any) {
+        if(e.response.data.error.message === "invalid id"){
+            return {error: "Invlid Spotify Id", data: null}
+        }  
+        throw new Error(`Error fetching Spotify data for artist ${artistId}`);
     }
 }
 
