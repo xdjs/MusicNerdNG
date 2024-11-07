@@ -3,7 +3,7 @@ import { users, ugcwhitelist, artists, featured, ugcresearch } from "./schema";
 
 export const ugcwhitelistRelations = relations(ugcwhitelist, ({one}) => ({
 	user: one(users, {
-		fields: [ugcwhitelist.userid],
+		fields: [ugcwhitelist.userId],
 		references: [users.id]
 	}),
 }));
@@ -15,24 +15,24 @@ export const usersRelations = relations(users, ({many}) => ({
 }));
 
 export const featuredRelations = relations(featured, ({one}) => ({
-	artist_featuredartist: one(artists, {
-		fields: [featured.featuredartist],
+	artist_featuredArtist: one(artists, {
+		fields: [featured.featuredArtist],
 		references: [artists.id],
-		relationName: "featured_featuredartist_artists_id"
+		relationName: "featured_featuredArtist_artists_id"
 	}),
-	artist_featuredcollector: one(artists, {
-		fields: [featured.featuredcollector],
+	artist_featuredCollector: one(artists, {
+		fields: [featured.featuredCollector],
 		references: [artists.id],
-		relationName: "featured_featuredcollector_artists_id"
+		relationName: "featured_featuredCollector_artists_id"
 	}),
 }));
 
 export const artistsRelations = relations(artists, ({one, many}) => ({
-	featureds_featuredartist: many(featured, {
-		relationName: "featured_featuredartist_artists_id"
+	featureds_featuredArtist: many(featured, {
+		relationName: "featured_featuredArtist_artists_id"
 	}),
-	featureds_featuredcollector: many(featured, {
-		relationName: "featured_featuredcollector_artists_id"
+	featureds_featuredCollector: many(featured, {
+		relationName: "featured_featuredCollector_artists_id"
 	}),
 	user: one(users, {
 		fields: [artists.addedBy],

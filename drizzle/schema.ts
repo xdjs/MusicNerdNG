@@ -1,64 +1,67 @@
 import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean } from "drizzle-orm/pg-core"
   import { sql } from "drizzle-orm"
 
+
+
+
 export const ugcwhitelist = pgTable("ugcwhitelist", {
-	userid: uuid("userid"),
+	userId: uuid("user_id"),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
 },
 (table) => {
 	return {
-		ugcwhitelistUseridFkey: foreignKey({
-			columns: [table.userid],
+		ugcwhitelistUserIdFkey: foreignKey({
+			columns: [table.userId],
 			foreignColumns: [users.id],
-			name: "ugcwhitelist_userid_fkey"
+			name: "ugcwhitelist_user_id_fkey"
 		}),
 	}
 });
 
 export const urlmap = pgTable("urlmap", {
-	id: uuid("id").default(sql`uuid_generate_v4()`),
-	siteurl: text("siteurl").notNull(),
-	sitename: text("sitename").notNull(),
-	siteImage: text("siteImage"),
+	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	siteUrl: text("site_url").notNull(),
+	siteName: text("site_name").notNull(),
 	example: text("example").notNull(),
-	appstingformat: text("appstingformat").notNull(),
-	cardorder: integer("cardorder"),
-	isiframeenabled: boolean("isiframeenabled").default(false).notNull(),
-	isembedenabled: boolean("isembedenabled").default(false).notNull(),
-	carddescription: text("carddescription").notNull(),
-	cardplatformname: text("cardplatformname").notNull(),
-	isweb3Site: boolean("isweb3site").notNull(),
+	appStringFormat: text("app_string_format").notNull(),
+	cardOrder: integer("card_order"),
+	isIframeEnabled: boolean("is_iframe_enabled").default(false).notNull(),
+	isEmbedEnabled: boolean("is_embed_enabled").default(false).notNull(),
+	cardDescription: text("card_description"),
+	cardPlatformName: text("card_platform_name"),
+	isWeb3Site: boolean("is_web3_site").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`),
+	siteImage: text("site_image"),
+	regex: text("regex").default('""').notNull(),
 },
 (table) => {
 	return {
-		urlmapSiteurlKey: unique("urlmap_siteurl_key").on(table.siteurl),
-		urlmapSitenameKey: unique("urlmap_sitename_key").on(table.sitename),
+		urlmapSiteurlKey: unique("urlmap_siteurl_key").on(table.siteUrl),
 		urlmapExampleKey: unique("urlmap_example_key").on(table.example),
-		urlmapAppstingformatKey: unique("urlmap_appstingformat_key").on(table.appstingformat),
+		urlmapAppstingformatKey: unique("urlmap_appstingformat_key").on(table.appStringFormat),
 	}
 });
 
 export const featured = pgTable("featured", {
 	id: uuid("id").default(sql`uuid_generate_v4()`),
-	featuredartist: uuid("featuredartist"),
-	featuredcollector: uuid("featuredcollector"),
+	featuredArtist: uuid("featured_artist"),
+	featuredCollector: uuid("featured_collector"),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }),
 },
 (table) => {
 	return {
-		featuredFeaturedartistFkey: foreignKey({
-			columns: [table.featuredartist],
+		featuredFeaturedArtistFkey: foreignKey({
+			columns: [table.featuredArtist],
 			foreignColumns: [artists.id],
-			name: "featured_featuredartist_fkey"
+			name: "featured_featured_artist_fkey"
 		}),
-		featuredFeaturedcollectorFkey: foreignKey({
-			columns: [table.featuredcollector],
+		featuredFeaturedCollectorFkey: foreignKey({
+			columns: [table.featuredCollector],
 			foreignColumns: [artists.id],
-			name: "featured_featuredcollector_fkey"
+			name: "featured_featured_collector_fkey"
 		}),
 	}
 });
@@ -128,7 +131,7 @@ export const artists = pgTable("artists", {
 	wallets: text("wallets").array(),
 	ens: text("ens"),
 	lens: text("lens"),
-	addedBy: uuid("addedBy"),
+	addedBy: uuid("added_by"),
 	cameo: text("cameo"),
 	farcaster: text("farcaster"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
@@ -136,39 +139,40 @@ export const artists = pgTable("artists", {
 },
 (table) => {
 	return {
-		artistsAddedbyFkey: foreignKey({
+		artistsAddedByFkey: foreignKey({
 			columns: [table.addedBy],
 			foreignColumns: [users.id],
-			name: "artists_addedby_fkey"
+			name: "artists_added_by_fkey"
 		}),
 	}
 });
 
 export const ugcresearch = pgTable("ugcresearch", {
-	id: uuid("id").default(sql`uuid_generate_v4()`),
+	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
-	artistUri: text("artistURI"),
+	artistUri: text("artist_uri"),
 	accepted: boolean("accepted"),
-	ugcUrl: text("ugcURL"),
-	siteName: text("siteName"),
-	siteUsername: text("siteUsername"),
-	artistId: uuid("artistID"),
-	dateProcessed: timestamp("dateProcessed", { mode: 'string' }),
+	ugcUrl: text("ugc_url"),
+	siteName: text("site_name"),
+	siteUsername: text("site_username"),
+	artistId: uuid("artist_id"),
+	dateProcessed: timestamp("date_processed", { mode: 'string' }),
 	name: text("name"),
-	userId: uuid("userID"),
+	userId: uuid("user_id"),
 },
 (table) => {
 	return {
 		ugcresearchArtistIdFkey: foreignKey({
 			columns: [table.artistId],
 			foreignColumns: [artists.id],
-			name: "ugcresearch_artistID_fkey"
+			name: "ugcresearch_artist_id_fkey"
 		}),
 		ugcresearchUserIdFkey: foreignKey({
 			columns: [table.userId],
 			foreignColumns: [users.id],
-			name: "ugcresearch_userID_fkey"
+			name: "ugcresearch_user_id_fkey"
 		}),
+		ugcresearchIdKey: unique("ugcresearch_id_key").on(table.id),
 	}
 });

@@ -99,11 +99,9 @@ const SearchBar = () => {
 
         try {
             router.push(`?search=${query}`);
-            console.log("this shit is not working what the fucking shit: ", query)
         } catch (e) {
             console.log(e)
         }
-        console.log("???????")
     }, [query])
 
     return (
