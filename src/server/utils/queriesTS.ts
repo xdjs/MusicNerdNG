@@ -2,7 +2,7 @@
 
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
-import { isNotNull, ilike, desc, eq } from "drizzle-orm";
+import { isNotNull, ilike, desc, eq, sql } from "drizzle-orm";
 import { featured, artists, users, ugcwhitelist, ugcresearch } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
@@ -100,8 +100,16 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     const artistIdFromUrl = extractArtistId(artistUrl);
     if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     try {
+        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userid, session.user.id) });
+        if (whiteListedUser) {
+            await db.execute(sql`
+                UPDATE artists
+                SET ${sql.identifier(artistIdFromUrl.sitename)} = ${artistIdFromUrl.id} 
+                WHERE id = ${artist.id}`);
+            return { status: "success", message: "We updated the artist with that data" };
+        }
         const existingArtistUGC = await db.query.ugcresearch.findFirst({ where: eq(ugcresearch.ugcUrl, artistUrl) });
-        if(existingArtistUGC) return { status: "error", message: "This artist data has already been added"};
+        if (existingArtistUGC) return { status: "error", message: "This artist data has already been added" };
         await db.insert(ugcresearch).values(
             {
                 ugcUrl: artistUrl,
