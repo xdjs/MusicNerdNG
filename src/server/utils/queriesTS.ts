@@ -10,10 +10,10 @@ import { getServerAuthSession } from '../auth';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
-        where: isNotNull(featured.featuredartist),
+        where: isNotNull(featured.featuredArtist),
         with: { featuredArtist: true }
     });
-    let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredartist } });
+    let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredArtist?.id } });
     const spotifyHeader = await getSpotifyHeaders();
     if (!spotifyHeader) return [];
     const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "", spotifyHeader)));
@@ -49,8 +49,8 @@ export async function getArtistLinks(artist: Artist) {
         if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames = []
         for (const platform of allLinkObjects) {
-            if (isObjKey(platform.sitename, artist) && artist[platform.sitename]) {
-                artistLinksSiteNames.push({ ...platform, artistUrl: platform.appstingformat.replace("%@", artist[platform.sitename]?.toString() ?? "") });
+            if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
+                artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });
             }
         }
         return artistLinksSiteNames;
@@ -100,7 +100,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     const artistIdFromUrl = extractArtistId(artistUrl);
     if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     try {
-        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userid, session.user.id) });
+        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userId, session.user.id) });
         if (whiteListedUser) {
             await db.execute(sql`
                 UPDATE artists
@@ -152,7 +152,7 @@ export async function createUser(wallet: string) {
 
 export async function checkWhiteListStatusById(id: string) {
     try {
-        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userid, id) });
+        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userId, id) });
         return whiteListedUser !== undefined;
     } catch (e) {
         throw new Error("Error finding whitelistedUser");

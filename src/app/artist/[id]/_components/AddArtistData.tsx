@@ -55,7 +55,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        console.log("values: ", values);
         setAddArtistResp(null);
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
