@@ -68,7 +68,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                     <TooltipTrigger asChild>
                         <span tabIndex={0}>
                             <Button
-                                className=""
+                                className="text-black"
                                 disabled={session === null}
                                 onClick={() => setIsModalOpen(true)} variant="outline"
                             >
@@ -136,7 +136,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                     {addArtistResp && addArtistResp.status === "error" ?
                                         <Label className="text-red-600">{addArtistResp.message}</Label> : null
                                     }
-                                    <Button type="submit">
+                                    <Button type="submit" className="">
                                         {isLoading ?
                                             <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                             : <span>Add Artist Data</span>

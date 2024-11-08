@@ -74,7 +74,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                     <TooltipTrigger asChild>
                         <span tabIndex={0}>
                             <Button
-                                className=""
+                                className="text-black"
                                 disabled={session === null}
                                 onClick={() => setIsModalOpen(true)} variant="outline"
                             >

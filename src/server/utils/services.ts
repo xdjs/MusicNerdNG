@@ -49,26 +49,26 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 
 export function extractArtistId(artistUrl: string) {
     const urlPatterns = [
-        { regex: /^https:\/\/x\.com\/([^/]+)$/, sitename: "x" },
-        { regex: /^https:\/\/www\.instagram\.com\/([^/]+)(\/.*)?$/, sitename: "instagram" },
-        { regex: /^https:\/\/www\.facebook\.com\/([^/]+)$/, sitename: "facebook" },
-        { regex: /^https:\/\/supercollector\.xyz\/([^/]+)$/, sitename: "supercollector" },
-        { regex: /^https:\/\/www\.bandsintown\.com\/a\/([^/]+)$/, sitename: "bandsintown" },
-        { regex: /^https:\/\/hey\.xyz\/u\/([^/]+)$/, sitename: "hey" },
-        { regex: /^https:\/\/warpcast\.com\/([^/]+)$/, sitename: "warpcast" },
-        { regex: /^https:\/\/www\.twitch\.tv\/([^/]+)$/, sitename: "twitch" },
-        { regex: /^https:\/\/futuretape\.xyz\/([^/]+)$/, sitename: "futuretape" },
-        { regex: /^https:\/\/linktr\.ee\/([^/]+)$/, sitename: "linktree" },
-        { regex: /^https:\/\/audius\.co\/([^/]+)$/, sitename: "audius" },
-        { regex: /^https:\/\/beta\.catalog\.works\/([^/]+)$/, sitename: "catalog" },
-        { regex: /^https:\/\/([^/]+)\.bandcamp\.com$/, sitename: "bandcamp" },
-        { regex: /^https:\/\/www\.youtube\.com\/channel\/([^/]+)$/, sitename: "youtube" },
-        { regex: /^https:\/\/www\.sound\.xyz\/([^/]+)$/, sitename: "sound" },
-        { regex: /^https:\/\/rainbow\.me\/([^/]+)$/, sitename: "rainbow" },
-        { regex: /^https:\/\/wikipedia\.org\/wiki\/([^/]+)$/, sitename: "wikipedia" },
-        { regex: /^https:\/\/superbadge\.xyz\/badges\/([^/]+)$/, sitename: "superbadge" },
-        { regex: /^https:\/\/www\.tiktok\.com\/@([^/]+)$/, sitename: "tiktok" },
-      ];
+        { regex: /^https:\/\/[^/]*x\.[^/]+\/([^/]+)$/, sitename: "x" },
+        { regex: /^https:\/\/[^/]*instagram\.[^/]+\/([^/]+)(\/.*)?$/, sitename: "instagram" },
+        { regex: /^https:\/\/[^/]*facebook\.[^/]+\/([^/]+)$/, sitename: "facebook" },
+        { regex: /^https:\/\/[^/]*supercollector\.[^/]+\/([^/]+)$/, sitename: "supercollector" },
+        { regex: /^https:\/\/[^/]*bandsintown\.[^/]+\/a\/([^/]+)$/, sitename: "bandsintown" },
+        { regex: /^https:\/\/[^/]*hey\.[^/]+\/u\/([^/]+)$/, sitename: "hey" },
+        { regex: /^https:\/\/[^/]*warpcast\.[^/]+\/([^/]+)$/, sitename: "warpcast" },
+        { regex: /^https:\/\/[^/]*twitch\.[^/]+\/([^/]+)$/, sitename: "twitch" },
+        { regex: /^https:\/\/[^/]*futuretape\.[^/]+\/([^/]+)$/, sitename: "futuretape" },
+        { regex: /^https:\/\/[^/]*linktr\.[^/]+\/([^/]+)$/, sitename: "linktree" },
+        { regex: /^https:\/\/[^/]*audius\.[^/]+\/([^/]+)$/, sitename: "audius" },
+        { regex: /^https:\/\/[^/]*catalog\.[^/]+\/([^/]+)$/, sitename: "catalog" },
+        { regex: /^https:\/\/([^/]+)\.bandcamp\.[^/]+$/, sitename: "bandcamp" },
+        { regex: /^https:\/\/[^/]*youtube\.[^/]+\/channel\/([^/]+)$/, sitename: "youtube" },
+        { regex: /^https:\/\/[^/]*sound\.[^/]+\/([^/]+)$/, sitename: "sound" },
+        { regex: /^https:\/\/[^/]*rainbow\.[^/]+\/([^/]+)$/, sitename: "rainbow" },
+        { regex: /^https:\/\/[^/]*wikipedia\.[^/]+\/wiki\/([^/]+)$/, sitename: "wikipedia" },
+        { regex: /^https:\/\/[^/]*superbadge\.[^/]+\/badges\/([^/]+)$/, sitename: "superbadge" },
+        { regex: /^https:\/\/[^/]*tiktok\.[^/]+\/@([^/]+)$/, sitename: "tiktok" },
+    ];
 
       for (const { regex, sitename } of urlPatterns) {
         const match = artistUrl.match(regex);
