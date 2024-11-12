@@ -90,7 +90,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                 </Tooltip>
             </TooltipProvider>
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide " >
+                <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">
                         {spotifyArtistUrlRegex.test(form.getValues().artistSpotifyUrl) ?
                             <Spotify link={form.getValues().artistSpotifyUrl} /> :
@@ -113,7 +113,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormControl>
-                                                    <Input placeholder="https://open.spotify.com/artist/Id" {...field} />
+                                                    <Input className="border-black border-2 text-black" placeholder="https://open.spotify.com/artist/Id" {...field} />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>

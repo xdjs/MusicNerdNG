@@ -3,10 +3,11 @@
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq, sql } from "drizzle-orm";
-import { featured, artists, users, ugcwhitelist, ugcresearch } from '@/server/db/schema';
+import { featured, artists, users, ugcwhitelist, ugcresearch, urlmap } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
+import { unstable_cache } from 'next/cache';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -38,10 +39,18 @@ export async function getArtistById(id: string) {
     return result;
 }
 
-export async function getAllLinks() {
-    const result = await db.query.urlmap.findMany();
-    return result;
-}
+export const getAllLinks = unstable_cache(
+    async () => {
+        console.log("Fetching all links")
+        const result = await db.query.urlmap.findMany();
+        return result;
+    },
+    ['url-map-links'], // Cache key
+    {
+      revalidate: 86400, // Revalidate every day
+      tags: ['url-map-links'] // Tag for manual revalidation
+    }
+);
 
 export async function getArtistLinks(artist: Artist) {
     try {
@@ -97,14 +106,14 @@ export type AddArtistDataResp = {
 export async function addArtistData(artistUrl: string, artist: Artist): Promise<AddArtistDataResp> {
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
-    const artistIdFromUrl = extractArtistId(artistUrl);
+    const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     try {
         const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userId, session.user.id) });
         if (whiteListedUser) {
             await db.execute(sql`
                 UPDATE artists
-                SET ${sql.identifier(artistIdFromUrl.sitename)} = ${artistIdFromUrl.id} 
+                SET ${sql.identifier(artistIdFromUrl.siteName)} = ${artistIdFromUrl.id} 
                 WHERE id = ${artist.id}`);
             return { status: "success", message: "We updated the artist with that data" };
         }
@@ -113,7 +122,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         await db.insert(ugcresearch).values(
             {
                 ugcUrl: artistUrl,
-                siteName: artistIdFromUrl.sitename,
+                siteName: artistIdFromUrl.siteName,
                 siteUsername: artistIdFromUrl.id,
                 artistId: artist.id,
                 name: artist.name,

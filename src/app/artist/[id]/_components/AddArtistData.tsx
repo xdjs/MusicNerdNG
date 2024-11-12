@@ -84,7 +84,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                 </Tooltip>
             </TooltipProvider>
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide">
+                <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
                     {addArtistResp && addArtistResp.status === "success" ?
                         <h2>{addArtistResp.message}</h2>
                         :
@@ -104,7 +104,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                         }
                                     </AspectRatio>
                                 </div>
-                                <div className="grid gap-4">
+                                <div className="grid gap-4 text-black">
                                     <Label className="text-sm text-slate-500">
                                         Input one of the options below to add a new card
                                     </Label>
@@ -118,7 +118,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                                         <Input
                                                             placeholder={selectedOption}
                                                             id="name"
-                                                            className="col-span-3"
+                                                            className="col-span-3 text-black border-2 border-black"
                                                             {...field}
                                                         />
                                                     </FormControl>

@@ -1,5 +1,7 @@
 import { Artist } from "../db/DbTypes";
 
+import { getAllLinks } from "./queriesTS";
+
 export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs'];
 export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel'];
 
@@ -47,33 +49,12 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
     return key in obj;
 }
 
-export function extractArtistId(artistUrl: string) {
-    const urlPatterns = [
-        { regex: /^https:\/\/[^/]*x\.[^/]+\/([^/]+)$/, sitename: "x" },
-        { regex: /^https:\/\/[^/]*instagram\.[^/]+\/([^/]+)(\/.*)?$/, sitename: "instagram" },
-        { regex: /^https:\/\/[^/]*facebook\.[^/]+\/([^/]+)$/, sitename: "facebook" },
-        { regex: /^https:\/\/[^/]*supercollector\.[^/]+\/([^/]+)$/, sitename: "supercollector" },
-        { regex: /^https:\/\/[^/]*bandsintown\.[^/]+\/a\/([^/]+)$/, sitename: "bandsintown" },
-        { regex: /^https:\/\/[^/]*hey\.[^/]+\/u\/([^/]+)$/, sitename: "hey" },
-        { regex: /^https:\/\/[^/]*warpcast\.[^/]+\/([^/]+)$/, sitename: "warpcast" },
-        { regex: /^https:\/\/[^/]*twitch\.[^/]+\/([^/]+)$/, sitename: "twitch" },
-        { regex: /^https:\/\/[^/]*futuretape\.[^/]+\/([^/]+)$/, sitename: "futuretape" },
-        { regex: /^https:\/\/[^/]*linktr\.[^/]+\/([^/]+)$/, sitename: "linktree" },
-        { regex: /^https:\/\/[^/]*audius\.[^/]+\/([^/]+)$/, sitename: "audius" },
-        { regex: /^https:\/\/[^/]*catalog\.[^/]+\/([^/]+)$/, sitename: "catalog" },
-        { regex: /^https:\/\/([^/]+)\.bandcamp\.[^/]+$/, sitename: "bandcamp" },
-        { regex: /^https:\/\/[^/]*youtube\.[^/]+\/channel\/([^/]+)$/, sitename: "youtube" },
-        { regex: /^https:\/\/[^/]*sound\.[^/]+\/([^/]+)$/, sitename: "sound" },
-        { regex: /^https:\/\/[^/]*rainbow\.[^/]+\/([^/]+)$/, sitename: "rainbow" },
-        { regex: /^https:\/\/[^/]*wikipedia\.[^/]+\/wiki\/([^/]+)$/, sitename: "wikipedia" },
-        { regex: /^https:\/\/[^/]*superbadge\.[^/]+\/badges\/([^/]+)$/, sitename: "superbadge" },
-        { regex: /^https:\/\/[^/]*tiktok\.[^/]+\/@([^/]+)$/, sitename: "tiktok" },
-    ];
-
-      for (const { regex, sitename } of urlPatterns) {
+export async function extractArtistId(artistUrl: string) {
+    const allLinks = await getAllLinks();
+      for (const { regex, siteName } of allLinks) {
         const match = artistUrl.match(regex);
         if (match) {
-          return { sitename, id: match[1] }; // Return both site name and captured ID
+          return { siteName, id: match[1] }; // Return both site name and captured ID
         }
       }
       return null;
