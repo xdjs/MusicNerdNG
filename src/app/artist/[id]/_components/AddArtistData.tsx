@@ -55,7 +55,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        console.log("values: ", values);
         setAddArtistResp(null);
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
@@ -69,7 +68,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                     <TooltipTrigger asChild>
                         <span tabIndex={0}>
                             <Button
-                                className=""
+                                className="text-black"
                                 disabled={session === null}
                                 onClick={() => setIsModalOpen(true)} variant="outline"
                             >
@@ -85,7 +84,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                 </Tooltip>
             </TooltipProvider>
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide">
+                <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
                     {addArtistResp && addArtistResp.status === "success" ?
                         <h2>{addArtistResp.message}</h2>
                         :
@@ -105,7 +104,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                         }
                                     </AspectRatio>
                                 </div>
-                                <div className="grid gap-4">
+                                <div className="grid gap-4 text-black">
                                     <Label className="text-sm text-slate-500">
                                         Input one of the options below to add a new card
                                     </Label>
@@ -119,7 +118,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                                         <Input
                                                             placeholder={selectedOption}
                                                             id="name"
-                                                            className="col-span-3"
+                                                            className="col-span-3 text-black border-2 border-black"
                                                             {...field}
                                                         />
                                                     </FormControl>
@@ -137,7 +136,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                     {addArtistResp && addArtistResp.status === "error" ?
                                         <Label className="text-red-600">{addArtistResp.message}</Label> : null
                                     }
-                                    <Button type="submit">
+                                    <Button type="submit" className="">
                                         {isLoading ?
                                             <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                             : <span>Add Artist Data</span>

@@ -17,11 +17,11 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
 
 export default async function ArtistLinks({ isOnlyWeb3Sites, artist }: { isOnlyWeb3Sites: boolean, artist: Artist }) {
     let artistLinks = await getArtistLinks(artist);
-    artistLinks = artistLinks.filter(el => el.isweb3Site === isOnlyWeb3Sites);
+    artistLinks = artistLinks.filter(el => el.isWeb3Site === isOnlyWeb3Sites);
     
     return (
         artistLinks?.map(el => {
-            return (<PlatformLink key={el.cardplatformname} descriptor={el.carddescription.replace('%@', el.cardplatformname)} link={el.artistUrl} image={el.siteImage ?? ""} />)
+            return (<PlatformLink key={el.cardPlatformName} descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "")?? ""} link={el.artistUrl} image={el.siteImage ?? ""} />)
         })
     )
 }

@@ -85,7 +85,6 @@ export const authOptions: NextAuthOptions = {
         try {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
             const authUrl = new URL(NEXTAUTH_URL);
-            console.log(authUrl.hostname)
             const result = await siwe.verify({
               signature: credentials?.signature || "",
               domain: authUrl.host,

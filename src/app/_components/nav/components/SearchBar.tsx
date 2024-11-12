@@ -99,15 +99,13 @@ const SearchBar = () => {
 
         try {
             router.push(`?search=${query}`);
-            console.log("this shit is not working what the fucking shit: ", query)
         } catch (e) {
             console.log(e)
         }
-        console.log("???????")
     }, [query])
 
     return (
-        <div className="relative w-full max-w-md z-30">
+        <div className="relative w-full max-w-md z-30 text-black">
             <input
                 onBlur={() => setShowResults(false)}
                 onFocus={() => setShowResults(true)}
