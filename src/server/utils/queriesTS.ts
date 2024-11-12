@@ -167,3 +167,12 @@ export async function checkWhiteListStatusById(id: string) {
         throw new Error("Error finding whitelistedUser");
     }
 }
+
+export async function getPendingUGC() {
+    try {
+        const result = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.accepted, false) });
+        return result;
+    } catch (e) {
+        throw new Error("Error finding pending UGC");
+    }
+}
