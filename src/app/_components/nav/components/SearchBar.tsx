@@ -105,7 +105,7 @@ const SearchBar = () => {
     }, [query])
 
     return (
-        <div className="relative w-full max-w-md z-30">
+        <div className="relative w-full max-w-md z-30 text-black">
             <input
                 onBlur={() => setShowResults(false)}
                 onFocus={() => setShowResults(true)}
