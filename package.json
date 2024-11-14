@@ -29,7 +29,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "curl": "^0.1.4",
-    "date-fns": "^4.1.0",
+    "date-fns": "^3.0.0",
     "drizzle-orm": "^0.33.0",
     "embla-carousel-auto-scroll": "^8.1.8",
     "embla-carousel-autoplay": "^8.1.8",
