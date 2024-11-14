@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-table";
 
 import { approveUgcAdmin } from "@/server/utils/queriesTS";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 
@@ -33,6 +34,7 @@ export function DataTable<TData, TValue>({
     columns,
     data,
 }: DataTableProps<TData, TValue>) {
+    const router = useRouter();
     const [sorting, setSorting] = useState<SortingState>([]);
     const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
@@ -56,7 +58,10 @@ export function DataTable<TData, TValue>({
         setUploadStatus({ status: "success", message: "", isLoading: true });
         const resp = await approveUgcAdmin(selectedUGC);
         setUploadStatus({ status: resp.status as "success" | "error", message: resp.message, isLoading: false });
+        if (resp.status === "success") router.refresh();
+        
     }
+
 
     return (
         <div className="space-y-4">

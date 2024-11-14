@@ -2,12 +2,13 @@
 
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
-import { isNotNull, ilike, desc, eq, sql, inArray } from "drizzle-orm";
+import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte } from "drizzle-orm";
 import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
 import { unstable_cache } from 'next/cache';
+import { DateRange } from 'react-day-picker';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -188,4 +189,26 @@ export async function getPendingUGC() {
     } catch (e) {
         throw new Error("Error finding pending UGC");
     }
+}
+
+export async function getUgcStats(date: DateRange) {
+    const user = await getServerAuthSession();
+    if (!user) throw new Error("Not authenticated");
+    const ugcList = await db.query.ugcresearch.findMany(
+        { 
+            where: and(
+                gte(ugcresearch.createdAt, date.from?.toISOString() ?? ""), 
+                lte(ugcresearch.createdAt, date.to?.toISOString() ?? ""), 
+                eq(ugcresearch.userId, user.user.id))
+        }
+    );
+    const artistsList = await db.query.artists.findMany(
+        { 
+            where: and(
+                gte(artists.createdAt, date.from?.toISOString() ?? ""), 
+                lte(artists.createdAt, date.to?.toISOString() ?? ""), 
+                eq(artists.addedBy, user.user.id))
+        }
+    );
+    return { ugcCount: ugcList.length, artistsCount: artistsList.length };
 }
