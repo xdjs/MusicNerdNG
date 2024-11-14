@@ -1,5 +1,5 @@
 import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean } from "drizzle-orm/pg-core"
-  import { relations, sql } from "drizzle-orm"
+  import { is, relations, sql } from "drizzle-orm"
 
 
 
@@ -80,6 +80,8 @@ export const users = pgTable("users", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	legacyId: text("legacy_id"),
+	isAdmin: boolean("is_admin").default(false).notNull(),
+	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
 },
 (table) => {
 	return {

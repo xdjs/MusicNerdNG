@@ -2,8 +2,8 @@
 
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
-import { isNotNull, ilike, desc, eq, sql } from "drizzle-orm";
-import { featured, artists, users, ugcwhitelist, ugcresearch, urlmap } from '@/server/db/schema';
+import { isNotNull, ilike, desc, eq, sql, inArray } from "drizzle-orm";
+import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
@@ -41,7 +41,6 @@ export async function getArtistById(id: string) {
 
 export const getAllLinks = unstable_cache(
     async () => {
-        console.log("Fetching all links")
         const result = await db.query.urlmap.findMany();
         return result;
     },
@@ -75,10 +74,8 @@ export type AddArtistResp = {
 
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
-    // Need to implement
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
-    // Check if artist already exists
     const headers = await getSpotifyHeaders();
     const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
     if (spotifyArtist.error) return { status: "error", artistId: undefined };
@@ -103,23 +100,43 @@ export type AddArtistDataResp = {
     message: string
 }
 
+export async function approveUgcAdmin(ugcIds: string[]) {
+    const user = await getServerAuthSession();
+    if (!user) throw new Error("Not authenticated");
+    const dbUser = await getUserById(user.user.id);
+    if (!dbUser || !dbUser.isAdmin) throw new Error("Not authorized");
+    try {
+        const ugcData = await db.query.ugcresearch.findMany({ where: inArray(ugcresearch.id, ugcIds) });
+        await Promise.all(ugcData.map(async (ugc) => {
+            await approveUGC(ugc.id, ugc.artistId ?? "", ugc.siteName ?? "", ugc.siteUsername ?? "");
+        }));
+    } catch (e) {
+        return { status: "error", message: "Error approving UGC" };
+    }
+    return { status: "success", message: "UGC approved" };
+}
+
+export async function approveUGC(ugcId: string, artistId: string, siteName: string, artistIdFromUrl: string) {
+    try {
+        await db.execute(sql`
+            UPDATE artists
+            SET ${sql.identifier(siteName)} = ${artistIdFromUrl} 
+            WHERE id = ${artistId}`);
+        await db.update(ugcresearch).set({ accepted: true }).where(eq(ugcresearch.id, ugcId));
+    } catch (e) {
+        throw new Error("Error approving UGC");
+    }
+}
+
 export async function addArtistData(artistUrl: string, artist: Artist): Promise<AddArtistDataResp> {
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     try {
-        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userId, session.user.id) });
-        if (whiteListedUser) {
-            await db.execute(sql`
-                UPDATE artists
-                SET ${sql.identifier(artistIdFromUrl.siteName)} = ${artistIdFromUrl.id} 
-                WHERE id = ${artist.id}`);
-            return { status: "success", message: "We updated the artist with that data" };
-        }
         const existingArtistUGC = await db.query.ugcresearch.findFirst({ where: eq(ugcresearch.ugcUrl, artistUrl) });
         if (existingArtistUGC) return { status: "error", message: "This artist data has already been added" };
-        await db.insert(ugcresearch).values(
+        const [newUGC] = await db.insert(ugcresearch).values(
             {
                 ugcUrl: artistUrl,
                 siteName: artistIdFromUrl.siteName,
@@ -128,6 +145,11 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
                 name: artist.name,
                 userId: session.user.id
             }).returning();
+        const user = await getUserById(session.user.id);
+        if (user?.isWhiteListed) {
+            await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
+            return { status: "success", message: "We updated the artist with that data" };
+        }
         return { status: "success", message: "Thanks for adding, we'll review this addition before posting" };
     } catch (e) {
         return { status: "error", message: "Error adding artist data, please try again" };
@@ -159,11 +181,11 @@ export async function createUser(wallet: string) {
     }
 }
 
-export async function checkWhiteListStatusById(id: string) {
+export async function getPendingUGC() {
     try {
-        const whiteListedUser = await db.query.ugcwhitelist.findFirst({ where: eq(ugcwhitelist.userId, id) });
-        return whiteListedUser !== undefined;
+        const result = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.accepted, false) });
+        return result;
     } catch (e) {
-        throw new Error("Error finding whitelistedUser");
+        throw new Error("Error finding pending UGC");
     }
 }
