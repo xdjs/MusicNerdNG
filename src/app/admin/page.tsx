@@ -13,7 +13,6 @@ export default async function Admin() {
     if (!userRecord || !userRecord.isAdmin) return notFound();
 
     const getPendingUGCData = await getPendingUGC();
-    console.log(getPendingUGCData)
     return (
         <section className="px-10 py-5 space-y-6">
             <h1 className="text-2xl">Site Management</h1>
