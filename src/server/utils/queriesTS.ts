@@ -70,7 +70,9 @@ export async function getArtistLinks(artist: Artist) {
 
 export type AddArtistResp = {
     status: "success" | "error" | "exists",
-    artistId?: string
+    artistId?: string,
+    message?: string,
+    artistName?: string
 }
 
 
@@ -79,9 +81,9 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     if (!session) throw new Error("Not authenticated");
     const headers = await getSpotifyHeaders();
     const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-    if (spotifyArtist.error) return { status: "error", artistId: undefined };
+    if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
     const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
-    if (artist) return { status: "exists", artistId: artist.id };
+    if (artist) return { status: "exists", artistId: artist.id, artistName: artist.name ?? "", message: "That artist is already in our database" };
     try {
         const [newArtist] = await db.insert(artists).values(
             {
@@ -90,10 +92,10 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
                 lcname: spotifyArtist.data?.name.toLowerCase(),
                 name: spotifyArtist.data?.name
             }).returning();
-        return { status: "success", artistId: newArtist.id };
+        return { status: "success", artistId: newArtist.id, artistName: newArtist.name ?? "", message: "Success! You can now find this artist in our directory" };
     } catch (e) {
-        throw new Error("Error adding artist");
-    }
+        return { status: "error", artistId: undefined, message: "Something went wrong on our end, please try again" };   
+     }
 }
 
 export type AddArtistDataResp = {

@@ -8,16 +8,13 @@ import { getArtistDetailsText } from "@/server/utils/services";
 import Link from "next/link";
 import AddArtistData from "./_components/AddArtistData";
 import { getServerAuthSession } from "@/server/auth";
+import { notFound } from "next/navigation";
 
 export default async function ArtistProfile({ params }: { params: { id: string } }) {
     const session = await getServerAuthSession();
     const artist = await getArtistById(params.id);
     if (!artist) {
-        return (
-            <div>
-                <h1>Artist not found</h1>
-            </div>
-        )
+        return notFound();
     }
 
     const headers = await getSpotifyHeaders();

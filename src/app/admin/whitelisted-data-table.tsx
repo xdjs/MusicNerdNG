@@ -45,6 +45,7 @@ export function AddWhitelistDialog() {
         if (resp.status === "success") {
             router.refresh();
             setIsDialogOpen(false);
+            setUsers([]);
         }
         setUploadStatus({ status: resp.status as "success" | "error", message: resp.message, isLoading: false });
     }

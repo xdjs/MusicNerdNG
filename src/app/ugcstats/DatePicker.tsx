@@ -1,13 +1,12 @@
 "use client"
- 
 import * as React from "react"
 import { addDays, format } from "date-fns"
 import { Calendar as CalendarIcon } from "lucide-react"
-import { DateRange } from "react-day-picker"
+import { DateRange } from "react-day-picker";
  
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
@@ -15,7 +14,6 @@ import {
 } from "@/components/ui/popover";
  
 export default function DatePickerWithRange({date, setDate}: {date: DateRange | undefined, setDate: (date: DateRange | undefined) => void}) {
- 
   return (
     <div className={cn("grid gap-2 text-black")}>
       <Popover>
