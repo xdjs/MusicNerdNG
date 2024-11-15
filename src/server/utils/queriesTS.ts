@@ -212,3 +212,33 @@ export async function getUgcStats(date: DateRange) {
     );
     return { ugcCount: ugcList.length, artistsCount: artistsList.length };
 }
+
+export async function getWhitelistedUsers() {
+    const user = await getServerAuthSession();
+    if (!user) throw new Error("Not authenticated");
+    const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
+    return result;
+}
+
+export async function removeFromWhitelist(userIds: string[]) {
+    await db.update(users).set({ isWhiteListed: false }).where(inArray(users.id, userIds));
+}
+
+export type AddUsersToWhitelistResp = {
+    status: "success" | "error",
+    message: string
+}
+
+export async function addUsersToWhitelist(walletAddresses: string[]): Promise<AddUsersToWhitelistResp> {
+    try {
+        await db.update(users).set({ isWhiteListed: true }).where(inArray(users.wallet, walletAddresses));
+        return { status: "success", message: "Users added to whitelist" };
+    } catch (e) {
+        return { status: "error", message: "Error adding users to whitelist" };
+    }
+}
+
+export async function searchForUsersByWallet(wallet: string) {
+    const result = await db.query.users.findMany({ where: ilike(users.wallet, `%${wallet}%`) });
+    return result.map((user) => user.wallet);
+}

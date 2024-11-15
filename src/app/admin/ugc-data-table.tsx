@@ -30,7 +30,7 @@ interface DataTableProps<TData, TValue> {
     data: TData[]
 }
 
-export function DataTable<TData, TValue>({
+export default function UGCDataTable<TData, TValue>({
     columns,
     data,
 }: DataTableProps<TData, TValue>) {
@@ -61,7 +61,6 @@ export function DataTable<TData, TValue>({
         if (resp.status === "success") router.refresh();
         
     }
-
 
     return (
         <div className="space-y-4">
