@@ -34,6 +34,7 @@ import SearchBar from "./UserSearch";
 
 
 export function AddWhitelistDialog() {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
     const router = useRouter();
     const [users, setUsers] = useState<string[]>([]);
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
@@ -41,8 +42,15 @@ export function AddWhitelistDialog() {
     async function addToWhitelist() {
         setUploadStatus({ status: "success", message: "", isLoading: true });
         const resp = await addUsersToWhitelist(users);
-        if (resp.status === "success") router.refresh();
+        if (resp.status === "success") {
+            router.refresh();
+            setIsDialogOpen(false);
+        }
         setUploadStatus({ status: resp.status as "success" | "error", message: resp.message, isLoading: false });
+    }
+
+    function removeFromUsers(user: string) {
+        setUsers(users.filter((u) => u !== user));
     }
 
     function setUserWithFilter(user: string) {
@@ -50,7 +58,7 @@ export function AddWhitelistDialog() {
     }
 
     return (
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
                 <Button variant="outline">Add Users to Whitelist</Button>
             </DialogTrigger>
@@ -61,7 +69,7 @@ export function AddWhitelistDialog() {
                 <div className="space-y-4">
                     <SearchBar setUsers={(user:string) => setUserWithFilter(user)} />
                     <div>
-                        {users.map((user) => <Button variant="outline" key={user}>{user} <X className="w-4 h-4 ml-1" /></Button>)} 
+                        {users.map((user) => <Button variant="outline" onClick={() => removeFromUsers(user)} key={user}>{user} <X className="w-4 h-4 ml-1" /></Button>)} 
                     </div>
                 </div>
                 <DialogFooter>
