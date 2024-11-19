@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Nav from "./_components/nav";
-import type { Session } from 'next-auth';
-import { getServerAuthSession } from "@/server/auth";
+import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
   title: "MusicNerd",
@@ -19,6 +18,7 @@ export default async  function RootLayout({
       <body>
           <Nav/>
           {children}
+          <Toaster/>
       </body>
     </html>
   );

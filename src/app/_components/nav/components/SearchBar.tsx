@@ -32,15 +32,18 @@ export function Skeleton() {
 
 function Users({
     users,
-    search
+    search,
+    setQuery,
 }: {
     users: Artist[] | undefined,
-    search: string
+    search: string,
+    setQuery: (query: string) => void,
 }
 ) {
     const router = useRouter();
-    function navigateToUser(id: string) {
-        router.push(`/artist/${id}`);
+    function navigateToUser(artist: Artist) {
+        router.push(`/artist/${artist.id}`);
+        // setQuery(artist.name ?? "");
     }
     return (
         <>
@@ -49,7 +52,7 @@ function Users({
                     <div key={u.id} >
                         <Link
                             className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                            onMouseDown={() => navigateToUser(u.id)}
+                            onMouseDown={() => navigateToUser(u)}
                             href={{
                                 pathname: `/artist/${u.id}`,
                                 query: {
@@ -119,7 +122,7 @@ const SearchBar = () => {
                     {isLoading ? <Skeleton /> :
                         <>
                             {data &&
-                                <Users users={data} search={search ?? ""} />
+                                <Users users={data} search={search ?? ""} setQuery={setQuery}/>
                             }
                         </>
                     }

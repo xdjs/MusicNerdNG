@@ -13,15 +13,14 @@ import {
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { useState } from "react"
-import { Artist } from "@/server/db/DbTypes"
-import { AspectRatio } from "@radix-ui/react-aspect-ratio"
-import { Label } from "@radix-ui/react-label"
-import { Session } from "next-auth"
-import { UrlMap } from "@/server/db/DbTypes"
-import AddArtistDataOptions from "./AddArtistDataOptions"
-
+} from "@/components/ui/tooltip";
+import { useState } from "react";
+import { Artist } from "@/server/db/DbTypes";
+import { AspectRatio } from "@radix-ui/react-aspect-ratio";
+import { Label } from "@radix-ui/react-label";
+import { Session } from "next-auth";
+import { UrlMap } from "@/server/db/DbTypes";
+import AddArtistDataOptions from "./AddArtistDataOptions";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,10 +31,10 @@ import {
     FormItem,
     FormMessage,
 } from "@/components/ui/form";
-import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
+import { addArtistData, AddArtistDataResp, getUgcStats } from "@/server/utils/queriesTS";;
 import { useMemo } from "react"
 import { useRouter } from "next/navigation";
-
+import { useToast } from "@/hooks/use-toast";
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -43,8 +42,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     const [isLoading, setIsLoading] = useState(false);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
     const router = useRouter();
-
-
+    const {toast} = useToast();
     const formSchema = useMemo(() => z.object({
         artistDataUrl: z.string()
     }), [availableLinks])
@@ -61,6 +59,13 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setAddArtistResp(null);
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
+        const ugcStats = await getUgcStats();
+        if(resp.status === "success") {
+            toast({
+                title: `${artist.name}'s ${resp.siteName} added`,
+                description: `UGC Count: ${ugcStats}`,
+            })
+        }
         setAddArtistResp(resp);
         setIsLoading(false);
     }
@@ -72,6 +77,14 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setIsModalOpen(isOpen);
         form.reset();
     }
+
+    function checkInput() {
+        if(addArtistResp?.status === "success") {
+            form.reset();
+            setAddArtistResp(null);
+        }
+    }
+
     return (
         <>
             <TooltipProvider>
@@ -125,6 +138,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                                     <FormControl>
                                                         <Input
                                                             placeholder={selectedOption}
+                                                            onClick={checkInput}
                                                             id="name"
                                                             className="col-span-3 text-black border-2 border-black"
                                                             {...field}
