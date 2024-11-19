@@ -12,7 +12,7 @@ import { SiweMessage } from "siwe";
 import { featured, artists, users } from '@/server/db/schema';
 import { db } from "./db/drizzle";
 import { eq } from "drizzle-orm";
-import { getUserByWallet, createUser, checkWhiteListStatusById } from "@/server/utils/queriesTS";
+import { getUserByWallet, createUser } from "@/server/utils/queriesTS";
 import { get } from "http";
 
 /**

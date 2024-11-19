@@ -1,19 +1,16 @@
 "use client"
 import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation'
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
 import { searchForArtistByName } from '@/server/utils/queriesTS';
-import { Artist } from '@/server/db/DbTypes';
+import { searchForUsersByWallet } from '@/server/utils/queriesTS';
 
 const queryClient = new QueryClient()
 
-export default function wrapper() {
+export default function wrapper({setUsers}: {setUsers: (users: string) => void}) {
     return (
         <QueryClientProvider client={queryClient}>
-                <SearchBar />
+                <SearchBar setUsers={(user:string) => setUsers(user)} />
         </QueryClientProvider>
     )
 }
@@ -30,78 +27,34 @@ export function Skeleton() {
     )
 }
 
-function Users({
-    users,
-    search
-}: {
-    users: Artist[] | undefined,
-    search: string
-}
-) {
-    const router = useRouter();
-    function navigateToUser(id: string) {
-        router.push(`/artist/${id}`);
-    }
+function Users({users, setUsers}: {users: string[], setUsers: (users: string) => void}) {
     return (
-        <>
+        <ul>
             {users && users.map(u => {
                 return (
-                    <div key={u.id} >
-                        <Link
-                            className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                            onMouseDown={() => navigateToUser(u.id)}
-                            href={{
-                                pathname: `/artist/${u.id}`,
-                                query: {
-                                    ...(search ? { search } : {}),
-                                }
-                            }}
-                        >
-                            {u.name}
-                        </Link>
-                    </div>
+                    <li className="cursor-pointer px-2 py-1" onMouseDown={() => setUsers(u)} key={u} >
+                        {u}
+                    </li>
                 )
             })}
-        </>
+        </ul>
     )
 }
 
-interface UserResults {
-    users: Artist[]
-}
-
-const SearchBar = () => {
-    const router = useRouter();
+const SearchBar = ({setUsers}: {setUsers: (users: string) => void}) => {
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
-    const searchParams = useSearchParams()
     const resultsContainer = useRef(null);
-    const search = searchParams.get('search');
 
     const { data, isLoading, isFetching } = useQuery({
-        queryKey: ['userSearchResults', search],
+        queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
-            if (!search || search.length < 3) return null;
-            const data = await searchForArtistByName(search ?? "")
+            if (!debouncedQuery || debouncedQuery.length < 3) return null;
+            const data = await searchForUsersByWallet(debouncedQuery ?? "")
             return data
         },
     })
-
-    const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-        const value = e.target.value;
-        setQuery(value);
-    };
-
-    const initialRender = useRef(true)
-
-    useEffect(() => {
-        try {
-            router.push(`?search=${query}`);
-        } catch (e) {
-            console.log(e)
-        }
-    }, [query])
 
     return (
         <div className="relative w-full max-w-md z-30 text-black">
@@ -110,7 +63,7 @@ const SearchBar = () => {
                 onFocus={() => setShowResults(true)}
                 type="text"
                 value={query}
-                onChange={handleInputChange}
+                onChange={(e) => setQuery(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300"
                 placeholder="Search..."
             />
@@ -119,7 +72,7 @@ const SearchBar = () => {
                     {isLoading ? <Skeleton /> :
                         <>
                             {data &&
-                                <Users users={data} search={search ?? ""} />
+                                <Users users={data} setUsers={(user:string) => setUsers(user)}/>
                             }
                         </>
                     }
