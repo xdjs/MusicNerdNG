@@ -32,14 +32,17 @@ import {
     FormItem,
     FormMessage,
 } from "@/components/ui/form";
-import { addArtist, addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
+import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
 import { useMemo } from "react"
+import { useRouter } from "next/navigation";
+
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
+    const router = useRouter();
 
 
     const formSchema = useMemo(() => z.object({
@@ -60,6 +63,14 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         const resp = await addArtistData(values.artistDataUrl, artist);
         setAddArtistResp(resp);
         setIsLoading(false);
+    }
+
+    function handleClose(isOpen: boolean) {
+        if (!isOpen && addArtistResp && addArtistResp.status === "success") {
+            router.refresh();
+        }
+        setIsModalOpen(isOpen);
+        form.reset();
     }
     return (
         <>
@@ -83,11 +94,8 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                     )}
                 </Tooltip>
             </TooltipProvider>
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <Dialog open={isModalOpen} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
-                    {addArtistResp && addArtistResp.status === "success" ?
-                        <h2>{addArtistResp.message}</h2>
-                        :
                         <Form {...form}>
                             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                                 <DialogHeader>
@@ -132,7 +140,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                 <p>
                                     Once you submit the card we&apos;ll look it over to make sure it all checks out!
                                 </p>
-                                <DialogFooter>
+                                <DialogFooter className="flex sm:flex-col gap-4">
                                     {addArtistResp && addArtistResp.status === "error" ?
                                         <Label className="text-red-600">{addArtistResp.message}</Label> : null
                                     }
@@ -142,11 +150,13 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                             : <span>Add Artist Data</span>
                                         }
                                     </Button>
+                                    {addArtistResp && addArtistResp.status === "success" ?
+                                        <h2 className="text-green-600">{addArtistResp.message}</h2>
+                                        : null
+                                    }
                                 </DialogFooter>
                             </form>
                         </Form>
-
-                    }
                 </DialogContent>
             </Dialog>
         </>
