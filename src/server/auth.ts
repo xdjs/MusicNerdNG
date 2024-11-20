@@ -6,14 +6,10 @@ import {
 import { cookies } from 'next/headers';
 import { NEXTAUTH_URL } from "@/env";
 
-import CredentialsProvider from "next-auth/providers/credentials"
+import CredentialsProvider from "next-auth/providers/credentials";
 import { SiweMessage } from "siwe";
 
-import { featured, artists, users } from '@/server/db/schema';
-import { db } from "./db/drizzle";
-import { eq } from "drizzle-orm";
 import { getUserByWallet, createUser } from "@/server/utils/queriesTS";
-import { get } from "http";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`

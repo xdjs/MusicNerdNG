@@ -100,7 +100,8 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
 
 export type AddArtistDataResp = {
     status: "success" | "error",
-    message: string
+    message: string,
+    siteName?: string
 }
 
 export async function approveUgcAdmin(ugcIds: string[]) {
@@ -137,7 +138,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     try {
-        const existingArtistUGC = await db.query.ugcresearch.findFirst({ where: eq(ugcresearch.ugcUrl, artistUrl) });
+        const existingArtistUGC = await db.query.ugcresearch.findFirst({ where: and(eq(ugcresearch.ugcUrl, artistUrl), eq(ugcresearch.artistId, artist.id)) });
         if (existingArtistUGC) return { status: "error", message: "This artist data has already been added" };
         const [newUGC] = await db.insert(ugcresearch).values(
             {
@@ -151,7 +152,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         const user = await getUserById(session.user.id);
         if (user?.isWhiteListed) {
             await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
-            return { status: "success", message: "We updated the artist with that data" };
+            return { status: "success", message: "We updated the artist with that data", siteName: artistIdFromUrl.siteName };
         }
         return { status: "success", message: "Thanks for adding, we'll review this addition before posting" };
     } catch (e) {
@@ -193,7 +194,14 @@ export async function getPendingUGC() {
     }
 }
 
-export async function getUgcStats(date: DateRange) {
+export async function getUgcStats() {
+    const user = await getServerAuthSession();
+    if (!user) throw new Error("Not authenticated");
+    const ugcList = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.userId, user.user.id) });
+    return ugcList.length;
+}
+
+export async function getUgcStatsInRange(date: DateRange) {
     const user = await getServerAuthSession();
     if (!user) throw new Error("Not authenticated");
     const ugcList = await db.query.ugcresearch.findMany(
