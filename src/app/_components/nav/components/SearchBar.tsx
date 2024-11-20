@@ -41,10 +41,12 @@ function Users({
 }
 ) {
     const router = useRouter();
+
     function navigateToUser(artist: Artist) {
+        setQuery(artist.name ?? "");
         router.push(`/artist/${artist.id}`);
-        // setQuery(artist.name ?? "");
     }
+
     return (
         <>
             {users && users.map(u => {
@@ -83,10 +85,10 @@ const SearchBar = () => {
     const search = searchParams.get('search');
 
     const { data, isLoading, isFetching } = useQuery({
-        queryKey: ['userSearchResults', search],
+        queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
-            if (!search || search.length < 3) return null;
-            const data = await searchForArtistByName(search ?? "")
+            if (!debouncedQuery || debouncedQuery.length < 3) return null;
+            const data = await searchForArtistByName(debouncedQuery)
             return data
         },
     })
@@ -97,14 +99,6 @@ const SearchBar = () => {
     };
 
     const initialRender = useRef(true)
-
-    useEffect(() => {
-        try {
-            router.push(`?search=${query}`);
-        } catch (e) {
-            console.log(e)
-        }
-    }, [query])
 
     return (
         <div className="relative w-full max-w-md z-30 text-black">
