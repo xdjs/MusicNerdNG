@@ -32,16 +32,21 @@ export function Skeleton() {
 
 function Users({
     users,
-    search
+    search,
+    setQuery,
 }: {
     users: Artist[] | undefined,
-    search: string
+    search: string,
+    setQuery: (query: string) => void,
 }
 ) {
     const router = useRouter();
-    function navigateToUser(id: string) {
-        router.push(`/artist/${id}`);
+
+    function navigateToUser(artist: Artist) {
+        setQuery(artist.name ?? "");
+        router.push(`/artist/${artist.id}`);
     }
+
     return (
         <>
             {users && users.map(u => {
@@ -49,7 +54,7 @@ function Users({
                     <div key={u.id} >
                         <Link
                             className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                            onMouseDown={() => navigateToUser(u.id)}
+                            onMouseDown={() => navigateToUser(u)}
                             href={{
                                 pathname: `/artist/${u.id}`,
                                 query: {
@@ -80,10 +85,10 @@ const SearchBar = () => {
     const search = searchParams.get('search');
 
     const { data, isLoading, isFetching } = useQuery({
-        queryKey: ['userSearchResults', search],
+        queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
-            if (!search || search.length < 3) return null;
-            const data = await searchForArtistByName(search ?? "")
+            if (!debouncedQuery || debouncedQuery.length < 3) return null;
+            const data = await searchForArtistByName(debouncedQuery)
             return data
         },
     })
@@ -94,14 +99,6 @@ const SearchBar = () => {
     };
 
     const initialRender = useRef(true)
-
-    useEffect(() => {
-        try {
-            router.push(`?search=${query}`);
-        } catch (e) {
-            console.log(e)
-        }
-    }, [query])
 
     return (
         <div className="relative w-full max-w-md z-30 text-black">
@@ -119,7 +116,7 @@ const SearchBar = () => {
                     {isLoading ? <Skeleton /> :
                         <>
                             {data &&
-                                <Users users={data} search={search ?? ""} />
+                                <Users users={data} search={search ?? ""} setQuery={setQuery}/>
                             }
                         </>
                     }

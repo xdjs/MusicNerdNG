@@ -44,19 +44,22 @@ const formSchema = z.object({
 })
 
 export default function AddArtist({ session }: { session: Session | null }) {
+    const router = useRouter();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [addedArtists, setAddedArtists] = useState<{artistId: string | undefined, artistName: string | undefined}[]>([]);
+    const [addedArtist, setAddedArtist] = useState<{ artistId: string | undefined, artistName: string | undefined } | null>(null);
     const [addArtistStatus, setAddArtistStatus] = useState<AddArtistResp | null>(null);
+
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
         mode: "onSubmit",
         defaultValues: {
-            artistSpotifyUrl: "https://open.spotify.com/artist/YOURARTISTID",
+            artistSpotifyUrl: "",
         },
     })
+
     const artistSpotifyUrl = useWatch({ control: form.control, name: "artistSpotifyUrl" });
-    
+
     async function onSubmit(values: z.infer<typeof formSchema>) {
         const match = values.artistSpotifyUrl.match(spotifyArtistUrlRegex);
         if (!match) return null;
@@ -65,9 +68,21 @@ export default function AddArtist({ session }: { session: Session | null }) {
         const resp = await addArtist(artistId);
         setAddArtistStatus(resp);
         setIsLoading(false);
-        if (resp.status === "success") setAddedArtists([...addedArtists, {artistId: resp.artistId, artistName: resp.artistName}]);
+        if (resp.status === "success") setAddedArtist({ artistId: resp.artistId, artistName: resp.artistName });
     }
 
+    function checkAddedArtistStatus() {
+        if (addArtistStatus?.artistId) form.setValue("artistSpotifyUrl", "");
+        setAddArtistStatus(null);
+        setAddedArtist(null);
+    }
+
+    function closeModal(isOpen: boolean) {
+        setIsModalOpen(isOpen);
+        setAddArtistStatus(null);
+        setAddedArtist(null);
+        form.reset();
+    }
 
     return (
         <>
@@ -91,7 +106,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                     )}
                 </Tooltip>
             </TooltipProvider>
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <Dialog open={isModalOpen} onOpenChange={closeModal}>
                 <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">
                         {spotifyArtistUrlRegex.test(form.getValues().artistSpotifyUrl) ?
@@ -115,7 +130,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormControl>
-                                                    <Input className="border-black border-2 text-black" placeholder="https://open.spotify.com/artist/Id" {...field} />
+                                                    <Input onClick={checkAddedArtistStatus} className="border-black border-2 text-black" placeholder="https://open.spotify.com/artist/Id" {...field} />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
@@ -129,14 +144,17 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                             : <span>Add Artist</span>
                                         }
                                     </Button>
-                                    {addArtistStatus && <p className={cn(addArtistStatus.status === "error" ? "text-red-500" : "text-green-500")}>{addArtistStatus.message}</p>}
-
+                                    {addArtistStatus &&
+                                        <p className={cn(addArtistStatus.status === "error" ? "text-red-500" : "text-green-500")}>
+                                            {addArtistStatus.message}
+                                        </p>
+                                    }
                                     <div className="flex flex-col gap-2 text-black overflow-auto">
-                                        {addedArtists.map((artist) => 
-                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${artist.artistId}`} key={artist.artistId}>
-                                                <Button variant="outline">Check out {artist.artistName}</Button>
+                                        {addedArtist &&
+                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key={addedArtist.artistId}>
+                                                <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                             </Link>
-                                        )}
+                                        }
                                     </div>
                                 </DialogFooter>
                             </form>

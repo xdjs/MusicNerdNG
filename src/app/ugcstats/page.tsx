@@ -4,7 +4,7 @@ import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { DateRange } from "react-day-picker";
-import { getUgcStats } from "@/server/utils/queriesTS";
+import { getUgcStatsInRange } from "@/server/utils/queriesTS";
 
 export default function UgcStats() {
     const [date, setDate] = useState<DateRange | undefined>();
@@ -14,7 +14,7 @@ export default function UgcStats() {
     async function checkUgcStats() {
         if (date?.from && date?.to) {
             setLoading(true);
-            const result = await getUgcStats(date);
+            const result = await getUgcStatsInRange(date);
             setUgcStats(result);
             setLoading(false);
         }
