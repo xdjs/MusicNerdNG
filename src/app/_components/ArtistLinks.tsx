@@ -15,9 +15,9 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
     )
 }
 
-export default async function ArtistLinks({ isOnlyWeb3Sites, artist }: { isOnlyWeb3Sites: boolean, artist: Artist }) {
+export default async function ArtistLinks({ isMonetized, artist }: { isMonetized: boolean, artist: Artist }) {
     let artistLinks = await getArtistLinks(artist);
-    artistLinks = artistLinks.filter(el => el.isWeb3Site === isOnlyWeb3Sites);
+    artistLinks = artistLinks.filter(el => el.isMonetized === isMonetized);
     
     return (
         artistLinks?.map(el => {

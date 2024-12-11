@@ -22,6 +22,25 @@ export async function getFeaturedArtistsTS() {
     return images;
 }
 
+type getResponse<T> = {
+    isError: boolean,
+    message: string,
+    data: T | null,
+    status: number
+}
+
+export async function getArtistBySpotifyId(spotifyId: string) : Promise<getResponse<Artist>> {
+    try {
+        const result = await db.query.artists.findFirst({
+            where: eq(artists.spotify, spotifyId)
+        });
+        if(!result) return {isError: true, status: 404, message: "The artist you're searching for is not found", data: null}
+        return {isError: false, message: "", data: result, status: 200};
+    } catch {
+        return {isError: true, message: "Something went wrong on our end", data: null, status: 404}
+    }
+}
+
 export async function searchForArtistByName(name: string) {
     const result = await db
         .select()
