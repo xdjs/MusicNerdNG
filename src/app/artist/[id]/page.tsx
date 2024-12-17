@@ -25,7 +25,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
         getArtistWiki(artist.wikipedia ?? ""),
         getAllLinks()
     ]);
-
+    
     return (
         <>
             <div className="gap-4 px-4 flex flex-col md:flex-row">
@@ -59,7 +59,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                         }
                         {/* Right Column: Name and Description */}
                         <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
-                            <div className="mb-2">
+                            <div className="mb-2 flex justify-between items-center">
                                 <strong className="text-black text-2xl mr-2">
                                     {artist.name}
                                 </strong>
@@ -85,12 +85,11 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                         </strong>
                         <div className="pt-4">
                             {(artist) &&
-                                <ArtistLinks isOnlyWeb3Sites={false} artist={artist} />
+                                <ArtistLinks isMonetized={false} artist={artist} />
                             }
                         </div>
                     </div>
                 </div>
-
                 {/* Support Artist Box - Fixed Sidebar */}
                 <div className="bg-white px-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
                     <div className="top-0 sticky">
@@ -101,7 +100,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                         </div>
                         <div className="pl-4">
                             {(artist) &&
-                                <ArtistLinks isOnlyWeb3Sites={true} artist={artist} />
+                                <ArtistLinks isMonetized={true} artist={artist} />
                             }
                         </div>
                     </div>

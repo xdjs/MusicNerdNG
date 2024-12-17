@@ -35,6 +35,7 @@ export const urlmap = pgTable("urlmap", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`),
 	siteImage: text("site_image"),
 	regex: text("regex").default('""').notNull(),
+	isMonetized: boolean("is_monetized").default(false).notNull(),
 },
 (table) => {
 	return {
