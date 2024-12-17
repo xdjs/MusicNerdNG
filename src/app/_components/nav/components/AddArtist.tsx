@@ -95,7 +95,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                     Add Artist
                 </Button>
                 :
-                <Login buttonText="Add Artist" buttonStyles="text-black bg-white" />
+                <Login buttonText="Add Artist" buttonStyles="text-black bg-white" isplaceholder={true} />
             }
             <Dialog open={isModalOpen} onOpenChange={closeModal}>
                 <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >

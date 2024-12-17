@@ -4,9 +4,21 @@ import '@rainbow-me/rainbowkit/styles.css';
 import { Button } from "@/components/ui/button";
 import { useEffect } from 'react';
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
-export default function Login({buttonText, buttonStyles=""} : {buttonText? : string, buttonStyles: string}) {
+export default function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
+
+    const { data: session, status } = useSession();
     const router = useRouter();
+
+    useEffect(() => {
+        // If the session is loaded and the user is authenticated
+        if (status === "authenticated" || status === "unauthenticated") {
+            // Refresh the page once the login is successful
+            router.refresh();
+        }
+    }, [status, router]); // Depend on session status and router\
+
     return (
         <div className="justify-items-end">
             <ConnectButton.Custom>
@@ -19,9 +31,6 @@ export default function Login({buttonText, buttonStyles=""} : {buttonText? : str
                     authenticationStatus,
                     mounted,
                 }) => {
-                    useEffect(() => {
-                        router.refresh();
-                    }, [authenticationStatus])
                     // Note: If your app doesn't use authentication, you
                     // can remove all 'authenticationStatus' checks
                     const ready = mounted && authenticationStatus !== 'loading';
@@ -62,7 +71,8 @@ export default function Login({buttonText, buttonStyles=""} : {buttonText? : str
                                 return (
                                     <div style={{ display: 'flex', gap: 12 }}>
                                         <Button onClick={openAccountModal} type="button">
-                                            {account.displayName}
+                                            {isplaceholder ? <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                                                : account.displayName}
                                         </Button>
                                     </div>
                                 );
