@@ -11,7 +11,7 @@ Url Structure: `{baseurl}/api/{endpoint}`
 
  - Type: Post
  - Body: `{name: "artistName"} | {ethAddress:"yourEthAddress"}` (can be .eth or wallet address)
- - Resp: `{result : "artistSpotifyId"}`
+ - Resp: `{result : "artistTwitterHandle"}`
  - Auth: N/A
 
 
