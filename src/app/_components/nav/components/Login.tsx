@@ -1,122 +1,87 @@
 "use client"
-import { SessionProvider } from "next-auth/react";
-
-// Provider imports
-import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import { ConnectButton, RainbowKitAuthenticationProvider } from '@rainbow-me/rainbowkit';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import '@rainbow-me/rainbowkit/styles.css';
-import { WagmiProvider } from 'wagmi';
-
-import {
-    RainbowKitSiweNextAuthProvider,
-    GetSiweMessageOptions,
-} from '@rainbow-me/rainbowkit-siwe-next-auth';
-
 import { Button } from "@/components/ui/button";
+import { useEffect } from 'react';
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
-import {
-    QueryClientProvider,
-    QueryClient,
-} from "@tanstack/react-query";
-import {
-    mainnet,
-    polygon,
-    optimism,
-    arbitrum,
-    base,
-} from 'wagmi/chains';
-const queryClient = new QueryClient();
+export default function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
 
-const config = getDefaultConfig({
-    appName: 'fsot',
-    projectId: '929ab7024658ec19d047d5df44fb0f63',
-    chains: [mainnet, polygon, optimism, arbitrum, base],
-});
+    const { data: session, status } = useSession();
+    const router = useRouter();
 
-const getSiweMessageOptions: GetSiweMessageOptions = () => ({
-    statement: 'Sign in to MusicNerd',
-});
+    useEffect(() => {
+        // If the session is loaded and the user is authenticated
+        if (status === "authenticated" || status === "unauthenticated") {
+            // Refresh the page once the login is successful
+            router.refresh();
+        }
+    }, [status, router]); // Depend on session status and router\
 
-function InnerProviders() {
     return (
-        <WagmiProvider config={config}>
-            <QueryClientProvider client={queryClient}>
-                <RainbowKitSiweNextAuthProvider
-                    getSiweMessageOptions={getSiweMessageOptions}
-                >
-                    <RainbowKitProvider>
-                        <div className="justify-items-end">
-                            <ConnectButton.Custom>
-                                {({
-                                    account,
-                                    chain,
-                                    openAccountModal,
-                                    openChainModal,
-                                    openConnectModal,
-                                    authenticationStatus,
-                                    mounted,
-                                }) => {
-                                    // Note: If your app doesn't use authentication, you
-                                    // can remove all 'authenticationStatus' checks
-                                    const ready = mounted && authenticationStatus !== 'loading';
-                                    const connected =
-                                        ready &&
-                                        account &&
-                                        chain &&
-                                        (authenticationStatus === 'authenticated');
+        <div className="justify-items-end">
+            <ConnectButton.Custom>
+                {({
+                    account,
+                    chain,
+                    openAccountModal,
+                    openChainModal,
+                    openConnectModal,
+                    authenticationStatus,
+                    mounted,
+                }) => {
+                    // Note: If your app doesn't use authentication, you
+                    // can remove all 'authenticationStatus' checks
+                    const ready = mounted && authenticationStatus !== 'loading';
+                    const connected =
+                        ready &&
+                        account &&
+                        chain &&
+                        (authenticationStatus === 'authenticated');
 
+                    return (
+                        <div
+                            {...(!ready && {
+                                'aria-hidden': true,
+                                'style': {
+                                    opacity: 0,
+                                    pointerEvents: 'none',
+                                    userSelect: 'none',
+                                },
+                            })}
+                        >
+                            {(() => {
+                                if (!connected) {
                                     return (
-                                        <div
-                                            {...(!ready && {
-                                                'aria-hidden': true,
-                                                'style': {
-                                                    opacity: 0,
-                                                    pointerEvents: 'none',
-                                                    userSelect: 'none',
-                                                },
-                                            })}
-                                        >
-                                            {(() => {
-                                                if (!connected) {
-                                                    return (
-                                                        <Button onClick={openConnectModal} type="button">
-                                                            Connect Wallet
-                                                        </Button>
-                                                    );
-                                                }
-
-                                                if (chain.unsupported) {
-                                                    return (
-                                                        <button onClick={openChainModal} type="button">
-                                                            Wrong network
-                                                        </button>
-                                                    );
-                                                }
-
-                                                return (
-                                                    <div style={{ display: 'flex', gap: 12 }}>
-                                                        <Button onClick={openAccountModal} type="button">
-                                                            {account.displayName}
-                                                        </Button>
-                                                    </div>
-                                                );
-                                            })()}
-                                        </div>
+                                        <Button className={buttonStyles} onClick={openConnectModal} type="button">
+                                            {buttonText ?? "Connect Wallet"}
+                                        </Button>
                                     );
-                                }}
-                            </ConnectButton.Custom>
+                                }
+
+                                if (chain.unsupported) {
+                                    return (
+                                        <button onClick={openChainModal} type="button">
+                                            Wrong network
+                                        </button>
+                                    );
+                                }
+
+                                return (
+                                    <div style={{ display: 'flex', gap: 12 }}>
+                                        <Button onClick={openAccountModal} type="button">
+                                            {isplaceholder ? <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                                                : account.displayName}
+                                        </Button>
+                                    </div>
+                                );
+                            })()}
                         </div>
-                    </RainbowKitProvider>
-                </RainbowKitSiweNextAuthProvider>
-            </QueryClientProvider>
-        </WagmiProvider>
+                    );
+                }}
+            </ConnectButton.Custom>
+        </div>
     )
 }
 
-export default function Login() {
-    return (
-        <SessionProvider>
-            <InnerProviders/>
-        </SessionProvider>
-    )
-}

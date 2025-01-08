@@ -18,7 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import { Session } from "next-auth";
 import { Spotify } from "react-spotify-embed";
-
+import Login from "./Login"
 import Link from "next/link";
 import { set, z } from "zod";
 import { useForm } from "react-hook-form";
@@ -76,7 +76,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
         setAddArtistStatus(null);
         setAddedArtist(null);
     }
-
+    
     function closeModal(isOpen: boolean) {
         setIsModalOpen(isOpen);
         setAddArtistStatus(null);
@@ -86,26 +86,16 @@ export default function AddArtist({ session }: { session: Session | null }) {
 
     return (
         <>
-            <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <span tabIndex={0}>
-                            <Button
-                                className="text-black"
-                                disabled={session === null}
-                                onClick={() => setIsModalOpen(true)} variant="outline"
-                            >
-                                Add Artist
-                            </Button>
-                        </span>
-                    </TooltipTrigger>
-                    {session === null && (
-                        <TooltipContent>
-                            <p>Please Connect Wallet to Add Artists</p>
-                        </TooltipContent>
-                    )}
-                </Tooltip>
-            </TooltipProvider>
+            {session != null ?
+                <Button
+                    className="text-black"
+                    onClick={() => setIsModalOpen(true)} variant="outline"
+                >
+                    Add Artist
+                </Button>
+                :
+                <Login buttonText="Add Artist" buttonStyles="text-black bg-white" isplaceholder={true} />
+            }
             <Dialog open={isModalOpen} onOpenChange={closeModal}>
                 <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">

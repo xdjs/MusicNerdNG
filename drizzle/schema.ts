@@ -35,6 +35,8 @@ export const urlmap = pgTable("urlmap", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`),
 	siteImage: text("site_image"),
 	regex: text("regex").default('""').notNull(),
+	regexMatcher: text("regex_matcher"),
+	isMonetized: boolean("is_monetized").default(false).notNull(),
 },
 (table) => {
 	return {
@@ -45,7 +47,7 @@ export const urlmap = pgTable("urlmap", {
 });
 
 export const featured = pgTable("featured", {
-	id: uuid("id").default(sql`uuid_generate_v4()`),
+	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	featuredArtist: uuid("featured_artist"),
 	featuredCollector: uuid("featured_collector"),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
@@ -74,6 +76,9 @@ export const users = pgTable("users", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	legacyId: text("legacy_id"),
+	isAdmin: boolean("is_admin").default(false).notNull(),
+	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
+	isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
 },
 (table) => {
 	return {
@@ -152,7 +157,7 @@ export const ugcresearch = pgTable("ugcresearch", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
 	artistUri: text("artist_uri"),
-	accepted: boolean("accepted"),
+	accepted: boolean("accepted").default(false),
 	ugcUrl: text("ugc_url"),
 	siteName: text("site_name"),
 	siteUsername: text("site_username"),

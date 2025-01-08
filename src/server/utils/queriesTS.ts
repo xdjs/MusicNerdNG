@@ -2,7 +2,7 @@
 
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
-import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte } from "drizzle-orm";
+import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains } from "drizzle-orm";
 import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
 import { Artist } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
@@ -22,15 +22,82 @@ export async function getFeaturedArtistsTS() {
     return images;
 }
 
+type getResponse<T> = {
+    isError: boolean,
+    message: string,
+    data: T | null,
+    status: number
+}
+
+export async function getArtistBySpotifyId(spotifyId: string) : Promise<getResponse<Artist>> {
+    try {
+        const result = await db.query.artists.findFirst({
+            where: eq(artists.spotify, spotifyId)
+        });
+        if(!result) return {isError: true, status: 404, message: "The artist you're searching for is not found", data: null}
+        return {isError: false, message: "", data: result, status: 200};
+    } catch {
+        return {isError: true, message: "Something went wrong on our end", data: null, status: 404}
+    }
+}
+
+export async function getArtistByWalletOrEns(value: string) {
+    const walletRegex = /^0x[a-fA-F0-9]{40}$/;
+    if(walletRegex.test(value)) {
+        const result = await getArtistbyWallet(value);
+        if(result.isError) return await getArtistByEns(value);
+        return result;
+    }
+    return await getArtistByEns(value);
+}
+
+export async function getArtistbyWallet(wallet: string) {
+    try {
+        const result = await db
+                                .select()
+                                .from(artists)
+                                .where(arrayContains(artists.wallets, [wallet]))
+                                .limit(1);
+        if(!result[0]) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404}
+        return {isError: false, message: "", data: result[0], status: 200};
+    } catch {
+        return {isError: true, message: "Something went wrong on our end", data: null, status: 500};
+    }
+}
+
+export async function getArtistByEns(ens: string) {
+    try {
+        const result = await db.query.artists.findFirst({ where: eq(artists.ens, ens) });
+        if(!result) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404};
+        return {isError: false, message: "", data: result, status: 200} ;
+    } catch {
+        return {isError: true, message: "Something went wrong on our end", data: null, status: 500}
+    }
+}
+
+export async function getArtistByNameApiResp(name: string) {
+    try {
+        const result = await searchForArtistByName(name);
+        if(!result) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404}
+        return {isError: false, message: "", data: result[0], status: 200} ;
+    } catch {
+        return {isError: true, message: "Something went wrong on our end", data: null, status: 500}
+    }
+}
+
 export async function searchForArtistByName(name: string) {
-    const result = await db
-        .select()
-        .from(artists)
-        .where(
+    try {
+        const result = await db
+            .select()
+            .from(artists)
+            .where(
             ilike(artists.name, `%${name}%`)
         )
         .orderBy(desc(artists.name));
-    return result;
+        return result;
+    } catch {
+        throw new Error("Error searching for artist by name");
+    }
 }
 
 export async function getArtistById(id: string) {
