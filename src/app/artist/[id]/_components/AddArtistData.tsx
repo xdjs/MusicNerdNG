@@ -32,6 +32,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import LoginProviders from "@/app/_components/nav/components/LoginProviders";
 
+
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedOption, setSelectedOption] = useState("");
@@ -39,6 +40,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
     const router = useRouter();
     const { toast } = useToast();
+
     const formSchema = useMemo(() => z.object({
         artistDataUrl: z.string()
     }), [availableLinks])
@@ -80,7 +82,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
             setAddArtistResp(null);
         }
     }
-
     return (
         <>
             {session === null ? <LoginProviders><Login buttonText="Add Artist Data!" buttonStyles="text-black bg-white" /></LoginProviders> :
