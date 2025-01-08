@@ -76,14 +76,6 @@ export default function AddArtist({ session }: { session: Session | null }) {
         setAddArtistStatus(null);
         setAddedArtist(null);
     }
-
-    function closeModal(isOpen: boolean) {
-        setIsModalOpen(isOpen);
-        setAddArtistStatus(null);
-        setAddedArtist(null);
-        form.reset();
-
-    }
     
     function closeModal(isOpen: boolean) {
         setIsModalOpen(isOpen);
