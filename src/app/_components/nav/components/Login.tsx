@@ -2,7 +2,7 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import '@rainbow-me/rainbowkit/styles.css';
 import { Button } from "@/components/ui/button";
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -10,14 +10,16 @@ export default function Login({ buttonText, buttonStyles = "", isplaceholder = f
 
     const { data: session, status } = useSession();
     const router = useRouter();
+    const [currentStatus, setCurrentStatus] = useState(status);
 
     useEffect(() => {
-        // If the session is loaded and the user is authenticated
-        if (status === "authenticated" || status === "unauthenticated") {
+        // Refresh that page if the user is authenticated or unauthenticated
+        if (currentStatus !== status && status !== "loading" && currentStatus !== "loading") {
+            setCurrentStatus(status);
             // Refresh the page once the login is successful
             router.refresh();
         }
-    }, [status, router]); // Depend on session status and router\
+    }, [status]); // Depend on session status and router\
 
     return (
         <div className="justify-items-end">

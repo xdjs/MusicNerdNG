@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Nav from "./_components/nav";
 import { Toaster } from "@/components/ui/toaster";
+import Footer from "./_components/Footer";
 
 export const metadata: Metadata = {
   title: "MusicNerd",
@@ -19,6 +20,7 @@ export default async  function RootLayout({
           <Nav/>
           {children}
           <Toaster/>
+          <Footer/>
       </body>
     </html>
   );

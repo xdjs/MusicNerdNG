@@ -9,6 +9,8 @@ import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
 import { unstable_cache } from 'next/cache';
 import { DateRange } from 'react-day-picker';
+import { DISCORD_WEBHOOK_URL } from '@/env';
+import axios from 'axios';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -146,6 +148,7 @@ export type AddArtistResp = {
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
+    const user = await getUserById(session.user.id);
     const headers = await getSpotifyHeaders();
     const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
     if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
@@ -159,16 +162,13 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
                 lcname: spotifyArtist.data?.name.toLowerCase(),
                 name: spotifyArtist.data?.name
             }).returning();
+
+        await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
         return { status: "success", artistId: newArtist.id, artistName: newArtist.name ?? "", message: "Success! You can now find this artist in our directory" };
     } catch (e) {
+        console.error("error adding artist", e);
         return { status: "error", artistId: undefined, message: "Something went wrong on our end, please try again" };   
      }
-}
-
-export type AddArtistDataResp = {
-    status: "success" | "error",
-    message: string,
-    siteName?: string
 }
 
 export async function approveUgcAdmin(ugcIds: string[]) {
@@ -198,6 +198,11 @@ export async function approveUGC(ugcId: string, artistId: string, siteName: stri
         throw new Error("Error approving UGC");
     }
 }
+export type AddArtistDataResp = {
+    status: "success" | "error",
+    message: string,
+    siteName?: string
+}
 
 export async function addArtistData(artistUrl: string, artist: Artist): Promise<AddArtistDataResp> {
     const session = await getServerAuthSession();
@@ -217,12 +222,14 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
                 userId: session.user.id
             }).returning();
         const user = await getUserById(session.user.id);
+        await sendDiscordMessage(`${user?.wallet} added ${artist.name}'s ${artistIdFromUrl.siteName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`);
         if (user?.isWhiteListed) {
             await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
             return { status: "success", message: "We updated the artist with that data", siteName: artistIdFromUrl.siteName };
         }
-        return { status: "success", message: "Thanks for adding, we'll review this addition before posting" };
+        return { status: "success", message: "Thanks for adding, we'll review this addition before posting", siteName: artistIdFromUrl.siteName };
     } catch (e) {
+        console.error("error adding artist data", e);
         return { status: "error", message: "Error adding artist data, please try again" };
     }
 }
@@ -319,3 +326,11 @@ export async function searchForUsersByWallet(wallet: string) {
     const result = await db.query.users.findMany({ where: ilike(users.wallet, `%${wallet}%`) });
     return result.map((user) => user.wallet);
 }
+
+export async function sendDiscordMessage(message: string) {
+    const discordWebhookUrl = DISCORD_WEBHOOK_URL;
+    if (!discordWebhookUrl) return;
+    const resp = await axios.post(discordWebhookUrl, { content: message });
+}
+
+

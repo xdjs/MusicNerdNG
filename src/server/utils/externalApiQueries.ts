@@ -99,7 +99,6 @@ export async function getArtistWiki(wikiId: string) {
 
         const { data } = await axios.get(wikiUrl, { params });
         const pages: any = Object.values(data.query.pages);
-        console.log(pages[0])
         return {
             blurb: pages[0].extract,
             link: `https://en.wikipedia.org/?curid=${pages[0].pageid}`
