@@ -3,4 +3,3 @@ export const SPOTIFY_WEB_CLIENT_SECRET = process.env.NEXT_PUBLIC_SPOTIFY_WEB_CLI
 export const SUPABASE_DB_CONNECTION = process.env.SUPABASE_DB_CONNECTION ?? "";
 export const NEXTAUTH_URL = process.env.NEXTAUTH_URL ?? "";
 export const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL ?? "";
-export const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;

@@ -4,7 +4,7 @@ import {
   type NextAuthOptions,
 } from "next-auth";
 import { cookies } from 'next/headers';
-import { NEXTAUTH_SECRET, NEXTAUTH_URL } from "@/env";
+import { NEXTAUTH_URL } from "@/env";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { SiweMessage } from "siwe";
 import { getUserByWallet, createUser } from "@/server/utils/queriesTS";
@@ -42,7 +42,6 @@ declare module "next-auth" {
  * @see https://next-auth.js.org/configuration/options
  */
 export const authOptions: NextAuthOptions = {
-  secret: NEXTAUTH_SECRET,
   callbacks: {
     signIn() {
       return true;
