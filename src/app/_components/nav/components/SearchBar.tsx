@@ -87,7 +87,7 @@ const SearchBar = () => {
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
-            if (!debouncedQuery || debouncedQuery.length < 3) return null;
+            if (!debouncedQuery) return null;
             const data = await searchForArtistByName(debouncedQuery)
             return data
         },
@@ -97,8 +97,6 @@ const SearchBar = () => {
         const value = e.target.value;
         setQuery(value);
     };
-
-    const initialRender = useRef(true)
 
     return (
         <div className="relative w-full max-w-md z-30 text-black">
