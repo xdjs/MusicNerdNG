@@ -14,12 +14,13 @@ export default function Login({ buttonText, buttonStyles = "", isplaceholder = f
 
     useEffect(() => {
         // Refresh that page if the user is authenticated or unauthenticated
-        if (currentStatus !== status && status !== "loading" && currentStatus !== "loading") {
+        if (currentStatus !== status && currentStatus !== "loading") {
             setCurrentStatus(status);
             // Refresh the page once the login is successful
             router.refresh();
         }
-    }, [status]); // Depend on session status and router\
+        setCurrentStatus(status);
+    }, [status, currentStatus]); // Depend on session status
 
     return (
         <div className="justify-items-end">
