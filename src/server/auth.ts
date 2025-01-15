@@ -5,10 +5,8 @@ import {
 } from "next-auth";
 import { cookies } from 'next/headers';
 import { NEXTAUTH_URL } from "@/env";
-
 import CredentialsProvider from "next-auth/providers/credentials";
 import { SiweMessage } from "siwe";
-
 import { getUserByWallet, createUser } from "@/server/utils/queriesTS";
 
 /**
@@ -44,7 +42,6 @@ declare module "next-auth" {
  * @see https://next-auth.js.org/configuration/options
  */
 export const authOptions: NextAuthOptions = {
-  secret: "UypDBlYFq7qsYPq7zjjvHldYwEbeUFFG80yEW1IodRw=",
   callbacks: {
     signIn() {
       return true;
@@ -88,7 +85,6 @@ export const authOptions: NextAuthOptions = {
             })
             let user = await getUserByWallet(siwe.address);
             if (!user) user = await createUser(siwe.address);
-  
             if (result.success) {
               return {
                 id: user.id,

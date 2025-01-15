@@ -58,6 +58,5 @@ export async function extractArtistId(artistUrl: string) {
         }
       }
       return null;
-
 }
 
