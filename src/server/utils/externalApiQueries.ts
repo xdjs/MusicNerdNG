@@ -40,6 +40,7 @@ export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
             headers: { Authorization: `Bearer ${data.access_token}` }
         };
     } catch (e) {
+        console.error("Error fetching Spotify headers", e)
         throw new Error("Error fetching Spotify headers");
     }
 }
@@ -65,6 +66,7 @@ export async function getSpotifyArtist(artistId: string, headers: SpotifyHeaderT
         if(e.response.data.error.message === "invalid id"){
             return {error: "Invlid Spotify Id", data: null}
         }  
+        console.error("Error fetching Spotify data for artist", e)
         throw new Error(`Error fetching Spotify data for artist ${artistId}`);
     }
 }
@@ -77,7 +79,8 @@ export async function getSpotifyImage(artistSpotifyId: string, artistId: string=
         );
         return { artistImage: artistData.data.images[0].url, artistId };
     } catch (error) {
-        throw new Error(`Error fetching image for artist ${artistSpotifyId}`);
+        console.error(`Error fetching image for artist ${artistSpotifyId}`);
+        return { artistImage: "", artistId };
     }
 }
 
@@ -104,7 +107,7 @@ export async function getArtistWiki(wikiId: string) {
             link: `https://en.wikipedia.org/?curid=${pages[0].pageid}`
         }
     } catch (e) {
-
+        console.error(`Error fetching wiki for artist`, e);
     }
 }
 
@@ -118,6 +121,7 @@ export async function getNumberOfSpotifyReleases(id: string, headers: SpotifyHea
       return albumData.data.total;
   
     } catch(e) {
+        console.error(`Error fetching Spotify data for artist`, e);
         throw new Error(`Error fetching Spotify data for artist ${id}`);
     }
   }

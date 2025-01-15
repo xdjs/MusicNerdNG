@@ -93,7 +93,7 @@ export const authOptions: NextAuthOptions = {
             }
             return null
         } catch (e) {
-          console.log(e)
+          console.error("error authorizing", e);
           return null
         }
       },

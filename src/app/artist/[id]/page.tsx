@@ -33,7 +33,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                 <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 pt-10 pb-0 md:pb-10 w-full">
                         {/* Left Column: Image and Song */}
-                        {(spotifyImg) &&
+                        {(spotifyImg.artistImage) &&
                             <div className="flex flex-col items-center md:items-end">
 
                                 <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
