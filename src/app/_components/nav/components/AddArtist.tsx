@@ -68,7 +68,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
         const resp = await addArtist(artistId);
         setAddArtistStatus(resp);
         setIsLoading(false);
-        if (resp.status === "success") setAddedArtist({ artistId: resp.artistId, artistName: resp.artistName });
+        if (resp.status === "success" || resp.status === "exists") setAddedArtist({ artistId: resp.artistId, artistName: resp.artistName });
     }
 
     function checkAddedArtistStatus() {
