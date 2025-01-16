@@ -9,13 +9,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Session } from "next-auth";
 import { Spotify } from "react-spotify-embed";
 import Login from "./Login"
@@ -76,7 +70,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
         setAddArtistStatus(null);
         setAddedArtist(null);
     }
-    
+
     function closeModal(isOpen: boolean) {
         setIsModalOpen(isOpen);
         setAddArtistStatus(null);
@@ -141,9 +135,14 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                     }
                                     <div className="flex flex-col gap-2 text-black overflow-auto">
                                         {addedArtist &&
-                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key={addedArtist.artistId}>
-                                                <Button variant="outline">Check out {addedArtist.artistName}</Button>
-                                            </Link>
+                                            <>
+                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key={addedArtist.artistId}>
+                                                    <Button variant="outline">Check out {addedArtist.artistName}</Button>
+                                                </Link>
+                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key={addedArtist.artistId}>
+                                                    <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                                </Link>
+                                            </>
                                         }
                                     </div>
                                 </DialogFooter>
