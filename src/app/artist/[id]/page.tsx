@@ -10,13 +10,18 @@ import AddArtistData from "./_components/AddArtistData";
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 
-export default async function ArtistProfile({ params }: { params: { id: string } }) {
+type ArtistProfileProps = {
+    params: { id: string };
+    searchParams: { [key: string]: string | undefined };
+  }
+  
+export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
     const session = await getServerAuthSession();
     const artist = await getArtistById(params.id);
     if (!artist) {
         return notFound();
     }
-
+    const { opADM } = searchParams;
     const headers = await getSpotifyHeaders();
 
     const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
@@ -63,7 +68,7 @@ export default async function ArtistProfile({ params }: { params: { id: string }
                                 <strong className="text-black text-2xl mr-2">
                                     {artist.name}
                                 </strong>
-                                <AddArtistData availableLinks={allLinks} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} />
+                                <AddArtistData availableLinks={allLinks} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} isOpenOnLoad={opADM === "1"} />
                             </div>
                             <div className="text-black pt-0 mb-4">
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
