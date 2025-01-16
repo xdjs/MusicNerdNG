@@ -6,7 +6,7 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input"
 import Login from "@/app/_components/nav/components/Login";
 import { useState } from "react";
@@ -27,11 +27,10 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { addArtistData, AddArtistDataResp, getUgcStats } from "@/server/utils/queriesTS";;
-import { useMemo } from "react"
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import LoginProviders from "@/app/_components/nav/components/LoginProviders";
-
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,7 +60,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         if (resp.status === "success") {
             toast({
                 title: `${artist.name}'s ${resp.siteName} added`,
-                description: `UGC Count: ${ugcStats}`,
             })
         }
         setAddArtistResp(resp);

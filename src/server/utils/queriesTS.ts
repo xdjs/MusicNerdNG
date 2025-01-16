@@ -62,7 +62,8 @@ export async function getArtistbyWallet(wallet: string) {
                                 .limit(1);
         if(!result[0]) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404}
         return {isError: false, message: "", data: result[0], status: 200};
-    } catch {
+    } catch (e) {
+        console.error(`Error fetching artist by wallet`, e);
         return {isError: true, message: "Something went wrong on our end", data: null, status: 500};
     }
 }
@@ -72,7 +73,8 @@ export async function getArtistByEns(ens: string) {
         const result = await db.query.artists.findFirst({ where: eq(artists.ens, ens) });
         if(!result) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404};
         return {isError: false, message: "", data: result, status: 200} ;
-    } catch {
+    } catch(e) {
+        console.error(`Error fetching artist by ens`, e);
         return {isError: true, message: "Something went wrong on our end", data: null, status: 500}
     }
 }
@@ -82,7 +84,7 @@ export async function getArtistByNameApiResp(name: string) {
         const result = await searchForArtistByName(name);
         if(!result) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404}
         return {isError: false, message: "", data: result[0], status: 200} ;
-    } catch {
+    } catch(e) {
         return {isError: true, message: "Something went wrong on our end", data: null, status: 500}
     }
 }
@@ -97,16 +99,22 @@ export async function searchForArtistByName(name: string) {
         )
         .orderBy(desc(artists.name));
         return result;
-    } catch {
+    } catch(e) {
+        console.error(`Error fetching artist by name`, e);
         throw new Error("Error searching for artist by name");
     }
 }
 
 export async function getArtistById(id: string) {
-    const result = await db.query.artists.findFirst({
-        where: eq(artists.id, id)
-    });
-    return result;
+    try {
+        const result = await db.query.artists.findFirst({
+            where: eq(artists.id, id)
+        });
+        return result;
+    } catch (e) {
+        console.error(`Error fetching artist by Id`, e);
+        throw new Error('Error fetching artist by Id')
+    }
 }
 
 export const getAllLinks = unstable_cache(
@@ -182,6 +190,7 @@ export async function approveUgcAdmin(ugcIds: string[]) {
             await approveUGC(ugc.id, ugc.artistId ?? "", ugc.siteName ?? "", ugc.siteUsername ?? "");
         }));
     } catch (e) {
+        console.error("error approving ugc:", e);
         return { status: "error", message: "Error approving UGC" };
     }
     return { status: "success", message: "UGC approved" };
@@ -195,6 +204,7 @@ export async function approveUGC(ugcId: string, artistId: string, siteName: stri
             WHERE id = ${artistId}`);
         await db.update(ugcresearch).set({ accepted: true }).where(eq(ugcresearch.id, ugcId));
     } catch (e) {
+        console.error(`Error approving ugc`, e);
         throw new Error("Error approving UGC");
     }
 }
@@ -222,12 +232,12 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
                 userId: session.user.id
             }).returning();
         const user = await getUserById(session.user.id);
-        await sendDiscordMessage(`${user?.wallet} added ${artist.name}'s ${artistIdFromUrl.siteName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`);
+        await sendDiscordMessage(`${user?.wallet} added ${artist.name}'s ${artistIdFromUrl.cardPlatformName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`);
         if (user?.isWhiteListed) {
             await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
-            return { status: "success", message: "We updated the artist with that data", siteName: artistIdFromUrl.siteName };
+            return { status: "success", message: "We updated the artist with that data", siteName: artistIdFromUrl.cardPlatformName ?? "" };
         }
-        return { status: "success", message: "Thanks for adding, we'll review this addition before posting", siteName: artistIdFromUrl.siteName };
+        return { status: "success", message: "Thanks for adding, we'll review this addition before posting", siteName: artistIdFromUrl.cardPlatformName ?? "" };
     } catch (e) {
         console.error("error adding artist data", e);
         return { status: "error", message: "Error adding artist data, please try again" };
@@ -238,6 +248,7 @@ export async function getUserByWallet(wallet: string) {
     try {
         return await db.query.users.findFirst({ where: eq(users.wallet, wallet) });
     } catch (e) {
+        console.error("error getting user by wallet", e);
         throw new Error("Error finding user");
     }
 }
@@ -246,6 +257,7 @@ export async function getUserById(id: string) {
     try {
         return await db.query.users.findFirst({ where: eq(users.id, id) });
     } catch (e) {
+        console.error("error getting user by Id", e);
         throw new Error("Error finding user");
     }
 }
@@ -255,7 +267,8 @@ export async function createUser(wallet: string) {
         const [newUser] = await db.insert(users).values({ wallet: wallet }).returning();
         return newUser;
     } catch (e) {
-        throw new Error("Error finding user");
+        console.error("error creating user", e);
+        throw new Error("Error creating user");
     }
 }
 
@@ -264,6 +277,7 @@ export async function getPendingUGC() {
         const result = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.accepted, false) });
         return result;
     } catch (e) {
+        console.error("error getting pending ugc", e);
         throw new Error("Error finding pending UGC");
     }
 }
@@ -271,41 +285,58 @@ export async function getPendingUGC() {
 export async function getUgcStats() {
     const user = await getServerAuthSession();
     if (!user) throw new Error("Not authenticated");
-    const ugcList = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.userId, user.user.id) });
-    return ugcList.length;
+    try {
+        const ugcList = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.userId, user.user.id) });
+        return ugcList.length;
+    } catch(e) {
+        console.error("error getting user ugc stats", e);
+    }
 }
 
 export async function getUgcStatsInRange(date: DateRange) {
     const user = await getServerAuthSession();
     if (!user) throw new Error("Not authenticated");
-    const ugcList = await db.query.ugcresearch.findMany(
-        { 
-            where: and(
-                gte(ugcresearch.createdAt, date.from?.toISOString() ?? ""), 
-                lte(ugcresearch.createdAt, date.to?.toISOString() ?? ""), 
-                eq(ugcresearch.userId, user.user.id))
-        }
-    );
-    const artistsList = await db.query.artists.findMany(
-        { 
-            where: and(
-                gte(artists.createdAt, date.from?.toISOString() ?? ""), 
-                lte(artists.createdAt, date.to?.toISOString() ?? ""), 
-                eq(artists.addedBy, user.user.id))
-        }
-    );
-    return { ugcCount: ugcList.length, artistsCount: artistsList.length };
+    try {
+
+        const ugcList = await db.query.ugcresearch.findMany(
+            { 
+                where: and(
+                    gte(ugcresearch.createdAt, date.from?.toISOString() ?? ""), 
+                    lte(ugcresearch.createdAt, date.to?.toISOString() ?? ""), 
+                    eq(ugcresearch.userId, user.user.id))
+            }
+        );
+        const artistsList = await db.query.artists.findMany(
+            { 
+                where: and(
+                    gte(artists.createdAt, date.from?.toISOString() ?? ""), 
+                    lte(artists.createdAt, date.to?.toISOString() ?? ""), 
+                    eq(artists.addedBy, user.user.id))
+            }
+        );
+        return { ugcCount: ugcList.length, artistsCount: artistsList.length };
+    } catch(e) {
+        console.error("error getting ugc stats for user in range", e);
+    }
 }
 
 export async function getWhitelistedUsers() {
     const user = await getServerAuthSession();
     if (!user) throw new Error("Not authenticated");
-    const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
-    return result;
+    try {
+        const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
+        return result;
+    } catch(e) {
+        console.error("error getting whitelisted users", e);
+    }
 }
 
 export async function removeFromWhitelist(userIds: string[]) {
-    await db.update(users).set({ isWhiteListed: false }).where(inArray(users.id, userIds));
+    try {
+        await db.update(users).set({ isWhiteListed: false }).where(inArray(users.id, userIds));
+    } catch (e) {
+        console.error("error getting removing from whitelist", e);
+    }
 }
 
 export type AddUsersToWhitelistResp = {
@@ -318,19 +349,28 @@ export async function addUsersToWhitelist(walletAddresses: string[]): Promise<Ad
         await db.update(users).set({ isWhiteListed: true }).where(inArray(users.wallet, walletAddresses));
         return { status: "success", message: "Users added to whitelist" };
     } catch (e) {
+        console.error("error adding users to whitelist", e);
         return { status: "error", message: "Error adding users to whitelist" };
     }
 }
 
 export async function searchForUsersByWallet(wallet: string) {
-    const result = await db.query.users.findMany({ where: ilike(users.wallet, `%${wallet}%`) });
-    return result.map((user) => user.wallet);
+    try {
+        const result = await db.query.users.findMany({ where: ilike(users.wallet, `%${wallet}%`) });
+        return result.map((user) => user.wallet);
+    } catch(e) {
+        console.error("searching for users by wallet", e);
+    }
 }
 
 export async function sendDiscordMessage(message: string) {
     const discordWebhookUrl = DISCORD_WEBHOOK_URL;
     if (!discordWebhookUrl) return;
-    const resp = await axios.post(discordWebhookUrl, { content: message });
+    try {
+        const resp = await axios.post(discordWebhookUrl, { content: message });
+    } catch(e) {
+        console.error("error sending discord ping ", e);
+    }
 }
 
 

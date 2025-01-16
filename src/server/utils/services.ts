@@ -51,10 +51,10 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 
 export async function extractArtistId(artistUrl: string) {
     const allLinks = await getAllLinks();
-      for (const { regex, siteName } of allLinks) {
+      for (const { regex, siteName, cardPlatformName } of allLinks) {
         const match = artistUrl.match(regex);
         if (match) {
-          return { siteName, id: match[1] }; // Return both site name and captured ID
+          return { siteName, cardPlatformName, id: match[1] }; // Return both site name and captured ID
         }
       }
       return null;
