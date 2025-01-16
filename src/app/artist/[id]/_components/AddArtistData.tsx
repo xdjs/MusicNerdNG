@@ -32,8 +32,9 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import LoginProviders from "@/app/_components/nav/components/LoginProviders";
 
-export default function AddArtistData({ artist, spotifyImg, session, availableLinks }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[] }) {
-    const [isModalOpen, setIsModalOpen] = useState(false);
+export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
+    console.log("isOpenOnLoad", isOpenOnLoad);
+    const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
