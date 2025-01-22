@@ -91,7 +91,7 @@ export const artists = pgTable("artists", {
 	legacyId: text("legacy_id"),
 	bandcamp: text("bandcamp"),
 	facebook: text("facebook"),
-	twitter: text("twitter"),
+	x: text("x"),
 	soundcloud: text("soundcloud"),
 	notes: text("notes"),
 	patreon: text("patreon"),

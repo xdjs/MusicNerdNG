@@ -96,8 +96,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "twitter": {
-          "name": "twitter",
+        "x": {
+          "name": "x",
           "type": "text",
           "primaryKey": false,
           "notNull": false
