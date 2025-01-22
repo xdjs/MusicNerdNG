@@ -107,23 +107,16 @@ export async function getArtistById(id: string) {
     }
 }
 
-export const getAllLinks = unstable_cache(
-    async () => {
-        const result = await db.query.urlmap.findMany();
-        return result;
-    },
-    ['url-map-links'], // Cache key
-    {
-      revalidate: 86400, // Revalidate every day
-      tags: ['url-map-links'] // Tag for manual revalidation
-    }
-);
+export async function getAllLinks() {
+    const result = await db.query.urlmap.findMany();
+    return result;
+}
 
 export async function getArtistLinks(artist: Artist) {
     try {
         const allLinkObjects = await getAllLinks();
         if (!artist) throw new Error("Artist not found");
-        const artistLinksSiteNames = []
+        const artistLinksSiteNames = [];
         for (const platform of allLinkObjects) {
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
                 artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });
@@ -288,7 +281,6 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
     let session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
     let userId = session.user.id;
-    console.log(wallet);
     if(wallet) {
         const searchedUser = await getUserByWallet(wallet);
         if (!searchedUser) throw new Error("User not found");
