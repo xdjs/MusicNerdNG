@@ -26,11 +26,10 @@ import {
     FormItem,
     FormMessage,
 } from "@/components/ui/form";
-import { addArtistData, AddArtistDataResp, getUgcStats } from "@/server/utils/queriesTS";;
+import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import LoginProviders from "@/app/_components/nav/components/LoginProviders";
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
@@ -56,7 +55,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setAddArtistResp(null);
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
-        const ugcStats = await getUgcStats();
         if (resp.status === "success") {
             toast({
                 title: `${artist.name}'s ${resp.siteName} added`,
@@ -82,7 +80,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     }
     return (
         <>
-            {session === null ? <LoginProviders><Login buttonText="Add Artist Data!" isplaceholder={true} buttonStyles="text-white bg-black border border-black" /></LoginProviders> :
+            {session === null ? <Login buttonText="Add Artist Data!" isplaceholder={true} buttonStyles="text-white bg-black border border-black" /> :
                 <Button
                     className="text-white bg-black border border-black"
                     disabled={session === null}
