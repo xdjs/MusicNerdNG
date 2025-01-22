@@ -117,7 +117,6 @@ export async function getArtistLinks(artist: Artist) {
         const allLinkObjects = await getAllLinks();
         if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames = [];
-        console.log(artist);
         for (const platform of allLinkObjects) {
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
                 artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });
@@ -282,7 +281,6 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
     let session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
     let userId = session.user.id;
-    console.log(wallet);
     if(wallet) {
         const searchedUser = await getUserByWallet(wallet);
         if (!searchedUser) throw new Error("User not found");
