@@ -1,3 +1,4 @@
+import { NextApiRequest, NextApiResponse } from 'next';
 import { getArtistByProperty } from '@/server/utils/queriesTS';
 import { artists } from '@/server/db/schema';
 
@@ -6,13 +7,13 @@ async function handler(req: Request) {
     return new Response('Method not allowed', {status : 405});
   }
 
-  const {spotifyID} = await req.json();
+  const {ig} = await req.json();
 
-  if (typeof spotifyID !== 'string') {
-    return new Response('Missing or invalid required parameters: spotifyID', {status : 400});
+  if (typeof ig !== 'string') {
+    return new Response('Missing or invalid required parameters: instagram handle', {status : 400});
   }
 
-  const artistResp = await getArtistByProperty(artists.spotify, spotifyID);
+  const artistResp = await getArtistByProperty(artists.instagram, ig);
   if(artistResp.status === 200) return Response.json({ result : artistResp.data });
   
   // Process the parameters (e.g., database lookup, validation, etc.)

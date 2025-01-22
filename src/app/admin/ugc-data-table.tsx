@@ -69,7 +69,7 @@ export default function UGCDataTable<TData, TValue>({
                     : "Approve Selected"}
             </Button>
             {uploadStatus.status === "error" && <p className="text-red-500">{uploadStatus.message}</p>}
-            <div className="rounded-md border border-black bg-gray-700">
+            <div className="rounded-md border border-black bg-white">
                 <Table >
                     <TableHeader className="color-white">
                         {table.getHeaderGroups().map((headerGroup) => (

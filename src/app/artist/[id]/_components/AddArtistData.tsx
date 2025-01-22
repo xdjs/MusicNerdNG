@@ -83,9 +83,9 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     }
     return (
         <>
-            {session === null ? <LoginProviders><Login buttonText="Add Artist Data!" buttonStyles="text-black bg-white" /></LoginProviders> :
+            {session === null ? <LoginProviders><Login buttonText="Add Artist Data!" isplaceholder={true} buttonStyles="text-white bg-black border border-black" /></LoginProviders> :
                 <Button
-                    className="text-black"
+                    className="text-white bg-black border border-black"
                     disabled={session === null}
                     onClick={() => setIsModalOpen(true)} variant="outline"
                 >
