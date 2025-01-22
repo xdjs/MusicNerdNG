@@ -2,7 +2,6 @@
 import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
 import { useDebounce } from 'use-debounce';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
-import { searchForArtistByName } from '@/server/utils/queriesTS';
 import { searchForUsersByWallet } from '@/server/utils/queriesTS';
 
 const queryClient = new QueryClient()
@@ -56,6 +55,12 @@ const SearchBar = ({setUsers}: {setUsers: (users: string) => void}) => {
         },
     })
 
+    function handleUserClick(user: string) {
+        setUsers(user);
+        setQuery(user);
+        setShowResults(false);
+    }
+
     return (
         <div className="relative w-full max-w-md z-30 text-black">
             <input
@@ -72,7 +77,7 @@ const SearchBar = ({setUsers}: {setUsers: (users: string) => void}) => {
                     {isLoading ? <Skeleton /> :
                         <>
                             {data &&
-                                <Users users={data} setUsers={(user:string) => setUsers(user)}/>
+                                <Users users={data} setUsers={(user:string) => handleUserClick(user)}/>
                             }
                         </>
                     }

@@ -101,10 +101,10 @@ export async function getArtistWiki(wikiId: string) {
         }
 
         const { data } = await axios.get(wikiUrl, { params });
-        const pages: any = Object.values(data.query.pages);
+        const pages: any = data.query?.pages ? Object.values(data.query.pages) : [];
         return {
-            blurb: pages[0].extract,
-            link: `https://en.wikipedia.org/?curid=${pages[0].pageid}`
+            blurb: pages[0]?.extract,
+            link: `https://en.wikipedia.org/?curid=${pages[0]?.pageid}`
         }
     } catch (e) {
         console.error(`Error fetching wiki for artist`, e);

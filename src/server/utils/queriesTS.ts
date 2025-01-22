@@ -11,6 +11,7 @@ import { unstable_cache } from 'next/cache';
 import { DateRange } from 'react-day-picker';
 import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';
+import { PgColumn } from 'drizzle-orm/pg-core';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -31,10 +32,10 @@ type getResponse<T> = {
     status: number
 }
 
-export async function getArtistBySpotifyId(spotifyId: string) : Promise<getResponse<Artist>> {
+export async function getArtistByProperty(column: PgColumn<any>, value: string) : Promise<getResponse<Artist>> {
     try {
         const result = await db.query.artists.findFirst({
-            where: eq(artists.spotify, spotifyId)
+            where: eq(column, value)
         });
         if(!result) return {isError: true, status: 404, message: "The artist you're searching for is not found", data: null}
         return {isError: false, message: "", data: result, status: 200};
@@ -47,10 +48,10 @@ export async function getArtistByWalletOrEns(value: string) {
     const walletRegex = /^0x[a-fA-F0-9]{40}$/;
     if(walletRegex.test(value)) {
         const result = await getArtistbyWallet(value);
-        if(result.isError) return await getArtistByEns(value);
+        if(result.isError) return await getArtistByProperty(artists.ens, value);
         return result;
     }
-    return await getArtistByEns(value);
+    return await getArtistByProperty(artists.ens, value);
 }
 
 export async function getArtistbyWallet(wallet: string) {
@@ -65,17 +66,6 @@ export async function getArtistbyWallet(wallet: string) {
     } catch (e) {
         console.error(`Error fetching artist by wallet`, e);
         return {isError: true, message: "Something went wrong on our end", data: null, status: 500};
-    }
-}
-
-export async function getArtistByEns(ens: string) {
-    try {
-        const result = await db.query.artists.findFirst({ where: eq(artists.ens, ens) });
-        if(!result) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404};
-        return {isError: false, message: "", data: result, status: 200} ;
-    } catch(e) {
-        console.error(`Error fetching artist by ens`, e);
-        return {isError: true, message: "Something went wrong on our end", data: null, status: 500}
     }
 }
 
@@ -293,9 +283,17 @@ export async function getUgcStats() {
     }
 }
 
-export async function getUgcStatsInRange(date: DateRange) {
-    const user = await getServerAuthSession();
-    if (!user) throw new Error("Not authenticated");
+// Get UGC stats for a user in a date range default to current user if no wallet is provided
+export async function getUgcStatsInRange(date: DateRange, wallet: string | null = null) {
+    let session = await getServerAuthSession();
+    if (!session) throw new Error("Not authenticated");
+    let userId = session.user.id;
+    console.log(wallet);
+    if(wallet) {
+        const searchedUser = await getUserByWallet(wallet);
+        if (!searchedUser) throw new Error("User not found");
+        userId = searchedUser.id;
+    }
     try {
 
         const ugcList = await db.query.ugcresearch.findMany(
@@ -303,7 +301,7 @@ export async function getUgcStatsInRange(date: DateRange) {
                 where: and(
                     gte(ugcresearch.createdAt, date.from?.toISOString() ?? ""), 
                     lte(ugcresearch.createdAt, date.to?.toISOString() ?? ""), 
-                    eq(ugcresearch.userId, user.user.id))
+                    eq(ugcresearch.userId, userId))
             }
         );
         const artistsList = await db.query.artists.findMany(
@@ -311,7 +309,7 @@ export async function getUgcStatsInRange(date: DateRange) {
                 where: and(
                     gte(artists.createdAt, date.from?.toISOString() ?? ""), 
                     lte(artists.createdAt, date.to?.toISOString() ?? ""), 
-                    eq(artists.addedBy, user.user.id))
+                    eq(artists.addedBy, userId))
             }
         );
         return { ugcCount: ugcList.length, artistsCount: artistsList.length };

@@ -100,7 +100,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <div className="top-0 sticky">
                         <div className="pl-4 pt-10 pb-4 text-black text-2xl">
                             <strong>
-                                Support Artist
+                                Support {artist?.name}
                             </strong>
                         </div>
                         <div className="pl-4">

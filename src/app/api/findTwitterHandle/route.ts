@@ -1,4 +1,4 @@
-import { getArtistByNameApiResp, getArtistBySpotifyId, getArtistbyWallet, getArtistByWalletOrEns } from '@/server/utils/queriesTS';
+import { getArtistByNameApiResp, getArtistByWalletOrEns } from '@/server/utils/queriesTS';
 
 async function handler(req: Request) {
   if (req.method !== 'POST') {

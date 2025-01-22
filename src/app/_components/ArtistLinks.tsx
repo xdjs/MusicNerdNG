@@ -8,7 +8,7 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
             <Link href={`${link}`} target="blank" className="text-black">
                 <div className="link-item-grid gap-x-4 corners-rounded">
                     <img className="mr-3" src={image} alt="" height={50} width={50} />
-                    <label className="pr-4"> {descriptor} </label>
+                    <label className="pr-4 cursor-pointer"> {descriptor} </label>
                 </div>
             </Link>
         </li>
