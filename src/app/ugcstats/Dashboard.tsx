@@ -18,6 +18,7 @@ function UgcStats({ user }: { user: User }) {
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
     const [ugcStatsUserWallet, setUgcStatsUserWallet] = useState<string | null>(null);
+    const [query, setQuery] = useState('');
 
     async function checkUgcStats() {
         if (date?.from && date?.to) {
@@ -37,9 +38,9 @@ function UgcStats({ user }: { user: User }) {
                 <p className="text-sm text-gray-500 pb-3">UGC Stats for: <strong>{ugcStatsUserWallet ?? user?.wallet}</strong> </p>
                 {user?.isAdmin && (
                     <>
-                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} />
+                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
                         <div className="mt-2">
-                            <Button disabled={!ugcStatsUserWallet} onClick={() => setUgcStatsUserWallet(null)}>
+                            <Button disabled={!ugcStatsUserWallet} onClick={() => {setUgcStatsUserWallet(null); setQuery('')}}>
                                 Clear User
                             </Button>
                         </div>

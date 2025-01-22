@@ -6,10 +6,10 @@ import { searchForUsersByWallet } from '@/server/utils/queriesTS';
 
 const queryClient = new QueryClient()
 
-export default function wrapper({setUsers}: {setUsers: (users: string) => void}) {
+export default function wrapper({setUsers, query, setQuery}: {setUsers: (users: string) => void, query: string, setQuery: (query: string) => void}) {
     return (
         <QueryClientProvider client={queryClient}>
-                <SearchBar setUsers={(user:string) => setUsers(user)} />
+                <SearchBar setUsers={(user:string) => setUsers(user)} query={query} setQuery={setQuery} />
         </QueryClientProvider>
     )
 }
@@ -40,8 +40,7 @@ function Users({users, setUsers}: {users: string[], setUsers: (users: string) =>
     )
 }
 
-const SearchBar = ({setUsers}: {setUsers: (users: string) => void}) => {
-    const [query, setQuery] = useState('');
+const SearchBar = ({setUsers, query, setQuery}: {setUsers: (users: string) => void, query: string, setQuery: (query: string) => void}) => {
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
     const resultsContainer = useRef(null);
