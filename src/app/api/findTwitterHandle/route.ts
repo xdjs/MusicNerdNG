@@ -1,4 +1,4 @@
-import { getArtistByNameApiResp, getArtistBySpotifyId, getArtistbyWallet, getArtistByWalletOrEns } from '@/server/utils/queriesTS';
+import { getArtistByNameApiResp, getArtistByWalletOrEns } from '@/server/utils/queriesTS';
 
 async function handler(req: Request) {
   if (req.method !== 'POST') {
@@ -13,13 +13,13 @@ async function handler(req: Request) {
   
   if(ethAddress) {
     const artistResp = await getArtistByWalletOrEns(ethAddress);
-    if(artistResp.status === 200) return Response.json({ result : artistResp.data?.twitter});
+    if(artistResp.status === 200) return Response.json({ result : artistResp.data?.x});
     return new Response(artistResp.message, {status : artistResp.status});
   }
 
   if(name) {
     const artistResp = await getArtistByNameApiResp(name);
-    if(artistResp.status === 200) return Response.json({ result : artistResp.data?.twitter });
+    if(artistResp.status === 200) return Response.json({ result : artistResp.data?.x });
     return new Response(artistResp.message, {status : artistResp.status});
   }
   

@@ -33,7 +33,6 @@ import { useToast } from "@/hooks/use-toast";
 import LoginProviders from "@/app/_components/nav/components/LoginProviders";
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
-    console.log("isOpenOnLoad", isOpenOnLoad);
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -83,9 +82,9 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     }
     return (
         <>
-            {session === null ? <LoginProviders><Login buttonText="Add Artist Data!" buttonStyles="text-black bg-white" /></LoginProviders> :
+            {session === null ? <LoginProviders><Login buttonText="Add Artist Data!" isplaceholder={true} buttonStyles="text-white bg-black border border-black" /></LoginProviders> :
                 <Button
-                    className="text-black"
+                    className="text-white bg-black border border-black"
                     disabled={session === null}
                     onClick={() => setIsModalOpen(true)} variant="outline"
                 >

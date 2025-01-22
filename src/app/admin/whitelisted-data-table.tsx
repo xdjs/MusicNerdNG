@@ -38,6 +38,7 @@ export function AddWhitelistDialog() {
     const router = useRouter();
     const [users, setUsers] = useState<string[]>([]);
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
+    const [query, setQuery] = useState('');
 
     async function addToWhitelist() {
         setUploadStatus({ status: "success", message: "", isLoading: true });
@@ -68,7 +69,7 @@ export function AddWhitelistDialog() {
                     <DialogTitle>Add Users to Whitelist</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
-                    <SearchBar setUsers={(user:string) => setUserWithFilter(user)} />
+                    <SearchBar setUsers={(user:string) => setUserWithFilter(user)} query={query} setQuery={setQuery} />
                     <div>
                         {users.map((user) => <Button variant="outline" onClick={() => removeFromUsers(user)} key={user}>{user} <X className="w-4 h-4 ml-1" /></Button>)} 
                     </div>
@@ -128,7 +129,7 @@ export default function WhitelistedDataTable<TData, TValue>({
             </div>
 
             {uploadStatus.status === "error" && <p className="text-red-500">{uploadStatus.message}</p>}
-            <div className="rounded-md border border-black bg-gray-700">
+            <div className="rounded-md border border-black bg-white">
                 <Table >
                     <TableHeader className="color-white">
                         {table.getHeaderGroups().map((headerGroup) => (

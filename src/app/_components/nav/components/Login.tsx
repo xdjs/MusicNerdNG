@@ -57,7 +57,7 @@ export default function Login({ buttonText, buttonStyles = "", isplaceholder = f
                             {(() => {
                                 if (!connected) {
                                     return (
-                                        <Button className={buttonStyles} onClick={openConnectModal} type="button">
+                                        <Button className={`${buttonStyles} hover:opacity-75`} onClick={openConnectModal} type="button">
                                             {buttonText ?? "Connect Wallet"}
                                         </Button>
                                     );
