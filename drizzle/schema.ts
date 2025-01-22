@@ -25,7 +25,7 @@ export const urlmap = pgTable("urlmap", {
 	siteName: text("site_name").notNull(),
 	example: text("example").notNull(),
 	appStringFormat: text("app_string_format").notNull(),
-	cardOrder: integer("card_order"),
+	order: integer("order"),
 	isIframeEnabled: boolean("is_iframe_enabled").default(false).notNull(),
 	isEmbedEnabled: boolean("is_embed_enabled").default(false).notNull(),
 	cardDescription: text("card_description"),
