@@ -36,6 +36,7 @@ export const urlmap = pgTable("urlmap", {
 	siteImage: text("site_image"),
 	regex: text("regex").default('""').notNull(),
 	isMonetized: boolean("is_monetized").default(false).notNull(),
+	regexOptions: text("regex_options").array(),
 },
 (table) => {
 	return {
