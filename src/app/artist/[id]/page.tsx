@@ -13,8 +13,8 @@ import { notFound } from "next/navigation";
 type ArtistProfileProps = {
     params: { id: string };
     searchParams: { [key: string]: string | undefined };
-  }
-  
+}
+
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
     const session = await getServerAuthSession();
     const artist = await getArtistById(params.id);
@@ -30,7 +30,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
         getArtistWiki(artist.wikipedia ?? ""),
         getAllLinks()
     ]);
-    
+
     return (
         <>
             <div className="gap-4 px-4 flex flex-col md:flex-row">
@@ -73,15 +73,16 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <div className="text-black pt-0 mb-4">
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
                             </div>
-                            <p className="text-black mb-4">
-                                {wiki?.blurb}
-                            </p>
-                            {(wiki) &&
+                            {(artist.wikipedia) &&
+                                <>
+                                    <p className="text-black mb-4">
+                                        {wiki?.blurb}
+                                    </p>
                                 <Link href={`${wiki?.link}`} className="text-black underline mb-4">
                                     {"WIKIPEDIA"}
                                 </Link>
+                                </>
                             }
-
                         </div>
                     </div>
                     <div className="ml-10 pb-4 pr-10">
