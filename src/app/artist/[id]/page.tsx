@@ -90,7 +90,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </strong>
                         <div className="pt-4">
                             {(artist) &&
-                                <ArtistLinks isMonetized={false} artist={artist} />
+                                <ArtistLinks isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
                             }
                         </div>
                     </div>
@@ -105,7 +105,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                         <div className="pl-4">
                             {(artist) &&
-                                <ArtistLinks isMonetized={true} artist={artist} />
+                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
                             }
                         </div>
                     </div>

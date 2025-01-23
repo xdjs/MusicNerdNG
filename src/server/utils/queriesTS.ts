@@ -122,6 +122,7 @@ export async function getArtistLinks(artist: Artist) {
                 artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });
             }
         }
+        artistLinksSiteNames.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         return artistLinksSiteNames;
     } catch (e) {
         throw new Error("Error fetching artist links");

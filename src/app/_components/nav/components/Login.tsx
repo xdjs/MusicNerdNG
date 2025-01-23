@@ -5,8 +5,17 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from 'react';
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import LoginProviders from './LoginProviders';
 
-export default function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
+export default function Wrapper({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
+    return (
+        <LoginProviders>
+            <Login buttonText={buttonText} buttonStyles={buttonStyles} isplaceholder={isplaceholder} />
+        </LoginProviders>
+    )
+}
+
+function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
 
     const { data: session, status } = useSession();
     const router = useRouter();
