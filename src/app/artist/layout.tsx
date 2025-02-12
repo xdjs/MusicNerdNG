@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
+import "../globals.css";
+import Nav from "../_components/nav";
+import Footer from "../_components/Footer";
 
 export const metadata: Metadata = {
   title: "Music Nerd",
@@ -14,9 +15,10 @@ export default async  function RootLayout({
 }) {
   return (
     <html lang="en"> 
-      <body className="h-dvh bg-[#F9F9F9]">
+      <body className="gradient-background">
+          <Nav/>
           {children}
-          <Toaster/>
+          <Footer/>
       </body>
     </html>
   );

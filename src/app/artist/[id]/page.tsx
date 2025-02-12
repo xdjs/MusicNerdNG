@@ -17,19 +17,52 @@ type ArtistProfileProps = {
 
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
     const session = await getServerAuthSession();
-    const artist = await getArtistById(params.id);
+    const artist = {
+        name: "Test Artist",
+        spotify: "1234567890",
+        wikipedia: "https://en.wikipedia.org/wiki/Test_Artist",
+        image: "https://via.placeholder.com/150",
+        description: "Test Description",
+        links: [
+            {
+                name: "Test Link",
+                url: "https://testlink.com"
+            }
+        ]
+    } //await getArtistById(params.id);
     if (!artist) {
         return notFound();
     }
     const { opADM } = searchParams;
-    const headers = await getSpotifyHeaders();
+    const headers = {
+        Authorization: "Bearer " + process.env.SPOTIFY_ACCESS_TOKEN
+    } // await getSpotifyHeaders();
 
-    const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
-        getSpotifyImage(artist.spotify ?? "", undefined, headers),
-        getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
-        getArtistWiki(artist.wikipedia ?? ""),
-        getAllLinks()
-    ]);
+    // const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
+    //     getSpotifyImage(artist.spotify ?? "", undefined, headers),
+    //     getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
+    //     getArtistWiki(artist.wikipedia ?? ""),
+    //     getAllLinks()
+    // ]);
+
+    const spotifyImg = {
+        artistImage: "https://via.placeholder.com/150"
+    } // await getSpotifyImage(artist.spotify ?? "", undefined, headers);
+
+    const numReleases = 10; // await getNumberOfSpotifyReleases(artist.spotify ?? "", headers);
+
+    const wiki = {
+        blurb: "Test Blurb",
+        link: "https://testlink.com"
+    } // await getArtistWiki(artist.wikipedia ?? "");
+
+    const allLinks = [
+        {
+            name: "Test Link",
+            url: "https://testlink.com"
+        }
+    ] // await getAllLinks();
+    
 
     return (
         <>
@@ -90,9 +123,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             Check out {artist?.name} on other media platforms!
                         </strong>
                         <div className="pt-4">
-                            {(artist) &&
-                                <ArtistLinks isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
-                            }
+                           
                         </div>
                     </div>
                 </div>
@@ -105,9 +136,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             </strong>
                         </div>
                         <div className="pl-4">
-                            {(artist) &&
-                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
-                            }
+                           
                         </div>
                     </div>
                 </div>

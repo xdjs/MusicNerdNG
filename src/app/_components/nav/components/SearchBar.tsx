@@ -10,10 +10,11 @@ import { Artist } from '@/server/db/DbTypes';
 
 const queryClient = new QueryClient()
 
-export default function wrapper() {
+export default function wrapper({className, placeholder}: {className?: string, placeholder?: string}) {
+    
     return (
         <QueryClientProvider client={queryClient}>
-                <SearchBar />
+                <SearchBar className={className} placeholder={placeholder} />
         </QueryClientProvider>
     )
 }
@@ -75,8 +76,9 @@ interface UserResults {
     users: Artist[]
 }
 
-const SearchBar = () => {
+const SearchBar = ({className, placeholder}: {className?: string, placeholder?: string}) => {
     const router = useRouter();
+    const defaultClassName = "w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300";
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
@@ -106,8 +108,8 @@ const SearchBar = () => {
                 type="text"
                 value={query}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300"
-                placeholder="Search..."
+                className={className ?? defaultClassName}
+                placeholder={placeholder ?? 'Search...'}
             />
             {(showResults && query.length >= 1) && (
                 <div ref={resultsContainer} className="absolute left-0 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
