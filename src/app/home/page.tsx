@@ -1,5 +1,6 @@
 // import Carousel from "./_components/carousel";
 // import { getFeaturedArtistsTS } from "@/server/utils/queriesTS";
+import { Suspense } from "react";
 import SearchBar from "../_components/nav/components/SearchBar";
 
 export default async function HomePage() {
@@ -64,9 +65,11 @@ export default async function HomePage() {
             <div className="text-[#422B46] opacity-30 text-[20px] tracking-[-0.6px] md:text-[35px] md:tracking-[-1.1px] font-bold">
               Ask Music Nerd About an artist
             </div>
-            <SearchBar 
-              placeholder="Type artist"
-              className="w-full px-4 py-2 border-4 border-[#FF9CE3] rounded-lg focus:outline-none" />
+            <Suspense fallback={<div>Loading...</div>}>
+              <SearchBar 
+                placeholder="Type artist"
+                className="w-full px-4 py-2 border-4 border-[#FF9CE3] rounded-lg focus:outline-none" />
+            </Suspense>
           </div>
         </div>
         <p className="text-[14px] sm:text-[25px] tracking[-0.5px] font-bold">
