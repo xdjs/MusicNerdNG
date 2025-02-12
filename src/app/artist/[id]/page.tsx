@@ -1,4 +1,3 @@
-
 import { getArtistById, getAllLinks } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
@@ -17,52 +16,19 @@ type ArtistProfileProps = {
 
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
     const session = await getServerAuthSession();
-    const artist = {
-        name: "Test Artist",
-        spotify: "1234567890",
-        wikipedia: "https://en.wikipedia.org/wiki/Test_Artist",
-        image: "https://via.placeholder.com/150",
-        description: "Test Description",
-        links: [
-            {
-                name: "Test Link",
-                url: "https://testlink.com"
-            }
-        ]
-    } //await getArtistById(params.id);
+    const artist = await getArtistById(params.id);
     if (!artist) {
         return notFound();
     }
     const { opADM } = searchParams;
-    const headers = {
-        Authorization: "Bearer " + process.env.SPOTIFY_ACCESS_TOKEN
-    } // await getSpotifyHeaders();
+    const headers = await getSpotifyHeaders();
 
-    // const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
-    //     getSpotifyImage(artist.spotify ?? "", undefined, headers),
-    //     getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
-    //     getArtistWiki(artist.wikipedia ?? ""),
-    //     getAllLinks()
-    // ]);
-
-    const spotifyImg = {
-        artistImage: "https://via.placeholder.com/150"
-    } // await getSpotifyImage(artist.spotify ?? "", undefined, headers);
-
-    const numReleases = 10; // await getNumberOfSpotifyReleases(artist.spotify ?? "", headers);
-
-    const wiki = {
-        blurb: "Test Blurb",
-        link: "https://testlink.com"
-    } // await getArtistWiki(artist.wikipedia ?? "");
-
-    const allLinks = [
-        {
-            name: "Test Link",
-            url: "https://testlink.com"
-        }
-    ] // await getAllLinks();
-    
+    const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
+        getSpotifyImage(artist.spotify ?? "", undefined, headers),
+        getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
+        getArtistWiki(artist.wikipedia ?? ""),
+        getAllLinks()
+    ]);
 
     return (
         <>
