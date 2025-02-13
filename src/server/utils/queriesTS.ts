@@ -258,8 +258,14 @@ export async function createUser(wallet: string) {
 
 export async function getPendingUGC() {
     try {
-        const result = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.accepted, false) });
-        return result;
+        const result = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.accepted, false), with: { ugcUser: true } });
+        return result.map((obj) => {
+            const { ugcUser, ...rest } = obj;
+            return {
+                ...rest,
+                wallet: ugcUser?.wallet ?? null,
+            };
+        });
     } catch (e) {
         console.error("error getting pending ugc", e);
         throw new Error("Error finding pending UGC");

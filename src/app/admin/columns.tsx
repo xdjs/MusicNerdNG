@@ -36,6 +36,10 @@ export const ugcColumns: ColumnDef<UgcResearch>[] = [
     header: "UGC ID",
   },
   {
+    accessorKey: "wallet",
+    header: "Wallet Address",
+  },
+  {
     accessorKey: "name",
     header: "Name",
   },
