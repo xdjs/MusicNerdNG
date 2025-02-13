@@ -42,24 +42,22 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <div className="flex flex-col items-center md:items-end">
 
                                 <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                                    {(spotifyImg) ?
-                                        <img src={spotifyImg.artistImage} alt="Image not available" className="object-cover w-full h-full" />
-                                        :
-                                        <img className="" src="/spinner.svg" alt="whyyyyy" />
-                                    }
+                                    {(spotifyImg) && <img src={spotifyImg.artistImage} alt="Artist Image" className="object-cover w-full h-full" />}
                                 </AspectRatio>
-                                <div className="w-full">
-                                    <div className="justify-center overflow-hidden rounded-xl">
-                                        <div style={{
-                                            height: 'calc(100% + 32px)',
-                                            width: 'calc(100% + 72px)',
-                                            marginLeft: '-72px',
-                                            marginTop: '-32px',
-                                        }}>
-                                            <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
+                                {artist.spotify &&
+                                    <div className="w-full">
+                                        <div className="justify-center overflow-hidden rounded-xl">
+                                            <div style={{
+                                                height: 'calc(100% + 32px)',
+                                                width: 'calc(100% + 72px)',
+                                                marginLeft: '-72px',
+                                                marginTop: '-32px',
+                                            }}>
+                                                <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                }
                             </div>
                         }
                         {/* Right Column: Name and Description */}
@@ -78,9 +76,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                     <p className="text-black mb-4">
                                         {wiki?.blurb}
                                     </p>
-                                <Link href={`${wiki?.link}`} className="text-black underline mb-4">
-                                    {"WIKIPEDIA"}
-                                </Link>
+                                    <Link href={`${wiki?.link}`} className="text-black underline mb-4">
+                                        {"WIKIPEDIA"}
+                                    </Link>
                                 </>
                             }
                         </div>
