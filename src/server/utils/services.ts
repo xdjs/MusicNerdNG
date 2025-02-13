@@ -1,4 +1,5 @@
 import { Artist } from "../db/DbTypes";
+import { ArtistLink } from "./queriesTS";
 
 import { getAllLinks } from "./queriesTS";
 
@@ -59,4 +60,5 @@ export async function extractArtistId(artistUrl: string) {
       }
       return null;
 }
+
 

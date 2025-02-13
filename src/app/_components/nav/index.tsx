@@ -19,7 +19,7 @@ export default async function Nav() {
                 <SearchBar />
             </div>
                 <div className="flex gap-2">
-                    <AddArtist session={session} />
+                    <AddArtist />
                     <Login buttonStyles="" />
                 </div>
         </nav>

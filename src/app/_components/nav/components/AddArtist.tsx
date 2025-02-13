@@ -28,6 +28,8 @@ import { addArtist, AddArtistResp } from "@/server/utils/queriesTS";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
+import { SessionProvider } from "next-auth/react";
+import { useSession } from "next-auth/react";
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
 
@@ -37,7 +39,13 @@ const formSchema = z.object({
     }),
 })
 
-export default function AddArtist({ session }: { session: Session | null }) {
+export default function Wrapper() {
+    return <SessionProvider><AddArtist /></SessionProvider>
+}
+
+function AddArtist() {
+    const { data: session, status } = useSession();
+    console.log(session);
     const router = useRouter();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);

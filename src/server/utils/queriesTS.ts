@@ -4,10 +4,9 @@ import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains } from "drizzle-orm";
 import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
-import { Artist } from '../db/DbTypes';
+import { Artist, UrlMap } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
-import { unstable_cache } from 'next/cache';
 import { DateRange } from 'react-day-picker';
 import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';
@@ -32,14 +31,23 @@ type getResponse<T> = {
     status: number
 }
 
-export async function getArtistByProperty(column: PgColumn<any>, value: string) : Promise<getResponse<Artist>> {
+const passthroughKeys = new Set(["createdAt", "updatedAt", "wallets", "id", "legacyId", "name"]);
+
+export async function getArtistByProperty(column: PgColumn<any>, value: string) {
     try {
         const result = await db.query.artists.findFirst({
             where: eq(column, value)
         });
         if(!result) return {isError: true, status: 404, message: "The artist you're searching for is not found", data: null}
-        return {isError: false, message: "", data: result, status: 200};
-    } catch {
+        const artistLinks = await getArtistLinks(result);
+        const artistResponse = Object.fromEntries(Object.entries(result).map(([key, value]) =>{ 
+            if (passthroughKeys.has(key)) return [key, value];
+            const matchedLink = artistLinks.find(link => link.artistId === value);
+            if(!value) return [key, null];
+            return [key, { id: value, url: matchedLink?.artistUrl ?? null, isSupportLink: matchedLink?.isMonetized ?? false }];
+        }));
+        return {isError: false, message: "", data: artistResponse, status: 200};
+    } catch (e) {
         return {isError: true, message: "Something went wrong on our end", data: null, status: 404}
     }
 }
@@ -112,6 +120,10 @@ export async function getAllLinks() {
     return result;
 }
 
+export type ArtistLink = UrlMap & {
+    artistUrl: string,
+}
+
 export async function getArtistLinks(artist: Artist) {
     try {
         const allLinkObjects = await getAllLinks();
@@ -119,7 +131,7 @@ export async function getArtistLinks(artist: Artist) {
         const artistLinksSiteNames = [];
         for (const platform of allLinkObjects) {
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
-                artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });
+                artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? ""), artistId: artist[platform.siteName] });
             }
         }
         artistLinksSiteNames.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));

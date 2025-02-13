@@ -2,10 +2,10 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import '@rainbow-me/rainbowkit/styles.css';
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from 'react';
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import LoginProviders from './LoginProviders';
+import { useSession } from "next-auth/react";
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Wrapper({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
     return (
@@ -16,21 +16,7 @@ export default function Wrapper({ buttonText, buttonStyles = "", isplaceholder =
 }
 
 function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
-
-    const { data: session, status } = useSession();
-    const router = useRouter();
-    const [currentStatus, setCurrentStatus] = useState(status);
-
-    useEffect(() => {
-        // Refresh that page if the user is authenticated or unauthenticated
-        if (currentStatus !== status && currentStatus !== "loading") {
-            setCurrentStatus(status);
-            // Refresh the page once the login is successful
-            router.refresh();
-        }
-        setCurrentStatus(status);
-    }, [status, currentStatus]); // Depend on session status
-
+    const router = useRouter();    
     return (
         <div className="justify-items-end">
             <ConnectButton.Custom>
@@ -43,15 +29,14 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
                     authenticationStatus,
                     mounted,
                 }) => {
-                    // Note: If your app doesn't use authentication, you
-                    // can remove all 'authenticationStatus' checks
                     const ready = mounted && authenticationStatus !== 'loading';
+                
                     const connected =
                         ready &&
                         account &&
                         chain &&
                         (authenticationStatus === 'authenticated');
-
+                        
                     return (
                         <div
                             {...(!ready && {

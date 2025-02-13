@@ -1,6 +1,7 @@
 "use client"
 import { SessionProvider } from "next-auth/react";
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
+import { createConfig } from 'wagmi';
 import '@rainbow-me/rainbowkit/styles.css';
 import { WagmiProvider } from 'wagmi';
 import {
@@ -27,6 +28,17 @@ const config = getDefaultConfig({
     projectId: '929ab7024658ec19d047d5df44fb0f63',
     chains: [mainnet, polygon, optimism, arbitrum, base],
 });
+
+console.log(config);
+
+// function getConfig() { 
+//     return createConfig(
+//         { 
+//             chains: [mainnet], 
+//             connectors: [
+//                 walletConnect({ projectId: "929ab7024658ec19d047d5df44fb0f63" }),], 
+//                 storage: createStorage({ storage: cookieStorage, }), 
+//                 ssr: true, transports: { [mainnet.id]: http()}, }) }
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
     statement: 'Sign in to MusicNerd',
