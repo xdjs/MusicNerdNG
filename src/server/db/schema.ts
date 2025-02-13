@@ -184,3 +184,8 @@ export const ugcresearch = pgTable("ugcresearch", {
 		}),
 	}
 });
+
+export const ugcRelations = relations(ugcresearch, ({ one }) => ({
+	ugcArtist: one(artists, { fields: [ugcresearch.artistId], references: [artists.id], relationName: "ugcArtistObject" }),
+	ugcUser: one(users, { fields: [ugcresearch.userId], references: [users.id], relationName: "ugcUser" }),
+  }));

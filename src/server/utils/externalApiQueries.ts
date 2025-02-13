@@ -71,7 +71,8 @@ export async function getSpotifyArtist(artistId: string, headers: SpotifyHeaderT
     }
 }
 
-export async function getSpotifyImage(artistSpotifyId: string, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> {
+export async function getSpotifyImage(artistSpotifyId: string | null, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> {
+    if(!artistSpotifyId) return { artistImage: "", artistId };
     try {
         const artistData = await axios.get(
             `https://api.spotify.com/v1/artists/${artistSpotifyId}`,
@@ -112,7 +113,8 @@ export async function getArtistWiki(wikiId: string) {
     }
 }
 
-export async function getNumberOfSpotifyReleases(id: string, headers: SpotifyHeaderType) {  
+export async function getNumberOfSpotifyReleases(id: string | null, headers: SpotifyHeaderType) {  
+    if(!id) return 0;
     try {
       const albumData = await axios.get(
         `https://api.spotify.com/v1/artists/${id}/albums?include_groups=album%2Csingle&market=US&limit=1`,
@@ -123,7 +125,6 @@ export async function getNumberOfSpotifyReleases(id: string, headers: SpotifyHea
   
     } catch(e) {
         console.error(`Error fetching Spotify data for artist`, e);
-        throw new Error(`Error fetching Spotify data for artist ${id}`);
     }
   }
 
