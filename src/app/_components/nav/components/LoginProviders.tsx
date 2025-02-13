@@ -29,7 +29,6 @@ const config = getDefaultConfig({
     chains: [mainnet, polygon, optimism, arbitrum, base],
 });
 
-console.log(config);
 
 // function getConfig() { 
 //     return createConfig(

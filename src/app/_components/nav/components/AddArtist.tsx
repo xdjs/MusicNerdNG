@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Session } from "next-auth";
 import { Spotify } from "react-spotify-embed";
-import Login from "./Login"
+import Login2 from "./Login2"
 import Link from "next/link";
 import { set, z } from "zod";
 import { useForm } from "react-hook-form";
@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
 import { SessionProvider } from "next-auth/react";
 import { useSession } from "next-auth/react";
+import LoginProviders2 from "./LoginProviders2";
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
 
@@ -40,12 +41,11 @@ const formSchema = z.object({
 })
 
 export default function Wrapper() {
-    return <SessionProvider><AddArtist /></SessionProvider>
+    return <LoginProviders2><AddArtist /></LoginProviders2>
 }
 
 function AddArtist() {
     const { data: session, status } = useSession();
-    console.log(session);
     const router = useRouter();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -96,7 +96,12 @@ function AddArtist() {
                     Add Artist
                 </Button>
                 :
-                <Login buttonText="Add Artist" buttonStyles="text-black bg-white" isplaceholder={true} />
+                <Button
+                    variant="outline"
+                    className="text-black"
+                >
+                    Add Artist
+                </Button>
             }
             <Dialog open={isModalOpen} onOpenChange={closeModal}>
                 <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >
