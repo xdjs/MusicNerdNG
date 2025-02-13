@@ -54,10 +54,10 @@ export default async function HomePage() {
                 >
                   {titles.map((title, index) => (
                     <div key={index} style={{ color: title.color }} className="lowercase w-full flex">
-                      <div className="w-1/2 text-right pr-4">
+                      <div className="w-1/2 text-right pr-[0.4rem]">
                         {title.label[0]} 
                       </div>
-                      <div className="w-1/2 pl-4">
+                      <div className="w-1/2 pl-[0.4rem]">
                         {title.label[1]}
                       </div>
                     </div>
@@ -65,8 +65,8 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="flex flex-col items-center w-full px-4">
-            <div className="text-[#422B46] opacity-30 text-[20px] tracking-[-0.6px] md:text-[35px] md:tracking-[-1.1px] font-bold">
-              Ask Music Nerd About an artist
+            <div className="text-[#422B46] opacity-30 text-[20px] tracking-[-0.4px] md:text-[35px] md:tracking-[-1.1px] font-bold">
+              Ask Music Nerd about an artist
             </div>
             <Suspense fallback={<div>Loading...</div>}>
                 <SearchBar 
