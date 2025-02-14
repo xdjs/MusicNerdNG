@@ -20,6 +20,7 @@ const config = {
     extend: {
       colors: {
         // custom colors
+        maroon: "#422b46",
         pastyblue: "#2ad4fc",
         pastypink: "#ef95ff",
         jellygreen: "#19ffb8",

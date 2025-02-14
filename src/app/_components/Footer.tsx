@@ -1,11 +1,10 @@
 export default function Footer() {
     return (
-        <footer className='px-10 py-10'>
-            <h2 className='font-bold text-2xl'>MUSIC NERD</h2>
-            <p className='text-base font-medium'>
+        <footer className='px-5 py-5 w-full text-center'>
+            <h2 className='text-[14px] sm:text-[25px] tracking[-0.5px] font-bold text-maroon'>
                 Made in Seattle by <a href="https://x.com/cxy" target="blank" className='link'>@<span className='underline'>cxy</span> </a>
                 <a href="https://x.com/clt" target="blank" className='link'>@<span className='underline'>clt</span></a> and friends
-            </p>
+            </h2>
         </footer>
     )
 }

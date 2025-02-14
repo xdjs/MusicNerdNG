@@ -7,7 +7,6 @@ import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schem
 import { Artist } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
-import { unstable_cache } from 'next/cache';
 import { DateRange } from 'react-day-picker';
 import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';

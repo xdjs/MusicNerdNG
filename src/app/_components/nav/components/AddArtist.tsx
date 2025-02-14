@@ -28,6 +28,7 @@ import { addArtist, AddArtistResp } from "@/server/utils/queriesTS";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
+import { Plus } from 'lucide-react';
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
 
@@ -82,10 +83,11 @@ export default function AddArtist({ session }: { session: Session | null }) {
         <>
             {session != null ?
                 <Button
-                    className="text-black"
-                    onClick={() => setIsModalOpen(true)} variant="outline"
+                    className="text-black p-3 bg-pastyblue rounded-lg border-none  hover:bg-gray-200 transition-colors duration-300"
+                    onClick={() => setIsModalOpen(true)} 
+                    size="lg"
                 >
-                    Add Artist
+                    <Plus color="white" />
                 </Button>
                 :
                 <Login buttonText="Add Artist" buttonStyles="text-black bg-white" isplaceholder={true} />
@@ -95,8 +97,8 @@ export default function AddArtist({ session }: { session: Session | null }) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">
                         {spotifyArtistUrlRegex.test(form.getValues().artistSpotifyUrl) ?
                             <Spotify link={artistSpotifyUrl} /> :
-                            <div className="w-[300px] h-[380px] rounded-lg bg-pastyblue flex justify-center items-center text-white">
-                                <h2>Enter a valid Spotify url</h2>
+                            <div className="w-[300px] h-[380px] rounded-lg bg-black flex justify-center items-center text-white">
+                                <img src="/siteIcons/spotify_icon.png" alt="logo" className="w-36" />
                             </div>
                         }
                         <Form {...form}>
@@ -122,7 +124,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                     />
                                 </div>
                                 <DialogFooter className="flex sm:flex-col gap-2 sm:justify-start">
-                                    <Button type="submit" className="w-auto self-start">
+                                    <Button type="submit" className="w-auto self-start bg-pastypink">
                                         {isLoading ?
                                             <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                             : <span>Add Artist</span>

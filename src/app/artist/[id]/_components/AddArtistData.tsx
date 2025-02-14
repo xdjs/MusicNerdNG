@@ -100,10 +100,8 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                             </DialogHeader>
                             <div>
                                 <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full">
-                                    {(spotifyImg) ?
-                                        <img src={spotifyImg} alt="Image not available" className="object-cover" />
-                                        :
-                                        <img className="" src="/spinner.svg" alt="whyyyyy" />
+                                    {(spotifyImg) &&
+                                        <img src={spotifyImg} alt="Artist Image" className="object-cover" />
                                     }
                                 </AspectRatio>
                             </div>

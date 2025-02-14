@@ -89,12 +89,7 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: white;
 }
 
 @layer utilities {
@@ -143,13 +138,6 @@ body {
   align-items: center; /* Vertically center the items */
 }
 
-.nav-bar {
-  padding-top: 30px;
-  padding-bottom: 30px;
-  padding-left: 20px;
-  padding-right: 20px;
-  column-gap: 6px;
-}
 
 .home-text {
   padding-left: 20px;

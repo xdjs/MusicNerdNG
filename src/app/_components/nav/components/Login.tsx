@@ -50,6 +50,7 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
                     chain &&
                     (authenticationStatus === 'authenticated');
 
+
                 return (
                     <div
                         {...(!ready && {
@@ -64,7 +65,7 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
                         {(() => {
                             if (!connected) {
                                 return (
-                                    <Button className={`${buttonStyles} hover:opacity-75`} onClick={openConnectModal} type="button">
+                                    <Button className={`${buttonStyles} hover:opacity-75 bg-gray-100 text-black`} size="lg" onClick={openConnectModal} type="button" >
                                         {buttonText ?? "Connect Wallet"}
                                     </Button>
                                 );
@@ -80,9 +81,11 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
 
                             return (
                                 <div style={{ display: 'flex', gap: 12 }}>
-                                    <Button onClick={openAccountModal} type="button">
+                                    <Button onClick={openAccountModal} type="button" className="bg-pastypink text-black px-3" size="lg" >
                                         {isplaceholder ? <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
-                                            : account.displayName}
+                                            : <label className="text-xl">🥳</label>
+                                            }
+                                        
                                     </Button>
                                 </div>
                             );
