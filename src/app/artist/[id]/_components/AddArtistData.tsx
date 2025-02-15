@@ -30,6 +30,7 @@ import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { Plus } from "lucide-react";
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
@@ -71,6 +72,16 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setIsModalOpen(isOpen);
         form.reset();
     }
+    function handleAddArtistDataClick() {
+        if (session != null) {
+            setIsModalOpen(true);
+            return;
+        }
+        const loginBtn = document.getElementById("login-btn");
+        if (loginBtn) {
+            loginBtn.click();
+        }
+    }
 
     function checkInput() {
         if (addArtistResp?.status === "success") {
@@ -80,24 +91,16 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     }
     return (
         <>
-            {session === null ? <Login buttonText="Add Artist Data!" isplaceholder={true} buttonStyles="text-white bg-black border border-black" /> :
-                <Button
-                    className="text-white bg-black border border-black"
-                    disabled={session === null}
-                    onClick={() => setIsModalOpen(true)} variant="outline"
-                >
-                    Add Artist Data!
-                </Button>
-            }
+            <Button
+                className="text-white bg-pastypink p-2"
+                onClick={handleAddArtistDataClick} variant="outline"
+            >
+                <Plus />
+            </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                            <DialogHeader>
-                                <DialogTitle>
-                                    Add Artist Data for {artist.name}
-                                </DialogTitle>
-                            </DialogHeader>
                             <div>
                                 <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full">
                                     {(spotifyImg) &&
@@ -105,10 +108,14 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                     }
                                 </AspectRatio>
                             </div>
+                            <DialogHeader>
+                                <DialogTitle>
+                                    <p>
+                                        Add a place where {artist.name} can be found
+                                    </p>
+                                </DialogTitle>
+                            </DialogHeader>
                             <div className="grid gap-4 text-black">
-                                <Label className="text-sm text-slate-500">
-                                    Input one of the options below to add a new card
-                                </Label>
                                 <FormField
                                     control={form.control}
                                     name="artistDataUrl"
@@ -116,13 +123,15 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                         <FormItem>
                                             <div className="flex gap-4">
                                                 <FormControl>
-                                                    <Input
-                                                        placeholder={selectedOption}
-                                                        onClick={checkInput}
-                                                        id="name"
-                                                        className="col-span-3 text-black border-2 border-black"
-                                                        {...field}
-                                                    />
+                                                    <div className="flex-grow px-3 py-0 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                                                        <Input
+                                                            placeholder={selectedOption}
+                                                            onClick={checkInput}
+                                                            id="name"
+                                                            className="w-full p-0 bg-transparent focus:outline-none text-md"
+                                                            {...field}
+                                                        />
+                                                    </div>
                                                 </FormControl>
                                                 <AddArtistDataOptions availableLinks={availableLinks} setOption={(option) => setSelectedOption(option)} />
                                             </div>
@@ -132,13 +141,13 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                 />
                             </div>
                             <p>
-                                Once you submit the card we&apos;ll look it over to make sure it all checks out!
+                                Once you submit the link we&apos;ll look it over to make sure it all checks out!
                             </p>
                             <DialogFooter className="flex sm:flex-col gap-4">
                                 {addArtistResp && addArtistResp.status === "error" ?
                                     <Label className="text-red-600">{addArtistResp.message}</Label> : null
                                 }
-                                <Button type="submit" className="">
+                                <Button type="submit" className="bg-pastyblue hover:bg-gray-400 text-white">
                                     {isLoading ?
                                         <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                         : <span>Add Artist Data</span>

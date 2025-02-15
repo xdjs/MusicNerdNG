@@ -4,35 +4,35 @@ import Link from "next/link"
 import SearchBar from "./components/SearchBar"
 import AddArtist from "./components/AddArtist";
 import Login from "@/app/_components/nav/components/Login";
-import { headers } from "next/headers";
-import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { SessionProvider } from "next-auth/react";
+import { usePathname } from "next/navigation";
+import LoginProviders from "@/app/_components/nav/components/LoginProviders";
 
 export default function Wrapper() {
     return (
-        <SessionProvider>
-            <Nav />
-        </SessionProvider>
+        <LoginProviders>
+            <Nav/>
+        </LoginProviders>
     )
 }
 
 function Nav() {
-    const { data: session } = useSession();
-    const currentPath = usePathname();
-    if (currentPath === "/") return null;
+    const {data: session} = useSession();
+    const pathname = usePathname();
+    if(pathname === "/") return null;
+    
     return (
-        <nav className="p-6 nav-bar flex items-center justify-between w-full">
+        <nav className="p-6 nav-bar flex items-center justify-between max-w-[900px] mx-auto">
 
-            <Link href={"/"}>
+            <Link href={"/"} className="">
                 <img
                     src="/musicNerdLogo.png"
-                    className="w-16"
+                    className="w-16 hover:animate-[spin_3s_linear_infinite]"
                     alt="logo"
                 />
             </Link>
 
-            <div className="flex gap-2">
+            <div className="flex items-center justify-center gap-2 flex-grow">
                 <SearchBar />
                 <AddArtist session={session} />
             </div>

@@ -117,7 +117,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     };
 
     return (
-        <div className="relative w-full max-w-md z-30 text-black">
+        <div className="relative w-full max-w-[400px] z-30 text-black">
             <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
                 <Search size={24} strokeWidth={2.5} />
                 <Input

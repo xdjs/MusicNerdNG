@@ -9,6 +9,7 @@ import Link from "next/link";
 import AddArtistData from "./_components/AddArtistData";
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
+import Dashboard2 from "./_components/Dashboard2";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -30,6 +31,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
         getArtistWiki(artist.wikipedia ?? ""),
         getAllLinks()
     ]);
+
+    return (
+        <section className="flex flex-col items-center justify-center py-5">
+            <Dashboard2 artist={artist} img={spotifyImg.artistImage} bio={wiki?.blurb} session={session} availableLinks={allLinks} isOpenOnLoad={opADM === "1"} />
+        </section>
+    )
 
     return (
         <>

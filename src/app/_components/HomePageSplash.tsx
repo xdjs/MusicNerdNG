@@ -1,7 +1,11 @@
+"use client"
+
 import { Suspense } from "react";
 import SearchBar from "./nav/components/SearchBar";
+import SlidingText from "./SlidingText";
+import TypewriterText from "./TypeWriter";
 
-export default async function HomePage() {
+export default function HomePage({ animation }: { animation: string }) {
 
     const titles = [
         {
@@ -30,8 +34,67 @@ export default async function HomePage() {
         },
     ]
 
+    const titleNodes = titles.map((title, index) => (
+        <div key={index} style={{ color: title.color }} className="lowercase w-full flex home-text-h2">
+            <h2 className="w-1/2 text-right pr-[0.4rem]">
+                {title.label[0]}
+            </h2>
+            <h2 className="w-1/2 pl-[0.4rem]">
+                {title.label[1]}
+            </h2>
+        </div>
+    ))
+
+    const slidingNodes = titles.map((title, index) => (
+        <div key={index} style={{ color: title.color }} className="lowercase w-full justify-center flex home-text-h2">
+            <h2 className="">
+                {title.label[0]} {" "} {title.label[1]}
+            </h2>
+        </div>
+    ))
+
+    function getTypewriterNodes(titles: { label: string[], color: string }[]) {
+        let prevCharCount = 0;
+        return titles.map((title, index) => {
+            const charCount = title.label[1].length;
+            const delay = 80 * (charCount + prevCharCount) + index * 100;
+            prevCharCount += charCount;
+            return (
+                <div key={index} style={{ color: title.color }} className="lowercase w-full flex home-text-h2">
+                    <h2 className="w-1/2 text-right pr-[0.4rem]">
+                        {title.label[0]}
+                    </h2>
+                    <h2 className="w-1/2 pl-[0.4rem]">
+                        <TypewriterText text={title.label[1]} startDelay={delay} />
+                    </h2>
+                </div>
+            )
+        })
+    }
+
+    // const typeWriterNodes = titles.map((title, index) => (
+    //     <div key={index} style={{ color: title.color }} className="lowercase w-full flex home-text-h2">
+    //     <h2 className="w-1/2 text-right pr-[0.4rem]">
+    //         {title.label[0]}
+    //     </h2>
+    //     <h2 className="w-1/2 pl-[0.4rem]">
+    //         <TypewriterText texts={[...title.label[1]]} delay={100} />
+    //     </h2>
+    // </div>
+    // ))
+
+    const animations = {
+        static: titleNodes,
+        slide: <SlidingText items={slidingNodes} interval={800} />,
+        typewriter: getTypewriterNodes(titles),
+    }
+
+    function getAnimation(animation: string) {
+        return animations[animation as keyof typeof animations];
+    }
+
     return (
-        <div className="p-6 sm:p-8 flex flex-col justify-between h-full w-full">
+        <div className="p-6 sm:p-8 flex flex-col justify-center flex-grow h-full w-full">
 
             <div className="w-full">
                 <div className="flex flex-col items-center md:fixed md:left-8 md:top-8 mb-4">
@@ -53,16 +116,7 @@ export default async function HomePage() {
                             lineHeight: 'clamp(36px, calc(36px + (78 - 36) * ((100vw - 360px) / (1440 - 360))), 78px)'
                         }}
                     >
-                        {titles.map((title, index) => (
-                            <div key={index} style={{ color: title.color }} className="lowercase w-full flex">
-                                <div className="w-1/2 text-right pr-[0.4rem]">
-                                    {title.label[0]}
-                                </div>
-                                <div className="w-1/2 pl-[0.4rem]">
-                                    {title.label[1]}
-                                </div>
-                            </div>
-                        ))}
+                        {getAnimation(animation)}
                     </div>
                 </div>
                 <div className="flex flex-col items-center w-full px-4">

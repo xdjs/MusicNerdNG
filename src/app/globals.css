@@ -146,6 +146,16 @@ body {
   padding-bottom: 24px;
 }
 
+.home-text-h2 {
+  font-size: clamp(28px, calc(28px + (78 - 28) * ((100vw - 360px) / (1440 - 360))), 70px);
+  letter-spacing: clamp(-1px, calc(-1px + (-3 - -1) * ((100vw - 360px) / (1440 - 360))), -3px);
+  line-height: clamp(36px, calc(36px + (78 - 36) * ((100vw - 360px) / (1440 - 360))), 70px);
+}
+
+.home-text-height {
+  max-height: clamp(36px, calc(36px + (78 - 36) * ((100vw - 360px) / (1440 - 360))), 70px);
+}
+
 .SearchBar {
   max-width: 30rem;
   flex-grow: 1;
