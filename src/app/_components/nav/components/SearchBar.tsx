@@ -77,76 +77,49 @@ interface UserResults {
 }
 
 const SearchBar = ({className, placeholder}: {className?: string, placeholder?: string}) => {
+    const router = useRouter();
     const defaultClassName = "w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300";
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
-    const searchParams = useSearchParams();
-    const resultsContainer = useRef<HTMLDivElement>(null);
+    const searchParams = useSearchParams()
+    const resultsContainer = useRef(null);
     const search = searchParams.get('search');
-
-    useEffect(() => {
-        return () => {
-            setShowResults(false);
-            setQuery('');
-        };
-    }, []);
 
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
-            if (!debouncedQuery) return undefined;
-            const data = await searchForArtistByName(debouncedQuery);
-            return data;
+            if (!debouncedQuery) return null;
+            const data = await searchForArtistByName(debouncedQuery)
+            return data
         },
-        staleTime: 1000 * 60,
-        cacheTime: 1000 * 60 * 5,
-        enabled: Boolean(debouncedQuery),
-    });
+    })
 
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (resultsContainer.current && !resultsContainer.current.contains(event.target as Node)) {
-                setShowResults(false);
-            }
-        }
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, []);
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
         setQuery(value);
-        setShowResults(true);
     };
 
     return (
-        <div className="relative w-full" ref={resultsContainer}>
+        <div className="relative w-full max-w-md z-30 text-black">
             <input
+                onBlur={() => setShowResults(false)}
+                onFocus={() => setShowResults(true)}
                 type="text"
-                className={className ?? defaultClassName}
-                placeholder={placeholder ?? "Search..."}
                 value={query}
                 onChange={handleInputChange}
-                onFocus={() => setShowResults(true)}
+                className={className ?? defaultClassName}
+                placeholder={placeholder ?? 'Search...'}
             />
-            {showResults && (
-                <div className="absolute w-full bg-white mt-1 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-                    {isLoading || isFetching ? (
-                        <div className="px-4 py-2">Loading...</div>
-                    ) : (
-                        <Users
-                            users={data || undefined}
-                            search={search ?? ''}
-                            setQuery={(newQuery) => {
-                                setQuery(newQuery);
-                                setShowResults(false);
-                            }}
-                        />
-                    )}
+            {(showResults && query.length >= 1) && (
+                <div ref={resultsContainer} className="absolute left-0 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {isLoading ? <Skeleton /> :
+                        <>
+                            {data &&
+                                <Users users={data} search={search ?? ""} setQuery={setQuery}/>
+                            }
+                        </>
+                    }
                 </div>
             )}
         </div>
