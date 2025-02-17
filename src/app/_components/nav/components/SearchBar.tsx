@@ -39,23 +39,28 @@ function Users({
     users: Artist[] | undefined,
     search: string,
     setQuery: (query: string) => void,
-}) {
+}
+) {
+    const router = useRouter();
+
+    function navigateToUser(artist: Artist) {
+        setQuery(artist.name ?? "");
+        router.push(`/artist/${artist.id}`);
+    }
+
     return (
         <>
             {users && users.map(u => {
                 return (
-                    <div key={u.id}>
+                    <div key={u.id} >
                         <Link
                             className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                            onMouseDown={() => navigateToUser(u)}
                             href={{
                                 pathname: `/artist/${u.id}`,
                                 query: {
                                     ...(search ? { search } : {}),
                                 }
-                            }}
-                            onMouseDown={(e) => {
-                                e.preventDefault();
-                                setQuery(u.name ?? "");
                             }}
                         >
                             {u.name}
@@ -72,49 +77,76 @@ interface UserResults {
 }
 
 const SearchBar = ({className, placeholder}: {className?: string, placeholder?: string}) => {
-    const router = useRouter();
     const defaultClassName = "w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300";
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
-    const searchParams = useSearchParams()
-    const resultsContainer = useRef(null);
+    const searchParams = useSearchParams();
+    const resultsContainer = useRef<HTMLDivElement>(null);
     const search = searchParams.get('search');
+
+    useEffect(() => {
+        return () => {
+            setShowResults(false);
+            setQuery('');
+        };
+    }, []);
 
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
             if (!debouncedQuery) return null;
-            const data = await searchForArtistByName(debouncedQuery)
-            return data
+            const data = await searchForArtistByName(debouncedQuery);
+            return data;
         },
-    })
+        staleTime: 1000 * 60,
+        cacheTime: 1000 * 60 * 5,
+        enabled: Boolean(debouncedQuery),
+    });
 
-    const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (resultsContainer.current && !resultsContainer.current.contains(event.target as Node)) {
+                setShowResults(false);
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
         setQuery(value);
+        setShowResults(true);
     };
 
     return (
-        <div className="relative w-full max-w-md z-30 text-black">
+        <div className="relative w-full" ref={resultsContainer}>
             <input
-                onBlur={() => setShowResults(false)}
-                onFocus={() => setShowResults(true)}
                 type="text"
+                className={className ?? defaultClassName}
+                placeholder={placeholder ?? "Search..."}
                 value={query}
                 onChange={handleInputChange}
-                className={className ?? defaultClassName}
-                placeholder={placeholder ?? 'Search...'}
+                onFocus={() => setShowResults(true)}
             />
-            {(showResults && query.length >= 1) && (
-                <div ref={resultsContainer} className="absolute left-0 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {isLoading ? <Skeleton /> :
-                        <>
-                            {data &&
-                                <Users users={data} search={search ?? ""} setQuery={setQuery}/>
-                            }
-                        </>
-                    }
+            {showResults && (
+                <div className="absolute w-full bg-white mt-1 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                    {isLoading || isFetching ? (
+                        <div className="px-4 py-2">Loading...</div>
+                    ) : (
+                        <Users
+                            users={data}
+                            search={search ?? ''}
+                            setQuery={(newQuery) => {
+                                setQuery(newQuery);
+                                setShowResults(false);
+                            }}
+                        />
+                    )}
                 </div>
             )}
         </div>
