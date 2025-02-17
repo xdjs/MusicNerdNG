@@ -39,29 +39,21 @@ function Users({
     users: Artist[] | undefined,
     search: string,
     setQuery: (query: string) => void,
-}
-) {
-    const router = useRouter();
-
-    function navigateToUser(artist: Artist) {
-        setQuery(artist.name ?? "");
-        router.push(`/artist/${artist.id}`);
-    }
-
+}) {
     return (
         <>
             {users && users.map(u => {
                 return (
-                    <div key={u.id} >
+                    <div key={u.id}>
                         <Link
                             className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                            onMouseDown={() => navigateToUser(u)}
                             href={{
                                 pathname: `/artist/${u.id}`,
                                 query: {
                                     ...(search ? { search } : {}),
                                 }
                             }}
+                            onClick={() => setQuery(u.name ?? "")}
                         >
                             {u.name}
                         </Link>
