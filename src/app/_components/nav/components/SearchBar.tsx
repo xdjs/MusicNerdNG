@@ -53,7 +53,10 @@ function Users({
                                     ...(search ? { search } : {}),
                                 }
                             }}
-                            onClick={() => setQuery(u.name ?? "")}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                setQuery(u.name ?? "");
+                            }}
                         >
                             {u.name}
                         </Link>
