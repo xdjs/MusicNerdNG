@@ -95,7 +95,7 @@ const SearchBar = ({className, placeholder}: {className?: string, placeholder?: 
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
-            if (!debouncedQuery) return null;
+            if (!debouncedQuery) return undefined;
             const data = await searchForArtistByName(debouncedQuery);
             return data;
         },
@@ -139,7 +139,7 @@ const SearchBar = ({className, placeholder}: {className?: string, placeholder?: 
                         <div className="px-4 py-2">Loading...</div>
                     ) : (
                         <Users
-                            users={data}
+                            users={data || undefined}
                             search={search ?? ''}
                             setQuery={(newQuery) => {
                                 setQuery(newQuery);
