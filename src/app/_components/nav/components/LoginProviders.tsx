@@ -23,7 +23,7 @@ import { ReactNode } from "react";
 const queryClient = new QueryClient();
 
 const config = getDefaultConfig({
-    appName: 'fsot',
+    appName: 'Music Nerd',
     projectId: '929ab7024658ec19d047d5df44fb0f63',
     chains: [mainnet, polygon, optimism, arbitrum, base],
 });
