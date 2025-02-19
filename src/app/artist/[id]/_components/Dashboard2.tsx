@@ -32,7 +32,7 @@ export default function Dashboard2({ artist, img, bio, session, availableLinks, 
                 <TabsTrigger className="text-2xl data-[state=active]:bg-pastypink/90 data-[state=active]:text-white md:data-[state=active]:bg-pastyblue/90" value="presences"><Link /></TabsTrigger>
             </TabsList>
             <TabsContent value="artist">
-                <Card className="h-[520px]">
+                <Card className="h-[520px] overflow-y-auto scrollbar-hide">
                     <CardHeader>
                         <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                             {(img) && <img src={img} alt="Artist Image" className="object-cover w-full h-full" />}

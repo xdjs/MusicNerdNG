@@ -129,7 +129,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                                             placeholder="https://open.spotify.com/artist/Id"
                                                             onClick={checkAddedArtistStatus}
                                                             id="name"
-                                                            className="w-full p-0 bg-transparent focus:outline-none text-md"
+                                                            className="w-full p-0 bg-transparent focus:outline-none"
                                                             {...field}
                                                         />
                                                     </div>

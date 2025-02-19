@@ -32,7 +32,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
         getArtistWiki(artist.wikipedia ?? ""),
         getArtistLinks(artist),
-        getAiResponse(`Give me a 230 characterbio of the artist ${JSON.stringify(artist)} be casual and focus on web3 only if they are a web3 artist don't add any extra details of how the composition was made`)
+        getAiResponse(`Give me a 430 characterbio of the artist ${JSON.stringify(artist)} be casual and focus on web3 only if they are a web3 artist don't add any extra details of how the composition was made`)
     ]);
 
     return (
