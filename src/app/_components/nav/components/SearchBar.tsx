@@ -98,7 +98,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
-    const searchParams = useSearchParams()
+    const searchParams = useSearchParams();
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
 

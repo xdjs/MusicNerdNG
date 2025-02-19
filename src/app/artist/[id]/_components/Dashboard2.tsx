@@ -54,10 +54,10 @@ export default function Dashboard2({ artist, img, bio, session, availableLinks, 
                     <CardHeader>
                         <CardTitle className="flex gap-3 items-center">
                             <AddArtistData artist={artist} session={session} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} spotifyImg={img} />
-                            <p>{artist.name}'s Presences</p>
+                            <p>{artist.name}&apos; Presences</p>
                         </CardTitle>
                         <CardDescription >
-                            If we're missing links, help the artist out by adding them here!
+                            If we&apos;re missing links, help the artist out by adding them here!
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2 flex-grow">
