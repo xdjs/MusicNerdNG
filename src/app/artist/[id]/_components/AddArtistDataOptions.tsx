@@ -20,8 +20,6 @@ export default function AddArtistDataOptions({availableLinks, setOption}: {avail
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="max-h-48 overflow-auto scrollbar-hide" align="end">
-                <DropdownMenuLabel>Data source options</DropdownMenuLabel>
-                <DropdownMenuSeparator />
                 {dataOptions}
             </DropdownMenuContent>
         </DropdownMenu>

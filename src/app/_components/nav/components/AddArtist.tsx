@@ -100,8 +100,8 @@ export default function AddArtist({ session }: { session: Session | null }) {
                 <Plus color="white" />
             </Button>
 
-            <Dialog open={isModalOpen} onOpenChange={closeModal}>
-                <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >
+            <Dialog open={isModalOpen} onOpenChange={closeModal} >
+                <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">
                         {spotifyArtistUrlRegex.test(form.getValues().artistSpotifyUrl) ?
                             <Spotify link={artistSpotifyUrl} /> :

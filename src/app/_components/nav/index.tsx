@@ -22,7 +22,7 @@ function Nav() {
     if(pathname === "/") return null;
     
     return (
-        <nav className="p-6 nav-bar flex items-center justify-between max-w-[900px] mx-auto">
+        <nav className="p-6 nav-bar flex items-center justify-between max-w-[1000px] mx-auto">
 
             <Link href={"/"} className="">
                 <img

@@ -1,6 +1,7 @@
-import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean } from "drizzle-orm/pg-core"
+import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, bigint, pgEnum } from "drizzle-orm/pg-core"
   import { sql } from "drizzle-orm"
 
+export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
 
 
 
@@ -37,6 +38,9 @@ export const urlmap = pgTable("urlmap", {
 	regex: text("regex").default('""').notNull(),
 	regexMatcher: text("regex_matcher"),
 	isMonetized: boolean("is_monetized").default(false).notNull(),
+	regexOptions: text("regex_options").array(),
+	platformTypeList: platformType("platform_type_list").array().default(["social"]),
+	colorHex: text("color_hex").notNull(),
 },
 (table) => {
 	return {
@@ -65,24 +69,6 @@ export const featured = pgTable("featured", {
 			foreignColumns: [artists.id],
 			name: "featured_featured_collector_fkey"
 		}),
-	}
-});
-
-export const users = pgTable("users", {
-	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
-	email: text("email"),
-	username: text("username"),
-	wallet: text("wallet").notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
-	legacyId: text("legacy_id"),
-	isAdmin: boolean("is_admin").default(false).notNull(),
-	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
-	isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
-},
-(table) => {
-	return {
-		usersWalletKey: unique("users_wallet_key").on(table.wallet),
 	}
 });
 
@@ -179,5 +165,25 @@ export const ugcresearch = pgTable("ugcresearch", {
 			name: "ugcresearch_user_id_fkey"
 		}),
 		ugcresearchIdKey: unique("ugcresearch_id_key").on(table.id),
+	}
+});
+
+export const users = pgTable("users", {
+	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	email: text("email"),
+	username: text("username"),
+	wallet: text("wallet").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	legacyId: text("legacy_id"),
+	isAdmin: boolean("is_admin").default(false).notNull(),
+	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
+	isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	acceptedUgcCount: bigint("accepted_ugc_count", { mode: "number" }),
+},
+(table) => {
+	return {
+		usersWalletKey: unique("users_wallet_key").on(table.wallet),
 	}
 });

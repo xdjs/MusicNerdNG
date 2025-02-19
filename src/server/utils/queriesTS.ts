@@ -4,7 +4,7 @@ import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains } from "drizzle-orm";
 import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
-import { Artist } from '../db/DbTypes';
+import { Artist, UrlMap } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
 import { DateRange } from 'react-day-picker';
@@ -111,11 +111,15 @@ export async function getAllLinks() {
     return result;
 }
 
-export async function getArtistLinks(artist: Artist) {
+export type ArtistLink = UrlMap & {
+    artistUrl: string
+}
+
+export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
     try {
         const allLinkObjects = await getAllLinks();
         if (!artist) throw new Error("Artist not found");
-        const artistLinksSiteNames = [];
+        const artistLinksSiteNames: ArtistLink[] = [];
         for (const platform of allLinkObjects) {
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
                 artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });

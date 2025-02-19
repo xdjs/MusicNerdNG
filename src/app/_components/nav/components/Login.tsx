@@ -13,11 +13,9 @@ export default  function Login({ buttonChildren, buttonStyles = "bg-gray-100", i
     const [currentStatus, setCurrentStatus] = useState(status);
 
     useEffect(() => {
-        console.log("currentStatus", status)
         // Refresh that page if the user is authenticated or unauthenticated
         if (currentStatus !== status && currentStatus !== "loading") {
             setCurrentStatus(status);
-            console.log("refreshing page")
             // Refresh the page once the login is successful
             location.reload();
         }
