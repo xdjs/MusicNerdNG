@@ -3,9 +3,16 @@ import SearchBar from "./components/SearchBar"
 import AddArtist from "./components/AddArtist";
 import Login from "@/app/_components/nav/components/Login";
 import { getServerAuthSession } from "@/server/auth";
+import { headers } from 'next/headers'
 
 export default async function Nav() {
+    const headersList = headers()
+    const pathname = headersList.get('x-pathname') ?? '/'
+    
+    if (pathname === '/') return null
+    
     const session = await getServerAuthSession();
+
     return (
         <nav className="nav-bar grow flex items-center">
             <Link href={"/"}>
