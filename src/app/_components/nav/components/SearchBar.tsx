@@ -44,8 +44,7 @@ function Users({
 
     function navigateToUser(artist: Artist) {
         setQuery(artist.name ?? "");
-        // router.push(`/artist/${artist.id}`);
-        window.location.href = `/artist/${artist.id}`;
+        router.push(`/artist/${artist.id}`);
     }
 
     return (
