@@ -3,19 +3,11 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import '@rainbow-me/rainbowkit/styles.css';
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from 'react';
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import LoginProviders from './LoginProviders';
+import { Wallet } from 'lucide-react';
 
-export default function Wrapper({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
-    return (
-        <LoginProviders>
-            <Login buttonText={buttonText} buttonStyles={buttonStyles} isplaceholder={isplaceholder} />
-        </LoginProviders>
-    )
-}
 
-function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { buttonText?: string, buttonStyles: string, isplaceholder?: boolean }) {
+export default  function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
 
     const { data: session, status } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
@@ -41,8 +33,6 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
                 authenticationStatus,
                 mounted,
             }) => {
-                // Note: If your app doesn't use authentication, you
-                // can remove all 'authenticationStatus' checks
                 const ready = mounted && authenticationStatus !== 'loading';
                 const connected =
                     ready &&
@@ -50,22 +40,21 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
                     chain &&
                     (authenticationStatus === 'authenticated');
 
+                if (!ready) {
+                    return (
+                        <Button className={` bg-gray-400 animate-pulse w-12 h-12 px-0`} size="lg" onClick={openConnectModal} type="button" >
+                        </Button>
+                    )
+                }
+
                 return (
                     <div
-                        {...(!ready && {
-                            'aria-hidden': true,
-                            'style': {
-                                opacity: 0,
-                                pointerEvents: 'none',
-                                userSelect: 'none',
-                            },
-                        })}
                     >
                         {(() => {
                             if (!connected) {
                                 return (
-                                    <Button className={`${buttonStyles} hover:opacity-75`} onClick={openConnectModal} type="button">
-                                        {buttonText ?? "Connect Wallet"}
+                                    <Button className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} id="login-btn" size="lg" onClick={openConnectModal} type="button" >
+                                        {buttonChildren ?? <Wallet color="white" />}
                                     </Button>
                                 );
                             }
@@ -80,9 +69,11 @@ function Login({ buttonText, buttonStyles = "", isplaceholder = false }: { butto
 
                             return (
                                 <div style={{ display: 'flex', gap: 12 }}>
-                                    <Button onClick={openAccountModal} type="button">
+                                    <Button onClick={openAccountModal} type="button" className="bg-pastypink text-black px-3  hover:bg-gray-200 transition-colors duration-300" size="lg" >
                                         {isplaceholder ? <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
-                                            : account.displayName}
+                                            : <label className="text-xl">🥳</label>
+                                        }
+
                                     </Button>
                                 </div>
                             );

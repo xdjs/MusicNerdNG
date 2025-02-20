@@ -89,12 +89,7 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: white;
 }
 
 @layer utilities {
@@ -143,19 +138,22 @@ body {
   align-items: center; /* Vertically center the items */
 }
 
-.nav-bar {
-  padding-top: 30px;
-  padding-bottom: 30px;
-  padding-left: 20px;
-  padding-right: 20px;
-  column-gap: 6px;
-}
 
 .home-text {
   padding-left: 20px;
   padding-right: 20px;
   padding-top: 0px;
   padding-bottom: 24px;
+}
+
+.home-text-h2 {
+  font-size: clamp(28px, calc(28px + (78 - 28) * ((100vw - 360px) / (1440 - 360))), 70px);
+  letter-spacing: clamp(-1px, calc(-1px + (-3 - -1) * ((100vw - 360px) / (1440 - 360))), -3px);
+  line-height: clamp(36px, calc(36px + (78 - 36) * ((100vw - 360px) / (1440 - 360))), 70px);
+}
+
+.home-text-height {
+  max-height: clamp(36px, calc(36px + (78 - 36) * ((100vw - 360px) / (1440 - 360))), 70px);
 }
 
 .SearchBar {

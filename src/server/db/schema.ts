@@ -1,7 +1,6 @@
-import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean } from "drizzle-orm/pg-core"
-  import { is, relations, sql } from "drizzle-orm"
-
-
+import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, pgEnum } from "drizzle-orm/pg-core"
+import { is, relations, sql } from "drizzle-orm"
+export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
 
 
 export const ugcwhitelist = pgTable("ugcwhitelist", {
@@ -9,15 +8,15 @@ export const ugcwhitelist = pgTable("ugcwhitelist", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow(),
 },
-(table) => {
-	return {
-		ugcwhitelistUseridFkey: foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "ugcwhitelist_userid_fkey"
-		}),
-	}
-});
+	(table) => {
+		return {
+			ugcwhitelistUseridFkey: foreignKey({
+				columns: [table.userId],
+				foreignColumns: [users.id],
+				name: "ugcwhitelist_userid_fkey"
+			}),
+		}
+	});
 
 export const urlmap = pgTable("urlmap", {
 	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
@@ -35,17 +34,20 @@ export const urlmap = pgTable("urlmap", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`),
 	siteImage: text("site_image"),
 	regex: text("regex").default('""').notNull(),
+	regexMatcher: text("regex_matcher"),
 	isMonetized: boolean("is_monetized").default(false).notNull(),
 	regexOptions: text("regex_options").array(),
+	platformTypeList: platformType("platform_type_list").array().default(["social"]),
+	colorHex: text("color_hex").notNull(),
 },
-(table) => {
-	return {
-		urlmapSiteurlKey: unique("urlmap_siteurl_key").on(table.siteUrl),
-		urlmapSitenameKey: unique("urlmap_sitename_key").on(table.siteName),
-		urlmapExampleKey: unique("urlmap_example_key").on(table.example),
-		urlmapAppstingformatKey: unique("urlmap_appstingformat_key").on(table.appStringFormat),
-	}
-});
+	(table) => {
+		return {
+			urlmapSiteurlKey: unique("urlmap_siteurl_key").on(table.siteUrl),
+			urlmapSitenameKey: unique("urlmap_sitename_key").on(table.siteName),
+			urlmapExampleKey: unique("urlmap_example_key").on(table.example),
+			urlmapAppstingformatKey: unique("urlmap_appstingformat_key").on(table.appStringFormat),
+		}
+	});
 
 export const featured = pgTable("featured", {
 	id: uuid("id").default(sql`uuid_generate_v4()`),
@@ -54,25 +56,25 @@ export const featured = pgTable("featured", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }),
 },
-(table) => {
-	return {
-		featuredFeaturedartistFkey: foreignKey({
-			columns: [table.featuredArtist],
-			foreignColumns: [artists.id],
-			name: "featured_featuredartist_fkey"
-		}),
-		featuredFeaturedcollectorFkey: foreignKey({
-			columns: [table.featuredCollector],
-			foreignColumns: [artists.id],
-			name: "featured_featuredcollector_fkey"
-		}),
-	}
-});
+	(table) => {
+		return {
+			featuredFeaturedartistFkey: foreignKey({
+				columns: [table.featuredArtist],
+				foreignColumns: [artists.id],
+				name: "featured_featuredartist_fkey"
+			}),
+			featuredFeaturedcollectorFkey: foreignKey({
+				columns: [table.featuredCollector],
+				foreignColumns: [artists.id],
+				name: "featured_featuredcollector_fkey"
+			}),
+		}
+	});
 
 export const featuredRelations = relations(featured, ({ one }) => ({
 	featuredArtist: one(artists, { fields: [featured.featuredArtist], references: [artists.id], relationName: "featuredArtistObject" }),
 	featuredCollector: one(artists, { fields: [featured.featuredCollector], references: [artists.id], relationName: "featuredcollector" }),
-  }));
+}));
 
 export const users = pgTable("users", {
 	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
@@ -85,11 +87,11 @@ export const users = pgTable("users", {
 	isAdmin: boolean("is_admin").default(false).notNull(),
 	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
 },
-(table) => {
-	return {
-		usersWalletKey: unique("users_wallet_key").on(table.wallet),
-	}
-});
+	(table) => {
+		return {
+			usersWalletKey: unique("users_wallet_key").on(table.wallet),
+		}
+	});
 
 export const artists = pgTable("artists", {
 	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
@@ -145,16 +147,17 @@ export const artists = pgTable("artists", {
 	cameo: text("cameo"),
 	farcaster: text("farcaster"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),},
-(table) => {
-	return {
-		artistsAddedbyFkey: foreignKey({
-			columns: [table.addedBy],
-			foreignColumns: [users.id],
-			name: "artists_addedby_fkey"
-		}),
-	}
-});
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+},
+	(table) => {
+		return {
+			artistsAddedbyFkey: foreignKey({
+				columns: [table.addedBy],
+				foreignColumns: [users.id],
+				name: "artists_addedby_fkey"
+			}),
+		}
+	});
 
 export const ugcresearch = pgTable("ugcresearch", {
 	id: uuid("id").default(sql`uuid_generate_v4()`).primaryKey().notNull(),
@@ -170,22 +173,22 @@ export const ugcresearch = pgTable("ugcresearch", {
 	name: text("name"),
 	userId: uuid("user_id"),
 },
-(table) => {
-	return {
-		ugcresearchArtistIdFkey: foreignKey({
-			columns: [table.artistId],
-			foreignColumns: [artists.id],
-			name: "ugcresearch_artistID_fkey"
-		}),
-		ugcresearchUserIdFkey: foreignKey({
-			columns: [table.userId],
-			foreignColumns: [users.id],
-			name: "ugcresearch_userID_fkey"
-		}),
-	}
-});
+	(table) => {
+		return {
+			ugcresearchArtistIdFkey: foreignKey({
+				columns: [table.artistId],
+				foreignColumns: [artists.id],
+				name: "ugcresearch_artistID_fkey"
+			}),
+			ugcresearchUserIdFkey: foreignKey({
+				columns: [table.userId],
+				foreignColumns: [users.id],
+				name: "ugcresearch_userID_fkey"
+			}),
+		}
+	});
 
 export const ugcRelations = relations(ugcresearch, ({ one }) => ({
 	ugcArtist: one(artists, { fields: [ugcresearch.artistId], references: [artists.id], relationName: "ugcArtistObject" }),
 	ugcUser: one(users, { fields: [ugcresearch.userId], references: [users.id], relationName: "ugcUser" }),
-  }));
+}));

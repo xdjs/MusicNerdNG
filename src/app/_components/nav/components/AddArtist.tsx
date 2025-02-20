@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Session } from "next-auth";
 import { Spotify } from "react-spotify-embed";
-import Login from "./Login"
 import Link from "next/link";
 import { set, z } from "zod";
 import { useForm } from "react-hook-form";
@@ -28,6 +27,7 @@ import { addArtist, AddArtistResp } from "@/server/utils/queriesTS";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
+import { Plus } from 'lucide-react';
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
 
@@ -78,25 +78,35 @@ export default function AddArtist({ session }: { session: Session | null }) {
         form.reset();
     }
 
+    function handleAddArtistClick() {
+        if (session != null) {
+            setIsModalOpen(true);
+            return;
+        }
+        const loginBtn = document.getElementById("login-btn");
+        if (loginBtn) {
+            loginBtn.click();
+        }
+    }
+
     return (
         <>
-            {session != null ?
-                <Button
-                    className="text-black"
-                    onClick={() => setIsModalOpen(true)} variant="outline"
-                >
-                    Add Artist
-                </Button>
-                :
-                <Login buttonText="Add Artist" buttonStyles="text-black bg-white" isplaceholder={true} />
-            }
-            <Dialog open={isModalOpen} onOpenChange={closeModal}>
-                <DialogContent className="max-w-sm sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black" >
+
+            <Button
+                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300"
+                onClick={handleAddArtistClick}
+                size="lg"
+            >
+                <Plus color="white" />
+            </Button>
+
+            <Dialog open={isModalOpen} onOpenChange={closeModal} >
+                <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">
                         {spotifyArtistUrlRegex.test(form.getValues().artistSpotifyUrl) ?
                             <Spotify link={artistSpotifyUrl} /> :
-                            <div className="w-[300px] h-[380px] rounded-lg bg-pastyblue flex justify-center items-center text-white">
-                                <h2>Enter a valid Spotify url</h2>
+                            <div className="w-[300px] h-[380px] rounded-lg bg-black flex justify-center items-center text-white">
+                                <img src="/siteIcons/spotify_icon.png" alt="logo" className="w-36" />
                             </div>
                         }
                         <Form {...form}>
@@ -114,7 +124,15 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormControl>
-                                                    <Input onClick={checkAddedArtistStatus} className="border-black border-2 text-black" placeholder="https://open.spotify.com/artist/Id" {...field} />
+                                                    <div className="flex-grow px-3 py-0 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                                                        <Input
+                                                            placeholder="https://open.spotify.com/artist/Id"
+                                                            onClick={checkAddedArtistStatus}
+                                                            id="name"
+                                                            className="w-full p-0 bg-transparent focus:outline-none"
+                                                            {...field}
+                                                        />
+                                                    </div>
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
@@ -122,7 +140,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                     />
                                 </div>
                                 <DialogFooter className="flex sm:flex-col gap-2 sm:justify-start">
-                                    <Button type="submit" className="w-auto self-start">
+                                    <Button type="submit" className="w-auto self-start bg-pastypink">
                                         {isLoading ?
                                             <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                             : <span>Add Artist</span>

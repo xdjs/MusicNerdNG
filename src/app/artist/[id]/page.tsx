@@ -1,5 +1,5 @@
 
-import { getArtistById, getAllLinks } from "@/server/utils/queriesTS";
+import { getArtistById, getAllLinks, getArtistLinks } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Spotify } from 'react-spotify-embed';
@@ -9,6 +9,9 @@ import Link from "next/link";
 import AddArtistData from "./_components/AddArtistData";
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
+import Dashboard2 from "./_components/Dashboard2";
+import LLMChat from "./_components/LLMChat";
+import getAiResponse from "@/server/utils/AiBro";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -28,19 +31,30 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
         getArtistWiki(artist.wikipedia ?? ""),
-        getAllLinks()
+        getArtistLinks(artist),
+        // getAiResponse(`Give me a 230 characterbio of the artist ${JSON.stringify(artist)} be casual and focus on web3 only if they are a web3 artist don't add any extra details of how the composition was made`)
     ]);
+
+    // return (
+    //     <section className="relative block md:grid md:grid-cols-2 items-center justify-center py-5 px-4 gap-8 auto-rows-fr max-w-[1000px] mx-auto">
+    //         <div>
+    //             <Dashboard2 bio={aiResponse.response} artist={artist} img={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={opADM === "1"} />
+    //         </div>
+    //         <div className="hidden md:block">
+    //             <LLMChat artist={artist} />
+    //         </div>
+    //     </section>
+    // )
 
     return (
         <>
-            <div className="gap-4 px-4 flex flex-col md:flex-row">
+            <div className="gap-4 px-4 flex flex-col md:flex-row max-w-[1000px] mx-auto">
                 {/* Artist Info Box */}
-                <div className="bg-white rounded-lg md:w-2/3 gap-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-10 pt-10 pb-0 md:pb-10 w-full">
+                <div className="bg-white rounded-lg md:w-2/3 gap-y-4 shadow-2xl px-5 py-5 md:py-10 md:px-10 space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
                         {/* Left Column: Image and Song */}
                         {(spotifyImg.artistImage) &&
                             <div className="flex flex-col items-center md:items-end">
-
                                 <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                     {(spotifyImg) && <img src={spotifyImg.artistImage} alt="Artist Image" className="object-cover w-full h-full" />}
                                 </AspectRatio>
@@ -83,11 +97,11 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             }
                         </div>
                     </div>
-                    <div className="ml-10 pb-4 pr-10">
+                    <div className="space-y-6">
                         <strong className="text-black text-2xl">
                             Check out {artist?.name} on other media platforms!
                         </strong>
-                        <div className="pt-4">
+                        <div className="space-y-4">
                             {(artist) &&
                                 <ArtistLinks isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
                             }
@@ -95,14 +109,14 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     </div>
                 </div>
                 {/* Support Artist Box - Fixed Sidebar */}
-                <div className="bg-white px-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
-                    <div className="top-0 sticky">
-                        <div className="pl-4 pt-10 pb-4 text-black text-2xl">
+                <div className="space-y-4 bg-white p-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
+                    <div className="top-0 sticky space-y-6">
+                        <div className="text-black text-2xl">
                             <strong>
                                 Support {artist?.name}
                             </strong>
                         </div>
-                        <div className="pl-4">
+                        <div className="space-y-4">
                             {(artist) &&
                                 <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
                             }

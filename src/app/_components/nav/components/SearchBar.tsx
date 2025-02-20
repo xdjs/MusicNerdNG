@@ -7,13 +7,15 @@ import { useSearchParams } from 'next/navigation'
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
 import { searchForArtistByName } from '@/server/utils/queriesTS';
 import { Artist } from '@/server/db/DbTypes';
+import { Input } from '@/components/ui/input';
+import { Search } from 'lucide-react';
 
 const queryClient = new QueryClient()
 
-export default function wrapper() {
+export default function wrapper({isTopSide = false}: {isTopSide?: boolean}) {
     return (
         <QueryClientProvider client={queryClient}>
-                <SearchBar />
+            <SearchBar isTopSide={isTopSide} />
         </QueryClientProvider>
     )
 }
@@ -26,6 +28,14 @@ export function Skeleton() {
                 <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill" />
             </svg>
             <span className="sr-only">Loading...</span>
+        </div>
+    )
+}
+
+export function Spinner() {
+    return (
+        <div className="flex justify-center items-center">
+            <img className="h-10" src="/spinner.svg" alt="spinner" />
         </div>
     )
 }
@@ -46,6 +56,14 @@ function Users({
         setQuery(artist.name ?? "");
         router.push(`/artist/${artist.id}`);
     }
+    
+    if(users?.length === 0) {
+        return (
+            <div className="flex justify-center items-center p-3 font-medium">
+                <p>Artist not found!</p>
+            </div>
+        )
+    }
 
     return (
         <>
@@ -53,7 +71,7 @@ function Users({
                 return (
                     <div key={u.id} >
                         <Link
-                            className="block px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                            className="block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg"
                             onMouseDown={() => navigateToUser(u)}
                             href={{
                                 pathname: `/artist/${u.id}`,
@@ -75,12 +93,12 @@ interface UserResults {
     users: Artist[]
 }
 
-const SearchBar = () => {
+const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const router = useRouter();
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
-    const searchParams = useSearchParams()
+    const searchParams = useSearchParams();
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
 
@@ -99,22 +117,26 @@ const SearchBar = () => {
     };
 
     return (
-        <div className="relative w-full max-w-md z-30 text-black">
-            <input
-                onBlur={() => setShowResults(false)}
-                onFocus={() => setShowResults(true)}
-                type="text"
-                value={query}
-                onChange={handleInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300"
-                placeholder="Search..."
-            />
+        <div className="relative w-full max-w-[400px] z-30 text-black">
+            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                <Search size={24} strokeWidth={2.5} />
+                <Input
+                    onBlur={() => setShowResults(false)}
+                    onFocus={() => setShowResults(true)}
+                    type="text"
+                    value={query}
+                    onChange={handleInputChange}
+                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                    placeholder="Search"
+                />
+            </div>
             {(showResults && query.length >= 1) && (
-                <div ref={resultsContainer} className="absolute left-0 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {isLoading ? <Skeleton /> :
+                <div ref={resultsContainer} className={`absolute left   -0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}>
+                    {isLoading ? <Spinner />
+                        :
                         <>
                             {data &&
-                                <Users users={data} search={search ?? ""} setQuery={setQuery}/>
+                                <Users users={data} search={search ?? ""} setQuery={setQuery} />
                             }
                         </>
                     }
