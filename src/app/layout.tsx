@@ -3,6 +3,7 @@ import "./globals.css";
 import Nav from "./_components/nav";
 import { Toaster } from "@/components/ui/toaster";
 import Footer from "./_components/Footer";
+import { headers } from 'next/headers';
 
 export const metadata: Metadata = {
   title: "Music Nerd",
@@ -14,6 +15,10 @@ export default async  function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+
+  const headersList = headers();
+  // read the custom x-url header
+  const header_url = headersList.get('x-current-path') || "";
 
   return (
     <html lang="en"> 
