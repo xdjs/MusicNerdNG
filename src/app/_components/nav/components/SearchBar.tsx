@@ -94,14 +94,16 @@ const SearchBar = ({ placeholder, className }: SearchBarProps) => {
         queryKey: ['userSearchResults', debouncedQuery],
         queryFn: async () => {
             if (!debouncedQuery) return null;
-            const data = await searchForArtistByName(debouncedQuery)
-            return data
+            const response = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
+            if (!response.ok) {
+                throw new Error('Network response was not ok')
+            }
+            return response.json()
         },
     })
 
     const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
-        // console.log(value)
         setQuery(value);
     };
 
