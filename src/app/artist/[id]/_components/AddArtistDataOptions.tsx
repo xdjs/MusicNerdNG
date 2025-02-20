@@ -15,13 +15,11 @@ export default function AddArtistDataOptions({availableLinks, setOption}: {avail
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button className="bg-pastypink text-white h-12 hover:bg-gray-400">
                     Options
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="max-h-48 overflow-auto scrollbar-hide" align="end">
-                <DropdownMenuLabel>Data source options</DropdownMenuLabel>
-                <DropdownMenuSeparator />
                 {dataOptions}
             </DropdownMenuContent>
         </DropdownMenu>

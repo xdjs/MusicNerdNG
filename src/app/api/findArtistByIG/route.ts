@@ -1,4 +1,3 @@
-import { NextApiRequest, NextApiResponse } from 'next';
 import { getArtistByProperty } from '@/server/utils/queriesTS';
 import { artists } from '@/server/db/schema';
 

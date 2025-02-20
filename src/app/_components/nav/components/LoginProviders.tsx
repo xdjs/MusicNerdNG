@@ -26,6 +26,7 @@ const config = getDefaultConfig({
     appName: 'Music Nerd',
     projectId: '929ab7024658ec19d047d5df44fb0f63',
     chains: [mainnet, polygon, optimism, arbitrum, base],
+    appIcon: 'https://www.musicnerd.xyz/musicNerdLogo.png',
 });
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
