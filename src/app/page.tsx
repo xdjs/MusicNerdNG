@@ -16,7 +16,7 @@ export default function HomePage() {
   const [animation, setAnimation] = useState("static");
   return (
     <>
-      <div className="absolute bottom-40 left-50  ">
+      {/* <div className="absolute bottom-40 left-50  ">
         <Select value={animation} onValueChange={setAnimation}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Select Animation" />
@@ -29,7 +29,7 @@ export default function HomePage() {
             </SelectGroup>
           </SelectContent>
         </Select>
-      </div>
+      </div> */}
       <HomePageSplash animation={animation} />
     </>
   );
