@@ -143,13 +143,13 @@ export type AddArtistResp = {
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
-    const user = await getUserById(session.user.id);
-    const headers = await getSpotifyHeaders();
-    const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-    if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
-    const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
-    if (artist) return { status: "exists", artistId: artist.id, artistName: artist.name ?? "", message: "That artist is already in our database" };
     try {
+        const user = await getUserById(session.user.id);
+        const headers = await getSpotifyHeaders();
+        const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
+        if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
+        const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
+        if (artist) return { status: "exists", artistId: artist.id, artistName: artist.name ?? "", message: "That artist is already in our database" };
         const [newArtist] = await db.insert(artists).values(
             {
                 spotify: spotifyId,
