@@ -7,42 +7,47 @@ import Head from "next/head";
 
 export const metadata: Metadata = {
   title: "Music Nerd",
-  description: "A crowd sourced directory of music artists",
+  description: "A crowd-sourced directory of music artists",
+  openGraph: {
+    type: "website",
+    url: "https://www.musicnerd.xyz",
+    title: "Music Nerd",
+    description: "A crowd-sourced directory of music artists",
+    images: [
+      {
+        url: "https://www.musicnerd.xyz/musicNerdLogo.png",
+        width: 800, // Standard Open Graph image size
+        height: 800,
+        alt: "Music Nerd Logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@musicnerd.xyz",
+    title: "Music Nerd",
+    description: "A crowd-sourced directory of music artists",
+    images: ["https://www.musicnerd.xyz/musicNerdLogo.png"],
+  },
+  icons: {
+    icon: "/icon.ico",
+  },
 };
 
-export default async  function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="scrollbar-hide"> 
-      <Head>
-      <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://www.musicnerd.xyz" />
-        <meta property="og:title" content="Music Nerd" />
-        <meta property="og:description" content="A crowd sourced directory of music artists" />
-        <meta property="og:image" content="https://www.musicnerd.xyz/musicNerdLogo.png" />
-        <meta property="og:image:alt" content="Music Nerd Logo" />
-
-        {/* Twitter Card (X, formerly Twitter) */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Music Nerd" />
-        <meta name="twitter:description" content="A crowd sourced directory of music artists" />
-        <meta name="twitter:image" content="https://www.musicnerd.xyz/musicNerdLogo.png" />
-        <meta name="twitter:image:alt" content="Music Nerd Logo" />
-        <meta name="twitter:site" content="@musicnerd.xyz" />
-
-        {/* Favicon (optional but recommended) */}
-        <link rel="icon" href="/icon.ico" />
-      </Head>
+    <html lang="en" className="scrollbar-hide">
       <body className="min-h-screen flex flex-col">
-          <Nav/>
-          <main className="flex-grow flex flex-col min-h-0">
-            {children}
-          </main>
-          <Toaster/>
-          <Footer/>
+        <Nav />
+        <main className="flex-grow flex flex-col min-h-0">
+          {children}
+        </main>
+        <Toaster />
+        <Footer />
       </body>
     </html>
   );
