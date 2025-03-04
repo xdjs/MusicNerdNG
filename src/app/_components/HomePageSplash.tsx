@@ -1,9 +1,9 @@
 "use client"
 
 import { Suspense } from "react";
-import SearchBar from "./nav/components/SearchBar";
 import SlidingText from "./SlidingText";
 import TypewriterText from "./TypeWriter";
+import SpotifySearchBar from "./nav/components/SpotifySearchBar";
 
 export default function HomePage({ animation }: { animation: string }) {
 
@@ -124,7 +124,7 @@ export default function HomePage({ animation }: { animation: string }) {
                         Ask Music Nerd about an artist
                     </div>
                     <Suspense fallback={<div>Loading...</div>}>
-                        <SearchBar isTopSide={true} />
+                        <SpotifySearchBar isTopSide={true} />
                     </Suspense>
                 </div>
             </div>

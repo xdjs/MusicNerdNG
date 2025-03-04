@@ -20,7 +20,7 @@ export async function getFeaturedArtistsTS() {
     let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredArtist?.id } });
     const spotifyHeader = await getSpotifyHeaders();
     if (!spotifyHeader) return [];
-    const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "", spotifyHeader)));
+    const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "")));
     return images;
 }
 
@@ -144,8 +144,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
     const user = await getUserById(session.user.id);
-    const headers = await getSpotifyHeaders();
-    const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
+    const spotifyArtist = await getSpotifyArtist(spotifyId);
     if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
     const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
     if (artist) return { status: "exists", artistId: artist.id, artistName: artist.name ?? "", message: "That artist is already in our database" };

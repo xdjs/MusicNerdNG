@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import SearchBar from "./components/SearchBar"
+import SpotifySearchBar from "./components/SpotifySearchBar"
 import AddArtist from "./components/AddArtist";
 import Login from "@/app/_components/nav/components/Login";
 import { useSession } from "next-auth/react";
@@ -35,7 +35,7 @@ function Nav() {
 
             <div className="flex items-center justify-center gap-2 flex-grow">
                 <Suspense>
-                    <SearchBar />
+                    <SpotifySearchBar isTopSide={false} />
                 </Suspense>
                 <AddArtist session={session} />
             </div>
