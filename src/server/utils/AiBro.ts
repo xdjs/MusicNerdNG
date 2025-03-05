@@ -34,7 +34,7 @@ type AiResponse = {
 
 async function getAiResponse(artistName?: string): Promise<AiResponse> {
     try {
-        let prompt = `Compose a professional and engaging short biography for music artist ${artistName}. The target reading time for this bio is approximately one minute. The bio should present a well-rounded picture of the artist, covering the following key areas in a structured and narrative format:
+        let prompt = `Compose a professional and engaging short biography for music artist ${artistName}. The bio should present a well-rounded picture of the artist, covering the following key areas in a structured and narrative format:
 
 Background and Origins: Begin by establishing the artist's background. Include details such as their place of birth or origin, any significant early life experiences that shaped their artistic path, and how these elements contribute to their identity as an artist. Be specific but concise.
 
