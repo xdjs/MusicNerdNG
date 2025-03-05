@@ -1,4 +1,3 @@
-
 import { getArtistById, getAllLinks, getArtistLinks, getArtistByProperty } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
@@ -19,6 +18,7 @@ type ArtistProfileProps = {
     searchParams: { [key: string]: string | undefined };
 }
 
+
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
     const session = await getServerAuthSession();
     const artist = await getArtistByProperty(artists.spotify, params.id);
@@ -32,7 +32,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
         getNumberOfSpotifyReleases(artist.data.spotify ?? ""),
         getArtistWiki(artist.data.wikipedia ?? ""),
         getArtistLinks(artist.data),
-        getAiResponse(`Give me a 430 characterbio of the artist ${JSON.stringify(artist)} be casual and focus on web3 only if they are a web3 artist don't add any extra details of how the composition was made`)
+        getAiResponse(artist.data.name ?? "")
     ]);
 
     return (
