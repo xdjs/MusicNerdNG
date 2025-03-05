@@ -5,7 +5,7 @@ import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 import Dashboard2 from "./_components/Dashboard2";
 import LLMChat from "./_components/LLMChat";
-import getAiResponse from "@/server/utils/AiBro";
+import { getAiBio } from "@/server/utils/AiBro";
 import { artists } from "@/server/db/schema";
 import { addArtistBySystem } from "@/server/utils/queriesTS";
 
@@ -27,7 +27,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     const [spotifyImg, allLinks, aiResponse] = await Promise.all([
         getSpotifyImage(artist.data.spotify ?? "", undefined),
         getArtistLinks(artist.data),
-        getAiResponse(artist.data.name ?? "")
+        getAiBio(artist.data.name ?? "")
     ]);
 
     return (

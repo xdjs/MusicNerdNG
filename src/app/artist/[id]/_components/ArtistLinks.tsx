@@ -7,7 +7,7 @@ import Image from "next/image";
 const ArtistLinkButton = ({ link }: { link: ArtistLink }) => (
   <Button
     key={link.id}
-    className="w-full hover:bg-opacity-50 items-center justify-start space-x-2 h-auto"
+    className="w-full hover:bg-opacity-60 items-center justify-start space-x-2 h-auto transition-all duration-200 hover:scale-105"  
     style={{ backgroundColor: link.colorHex }}
     asChild
   >

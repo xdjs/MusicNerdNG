@@ -24,7 +24,6 @@ function Nav() {
 
     return (
         <nav className="p-6 nav-bar flex items-center justify-between max-w-[1000px] mx-auto">
-
             <Link href={"/"} className="">
                 <img
                     src="/musicNerdLogo.png"
@@ -32,16 +31,10 @@ function Nav() {
                     alt="logo"
                 />
             </Link>
-
-            <div className="flex items-center justify-center gap-2 flex-grow">
-                <Suspense>
-                    <SpotifySearchBar isTopSide={false} />
-                </Suspense>
-                <AddArtist session={session} />
-            </div>
-            <div className="flex gap-2">
-                <Login buttonStyles="" />
-            </div>
+            <Suspense>
+                <SpotifySearchBar isTopSide={false} />
+            </Suspense>
+            <Login buttonStyles="" />
         </nav>
     )
 }

@@ -23,7 +23,7 @@ import { ArtistLink } from "@/server/utils/queriesTS";
 
 export default function Dashboard2({ artist, img, bio, session, availableLinks, isOpenOnLoad }: { artist: Artist, img: string, bio: string, session: Session | null, availableLinks: ArtistLink[], isOpenOnLoad: boolean }) {
     return (
-        <Tabs defaultValue="artist" className="max-w-full w-[400px] px-4 md:px-0">
+        <Tabs defaultValue="artist" className="max-w-full w-[450px] px-4 md:px-0">
             <TabsList className="grid w-full grid-cols-3 md:grid-cols-2 h-auto items-stretch ">
                 <TabsTrigger className="text-2xl data-[state=active]:bg-pastypink/90 " value="artist">🧑‍🎤</TabsTrigger>
                 <TabsTrigger className="text-2xl md:hidden data-[state=active]:bg-pastyblue/90 data-[state=active]:text-white" value="LLMChat">
@@ -32,11 +32,13 @@ export default function Dashboard2({ artist, img, bio, session, availableLinks, 
                 <TabsTrigger className="text-2xl data-[state=active]:bg-pastypink/90 data-[state=active]:text-white md:data-[state=active]:bg-pastyblue/90" value="presences"><Link /></TabsTrigger>
             </TabsList>
             <TabsContent value="artist">
-                <Card className="h-[520px] overflow-y-auto scrollbar-hide">
+                <Card className="h-[500px] overflow-y-auto scrollbar-hide">
                     <CardHeader>
-                        <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                            {(img) && <img src={img} alt="Artist Image" className="object-cover w-full h-full" />}
-                        </AspectRatio>
+                        <div className="w-2/3">
+                            <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden mb-4 ">
+                                {(img) && <img src={img} alt="Artist Image" className="object-cover w-full h-full" />}
+                            </AspectRatio>
+                        </div>
                         <CardTitle>
                             {artist.name}
                         </CardTitle>
@@ -50,7 +52,7 @@ export default function Dashboard2({ artist, img, bio, session, availableLinks, 
                 <LLMChat artist={artist} />
             </TabsContent>
             <TabsContent value="presences">
-                <Card className="h-[520px] flex flex-col overflow-y-scroll scrollbar-hide">
+                <Card className="h-[500px] flex flex-col overflow-y-scroll scrollbar-hide">
                     <CardHeader>
                         <CardTitle className="flex gap-3 items-center">
                             <AddArtistData artist={artist} session={session} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} spotifyImg={img} />
@@ -61,7 +63,7 @@ export default function Dashboard2({ artist, img, bio, session, availableLinks, 
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2 flex-grow">
-                            <ArtistLinks links={availableLinks} />
+                        <ArtistLinks links={availableLinks} />
                     </CardContent>
                 </Card>
             </TabsContent>
