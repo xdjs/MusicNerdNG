@@ -31,23 +31,23 @@ type getResponse<T> = {
     status: number
 }
 
-export async function getArtistByProperty(column: PgColumn<any>, value: string) : Promise<getResponse<Artist>> {
+export async function getArtistByProperty(column: PgColumn<any>, value: string): Promise<getResponse<Artist>> {
     try {
         const result = await db.query.artists.findFirst({
             where: eq(column, value)
         });
-        if(!result) return {isError: true, status: 404, message: "The artist you're searching for is not found", data: null}
-        return {isError: false, message: "", data: result, status: 200};
+        if (!result) return { isError: true, status: 404, message: "The artist you're searching for is not found", data: null }
+        return { isError: false, message: "", data: result, status: 200 };
     } catch {
-        return {isError: true, message: "Something went wrong on our end", data: null, status: 404}
+        return { isError: true, message: "Something went wrong on our end", data: null, status: 404 }
     }
 }
 
 export async function getArtistByWalletOrEns(value: string) {
     const walletRegex = /^0x[a-fA-F0-9]{40}$/;
-    if(walletRegex.test(value)) {
+    if (walletRegex.test(value)) {
         const result = await getArtistbyWallet(value);
-        if(result.isError) return await getArtistByProperty(artists.ens, value);
+        if (result.isError) return await getArtistByProperty(artists.ens, value);
         return result;
     }
     return await getArtistByProperty(artists.ens, value);
@@ -56,25 +56,25 @@ export async function getArtistByWalletOrEns(value: string) {
 export async function getArtistbyWallet(wallet: string) {
     try {
         const result = await db
-                                .select()
-                                .from(artists)
-                                .where(arrayContains(artists.wallets, [wallet]))
-                                .limit(1);
-        if(!result[0]) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404}
-        return {isError: false, message: "", data: result[0], status: 200};
+            .select()
+            .from(artists)
+            .where(arrayContains(artists.wallets, [wallet]))
+            .limit(1);
+        if (!result[0]) return { isError: true, message: "The artist you're searching for is not found", data: null, status: 404 }
+        return { isError: false, message: "", data: result[0], status: 200 };
     } catch (e) {
         console.error(`Error fetching artist by wallet`, e);
-        return {isError: true, message: "Something went wrong on our end", data: null, status: 500};
+        return { isError: true, message: "Something went wrong on our end", data: null, status: 500 };
     }
 }
 
 export async function getArtistByNameApiResp(name: string) {
     try {
         const result = await searchForArtistByName(name);
-        if(!result) return {isError: true, message: "The artist you're searching for is not found", data: null, status: 404}
-        return {isError: false, message: "", data: result[0], status: 200} ;
-    } catch(e) {
-        return {isError: true, message: "Something went wrong on our end", data: null, status: 500}
+        if (!result) return { isError: true, message: "The artist you're searching for is not found", data: null, status: 404 }
+        return { isError: false, message: "", data: result[0], status: 200 };
+    } catch (e) {
+        return { isError: true, message: "Something went wrong on our end", data: null, status: 500 }
     }
 }
 
@@ -84,11 +84,11 @@ export async function searchForArtistByName(name: string) {
             .select()
             .from(artists)
             .where(
-            ilike(artists.name, `%${name}%`)
-        )
-        .orderBy(desc(artists.name));
+                ilike(artists.name, `%${name}%`)
+            )
+            .orderBy(desc(artists.name));
         return result;
-    } catch(e) {
+    } catch (e) {
         console.error(`Error fetching artist by name`, e);
         throw new Error("Error searching for artist by name");
     }
@@ -136,14 +136,39 @@ export type AddArtistResp = {
     status: "success" | "error" | "exists",
     artistId?: string,
     message?: string,
-    artistName?: string
+    artistName?: string,
+    newArtist?: Artist
+}
+
+export async function addArtistBySystem(spotifyId: string) {
+    try {
+        const spotifyArtist = await getSpotifyArtist(spotifyId);
+        if (spotifyArtist.error) return { status: "error"};
+        const user = await db.query.users.findFirst({ where: eq(users.username, "SYSTEM") });
+        if (!user) throw new Error("System user not found");
+        const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
+        if (artist) return { status: "error"};
+        const [newArtist] = await db.insert(artists).values(
+            {
+                spotify: spotifyId,
+                addedBy: user?.id ?? "00000000-0000-0000-0000-000000000000",
+                lcname: spotifyArtist.data?.name.toLowerCase(),
+                name: spotifyArtist.data?.name
+            }).returning();
+
+        await sendDiscordMessage(`System added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
+        return { status: "success", newArtist: newArtist };
+    } catch (e) {
+        console.error("error adding artist", e);
+        return { status: "error"};
+    }
 }
 
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     const session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
-    const user = await getUserById(session.user.id);
+    const user = await getUserById(session?.user.id ?? "");
     const spotifyArtist = await getSpotifyArtist(spotifyId);
     if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
     const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
@@ -152,7 +177,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         const [newArtist] = await db.insert(artists).values(
             {
                 spotify: spotifyId,
-                addedBy: session.user.id,
+                addedBy: session?.user.id,
                 lcname: spotifyArtist.data?.name.toLowerCase(),
                 name: spotifyArtist.data?.name
             }).returning();
@@ -161,8 +186,8 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         return { status: "success", artistId: newArtist.id, artistName: newArtist.name ?? "", message: "Success! You can now find this artist in our directory" };
     } catch (e) {
         console.error("error adding artist", e);
-        return { status: "error", artistId: undefined, message: "Something went wrong on our end, please try again" };   
-     }
+        return { status: "error", artistId: undefined, message: "Something went wrong on our end, please try again" };
+    }
 }
 
 export async function approveUgcAdmin(ugcIds: string[]) {
@@ -280,7 +305,7 @@ export async function getUgcStats() {
     try {
         const ugcList = await db.query.ugcresearch.findMany({ where: eq(ugcresearch.userId, user.user.id) });
         return ugcList.length;
-    } catch(e) {
+    } catch (e) {
         console.error("error getting user ugc stats", e);
     }
 }
@@ -290,7 +315,7 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
     let session = await getServerAuthSession();
     if (!session) throw new Error("Not authenticated");
     let userId = session.user.id;
-    if(wallet) {
+    if (wallet) {
         const searchedUser = await getUserByWallet(wallet);
         if (!searchedUser) throw new Error("User not found");
         userId = searchedUser.id;
@@ -298,23 +323,23 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
     try {
 
         const ugcList = await db.query.ugcresearch.findMany(
-            { 
+            {
                 where: and(
-                    gte(ugcresearch.createdAt, date.from?.toISOString() ?? ""), 
-                    lte(ugcresearch.createdAt, date.to?.toISOString() ?? ""), 
+                    gte(ugcresearch.createdAt, date.from?.toISOString() ?? ""),
+                    lte(ugcresearch.createdAt, date.to?.toISOString() ?? ""),
                     eq(ugcresearch.userId, userId))
             }
         );
         const artistsList = await db.query.artists.findMany(
-            { 
+            {
                 where: and(
-                    gte(artists.createdAt, date.from?.toISOString() ?? ""), 
-                    lte(artists.createdAt, date.to?.toISOString() ?? ""), 
+                    gte(artists.createdAt, date.from?.toISOString() ?? ""),
+                    lte(artists.createdAt, date.to?.toISOString() ?? ""),
                     eq(artists.addedBy, userId))
             }
         );
         return { ugcCount: ugcList.length, artistsCount: artistsList.length };
-    } catch(e) {
+    } catch (e) {
         console.error("error getting ugc stats for user in range", e);
     }
 }
@@ -325,7 +350,7 @@ export async function getWhitelistedUsers() {
     try {
         const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
         return result;
-    } catch(e) {
+    } catch (e) {
         console.error("error getting whitelisted users", e);
     }
 }
@@ -357,7 +382,7 @@ export async function searchForUsersByWallet(wallet: string) {
     try {
         const result = await db.query.users.findMany({ where: ilike(users.wallet, `%${wallet}%`) });
         return result.map((user) => user.wallet);
-    } catch(e) {
+    } catch (e) {
         console.error("searching for users by wallet", e);
     }
 }
@@ -367,7 +392,7 @@ export async function sendDiscordMessage(message: string) {
     if (!discordWebhookUrl) return;
     try {
         const resp = await axios.post(discordWebhookUrl, { content: message });
-    } catch(e) {
+    } catch (e) {
         console.error("error sending discord ping ", e);
     }
 }

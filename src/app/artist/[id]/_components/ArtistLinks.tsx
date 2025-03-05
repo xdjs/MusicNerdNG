@@ -1,6 +1,7 @@
 import { ArtistLink } from "@/server/utils/queriesTS";
 import { platformType } from "@/server/db/schema";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 // Reusable Button Component
 const ArtistLinkButton = ({ link }: { link: ArtistLink }) => (
@@ -12,9 +13,12 @@ const ArtistLinkButton = ({ link }: { link: ArtistLink }) => (
   >
     <a href={link.artistUrl} target="_blank" rel="noopener noreferrer">
       <div className="p-1 bg-white rounded-md">
-        <img
+        <Image
           src={link.siteImage ?? ""}
           alt={link.cardPlatformName ?? ""}
+          width={20}
+          height={20}
+          priority
           className="w-5 h-5"
         />
       </div>
@@ -24,6 +28,7 @@ const ArtistLinkButton = ({ link }: { link: ArtistLink }) => (
 );
 
 export default function ArtistLinks({ links }: { links: ArtistLink[] }) {
+  
   const socials = links.filter(link =>
     link.platformTypeList?.includes(platformType.enumValues[0])
   );
@@ -33,6 +38,7 @@ export default function ArtistLinks({ links }: { links: ArtistLink[] }) {
   const listen = links.filter(link =>
     link.platformTypeList?.includes(platformType.enumValues[2])
   );
+
 
   const renderSection = (title: string, linkList: ArtistLink[]) => (
     <section>
@@ -47,9 +53,9 @@ export default function ArtistLinks({ links }: { links: ArtistLink[] }) {
 
   return (
     <section className="flex flex-col gap-4">
-      {renderSection("Socials", socials)}
-      {renderSection("Web3", web3)}
-      {renderSection("Listen", listen)}
+      {socials.length > 0 ? renderSection("Socials", socials) : null}
+      {web3.length > 0 ? renderSection("Web3", web3) : null}
+      {listen.length > 0 ? renderSection("Listen", listen) : null}
     </section>
   );
 }

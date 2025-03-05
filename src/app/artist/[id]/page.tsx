@@ -1,36 +1,31 @@
-import { getArtistById, getAllLinks, getArtistLinks, getArtistByProperty } from "@/server/utils/queriesTS";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
-import { AspectRatio } from "@radix-ui/react-aspect-ratio";
-import { Spotify } from 'react-spotify-embed';
-import ArtistLinks from "@/app/_components/ArtistLinks";
-import { getArtistDetailsText } from "@/server/utils/services";
-import Link from "next/link";
-import AddArtistData from "./_components/AddArtistData";
+import {  getArtistLinks, getArtistByProperty } from "@/server/utils/queriesTS";
+import { getSpotifyImage} from "@/server/utils/externalApiQueries";
+
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 import Dashboard2 from "./_components/Dashboard2";
 import LLMChat from "./_components/LLMChat";
 import getAiResponse from "@/server/utils/AiBro";
 import { artists } from "@/server/db/schema";
+import { addArtistBySystem } from "@/server/utils/queriesTS";
 
 type ArtistProfileProps = {
     params: { id: string };
     searchParams: { [key: string]: string | undefined };
 }
 
-
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
-    const session = await getServerAuthSession();
-    const artist = await getArtistByProperty(artists.spotify, params.id);
+    let [session, artist] = await Promise.all([getServerAuthSession(), getArtistByProperty(artists.spotify, params.id)]);
     if (!artist.data) {
-        return notFound();
+        const resp = await addArtistBySystem(params.id);
+        if (!resp.newArtist) return notFound();
+        artist.data = resp.newArtist;
     }
+
     const { opADM } = searchParams;
 
-    const [spotifyImg, numReleases, wiki, allLinks, aiResponse] = await Promise.all([
+    const [spotifyImg, allLinks, aiResponse] = await Promise.all([
         getSpotifyImage(artist.data.spotify ?? "", undefined),
-        getNumberOfSpotifyReleases(artist.data.spotify ?? ""),
-        getArtistWiki(artist.data.wikipedia ?? ""),
         getArtistLinks(artist.data),
         getAiResponse(artist.data.name ?? "")
     ]);

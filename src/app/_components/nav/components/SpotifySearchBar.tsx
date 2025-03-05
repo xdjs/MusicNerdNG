@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation'
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
 import { searchSpotifyArtists, SpotifyArtist } from '@/server/utils/externalApiQueries';
@@ -33,8 +34,15 @@ export function Skeleton() {
 
 export function Spinner() {
     return (
-        <div className="flex justify-center items-center">
-            <img className="h-10" src="/spinner.svg" alt="spinner" />
+        <div className="px-4 py-2">
+            <Image 
+                className="h-10 w-auto"
+                src="/spinner.svg" 
+                alt="spinner"
+                width={40}
+                height={40}
+                priority
+            />
         </div>
     )
 }
@@ -82,14 +90,18 @@ function Users({
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 flex-shrink-0 rounded-md overflow-hidden">
                                     {u.images && u.images.length > 0 ? (
-                                        <img 
+                                        <Image 
                                             src={u.images[0].url} 
-                                            alt={u.name}
-                                            className="w-full h-full object-cover"
+                                            alt={u.name || "Artist image"}
+                                            className="object-cover"
+                                            width={40}
+                                            height={40}
+                                            loading="eager"
+                                            unoptimized={false}
                                         />
                                     ) : (
                                         <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500">
-                                            {u.name.charAt(0)}
+                                            {u.name?.charAt(0) || "?"}
                                         </div>
                                     )}
                                 </div>
