@@ -1,8 +1,4 @@
-import Link from 'next/link'
-import { useEffect } from 'react'
-
 export default function NotFound() {
-
   return (
     <div className="flex flex-col items-center justify-center px-4 text-center flex-grow">
       <img src="/musicNerdLogo.png" alt="musicNerdLogo" className="w-full max-w-xs" />
