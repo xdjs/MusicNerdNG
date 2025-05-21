@@ -85,7 +85,7 @@ export async function searchForArtistByName(name: string) {
             .select()
             .from(artists)
             .where(
-            ilike(artists.name, `%${name}%`)
+            ilike(artists.name, `${name}%`)
         )
         .orderBy(desc(artists.name));
         const endTime = performance.now();
