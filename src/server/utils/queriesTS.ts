@@ -81,7 +81,7 @@ export async function getArtistByNameApiResp(name: string) {
 export async function searchForArtistByName(name: string) {
     try {
 
-        //---new code
+
 
         const startTime = performance.now();
         const result = await db.execute<Artist>(sql`
@@ -98,7 +98,6 @@ export async function searchForArtistByName(name: string) {
         console.log(`Search for "${name}" took ${endTime - startTime}ms`);
         return result;
 
-        //---old code
 
         
     } catch(e) {
