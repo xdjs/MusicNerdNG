@@ -80,6 +80,7 @@ export async function getArtistByNameApiResp(name: string) {
 
 export async function searchForArtistByName(name: string) {
     try {
+        const startTime = performance.now();
         const result = await db
             .select()
             .from(artists)
@@ -87,6 +88,8 @@ export async function searchForArtistByName(name: string) {
             ilike(artists.name, `%${name}%`)
         )
         .orderBy(desc(artists.name));
+        const endTime = performance.now();
+        console.log(`Search for "${name}" took ${endTime - startTime}ms`);
         return result;
     } catch(e) {
         console.error(`Error fetching artist by name`, e);
