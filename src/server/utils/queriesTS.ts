@@ -82,10 +82,20 @@ export async function searchForArtistByName(name: string) {
     try {
         const startTime = performance.now();
         const result = await db.execute<Artist>(sql`
-            SELECT id, name, spotify, instagram
+            SELECT 
+                id, 
+                name, 
+                spotify, 
+                instagram,
+                CASE 
+                    WHEN LOWER(name) LIKE LOWER(${name || ''} || '%') THEN 1  -- Exact prefix match
+                    ELSE 2
+                END as match_type
             FROM artists
             WHERE similarity(name, ${name}) > 0.3
-            ORDER BY similarity(name, ${name}) DESC
+            ORDER BY 
+                match_type,  -- Prefix matches first
+                similarity(name, ${name}) DESC  -- Then by similarity
             LIMIT 10
         `);
         const endTime = performance.now();
