@@ -51,12 +51,33 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 
 export async function extractArtistId(artistUrl: string) {
     const allLinks = await getAllLinks();
-      for (const { regex, siteName, cardPlatformName } of allLinks) {
+    for (const { regex, siteName, cardPlatformName } of allLinks) {
         const match = artistUrl.match(regex);
         if (match) {
-          return { siteName, cardPlatformName, id: match[1] }; // Return both site name and captured ID
+            // For YouTube channel URLs, keep channel IDs as is and ensure usernames have @ prefix
+            if (siteName === 'youtubechannel') {
+                const channelId = match[1];
+                const username = match[2];
+                if (username) {
+                    return { 
+                        siteName, 
+                        cardPlatformName, 
+                        id: username.startsWith('@') ? username : `@${username}` 
+                    };
+                }
+                return {
+                    siteName,
+                    cardPlatformName,
+                    id: channelId
+                };
+            }
+            return { 
+                siteName, 
+                cardPlatformName, 
+                id: match[1] || match[2] 
+            };
         }
-      }
-      return null;
+    }
+    return null;
 }
 

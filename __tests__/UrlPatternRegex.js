@@ -13,7 +13,7 @@ describe('URL Pattern Tests', () => {
     { regex: /^https:\/\/audius\.co\/([^/]+)$/, sitename: "audius" },
     { regex: /^https:\/\/beta\.catalog\.works\/([^/]+)$/, sitename: "catalog" },
     { regex: /^https:\/\/([^/]+)\.bandcamp\.com$/, sitename: "bandcamp" },
-    { regex: /^https:\/\/www\.youtube\.com\/(?:channel\/([^/]+)|@([^/]+))$/, sitename: "youtube" },
+    { regex: /^https:\/\/www\.youtube\.com\/(?:channel\/([^/]+)|@([^/]+))$/, sitename: "youtubechannel" },
     { regex: /^https:\/\/www\.sound\.xyz\/([^/]+)$/, sitename: "sound" },
     { regex: /^https:\/\/rainbow\.me\/([^/]+)$/, sitename: "rainbow" },
     { regex: /^https:\/\/wikipedia\.org\/wiki\/([^/]+)$/, sitename: "wikipedia" },
@@ -38,8 +38,8 @@ describe('URL Pattern Tests', () => {
     ['audius', 'https://audius.co/artist123'],
     ['catalog', 'https://beta.catalog.works/artist123'],
     ['bandcamp', 'https://artist123.bandcamp.com'],
-    ['youtube', 'https://www.youtube.com/channel/UC12345abcdef'],
-    ['youtube', 'https://www.youtube.com/@Yo-Sea'],
+    ['youtubechannel', 'https://www.youtube.com/channel/UC12345abcdef', 'UC12345abcdef'],
+    ['youtubechannel', 'https://www.youtube.com/@Yo-Sea', '@Yo-Sea'],
     ['sound', 'https://www.sound.xyz/artist123'],
     ['rainbow', 'https://rainbow.me/wallet123'],
     ['wikipedia', 'https://wikipedia.org/wiki/Article_Name'],
@@ -68,8 +68,8 @@ describe('URL Pattern Tests', () => {
     ['audius', 'https://audius.co'],
     ['catalog', 'https://catalog.works/artist123'],
     ['bandcamp', 'https://bandcamp.com'],
-    ['youtube', 'https://youtube.com/user123'],
-    ['youtube', 'https://www.youtube.com/c/invalidformat'],
+    ['youtubechannel', 'https://youtube.com/user123'],
+    ['youtubechannel', 'https://www.youtube.com/c/invalidformat'],
     ['sound', 'https://sound.xyz/artist123'],
     ['rainbow', 'https://rainbow.me/wallet/extra'],
     ['wikipedia', 'https://wikipedia.org/Article_Name'],
@@ -86,13 +86,17 @@ describe('URL Pattern Tests', () => {
     ['instagram', 'https://www.instagram.com/zuck', 'zuck'],
     ['facebook', 'https://www.facebook.com/mark', 'mark'],
     ['bandcamp', 'https://artist123.bandcamp.com', 'artist123'],
-    ['youtube', 'https://www.youtube.com/channel/UC12345abcdef', 'UC12345abcdef'],
-    ['youtube', 'https://www.youtube.com/@Yo-Sea', 'Yo-Sea'],
+    ['youtubechannel', 'https://www.youtube.com/channel/UC12345abcdef', 'UC12345abcdef'],
+    ['youtubechannel', 'https://www.youtube.com/@Yo-Sea', '@Yo-Sea'],
     ['tiktok', 'https://www.tiktok.com/@user123', 'user123'],
   ])('should extract correct parameter from %s URL', (sitename, url, expectedParam) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
     const match = url.match(pattern.regex);
-    expect(match[1] || match[2]).toBe(expectedParam);
+    if (sitename === 'youtubechannel' && match[2]) {
+        expect(match[2].startsWith('@') ? match[2] : `@${match[2]}`).toBe(expectedParam);
+    } else {
+        expect(match[1] || match[2]).toBe(expectedParam);
+    }
   });
 
   // Test edge cases

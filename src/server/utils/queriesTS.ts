@@ -135,7 +135,17 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         const artistLinksSiteNames: ArtistLink[] = [];
         for (const platform of allLinkObjects) {
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
-                artistLinksSiteNames.push({ ...platform, artistUrl: platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "") });
+                let artistUrl = platform.appStringFormat;
+                // Special handling for YouTube channel URLs
+                if (platform.siteName === 'youtubechannel') {
+                    const value = artist[platform.siteName]?.toString() ?? "";
+                    artistUrl = value.startsWith('@') 
+                        ? `https://www.youtube.com/${value}`
+                        : `https://www.youtube.com/channel/${value}`;
+                } else {
+                    artistUrl = platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "");
+                }
+                artistLinksSiteNames.push({ ...platform, artistUrl });
             }
         }
         artistLinksSiteNames.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
