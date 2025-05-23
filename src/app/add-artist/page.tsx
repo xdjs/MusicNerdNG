@@ -90,23 +90,37 @@ function AddArtistContent() {
     // Returns:
     //      Promise<void> - Redirects to artist page on success or updates error state
     async function handleAddArtist() {
-        if (!spotifyId) return;
-        
-        if (!session) {
-            setError("Please log in to add artists");
+        if (!spotifyId) {
+            console.log("No spotifyId provided");
             return;
         }
         
+        if (!session) {
+            console.log("No session found - user not authenticated");
+            setError("Please log in to add artists");
+            return;
+        }
+
+        console.log("Starting artist addition with:", {
+            spotifyId,
+            sessionUserId: session.user.id,
+            isAuthenticated: !!session
+        });
+        
         setAdding(true);
         try {
+            console.log("Calling addArtist function...");
             const result = await addArtist(spotifyId);
-            console.log("Add artist result:", result); // Debug log
+            console.log("Add artist result:", result);
             
             if (result.status === "success" && result.artistId) {
+                console.log("Successfully added artist, redirecting to:", result.artistId);
                 router.push(`/artist/${result.artistId}`);
             } else if (result.status === "exists" && result.artistId) {
+                console.log("Artist already exists, redirecting to:", result.artistId);
                 router.push(`/artist/${result.artistId}`);
             } else {
+                console.log("Failed to add artist:", result.message);
                 setError(result.message || "Failed to add artist");
             }
         } catch (err) {

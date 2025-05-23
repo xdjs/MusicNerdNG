@@ -169,29 +169,38 @@ export type AddArtistResp = {
 }
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
-    console.log("Starting addArtist for spotifyId:", spotifyId); // Debug log
+    console.log("Starting addArtist for spotifyId:", spotifyId);
     
     const session = await getServerAuthSession();
+    console.log("Session state:", {
+        exists: !!session,
+        userId: session?.user?.id
+    });
+
     if (!session) {
-        console.log("No session found - user not authenticated"); // Debug log
+        console.log("No session found - authentication failed");
         throw new Error("Not authenticated");
     }
     
     try {
-        console.log("Getting user data..."); // Debug log
+        console.log("Getting user data...");
         const user = await getUserById(session.user.id);
-        console.log("User data:", { userId: user?.id, isWhitelisted: user?.isWhiteListed }); // Debug log
+        console.log("User data:", {
+            userId: user?.id,
+            isWhitelisted: user?.isWhiteListed,
+            wallet: user?.wallet
+        });
 
-        console.log("Getting Spotify headers..."); // Debug log
+        console.log("Getting Spotify headers...");
         const headers = await getSpotifyHeaders();
         if (!headers?.headers?.Authorization) {
             console.error("Failed to get Spotify headers");
             return { status: "error", message: "Failed to authenticate with Spotify" };
         }
 
-        console.log("Fetching Spotify artist data..."); // Debug log
+        console.log("Fetching Spotify artist data...");
         const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-        console.log("Spotify artist response:", spotifyArtist); // Debug log
+        console.log("Spotify artist response:", spotifyArtist);
 
         if (spotifyArtist.error) {
             console.error("Spotify artist error:", spotifyArtist.error);
@@ -203,10 +212,10 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             return { status: "error", message: "Invalid artist data received from Spotify" };
         }
 
-        console.log("Checking if artist exists in database..."); // Debug log
+        console.log("Checking if artist exists in database...");
         const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
         if (artist) {
-            console.log("Artist already exists:", artist); // Debug log
+            console.log("Artist already exists:", artist);
             return { 
                 status: "exists", 
                 artistId: artist.id, 
@@ -215,14 +224,14 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             };
         }
 
-        console.log("Inserting new artist into database..."); // Debug log
+        console.log("Inserting new artist into database...");
         const [newArtist] = await db.insert(artists).values({
             spotify: spotifyId,
             addedBy: session.user.id,
             lcname: spotifyArtist.data.name.toLowerCase(),
             name: spotifyArtist.data.name
         }).returning();
-        console.log("New artist created:", newArtist); // Debug log
+        console.log("New artist created:", newArtist);
 
         await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
         return { 
