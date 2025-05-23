@@ -64,10 +64,12 @@ function SearchResults({
     results,
     search,
     setQuery,
+    setShowResults,
 }: {
     results: SearchResult[] | undefined,
     search: string,
     setQuery: (query: string) => void,
+    setShowResults: (show: boolean) => void,
 }
 ) {
     const router = useRouter();
@@ -81,6 +83,7 @@ function SearchResults({
     //      void - Triggers navigation
     function navigateToResult(result: SearchResult) {
         setQuery(result.name ?? "");
+        setShowResults(false);
         if (result.isSpotifyOnly) {
             router.push(`/add-artist?spotify=${result.spotify}`);
         } else {
@@ -104,7 +107,10 @@ function SearchResults({
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <div
                             className="block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg"
-                            onClick={() => navigateToResult(result)}
+                            onMouseDown={(e) => {
+                                e.preventDefault(); // Prevent blur
+                                navigateToResult(result);
+                            }}
                         >
                             <div className="flex items-center gap-3">
                                 {spotifyImage && (
@@ -142,6 +148,22 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const searchParams = useSearchParams();
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
+    const blurTimeoutRef = useRef<NodeJS.Timeout>();
+
+    // Handle blur with a slight delay to allow click events to process
+    const handleBlur = () => {
+        blurTimeoutRef.current = setTimeout(() => {
+            setShowResults(false);
+        }, 200);
+    };
+
+    // Clear the blur timeout if we focus back
+    const handleFocus = () => {
+        if (blurTimeoutRef.current) {
+            clearTimeout(blurTimeoutRef.current);
+        }
+        setShowResults(true);
+    };
 
     // Fetches combined search results from both database and Spotify
     // Uses react-query for caching and automatic request management
@@ -162,10 +184,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     });
 
     // Updates the search query and triggers the search
-    // Params:
-    //      e: Change event from the input field
-    // Returns:
-    //      void - Updates component state
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
         setQuery(value);
@@ -176,8 +194,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
                 <Search size={24} strokeWidth={2.5} />
                 <Input
-                    onBlur={() => setShowResults(false)}
-                    onFocus={() => setShowResults(true)}
+                    onBlur={handleBlur}
+                    onFocus={handleFocus}
                     type="text"
                     value={query}
                     onChange={handleInputChange}
@@ -186,8 +204,12 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 />
             </div>
             {(showResults && query.length >= 1) && (
-                <div ref={resultsContainer} className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}>
-                    {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} />}
+                <div 
+                    ref={resultsContainer} 
+                    className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}
+                    onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
+                >
+                    {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} />}
                 </div>
             )}
         </div>
