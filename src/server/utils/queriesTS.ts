@@ -11,6 +11,7 @@ import { DateRange } from 'react-day-picker';
 import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
+import { headers } from 'next/headers';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -169,53 +170,59 @@ export type AddArtistResp = {
 }
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
-    console.log("Starting addArtist for spotifyId:", spotifyId);
-    
-    const session = await getServerAuthSession();
-    console.log("Session state:", {
-        exists: !!session,
-        userId: session?.user?.id
-    });
-
-    if (!session) {
-        console.log("No session found - authentication failed");
-        throw new Error("Not authenticated");
-    }
-    
     try {
-        console.log("Getting user data...");
+        console.log("[Server] Starting addArtist for spotifyId:", spotifyId);
+        
+        const headersList = headers();
+        console.log("[Server] Request headers:", {
+            cookie: headersList.get('cookie'),
+            authorization: headersList.get('authorization')
+        });
+        
+        const session = await getServerAuthSession();
+        console.log("[Server] Session state:", {
+            exists: !!session,
+            userId: session?.user?.id
+        });
+
+        if (!session) {
+            console.log("[Server] No session found - authentication failed");
+            throw new Error("Not authenticated");
+        }
+        
+        console.log("[Server] Getting user data...");
         const user = await getUserById(session.user.id);
-        console.log("User data:", {
+        console.log("[Server] User data:", {
             userId: user?.id,
             isWhitelisted: user?.isWhiteListed,
             wallet: user?.wallet
         });
 
-        console.log("Getting Spotify headers...");
-        const headers = await getSpotifyHeaders();
-        if (!headers?.headers?.Authorization) {
-            console.error("Failed to get Spotify headers");
+        console.log("[Server] Getting Spotify headers...");
+        const spotifyHeaders = await getSpotifyHeaders();
+        if (!spotifyHeaders?.headers?.Authorization) {
+            console.error("[Server] Failed to get Spotify headers");
             return { status: "error", message: "Failed to authenticate with Spotify" };
         }
 
-        console.log("Fetching Spotify artist data...");
-        const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-        console.log("Spotify artist response:", spotifyArtist);
+        console.log("[Server] Fetching Spotify artist data...");
+        const spotifyArtist = await getSpotifyArtist(spotifyId, spotifyHeaders);
+        console.log("[Server] Spotify artist response:", spotifyArtist);
 
         if (spotifyArtist.error) {
-            console.error("Spotify artist error:", spotifyArtist.error);
+            console.error("[Server] Spotify artist error:", spotifyArtist.error);
             return { status: "error", message: spotifyArtist.error };
         }
 
         if (!spotifyArtist.data?.name) {
-            console.error("Invalid artist data received from Spotify");
+            console.error("[Server] Invalid artist data received from Spotify");
             return { status: "error", message: "Invalid artist data received from Spotify" };
         }
 
-        console.log("Checking if artist exists in database...");
+        console.log("[Server] Checking if artist exists in database...");
         const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
         if (artist) {
-            console.log("Artist already exists:", artist);
+            console.log("[Server] Artist already exists:", artist);
             return { 
                 status: "exists", 
                 artistId: artist.id, 
@@ -224,14 +231,14 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             };
         }
 
-        console.log("Inserting new artist into database...");
+        console.log("[Server] Inserting new artist into database...");
         const [newArtist] = await db.insert(artists).values({
             spotify: spotifyId,
             addedBy: session.user.id,
             lcname: spotifyArtist.data.name.toLowerCase(),
             name: spotifyArtist.data.name
         }).returning();
-        console.log("New artist created:", newArtist);
+        console.log("[Server] New artist created:", newArtist);
 
         await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
         return { 
@@ -241,7 +248,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             message: "Success! You can now find this artist in our directory" 
         };
     } catch (e) {
-        console.error("Error in addArtist:", e);
+        console.error("[Server] Error in addArtist:", e);
         if (e instanceof Error) {
             if (e.message.includes('auth')) {
                 return { status: "error", message: "Please log in to add artists" };

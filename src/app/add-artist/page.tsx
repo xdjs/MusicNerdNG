@@ -109,9 +109,20 @@ function AddArtistContent() {
         
         setAdding(true);
         try {
-            console.log("Calling addArtist function...");
-            const result = await addArtist(spotifyId);
+            console.log("About to call addArtist server action...");
+            console.log("Current session state:", session);
+            
+            const result = await addArtist(spotifyId).catch(error => {
+                console.error("Error during addArtist call:", error);
+                throw error;
+            });
+            
             console.log("Add artist result:", result);
+            
+            if (!result) {
+                console.error("No result received from addArtist");
+                throw new Error("No response from server");
+            }
             
             if (result.status === "success" && result.artistId) {
                 console.log("Successfully added artist, redirecting to:", result.artistId);
