@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addArtist } from "../../actions/addArtist";
-import { useSession } from "next-auth/react";
+import { useSession, signIn } from "next-auth/react";
 
 interface SpotifyArtist {
     id: string;
@@ -29,15 +29,24 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
     const router = useRouter();
     const [adding, setAdding] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
 
     async function handleAddArtist() {
+        if (status === "loading") {
+            return;
+        }
+
         if (!session) {
-            setError("Please log in to add artists");
+            const loginBtn = document.getElementById("login-btn");
+            if (loginBtn) {
+                loginBtn.click();
+            }
             return;
         }
 
         setAdding(true);
+        setError(null);
+        
         try {
             const result = await addArtist(initialArtist.id);
             
@@ -50,7 +59,14 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
             }
         } catch (err) {
             console.error("Error in handleAddArtist:", err);
-            setError("Failed to add artist - please ensure you are logged in");
+            if (err instanceof Error && err.message.includes('Not authenticated')) {
+                const loginBtn = document.getElementById("login-btn");
+                if (loginBtn) {
+                    loginBtn.click();
+                }
+            } else {
+                setError("Failed to add artist - please try again");
+            }
         } finally {
             setAdding(false);
         }
@@ -59,11 +75,15 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full mx-4">
-                {!session && (
+                {status === "loading" ? (
+                    <div className="mb-4 p-4 bg-blue-100 text-blue-800 rounded-lg">
+                        Loading authentication status...
+                    </div>
+                ) : !session ? (
                     <div className="mb-4 p-4 bg-yellow-100 text-yellow-800 rounded-lg">
                         Please log in to add artists to the database
                     </div>
-                )}
+                ) : null}
                 {error && (
                     <div className="mb-4 p-4 bg-red-100 text-red-800 rounded-lg">
                         {error}
@@ -99,7 +119,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
                         <div className="flex gap-4">
                             <Button
                                 onClick={handleAddArtist}
-                                disabled={adding || !session}
+                                disabled={adding || status === "loading"}
                                 className="bg-green-500 hover:bg-green-600 text-white"
                             >
                                 {adding ? "Adding..." : "Add Artist"}
