@@ -7,6 +7,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth";
 import Providers from "./_components/Providers";
 import LoginProviders from "./_components/nav/components/LoginProviders";
+import { Inter } from "next/font/google";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Music Nerd",
@@ -49,7 +52,7 @@ export default async function RootLayout({
   });
 
   return (
-    <html lang="en" className="scrollbar-hide">
+    <html lang="en" className={inter.className}>
       <body className="min-h-screen flex flex-col">
         <Providers session={session}>
           <LoginProviders>

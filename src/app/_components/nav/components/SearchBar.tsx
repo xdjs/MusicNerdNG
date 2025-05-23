@@ -9,6 +9,9 @@ import { Artist } from '@/server/db/DbTypes';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import Image from 'next/image';
+import { addArtist } from "@/app/actions/addArtist";
+import { useSession } from "next-auth/react";
+import { useToast } from "@/hooks/use-toast";
 
 const queryClient = new QueryClient()
 
@@ -73,19 +76,57 @@ function SearchResults({
 }
 ) {
     const router = useRouter();
+    const { data: session, status } = useSession();
+    const [isAdding, setIsAdding] = useState<string | null>(null);
+    const { toast } = useToast();
 
-    // Handles navigation when a search result is selected
-    // For Spotify-only results, redirects to add artist page
-    // For database results, navigates to artist profile
-    // Params:
-    //      result: The selected search result
-    // Returns:
-    //      void - Triggers navigation
-    function navigateToResult(result: SearchResult) {
+    async function navigateToResult(result: SearchResult) {
         setQuery(result.name ?? "");
         setShowResults(false);
+
         if (result.isSpotifyOnly) {
-            router.push(`/add-artist?spotify=${result.spotify}`);
+            if (status === "loading") return;
+
+            if (!session) {
+                const loginBtn = document.getElementById("login-btn");
+                if (loginBtn) {
+                    loginBtn.click();
+                }
+                return;
+            }
+
+            try {
+                setIsAdding(result.spotify ?? "");
+                const addResult = await addArtist(result.spotify ?? "");
+                
+                if (addResult.status === "success" && addResult.artistId) {
+                    router.push(`/artist/${addResult.artistId}`);
+                } else if (addResult.status === "exists" && addResult.artistId) {
+                    router.push(`/artist/${addResult.artistId}`);
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: addResult.message || "Failed to add artist"
+                    });
+                }
+            } catch (err) {
+                console.error("Error adding artist:", err);
+                if (err instanceof Error && err.message.includes('Not authenticated')) {
+                    const loginBtn = document.getElementById("login-btn");
+                    if (loginBtn) {
+                        loginBtn.click();
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to add artist - please try again"
+                    });
+                }
+            } finally {
+                setIsAdding(null);
+            }
         } else {
             router.push(`/artist/${result.id}`);
         }
@@ -103,13 +144,16 @@ function SearchResults({
         <>
             {results.map(result => {
                 const spotifyImage = result.images?.[0]?.url;
+                const isAddingThis = isAdding === result.spotify;
                 return (
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <div
-                            className="block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg"
+                            className={`block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg ${isAddingThis ? 'opacity-50' : ''}`}
                             onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur
-                                navigateToResult(result);
+                                if (!isAddingThis) {
+                                    navigateToResult(result);
+                                }
                             }}
                         >
                             <div className="flex items-center gap-3">
@@ -120,10 +164,12 @@ function SearchResults({
                                         className="w-10 h-10 rounded-full object-cover"
                                     />
                                 )}
-                                <div>
+                                <div className="flex-grow">
                                     <div className="font-medium">{result.name}</div>
                                     {result.isSpotifyOnly && (
-                                        <div className="text-sm text-gray-500">Add from Spotify</div>
+                                        <div className="text-sm text-gray-500">
+                                            {isAddingThis ? "Adding..." : "Add from Spotify"}
+                                        </div>
                                     )}
                                 </div>
                             </div>

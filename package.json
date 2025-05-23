@@ -52,6 +52,7 @@
     "sass": "^1.77.8",
     "shadcn": "^2.1.1",
     "siwe": "^2.3.2",
+    "sonner": "^2.0.3",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",
     "use-debounce": "^10.0.3",
