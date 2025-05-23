@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
 import { Button } from "@/components/ui/button";
 import { addArtist } from "@/server/utils/queriesTS";
+import { useSession } from "next-auth/react";
 
 interface SpotifyArtist {
     id: string;
@@ -40,6 +41,7 @@ function AddArtistContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
+    const { data: session, status } = useSession();
 
     // Fetches artist data from Spotify API when the component mounts or spotifyId changes
     // Params:
@@ -90,6 +92,11 @@ function AddArtistContent() {
     async function handleAddArtist() {
         if (!spotifyId) return;
         
+        if (!session) {
+            setError("Please log in to add artists");
+            return;
+        }
+        
         setAdding(true);
         try {
             const result = await addArtist(spotifyId);
@@ -139,6 +146,11 @@ function AddArtistContent() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full mx-4">
+                {!session && (
+                    <div className="mb-4 p-4 bg-yellow-100 text-yellow-800 rounded-lg">
+                        Please log in to add artists to the database
+                    </div>
+                )}
                 <div className="flex flex-col md:flex-row gap-8 items-center">
                     {artist.images[0] && (
                         <img
@@ -169,7 +181,7 @@ function AddArtistContent() {
                         <div className="flex gap-4">
                             <Button
                                 onClick={handleAddArtist}
-                                disabled={adding}
+                                disabled={adding || !session}
                                 className="bg-green-500 hover:bg-green-600 text-white"
                             >
                                 {adding ? "Adding..." : "Add Artist"}

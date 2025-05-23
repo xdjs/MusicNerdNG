@@ -168,31 +168,85 @@ export type AddArtistResp = {
     artistName?: string
 }
 
-
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
+    console.log("Starting addArtist for spotifyId:", spotifyId); // Debug log
+    
     const session = await getServerAuthSession();
-    if (!session) throw new Error("Not authenticated");
+    if (!session) {
+        console.log("No session found - user not authenticated"); // Debug log
+        throw new Error("Not authenticated");
+    }
+    
     try {
+        console.log("Getting user data..."); // Debug log
         const user = await getUserById(session.user.id);
+        console.log("User data:", { userId: user?.id, isWhitelisted: user?.isWhiteListed }); // Debug log
+
+        console.log("Getting Spotify headers..."); // Debug log
         const headers = await getSpotifyHeaders();
+        if (!headers?.headers?.Authorization) {
+            console.error("Failed to get Spotify headers");
+            return { status: "error", message: "Failed to authenticate with Spotify" };
+        }
+
+        console.log("Fetching Spotify artist data..."); // Debug log
         const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-        if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
+        console.log("Spotify artist response:", spotifyArtist); // Debug log
+
+        if (spotifyArtist.error) {
+            console.error("Spotify artist error:", spotifyArtist.error);
+            return { status: "error", message: spotifyArtist.error };
+        }
+
+        if (!spotifyArtist.data?.name) {
+            console.error("Invalid artist data received from Spotify");
+            return { status: "error", message: "Invalid artist data received from Spotify" };
+        }
+
+        console.log("Checking if artist exists in database..."); // Debug log
         const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
-        if (artist) return { status: "exists", artistId: artist.id, artistName: artist.name ?? "", message: "That artist is already in our database" };
-        const [newArtist] = await db.insert(artists).values(
-            {
-                spotify: spotifyId,
-                addedBy: session.user.id,
-                lcname: spotifyArtist.data?.name.toLowerCase(),
-                name: spotifyArtist.data?.name
-            }).returning();
+        if (artist) {
+            console.log("Artist already exists:", artist); // Debug log
+            return { 
+                status: "exists", 
+                artistId: artist.id, 
+                artistName: artist.name ?? "", 
+                message: "That artist is already in our database" 
+            };
+        }
+
+        console.log("Inserting new artist into database..."); // Debug log
+        const [newArtist] = await db.insert(artists).values({
+            spotify: spotifyId,
+            addedBy: session.user.id,
+            lcname: spotifyArtist.data.name.toLowerCase(),
+            name: spotifyArtist.data.name
+        }).returning();
+        console.log("New artist created:", newArtist); // Debug log
 
         await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
-        return { status: "success", artistId: newArtist.id, artistName: newArtist.name ?? "", message: "Success! You can now find this artist in our directory" };
+        return { 
+            status: "success", 
+            artistId: newArtist.id, 
+            artistName: newArtist.name ?? "", 
+            message: "Success! You can now find this artist in our directory" 
+        };
     } catch (e) {
-        console.error("error adding artist", e);
-        return { status: "error", artistId: undefined, message: "Something went wrong on our end, please try again" };   
-     }
+        console.error("Error in addArtist:", e);
+        if (e instanceof Error) {
+            if (e.message.includes('auth')) {
+                return { status: "error", message: "Please log in to add artists" };
+            }
+            if (e.message.includes('duplicate')) {
+                return { status: "error", message: "This artist is already in our database" };
+            }
+        }
+        return { 
+            status: "error", 
+            artistId: undefined, 
+            message: "Something went wrong on our end, please try again" 
+        };   
+    }
 }
 
 export async function approveUgcAdmin(ugcIds: string[]) {
