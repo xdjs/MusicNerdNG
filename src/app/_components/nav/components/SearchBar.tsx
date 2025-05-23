@@ -12,6 +12,7 @@ import Image from 'next/image';
 import { addArtist } from "@/app/actions/addArtist";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
+import LoadingPage from "@/app/_components/LoadingPage";
 
 const queryClient = new QueryClient()
 
@@ -28,7 +29,7 @@ interface SearchResult extends Artist {
   images?: SpotifyArtistImage[];
 }
 
-export default function wrapper({isTopSide = false}: {isTopSide?: boolean}) {
+export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boolean}) {
     return (
         <QueryClientProvider client={queryClient}>
             <SearchBar isTopSide={isTopSide} />
@@ -68,11 +69,13 @@ function SearchResults({
     search,
     setQuery,
     setShowResults,
+    setIsAddingArtist,
 }: {
     results: SearchResult[] | undefined,
     search: string,
     setQuery: (query: string) => void,
     setShowResults: (show: boolean) => void,
+    setIsAddingArtist: (isAdding: boolean) => void,
 }
 ) {
     const router = useRouter();
@@ -97,6 +100,7 @@ function SearchResults({
 
             try {
                 setIsAdding(result.spotify ?? "");
+                setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
                 
                 if (addResult.status === "success" && addResult.artistId) {
@@ -126,6 +130,7 @@ function SearchResults({
                 }
             } finally {
                 setIsAdding(null);
+                setIsAddingArtist(false);
             }
         } else {
             router.push(`/artist/${result.id}`);
@@ -200,6 +205,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout>();
+    const [isAddingArtist, setIsAddingArtist] = useState(false);
 
     // Handle blur with a slight delay to allow click events to process
     const handleBlur = () => {
@@ -229,9 +235,15 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 },
                 body: JSON.stringify({ query: debouncedQuery }),
             });
+            if (!response.ok) {
+                throw new Error('Search request failed');
+            }
             const data = await response.json();
             return data.results;
         },
+        enabled: debouncedQuery.length > 0,
+        staleTime: 1000 * 60 * 5, // Cache results for 5 minutes
+        retry: 2
     });
 
     // Updates the search query and triggers the search
@@ -241,28 +253,31 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     };
 
     return (
-        <div className="relative w-full max-w-[400px] z-30 text-black">
-            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                <Search size={24} strokeWidth={2.5} />
-                <Input
-                    onBlur={handleBlur}
-                    onFocus={handleFocus}
-                    type="text"
-                    value={query}
-                    onChange={handleInputChange}
-                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                    placeholder="Search"
-                />
-            </div>
-            {(showResults && query.length >= 1) && (
-                <div 
-                    ref={resultsContainer} 
-                    className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}
-                    onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
-                >
-                    {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} />}
+        <>
+            {isAddingArtist && <LoadingPage message="Adding artist..." />}
+            <div className="relative w-full max-w-[400px] z-40 text-black">
+                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                    <Search size={24} strokeWidth={2.5} />
+                    <Input
+                        onBlur={handleBlur}
+                        onFocus={handleFocus}
+                        type="text"
+                        value={query}
+                        onChange={handleInputChange}
+                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                        placeholder="Search"
+                    />
                 </div>
-            )}
-        </div>
+                {(showResults && query.length >= 1) && (
+                    <div 
+                        ref={resultsContainer} 
+                        className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
+                    >
+                        {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}
+                    </div>
+                )}
+            </div>
+        </>
     );
 };
