@@ -109,20 +109,30 @@ function AddArtistContent() {
         
         setAdding(true);
         try {
-            console.log("About to call addArtist server action...");
-            console.log("Current session state:", session);
-            
-            const result = await addArtist(spotifyId).catch(error => {
-                console.error("Error during addArtist call:", error);
-                throw error;
+            // Test server communication first
+            console.log("Testing server communication...");
+            const testResponse = await fetch("/api/test-log");
+            const testData = await testResponse.json();
+            console.log("Test response:", testData);
+
+            // Call the new API endpoint
+            console.log("Calling add-artist API endpoint...");
+            const response = await fetch("/api/add-artist", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ spotifyId }),
             });
-            
-            console.log("Add artist result:", result);
-            
-            if (!result) {
-                console.error("No result received from addArtist");
-                throw new Error("No response from server");
+
+            if (!response.ok) {
+                console.error("API response not ok:", response.status);
+                const errorData = await response.json();
+                throw new Error(errorData.error || "API call failed");
             }
+
+            const result = await response.json();
+            console.log("Add artist API result:", result);
             
             if (result.status === "success" && result.artistId) {
                 console.log("Successfully added artist, redirecting to:", result.artistId);
