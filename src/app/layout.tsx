@@ -3,7 +3,9 @@ import "./globals.css";
 import Nav from "./_components/nav";
 import { Toaster } from "@/components/ui/toaster";
 import Footer from "./_components/Footer";
-import Head from "next/head";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/server/auth";
+import Providers from "./_components/Providers";
 
 export const metadata: Metadata = {
   title: "Music Nerd",
@@ -39,15 +41,19 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getServerSession(authOptions);
+
   return (
     <html lang="en" className="scrollbar-hide">
       <body className="min-h-screen flex flex-col">
-        <Nav />
-        <main className="flex-grow flex flex-col min-h-0">
-          {children}
-        </main>
-        <Toaster />
-        <Footer />
+        <Providers session={session}>
+          <Nav />
+          <main className="flex-grow flex flex-col min-h-0">
+            {children}
+          </main>
+          <Toaster />
+          <Footer />
+        </Providers>
       </body>
     </html>
   );
