@@ -72,22 +72,50 @@ export type SpotifyArtist = {
 
 export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
+        console.log("Fetching Spotify artist with ID:", artistId); // Debug log
+        
+        if (!headers?.headers?.Authorization) {
+            console.error("Missing Spotify authorization header");
+            return { error: "Spotify authentication failed", data: null };
+        }
+
         const { data } = await axios.get<SpotifyArtist>(
             `https://api.spotify.com/v1/artists/${artistId}`,
             headers
         );
         
         // Validate the response has all required fields
-        if (!data || !data.name || !data.id || !Array.isArray(data.images) || !data.followers || !Array.isArray(data.genres)) {
-            console.error("Invalid Spotify artist data format:", data);
+        if (!data) {
+            console.error("No data returned from Spotify API");
+            return { error: "No data returned from Spotify", data: null };
+        }
+
+        if (!data.name || !data.id) {
+            console.error("Invalid Spotify artist data - missing required fields:", data);
             return { error: "Invalid artist data format from Spotify", data: null };
         }
         
-        return { data, error: null };
-    } catch (e: any) {
-        console.error("Error fetching Spotify data for artist", e?.response?.data || e);
+        // Ensure arrays are initialized even if empty
+        const safeData = {
+            ...data,
+            images: Array.isArray(data.images) ? data.images : [],
+            genres: Array.isArray(data.genres) ? data.genres : [],
+            followers: data.followers || { total: 0 }
+        };
         
-        if (e.response?.data?.error?.message === "invalid id") {
+        return { data: safeData, error: null };
+    } catch (e: any) {
+        console.error("Error fetching Spotify data for artist", {
+            artistId,
+            error: e?.response?.data || e,
+            status: e?.response?.status
+        });
+        
+        if (!e.response) {
+            return { error: "Network error while fetching artist data", data: null };
+        }
+        
+        if (e.response?.status === 404 || e.response?.data?.error?.message === "invalid id") {
             return { error: "Invalid Spotify ID", data: null };
         }
         if (e.response?.status === 401) {

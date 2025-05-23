@@ -19,6 +19,11 @@ interface SpotifyArtist {
         total: number;
     };
     genres: string[];
+    type: string;
+    uri: string;
+    external_urls: {
+        spotify: string;
+    };
 }
 
 // Handles the main content of the Add Artist page, including fetching and displaying Spotify artist data
@@ -41,38 +46,39 @@ function AddArtistContent() {
     //      None - Uses spotifyId from component state
     // Returns:
     //      void - Updates component state with artist data or error
-    async function fetchArtistData() {
-        if (!spotifyId) {
-            setError("No Spotify ID provided");
-            setLoading(false);
-            return;
-        }
-
-        try {
-            const headers = await getSpotifyHeaders();
-            const response = await getSpotifyArtist(spotifyId, headers);
-            
-            if (response.error || !response.data) {
-                setError(response.error || "Failed to fetch artist data");
-            } else if (
-                'images' in response.data &&
-                Array.isArray(response.data.images) &&
-                'followers' in response.data &&
-                'genres' in response.data &&
-                Array.isArray(response.data.genres)
-            ) {
-                setArtist(response.data as SpotifyArtist);
-            } else {
-                setError("Invalid artist data format");
-            }
-        } catch (err) {
-            setError("Failed to fetch artist data");
-        } finally {
-            setLoading(false);
-        }
-    }
-
     useEffect(() => {
+        async function fetchArtistData() {
+            if (!spotifyId) {
+                setError("No Spotify ID provided");
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const headers = await getSpotifyHeaders();
+                if (!headers?.headers?.Authorization) {
+                    console.error("No Spotify authorization headers");
+                    setError("Failed to authenticate with Spotify");
+                    setLoading(false);
+                    return;
+                }
+
+                const response = await getSpotifyArtist(spotifyId, headers);
+                console.log("Spotify API Response:", response); // Debug log
+                
+                if (response.error || !response.data) {
+                    setError(response.error || "Failed to fetch artist data");
+                } else {
+                    setArtist(response.data);
+                }
+            } catch (err) {
+                console.error("Error in fetchArtistData:", err);
+                setError("Failed to fetch artist data");
+            } finally {
+                setLoading(false);
+            }
+        }
+
         fetchArtistData();
     }, [spotifyId]);
 
@@ -87,6 +93,7 @@ function AddArtistContent() {
         setAdding(true);
         try {
             const result = await addArtist(spotifyId);
+            console.log("Add artist result:", result); // Debug log
             
             if (result.status === "success" && result.artistId) {
                 router.push(`/artist/${result.artistId}`);
@@ -96,7 +103,8 @@ function AddArtistContent() {
                 setError(result.message || "Failed to add artist");
             }
         } catch (err) {
-            setError("Failed to add artist");
+            console.error("Error in handleAddArtist:", err);
+            setError("Failed to add artist - please ensure you are logged in");
         } finally {
             setAdding(false);
         }
