@@ -156,7 +156,7 @@ function SearchResults({
                                 }
                             }}
                         >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-4">
                                 {spotifyImage && (
                                     <img 
                                         src={spotifyImage} 
@@ -167,8 +167,13 @@ function SearchResults({
                                 <div className="flex-grow">
                                     <div className="font-medium">{result.name}</div>
                                     {result.isSpotifyOnly && (
-                                        <div className="text-sm text-gray-500">
-                                            {isAddingThis ? "Adding..." : "Add from Spotify"}
+                                        <div className="text-sm text-gray-500 flex items-center gap-2">
+                                            {isAddingThis ? (
+                                                <>
+                                                    <img className="h-4" src="/spinner.svg" alt="Loading" />
+                                                    <span>Adding...</span>
+                                                </>
+                                            ) : "Add from Spotify"}
                                         </div>
                                     )}
                                 </div>
