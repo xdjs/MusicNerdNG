@@ -44,7 +44,7 @@ export const getSpotifyHeaders = unstable_cache(async () => {
         console.error("Error fetching Spotify headers", e)
         throw new Error("Error fetching Spotify headers");
     }
-}, ["spotify-headers"], { tags: ["spotify-headers"], revalidate: 60 * 60 * 1 });
+}, ["spotify-headers"], { tags: ["spotify-headers"], revalidate: 60 * 60 });
 
 export type SpotifyArtistApiResponse = {
     error: string | null,
@@ -52,23 +52,52 @@ export type SpotifyArtistApiResponse = {
 }
 
 export type SpotifyArtist = {
-    name: string,
-    id:string,
+    name: string;
+    id: string;
+    images: Array<{
+        url: string;
+        height: number;
+        width: number;
+    }>;
+    followers: {
+        total: number;
+    };
+    genres: string[];
+    type: string;
+    uri: string;
+    external_urls: {
+        spotify: string;
+    };
 }
 
-export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType) : Promise<SpotifyArtistApiResponse> => {
+export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
-        const {data}: {data: SpotifyArtist} = await axios.get(
+        const { data } = await axios.get<SpotifyArtist>(
             `https://api.spotify.com/v1/artists/${artistId}`,
             headers
         );
-        return {data, error: null};
-    } catch (e:any) {
-        if(e.response.data.error.message === "invalid id"){
-            return {error: "Invlid Spotify Id", data: null}
-        }  
-        console.error("Error fetching Spotify data for artist", e)
-        throw new Error(`Error fetching Spotify data for artist ${artistId}`);
+        
+        // Validate the response has all required fields
+        if (!data || !data.name || !data.id || !Array.isArray(data.images) || !data.followers || !Array.isArray(data.genres)) {
+            console.error("Invalid Spotify artist data format:", data);
+            return { error: "Invalid artist data format from Spotify", data: null };
+        }
+        
+        return { data, error: null };
+    } catch (e: any) {
+        console.error("Error fetching Spotify data for artist", e?.response?.data || e);
+        
+        if (e.response?.data?.error?.message === "invalid id") {
+            return { error: "Invalid Spotify ID", data: null };
+        }
+        if (e.response?.status === 401) {
+            return { error: "Spotify authentication failed", data: null };
+        }
+        if (e.response?.status === 429) {
+            return { error: "Rate limit exceeded, please try again later", data: null };
+        }
+        
+        return { error: "Failed to fetch artist data from Spotify", data: null };
     }
 }, ["spotify-artist"], { tags: ["spotify-artist"], revalidate: 60 * 60 * 24 });
 
@@ -125,6 +154,7 @@ export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | nul
   
     } catch(e) {
         console.error(`Error fetching Spotify data for artist`, e);
+        return 0;
     }
 }, ["spotify-releases"], { tags: ["spotify-releases"], revalidate: 60 * 60 * 24 });
 

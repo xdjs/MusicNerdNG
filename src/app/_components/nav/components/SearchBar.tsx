@@ -5,12 +5,23 @@ import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation'
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
-import { searchForArtistByName } from '@/server/utils/queriesTS';
 import { Artist } from '@/server/db/DbTypes';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
+import Image from 'next/image';
 
 const queryClient = new QueryClient()
+
+interface SpotifyArtistImage {
+  url: string;
+  height: number;
+  width: number;
+}
+
+interface SearchResult extends Artist {
+  isSpotifyOnly?: boolean;
+  images?: SpotifyArtistImage[];
+}
 
 export default function wrapper({isTopSide = false}: {isTopSide?: boolean}) {
     return (
@@ -40,24 +51,29 @@ export function Spinner() {
     )
 }
 
-function Users({
-    users,
+function SearchResults({
+    results,
     search,
     setQuery,
 }: {
-    users: Artist[] | undefined,
+    results: SearchResult[] | undefined,
     search: string,
     setQuery: (query: string) => void,
 }
 ) {
     const router = useRouter();
 
-    function navigateToUser(artist: Artist) {
-        setQuery(artist.name ?? "");
-        router.push(`/artist/${artist.id}`);
+    function navigateToResult(result: SearchResult) {
+        setQuery(result.name ?? "");
+        if (result.isSpotifyOnly) {
+            // Handle Spotify-only result (e.g., open add artist dialog)
+            router.push(`/add-artist?spotify=${result.spotify}`);
+        } else {
+            router.push(`/artist/${result.id}`);
+        }
     }
     
-    if(users?.length === 0) {
+    if(!results || results.length === 0) {
         return (
             <div className="flex justify-center items-center p-3 font-medium">
                 <p>Artist not found!</p>
@@ -67,30 +83,42 @@ function Users({
 
     return (
         <>
-            {users && users.map(u => {
+            {results.map(result => {
+                const spotifyImage = result.images?.[0]?.url;
                 return (
-                    <div key={u.id} >
+                    <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <Link
                             className="block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg"
-                            onMouseDown={() => navigateToUser(u)}
-                            href={{
-                                pathname: `/artist/${u.id}`,
-                                query: {
-                                    ...(search ? { search } : {}),
+                            onMouseDown={() => navigateToResult(result)}
+                            href={result.isSpotifyOnly ? 
+                                `/add-artist?spotify=${result.spotify}` : 
+                                {
+                                    pathname: `/artist/${result.id}`,
+                                    query: { ...(search ? { search } : {}) }
                                 }
-                            }}
+                            }
                         >
-                            {u.name}
+                            <div className="flex items-center gap-3">
+                                {spotifyImage && (
+                                    <img 
+                                        src={spotifyImage} 
+                                        alt={result.name ?? "Artist"} 
+                                        className="w-10 h-10 rounded-full object-cover"
+                                    />
+                                )}
+                                <div>
+                                    <div className="font-medium">{result.name}</div>
+                                    {result.isSpotifyOnly && (
+                                        <div className="text-sm text-gray-500">Add from Spotify</div>
+                                    )}
+                                </div>
+                            </div>
                         </Link>
                     </div>
                 )
             })}
         </>
     )
-}
-
-interface UserResults {
-    users: Artist[]
 }
 
 const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
@@ -102,16 +130,23 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
 
-    const { data, isLoading, isFetching } = useQuery({
-        queryKey: ['userSearchResults', debouncedQuery],
+    const { data, isLoading } = useQuery({
+        queryKey: ['combinedSearchResults', debouncedQuery],
         queryFn: async () => {
             if (!debouncedQuery) return null;
-            const data = await searchForArtistByName(debouncedQuery)
-            return data
+            const response = await fetch('/api/searchArtists', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query: debouncedQuery }),
+            });
+            const data = await response.json();
+            return data.results;
         },
-    })
+    });
 
-    const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
         setQuery(value);
     };
@@ -131,15 +166,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 />
             </div>
             {(showResults && query.length >= 1) && (
-                <div ref={resultsContainer} className={`absolute left   -0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}>
-                    {isLoading ? <Spinner />
-                        :
-                        <>
-                            {data &&
-                                <Users users={data} search={search ?? ""} setQuery={setQuery} />
-                            }
-                        </>
-                    }
+                <div ref={resultsContainer} className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}>
+                    {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} />}
                 </div>
             )}
         </div>
