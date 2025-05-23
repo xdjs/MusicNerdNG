@@ -12,12 +12,14 @@ import Image from 'next/image';
 
 const queryClient = new QueryClient()
 
+// Defines the structure of a Spotify artist's image
 interface SpotifyArtistImage {
   url: string;
   height: number;
   width: number;
 }
 
+// Extends the base Artist type to include Spotify-specific fields
 interface SearchResult extends Artist {
   isSpotifyOnly?: boolean;
   images?: SpotifyArtistImage[];
@@ -51,6 +53,13 @@ export function Spinner() {
     )
 }
 
+// Renders the search results list with proper handling for both database and Spotify results
+// Params:
+//      results: Array of combined search results from database and Spotify
+//      search: Current search query string
+//      setQuery: Function to update the search query
+// Returns:
+//      JSX.Element - The rendered search results list
 function SearchResults({
     results,
     search,
@@ -63,10 +72,16 @@ function SearchResults({
 ) {
     const router = useRouter();
 
+    // Handles navigation when a search result is selected
+    // For Spotify-only results, redirects to add artist page
+    // For database results, navigates to artist profile
+    // Params:
+    //      result: The selected search result
+    // Returns:
+    //      void - Triggers navigation
     function navigateToResult(result: SearchResult) {
         setQuery(result.name ?? "");
         if (result.isSpotifyOnly) {
-            // Handle Spotify-only result (e.g., open add artist dialog)
             router.push(`/add-artist?spotify=${result.spotify}`);
         } else {
             router.push(`/artist/${result.id}`);
@@ -121,6 +136,11 @@ function SearchResults({
     )
 }
 
+// Main search bar component that provides artist search functionality
+// Params:
+//      isTopSide: Boolean indicating if the search bar is at the top of the page
+// Returns:
+//      JSX.Element - The rendered search bar with results dropdown
 const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const router = useRouter();
     const [query, setQuery] = useState('');
@@ -130,6 +150,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
 
+    // Fetches combined search results from both database and Spotify
+    // Uses react-query for caching and automatic request management
     const { data, isLoading } = useQuery({
         queryKey: ['combinedSearchResults', debouncedQuery],
         queryFn: async () => {
@@ -146,6 +168,11 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         },
     });
 
+    // Updates the search query and triggers the search
+    // Params:
+    //      e: Change event from the input field
+    // Returns:
+    //      void - Updates component state
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
         setQuery(value);

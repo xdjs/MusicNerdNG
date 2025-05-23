@@ -2,12 +2,14 @@ import { searchForArtistByName } from "@/server/utils/queriesTS";
 import { getSpotifyHeaders } from "@/server/utils/externalApiQueries";
 import axios from "axios";
 
+// Defines the structure of a Spotify artist's image metadata
 interface SpotifyArtistImage {
   url: string;
   height: number;
   width: number;
 }
 
+// Defines the complete structure of a Spotify artist object from their API
 interface SpotifyArtist {
   id: string;
   name: string;
@@ -27,12 +29,18 @@ interface SpotifyArtist {
   };
 }
 
+// Defines the structure of the Spotify search API response
 interface SpotifySearchResponse {
   artists: {
     items: SpotifyArtist[];
   };
 }
 
+// POST endpoint handler for combined artist search across local database and Spotify
+// Params:
+//      req: Request object containing search query in the body
+// Returns:
+//      Response with combined and sorted search results or error message
 export async function POST(req: Request) {
   try {
     const { query } = await req.json();
@@ -44,22 +52,22 @@ export async function POST(req: Request) {
       );
     }
 
-    // Parallel execution of both searches
+    // Parallel execution of both searches for better performance
     const [dbResults, spotifyHeaders] = await Promise.all([
       searchForArtistByName(query),
       getSpotifyHeaders()
     ]);
 
-    // Search Spotify
+    // Search Spotify's API for matching artists
     const spotifyResponse = await axios.get<SpotifySearchResponse>(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`,
       spotifyHeaders
     );
 
-    // Transform Spotify results to match your app's format
+    // Transform Spotify results to match the application's format
+    // Filters out artists that already exist in the database
     const spotifyArtists = spotifyResponse.data.artists.items
       .filter((spotifyArtist: SpotifyArtist) => 
-        // Filter out artists that are already in the database
         !dbResults.some(dbArtist => dbArtist.spotify === spotifyArtist.id)
       )
       .map((artist: SpotifyArtist) => ({
@@ -70,7 +78,7 @@ export async function POST(req: Request) {
         isSpotifyOnly: true // Flag to identify Spotify-only results
       }));
 
-    // Combine results and sort them
+    // Combine and sort results with database entries appearing first
     const combinedResults = [
       ...dbResults.map(artist => ({
         ...artist,

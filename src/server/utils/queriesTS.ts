@@ -78,6 +78,12 @@ export async function getArtistByNameApiResp(name: string) {
     }
 }
 
+// Searches for artists in the database by name using fuzzy matching and similarity scoring
+// Uses PostgreSQL's similarity function to find close matches and prioritizes exact prefix matches
+// Params:
+//      name: The artist name to search for
+// Returns:
+//      Promise<Artist[]> - Array of matching artists, limited to 10 results
 export async function searchForArtistByName(name: string) {
     try {
         const startTime = performance.now();

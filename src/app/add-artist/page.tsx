@@ -21,6 +21,12 @@ interface SpotifyArtist {
     genres: string[];
 }
 
+// Handles the main content of the Add Artist page, including fetching and displaying Spotify artist data
+// and managing the addition of artists to the database
+// Params:
+//      None - Uses hooks internally for state and navigation
+// Returns:
+//      JSX.Element - The rendered content including artist details and action buttons
 function AddArtistContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -30,41 +36,51 @@ function AddArtistContent() {
     const [error, setError] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
 
-    useEffect(() => {
-        async function fetchArtistData() {
-            if (!spotifyId) {
-                setError("No Spotify ID provided");
-                setLoading(false);
-                return;
-            }
-
-            try {
-                const headers = await getSpotifyHeaders();
-                const response = await getSpotifyArtist(spotifyId, headers);
-                
-                if (response.error || !response.data) {
-                    setError(response.error || "Failed to fetch artist data");
-                } else if (
-                    'images' in response.data &&
-                    Array.isArray(response.data.images) &&
-                    'followers' in response.data &&
-                    'genres' in response.data &&
-                    Array.isArray(response.data.genres)
-                ) {
-                    setArtist(response.data as SpotifyArtist);
-                } else {
-                    setError("Invalid artist data format");
-                }
-            } catch (err) {
-                setError("Failed to fetch artist data");
-            } finally {
-                setLoading(false);
-            }
+    // Fetches artist data from Spotify API when the component mounts or spotifyId changes
+    // Params:
+    //      None - Uses spotifyId from component state
+    // Returns:
+    //      void - Updates component state with artist data or error
+    async function fetchArtistData() {
+        if (!spotifyId) {
+            setError("No Spotify ID provided");
+            setLoading(false);
+            return;
         }
 
+        try {
+            const headers = await getSpotifyHeaders();
+            const response = await getSpotifyArtist(spotifyId, headers);
+            
+            if (response.error || !response.data) {
+                setError(response.error || "Failed to fetch artist data");
+            } else if (
+                'images' in response.data &&
+                Array.isArray(response.data.images) &&
+                'followers' in response.data &&
+                'genres' in response.data &&
+                Array.isArray(response.data.genres)
+            ) {
+                setArtist(response.data as SpotifyArtist);
+            } else {
+                setError("Invalid artist data format");
+            }
+        } catch (err) {
+            setError("Failed to fetch artist data");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
         fetchArtistData();
     }, [spotifyId]);
 
+    // Handles the addition of an artist to the database and navigates to their page on success
+    // Params:
+    //      None - Uses spotifyId from component state
+    // Returns:
+    //      Promise<void> - Redirects to artist page on success or updates error state
     async function handleAddArtist() {
         if (!spotifyId) return;
         
@@ -164,6 +180,11 @@ function AddArtistContent() {
     );
 }
 
+// Main page component that wraps the content in a Suspense boundary for proper client-side navigation
+// Params:
+//      None
+// Returns:
+//      JSX.Element - The wrapped AddArtistContent component with a loading fallback
 export default function AddArtistPage() {
     return (
         <Suspense fallback={
