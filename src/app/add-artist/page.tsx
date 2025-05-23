@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
 import { Button } from "@/components/ui/button";
-import { addArtist } from "@/server/utils/queriesTS";
+import { addArtist } from "../actions/addArtist";
 import { useSession } from "next-auth/react";
 
 interface SpotifyArtist {
@@ -109,30 +109,9 @@ function AddArtistContent() {
         
         setAdding(true);
         try {
-            // Test server communication first
-            console.log("Testing server communication...");
-            const testResponse = await fetch("/api/test-log");
-            const testData = await testResponse.json();
-            console.log("Test response:", testData);
-
-            // Call the new API endpoint
-            console.log("Calling add-artist API endpoint...");
-            const response = await fetch("/api/add-artist", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ spotifyId }),
-            });
-
-            if (!response.ok) {
-                console.error("API response not ok:", response.status);
-                const errorData = await response.json();
-                throw new Error(errorData.error || "API call failed");
-            }
-
-            const result = await response.json();
-            console.log("Add artist API result:", result);
+            console.log("About to call addArtist server action...");
+            const result = await addArtist(spotifyId);
+            console.log("Add artist result:", result);
             
             if (result.status === "success" && result.artistId) {
                 console.log("Successfully added artist, redirecting to:", result.artistId);
