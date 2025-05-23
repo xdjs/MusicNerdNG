@@ -102,16 +102,9 @@ function SearchResults({
                 const spotifyImage = result.images?.[0]?.url;
                 return (
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
-                        <Link
+                        <div
                             className="block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg"
-                            onMouseDown={() => navigateToResult(result)}
-                            href={result.isSpotifyOnly ? 
-                                `/add-artist?spotify=${result.spotify}` : 
-                                {
-                                    pathname: `/artist/${result.id}`,
-                                    query: { ...(search ? { search } : {}) }
-                                }
-                            }
+                            onClick={() => navigateToResult(result)}
                         >
                             <div className="flex items-center gap-3">
                                 {spotifyImage && (
@@ -128,7 +121,7 @@ function SearchResults({
                                     )}
                                 </div>
                             </div>
-                        </Link>
+                        </div>
                     </div>
                 )
             })}
