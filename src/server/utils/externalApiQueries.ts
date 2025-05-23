@@ -19,14 +19,19 @@ export type SpotifyHeaders = {
 
 export const getSpotifyHeaders = unstable_cache(async () => {
     try {
+        if (!SPOTIFY_WEB_CLIENT_ID || !SPOTIFY_WEB_CLIENT_SECRET) {
+            console.error("Missing Spotify credentials");
+            throw new Error("Spotify credentials not configured");
+        }
+
         const headers = {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
             }
         };
-        let payload = {
+        
+        const payload = {
             grant_type: "client_credentials",
-            redirectUri: "https://localhost:8000/callback",
             client_id: SPOTIFY_WEB_CLIENT_ID,
             client_secret: SPOTIFY_WEB_CLIENT_SECRET,
         };
@@ -37,11 +42,19 @@ export const getSpotifyHeaders = unstable_cache(async () => {
             headers
         )
 
+        if (!data.access_token) {
+            console.error("No access token in Spotify response");
+            throw new Error("Failed to get Spotify access token");
+        }
+
         return {
             headers: { Authorization: `Bearer ${data.access_token}` }
         };
     } catch (e) {
-        console.error("Error fetching Spotify headers", e)
+        console.error("Error fetching Spotify headers:", e);
+        if (e instanceof Error) {
+            throw e;
+        }
         throw new Error("Error fetching Spotify headers");
     }
 }, ["spotify-headers"], { tags: ["spotify-headers"], revalidate: 60 * 60 });
