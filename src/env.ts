@@ -6,8 +6,8 @@ function validateEnv<T extends string>(value: T | undefined, name: string): T {
     return value;
 }
 
-export const SPOTIFY_WEB_CLIENT_ID = validateEnv(process.env.SPOTIFY_WEB_CLIENT_ID, 'SPOTIFY_WEB_CLIENT_ID');
-export const SPOTIFY_WEB_CLIENT_SECRET = validateEnv(process.env.SPOTIFY_WEB_CLIENT_SECRET, 'SPOTIFY_WEB_CLIENT_SECRET');
+export const SPOTIFY_WEB_CLIENT_ID = validateEnv(process.env.NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID, 'NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID');
+export const SPOTIFY_WEB_CLIENT_SECRET = validateEnv(process.env.NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET, 'NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET');
 export const SUPABASE_DB_CONNECTION = process.env.SUPABASE_DB_CONNECTION ?? "";
 export const NEXTAUTH_URL = process.env.NEXTAUTH_URL ?? "";
 export const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL ?? "";
