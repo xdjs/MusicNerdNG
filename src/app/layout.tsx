@@ -6,6 +6,7 @@ import Footer from "./_components/Footer";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth";
 import Providers from "./_components/Providers";
+import LoginProviders from "./_components/nav/components/LoginProviders";
 
 export const metadata: Metadata = {
   title: "Music Nerd",
@@ -47,12 +48,14 @@ export default async function RootLayout({
     <html lang="en" className="scrollbar-hide">
       <body className="min-h-screen flex flex-col">
         <Providers session={session}>
-          <Nav />
-          <main className="flex-grow flex flex-col min-h-0">
-            {children}
-          </main>
-          <Toaster />
-          <Footer />
+          <LoginProviders>
+            <Nav />
+            <main className="flex-grow flex flex-col min-h-0">
+              {children}
+            </main>
+            <Toaster />
+            <Footer />
+          </LoginProviders>
         </Providers>
       </body>
     </html>
