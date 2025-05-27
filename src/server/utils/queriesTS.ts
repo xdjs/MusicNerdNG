@@ -92,14 +92,20 @@ export async function searchForArtistByName(name: string) {
             SELECT 
                 id, 
                 name, 
-                spotify, 
+                spotify,
+                bandcamp,
+                youtubechannel,
                 instagram,
+                x,
+                facebook,
+                tiktok,
                 CASE 
                     WHEN LOWER(name) LIKE LOWER(${name || ''} || '%') THEN 1  -- Exact prefix match
                     ELSE 2
                 END as match_type
             FROM artists
             WHERE similarity(name, ${name}) > 0.3
+            AND spotify IS NOT NULL
             ORDER BY 
                 match_type,  -- Prefix matches first
                 similarity(name, ${name}) DESC  -- Then by similarity

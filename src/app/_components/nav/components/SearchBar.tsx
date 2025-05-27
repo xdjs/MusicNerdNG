@@ -27,6 +27,7 @@ interface SpotifyArtistImage {
 interface SearchResult extends Artist {
   isSpotifyOnly?: boolean;
   images?: SpotifyArtistImage[];
+  supercollector?: string | null;
 }
 
 export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boolean}) {
@@ -55,6 +56,40 @@ export function Spinner() {
             <img className="h-10" src="/spinner.svg" alt="spinner" />
         </div>
     )
+}
+
+function SocialIcons({ result }: { result: SearchResult }) {
+    const showIcons = !result.isSpotifyOnly;
+    
+    if (!showIcons) return null;
+    
+    const icons = [];
+    
+    if (result.bandcamp) {
+        icons.push(
+            <img key="bandcamp" src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+        );
+    }
+    
+    if (result.youtubechannel) {
+        icons.push(
+            <img key="youtube" src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+        );
+    }
+    
+    if (result.instagram) {
+        icons.push(
+            <img key="instagram" src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+        );
+    }
+    
+    if (icons.length === 0) return null;
+    
+    return (
+        <div className="flex items-center gap-2 mt-0.5">
+            {icons}
+        </div>
+    );
 }
 
 // Renders the search results list with proper handling for both database and Spotify results
@@ -172,10 +207,10 @@ function SearchResults({
                                     )}
                                 </div>
                                 <div className="flex-grow">
-                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'}`}>
+                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} -mb-0.5`}>
                                         {result.name}
                                     </div>
-                                    {result.isSpotifyOnly && (
+                                    {result.isSpotifyOnly ? (
                                         <div className="text-xs text-gray-500 flex items-center gap-2">
                                             {isAddingThis ? (
                                                 <>
@@ -183,6 +218,32 @@ function SearchResults({
                                                     <span>Adding...</span>
                                                 </>
                                             ) : "Add from Spotify"}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-start gap-1">
+                                            <div className="flex flex-col w-[140px]">
+                                                <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
+                                                <div className="flex items-center gap-2">
+                                                    {result.bandcamp && (
+                                                        <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+                                                    )}
+                                                    {result.youtubechannel && (
+                                                        <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+                                                    )}
+                                                    {result.instagram && (
+                                                        <img src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                    )}
+                                                    {result.x && (
+                                                        <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
+                                                    )}
+                                                    {result.facebook && (
+                                                        <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
+                                                    )}
+                                                    {result.tiktok && (
+                                                        <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
