@@ -153,7 +153,7 @@ function SearchResults({
                 return (
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <div
-                            className={`block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg ${isAddingThis ? 'opacity-50' : ''}`}
+                            className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg ${isAddingThis ? 'opacity-50' : ''}`}
                             onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur
                                 if (!isAddingThis) {
@@ -161,21 +161,25 @@ function SearchResults({
                                 }
                             }}
                         >
-                            <div className="flex items-center gap-4">
-                                {spotifyImage && (
-                                    <img 
-                                        src={spotifyImage} 
-                                        alt={result.name ?? "Artist"} 
-                                        className="w-10 h-10 rounded-full object-cover"
-                                    />
-                                )}
+                            <div className="flex items-center gap-3">
+                                <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
+                                    {spotifyImage && (
+                                        <img 
+                                            src={spotifyImage} 
+                                            alt={result.name ?? "Artist"} 
+                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                        />
+                                    )}
+                                </div>
                                 <div className="flex-grow">
-                                    <div className="font-medium">{result.name}</div>
+                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'}`}>
+                                        {result.name}
+                                    </div>
                                     {result.isSpotifyOnly && (
-                                        <div className="text-sm text-gray-500 flex items-center gap-2">
+                                        <div className="text-xs text-gray-500 flex items-center gap-2">
                                             {isAddingThis ? (
                                                 <>
-                                                    <img className="h-4" src="/spinner.svg" alt="Loading" />
+                                                    <img className="h-3" src="/spinner.svg" alt="Loading" />
                                                     <span>Adding...</span>
                                                 </>
                                             ) : "Add from Spotify"}

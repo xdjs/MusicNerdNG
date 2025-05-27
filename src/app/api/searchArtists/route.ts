@@ -1,5 +1,5 @@
 import { searchForArtistByName } from "@/server/utils/queriesTS";
-import { getSpotifyHeaders } from "@/server/utils/externalApiQueries";
+import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
 import axios from "axios";
 
 // Defines the structure of a Spotify artist's image metadata
@@ -58,6 +58,35 @@ export async function POST(req: Request) {
       getSpotifyHeaders()
     ]);
 
+    // Fetch Spotify data for database artists that have Spotify IDs
+    const dbArtistsWithImages = await Promise.all(
+      dbResults.map(async (artist) => {
+        if (artist.spotify) {
+          try {
+            const spotifyData = await axios.get<SpotifyArtist>(
+              `https://api.spotify.com/v1/artists/${artist.spotify}`,
+              spotifyHeaders
+            );
+            return {
+              ...artist,
+              images: spotifyData.data.images,
+              isSpotifyOnly: false
+            };
+          } catch (error) {
+            console.error(`Failed to fetch Spotify data for artist ${artist.spotify}:`, error);
+            return {
+              ...artist,
+              isSpotifyOnly: false
+            };
+          }
+        }
+        return {
+          ...artist,
+          isSpotifyOnly: false
+        };
+      })
+    );
+
     // Search Spotify's API for matching artists
     const spotifyResponse = await axios.get<SpotifySearchResponse>(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`,
@@ -80,10 +109,7 @@ export async function POST(req: Request) {
 
     // Combine and sort results with database entries appearing first
     const combinedResults = [
-      ...dbResults.map(artist => ({
-        ...artist,
-        isSpotifyOnly: false
-      })),
+      ...dbArtistsWithImages,
       ...spotifyArtists
     ].sort((a, b) => {
       // Sort by source (database first) and then by name
