@@ -148,6 +148,7 @@ function SearchResults({
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                     await router.replace(`/artist/${addResult.artistId}`);
                 } else {
+                    setIsAddingArtist(false);
                     toast({
                         variant: "destructive",
                         title: "Error",
@@ -156,6 +157,7 @@ function SearchResults({
                 }
             } catch (err) {
                 console.error("Error adding artist:", err);
+                setIsAddingArtist(false);
                 if (err instanceof Error && err.message.includes('Not authenticated')) {
                     const loginBtn = document.getElementById("login-btn");
                     if (loginBtn) {
@@ -170,7 +172,6 @@ function SearchResults({
                 }
             } finally {
                 setIsAdding(null);
-                setIsAddingArtist(false);
             }
         } else {
             router.push(`/artist/${result.id}`);
@@ -284,6 +285,14 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout>();
     const [isAddingArtist, setIsAddingArtist] = useState(false);
+
+    // Add effect to handle loading state cleanup after navigation
+    useEffect(() => {
+        return () => {
+            // Cleanup loading state when component unmounts (during navigation)
+            setIsAddingArtist(false);
+        };
+    }, []);
 
     // Handle blur with a slight delay to allow click events to process
     const handleBlur = () => {
