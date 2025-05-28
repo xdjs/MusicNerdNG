@@ -145,10 +145,8 @@ function SearchResults({
                 setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
                 
-                if (addResult.status === "success" && addResult.artistId) {
-                    router.push(`/artist/${addResult.artistId}`);
-                } else if (addResult.status === "exists" && addResult.artistId) {
-                    router.push(`/artist/${addResult.artistId}`);
+                if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                    await router.replace(`/artist/${addResult.artistId}`);
                 } else {
                     toast({
                         variant: "destructive",
