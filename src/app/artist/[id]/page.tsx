@@ -1,5 +1,5 @@
 import { getArtistById, getAllLinks, getArtistLinks } from "@/server/utils/queriesTS";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
+import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
@@ -26,11 +26,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     const { opADM } = searchParams;
     const headers = await getSpotifyHeaders();
 
-    const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
+    const [spotifyImg, numReleases, wiki, allLinks, topTrackId] = await Promise.all([
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
         getArtistWiki(artist.wikipedia ?? ""),
         getArtistLinks(artist),
+        getArtistTopTrack(artist.spotify ?? "", headers),
         // getAiResponse(`Give me a 230 characterbio of the artist ${JSON.stringify(artist)} be casual and focus on web3 only if they are a web3 artist don't add any extra details of how the composition was made`)
     ]);
 
@@ -53,22 +54,29 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
                         {/* Left Column: Image and Song */}
                         {(spotifyImg.artistImage) &&
-                            <div className="flex flex-col items-center md:items-end">
-                                <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                                    {(spotifyImg) && <img src={spotifyImg.artistImage} alt="Artist Image" className="object-cover w-full h-full" />}
-                                </AspectRatio>
+                            <div className="flex flex-col items-center mt-1">
+                                <div className="w-full">
+                                    <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full">
+                                        {(spotifyImg) && <img src={spotifyImg.artistImage} alt="Artist Image" className="object-cover w-full h-full" />}
+                                    </AspectRatio>
+                                </div>
                                 {artist.spotify &&
-                                    <div className="w-full">
-                                        <div className="justify-center overflow-hidden rounded-xl">
-                                            <div style={{
-                                                height: 'calc(100% + 32px)',
-                                                width: 'calc(100% + 72px)',
-                                                marginLeft: '-72px',
-                                                marginTop: '-32px',
-                                            }}>
-                                                <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
-                                            </div>
-                                        </div>
+                                    <div className="w-[90%] mt-4">
+                                        <Link 
+                                            href={`https://open.spotify.com/artist/${artist.spotify}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="w-full bg-[#1DB954] hover:bg-[#1ed760] transition-colors rounded-lg p-3 flex flex-col items-center gap-2"
+                                        >
+                                            <img 
+                                                src="/siteIcons/Spotify_Primary_Logo_RGB_White.png"
+                                                alt="Spotify"
+                                                className="w-8 h-8"
+                                            />
+                                            <span className="text-white font-medium">
+                                                Listen on Spotify
+                                            </span>
+                                        </Link>
                                     </div>
                                 }
                             </div>
@@ -96,7 +104,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             }
                         </div>
                     </div>
-                    <div className="space-y-6">
+                    <div className="space-y-6 mt-8">
                         <strong className="text-black text-2xl">
                             Check out {artist?.name} on other media platforms!
                         </strong>
