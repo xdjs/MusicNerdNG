@@ -204,13 +204,11 @@ function SearchResults({
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
-                                    {spotifyImage && (
-                                        <img 
-                                            src={spotifyImage} 
-                                            alt={result.name ?? "Artist"} 
-                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
-                                        />
-                                    )}
+                                    <img 
+                                        src={spotifyImage || "/default_pfp_pink.png"} 
+                                        alt={result.name ?? "Artist"} 
+                                        className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                    />
                                 </div>
                                 <div className="flex-grow">
                                     <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
