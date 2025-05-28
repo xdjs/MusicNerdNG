@@ -112,10 +112,29 @@ export async function POST(req: Request) {
       ...dbArtistsWithImages,
       ...spotifyArtists
     ].sort((a, b) => {
-      // Sort by source (database first) and then by name
+      // First, prioritize database results over Spotify results
       if (!a.isSpotifyOnly && b.isSpotifyOnly) return -1;
       if (a.isSpotifyOnly && !b.isSpotifyOnly) return 1;
-      return (a.name || '').localeCompare(b.name || '');
+
+      // For items from the same source, prioritize exact matches
+      const aNameLower = (a.name || '').toLowerCase();
+      const bNameLower = (b.name || '').toLowerCase();
+      const queryLower = query.toLowerCase();
+
+      // Exact string match gets highest priority
+      if (aNameLower === queryLower && bNameLower !== queryLower) return -1;
+      if (bNameLower === queryLower && aNameLower !== queryLower) return 1;
+
+      // Starts with match gets second priority
+      if (aNameLower.startsWith(queryLower) && !bNameLower.startsWith(queryLower)) return -1;
+      if (bNameLower.startsWith(queryLower) && !aNameLower.startsWith(queryLower)) return 1;
+
+      // Contains match gets third priority
+      if (aNameLower.includes(queryLower) && !bNameLower.includes(queryLower)) return -1;
+      if (bNameLower.includes(queryLower) && !aNameLower.includes(queryLower)) return 1;
+
+      // If both have same match type, sort alphabetically
+      return aNameLower.localeCompare(bNameLower);
     });
 
     return Response.json({ results: combinedResults });

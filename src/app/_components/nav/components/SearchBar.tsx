@@ -189,7 +189,7 @@ function SearchResults({
 
     return (
         <>
-            {results.map(result => {
+            {[...results].map(result => {
                 const spotifyImage = result.images?.[0]?.url;
                 const isAddingThis = isAdding === result.spotify;
                 return (

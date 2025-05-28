@@ -100,15 +100,21 @@ export async function searchForArtistByName(name: string) {
                 facebook,
                 tiktok,
                 CASE 
-                    WHEN LOWER(name) LIKE LOWER(${name || ''} || '%') THEN 1  -- Exact prefix match
-                    ELSE 2
+                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') THEN 0  -- Contains match (0 ranks first)
+                    ELSE 1  -- Similarity match
                 END as match_type
             FROM artists
-            WHERE similarity(name, ${name}) > 0.3
-            AND spotify IS NOT NULL
+            WHERE 
+                (LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') OR similarity(name, ${name}) > 0.3)
+                AND spotify IS NOT NULL
             ORDER BY 
-                match_type,  -- Prefix matches first
-                similarity(name, ${name}) DESC  -- Then by similarity
+                match_type ASC,  -- Contains matches first (0 before 1)
+                CASE 
+                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') 
+                    THEN -POSITION(LOWER(${name}) IN LOWER(name))  -- Negative position to reverse order
+                    ELSE -999999  -- Keep non-contains matches at the end
+                END DESC,  -- DESC on negative numbers puts smallest positions first
+                similarity(name, ${name}) DESC  -- Higher similarity first
             LIMIT 10
         `);
         const endTime = performance.now();
