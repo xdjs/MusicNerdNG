@@ -1,4 +1,3 @@
-
 import { getArtistById, getAllLinks, getArtistLinks } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
@@ -101,6 +100,23 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         <strong className="text-black text-2xl">
                             Check out {artist?.name} on other media platforms!
                         </strong>
+                        {artist.spotify && (
+                            <div className="mb-4">
+                                <Link 
+                                    href={`https://open.spotify.com/artist/${artist.spotify}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-7 text-black hover:text-[#1DB954] transition-colors"
+                                >
+                                    <img 
+                                        src="/siteIcons/Spotify_Primary_Logo_RGB_Green.png" 
+                                        alt="Spotify"
+                                        className="w-[50px] h-[50px]"
+                                    />
+                                    Listen to them on Spotify
+                                </Link>
+                            </div>
+                        )}
                         <div className="space-y-4">
                             {(artist) &&
                                 <ArtistLinks isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
