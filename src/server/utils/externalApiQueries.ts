@@ -5,7 +5,10 @@ import { unstable_cache } from 'next/cache';
 
 
 type SpotifyHeaderType = {
-    headers: { Authorization: string }
+    headers: { 
+        Authorization: string;
+        'x-token-expiry'?: string;
+    }
 }
 
 export type ArtistSpotifyImage = {
@@ -47,8 +50,14 @@ export const getSpotifyHeaders = unstable_cache(async () => {
             throw new Error("Failed to get Spotify access token");
         }
 
+        // Store the expiration time (default is 1 hour)
+        const expiresAt = Date.now() + (data.expires_in * 1000);
+
         return {
-            headers: { Authorization: `Bearer ${data.access_token}` }
+            headers: { 
+                Authorization: `Bearer ${data.access_token}`,
+                'x-token-expiry': expiresAt.toString()
+            }
         };
     } catch (e) {
         console.error("Error fetching Spotify headers:", e);
@@ -57,7 +66,17 @@ export const getSpotifyHeaders = unstable_cache(async () => {
         }
         throw new Error("Error fetching Spotify headers");
     }
-}, ["spotify-headers"], { tags: ["spotify-headers"], revalidate: 60 * 60 });
+}, ["spotify-headers"], { 
+    tags: ["spotify-headers"], 
+    revalidate: 3300 // 55 minutes - refresh slightly before the token expires
+});
+
+// Helper function to check if token is expired or about to expire
+const isTokenExpired = (headers: SpotifyHeaderType): boolean => {
+    const expiryTime = parseInt(headers.headers['x-token-expiry'] || '0');
+    // Return true if token expires in less than 5 minutes
+    return Date.now() + (5 * 60 * 1000) >= expiryTime;
+};
 
 export type SpotifyArtistApiResponse = {
     error: string | null,
@@ -85,11 +104,17 @@ export type SpotifyArtist = {
 
 export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
-        console.log("Fetching Spotify artist with ID:", artistId); // Debug log
+        console.log("Fetching Spotify artist with ID:", artistId);
         
         if (!headers?.headers?.Authorization) {
             console.error("Missing Spotify authorization header");
             return { error: "Spotify authentication failed", data: null };
+        }
+
+        // Check if token is expired or about to expire
+        if (isTokenExpired(headers)) {
+            console.log("Token expired or about to expire, fetching new token");
+            headers = await getSpotifyHeaders();
         }
 
         const { data } = await axios.get<SpotifyArtist>(
