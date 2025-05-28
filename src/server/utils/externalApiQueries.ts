@@ -224,4 +224,22 @@ export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | nul
     }
 }, ["spotify-releases"], { tags: ["spotify-releases"], revalidate: 60 * 60 * 24 });
 
+export const getArtistTopTrack = unstable_cache(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
+    if(!id) return null;
+    try {
+        const response = await axios.get(
+            `https://api.spotify.com/v1/artists/${id}/top-tracks?market=US`,
+            headers
+        );
+        
+        if (response.data.tracks && response.data.tracks.length > 0) {
+            return response.data.tracks[0].id;
+        }
+        return null;
+    } catch(e) {
+        console.error(`Error fetching top track for artist`, e);
+        return null;
+    }
+}, ["spotify-top-track"], { tags: ["spotify-top-track"], revalidate: 60 * 60 * 24 });
+
 
