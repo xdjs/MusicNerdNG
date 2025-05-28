@@ -484,4 +484,18 @@ export async function sendDiscordMessage(message: string) {
     }
 }
 
+export async function getAllSpotifyIds(): Promise<string[]> {
+    try {
+        const result = await db.execute<{ spotify: string }>(sql`
+            SELECT spotify 
+            FROM artists 
+            WHERE spotify IS NOT NULL
+        `);
+        return result.map(r => r.spotify);
+    } catch (e) {
+        console.error('Error fetching Spotify IDs:', e);
+        return [];
+    }
+}
+
 

@@ -1,4 +1,4 @@
-import { searchForArtistByName } from "@/server/utils/queriesTS";
+import { searchForArtistByName, getAllSpotifyIds } from "@/server/utils/queriesTS";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
 import axios from "axios";
 
@@ -52,11 +52,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Parallel execution of both searches for better performance
-    const [dbResults, spotifyHeaders] = await Promise.all([
+    // Parallel execution of all needed operations
+    const [dbResults, spotifyHeaders, allSpotifyIds] = await Promise.all([
       searchForArtistByName(query),
-      getSpotifyHeaders()
+      getSpotifyHeaders(),
+      getAllSpotifyIds()
     ]);
+
+    // Create a Set for faster lookups
+    const existingSpotifyIds = new Set(allSpotifyIds);
 
     // Fetch Spotify data for database artists that have Spotify IDs
     const dbArtistsWithImages = await Promise.all(
@@ -94,11 +98,9 @@ export async function POST(req: Request) {
     );
 
     // Transform Spotify results to match the application's format
-    // Filters out artists that already exist in the database
+    // Filters out artists that exist anywhere in the database
     const spotifyArtists = spotifyResponse.data.artists.items
-      .filter((spotifyArtist: SpotifyArtist) => 
-        !dbResults.some(dbArtist => dbArtist.spotify === spotifyArtist.id)
-      )
+      .filter((spotifyArtist: SpotifyArtist) => !existingSpotifyIds.has(spotifyArtist.id))
       .map((artist: SpotifyArtist) => ({
         id: null,
         name: artist.name,
