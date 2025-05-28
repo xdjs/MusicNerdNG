@@ -1,7 +1,5 @@
 "use client"
-import { SessionProvider } from "next-auth/react";
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import '@rainbow-me/rainbowkit/styles.css';
 import { WagmiProvider } from 'wagmi';
 import {
     RainbowKitSiweNextAuthProvider,
@@ -35,18 +33,16 @@ const getSiweMessageOptions: GetSiweMessageOptions = () => ({
 
 export default function LoginProviders({ children }: { children: ReactNode }) {
     return (
-        <SessionProvider>
-            <WagmiProvider config={config}>
-                <QueryClientProvider client={queryClient}>
-                    <RainbowKitSiweNextAuthProvider
-                        getSiweMessageOptions={getSiweMessageOptions}
-                    >
-                        <RainbowKitProvider>
-                            {children}
-                        </RainbowKitProvider>
-                    </RainbowKitSiweNextAuthProvider>
-                </QueryClientProvider>
-            </WagmiProvider>
-        </SessionProvider>
+        <WagmiProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+                <RainbowKitSiweNextAuthProvider
+                    getSiweMessageOptions={getSiweMessageOptions}
+                >
+                    <RainbowKitProvider>
+                        {children}
+                    </RainbowKitProvider>
+                </RainbowKitSiweNextAuthProvider>
+            </QueryClientProvider>
+        </WagmiProvider>
     )
 }

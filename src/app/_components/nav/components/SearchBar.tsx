@@ -4,15 +4,40 @@ import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation'
-import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
-import { searchForArtistByName } from '@/server/utils/queriesTS';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { Artist } from '@/server/db/DbTypes';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
+import Image from 'next/image';
+import { addArtist } from "@/app/actions/addArtist";
+import { useSession } from "next-auth/react";
+import { useToast } from "@/hooks/use-toast";
+import LoadingPage from "@/app/_components/LoadingPage";
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 1000 * 60 * 5, // 5 minutes
+            refetchOnWindowFocus: false,
+        },
+    },
+})
 
-export default function wrapper({isTopSide = false}: {isTopSide?: boolean}) {
+// Defines the structure of a Spotify artist's image
+interface SpotifyArtistImage {
+  url: string;
+  height: number;
+  width: number;
+}
+
+// Extends the base Artist type to include Spotify-specific fields
+interface SearchResult extends Artist {
+  isSpotifyOnly?: boolean;
+  images?: SpotifyArtistImage[];
+  supercollector?: string | null;
+}
+
+export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boolean}) {
     return (
         <QueryClientProvider client={queryClient}>
             <SearchBar isTopSide={isTopSide} />
@@ -40,24 +65,121 @@ export function Spinner() {
     )
 }
 
-function Users({
-    users,
+function SocialIcons({ result }: { result: SearchResult }) {
+    const showIcons = !result.isSpotifyOnly;
+    
+    if (!showIcons) return null;
+    
+    const icons = [];
+    
+    if (result.bandcamp) {
+        icons.push(
+            <img key="bandcamp" src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+        );
+    }
+    
+    if (result.youtubechannel) {
+        icons.push(
+            <img key="youtube" src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+        );
+    }
+    
+    if (result.instagram) {
+        icons.push(
+            <img key="instagram" src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+        );
+    }
+    
+    if (icons.length === 0) return null;
+    
+    return (
+        <div className="flex items-center gap-2 mt-0.5">
+            {icons}
+        </div>
+    );
+}
+
+// Renders the search results list with proper handling for both database and Spotify results
+// Params:
+//      results: Array of combined search results from database and Spotify
+//      search: Current search query string
+//      setQuery: Function to update the search query
+// Returns:
+//      JSX.Element - The rendered search results list
+function SearchResults({
+    results,
     search,
     setQuery,
+    setShowResults,
+    setIsAddingArtist,
 }: {
-    users: Artist[] | undefined,
+    results: SearchResult[] | undefined,
     search: string,
     setQuery: (query: string) => void,
+    setShowResults: (show: boolean) => void,
+    setIsAddingArtist: (isAdding: boolean) => void,
 }
 ) {
     const router = useRouter();
+    const { data: session, status } = useSession();
+    const [isAdding, setIsAdding] = useState<string | null>(null);
+    const { toast } = useToast();
 
-    function navigateToUser(artist: Artist) {
-        setQuery(artist.name ?? "");
-        router.push(`/artist/${artist.id}`);
+    async function navigateToResult(result: SearchResult) {
+        setQuery(result.name ?? "");
+        setShowResults(false);
+
+        if (result.isSpotifyOnly) {
+            if (status === "loading") return;
+
+            if (!session) {
+                const loginBtn = document.getElementById("login-btn");
+                if (loginBtn) {
+                    loginBtn.click();
+                }
+                return;
+            }
+
+            try {
+                setIsAdding(result.spotify ?? "");
+                setIsAddingArtist(true);
+                const addResult = await addArtist(result.spotify ?? "");
+                
+                if (addResult.status === "success" && addResult.artistId) {
+                    router.push(`/artist/${addResult.artistId}`);
+                } else if (addResult.status === "exists" && addResult.artistId) {
+                    router.push(`/artist/${addResult.artistId}`);
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: addResult.message || "Failed to add artist"
+                    });
+                }
+            } catch (err) {
+                console.error("Error adding artist:", err);
+                if (err instanceof Error && err.message.includes('Not authenticated')) {
+                    const loginBtn = document.getElementById("login-btn");
+                    if (loginBtn) {
+                        loginBtn.click();
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to add artist - please try again"
+                    });
+                }
+            } finally {
+                setIsAdding(null);
+                setIsAddingArtist(false);
+            }
+        } else {
+            router.push(`/artist/${result.id}`);
+        }
     }
     
-    if(users?.length === 0) {
+    if(!results || results.length === 0) {
         return (
             <div className="flex justify-center items-center p-3 font-medium">
                 <p>Artist not found!</p>
@@ -67,21 +189,81 @@ function Users({
 
     return (
         <>
-            {users && users.map(u => {
+            {[...results].map(result => {
+                const spotifyImage = result.images?.[0]?.url;
+                const isAddingThis = isAdding === result.spotify;
                 return (
-                    <div key={u.id} >
-                        <Link
-                            className="block px-4 py-2 hover:bg-gray-200 cursor-pointer rounded-lg"
-                            onMouseDown={() => navigateToUser(u)}
-                            href={{
-                                pathname: `/artist/${u.id}`,
-                                query: {
-                                    ...(search ? { search } : {}),
+                    <div key={result.isSpotifyOnly ? result.spotify : result.id}>
+                        <div
+                            className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg ${isAddingThis ? 'opacity-50' : ''}`}
+                            onMouseDown={(e) => {
+                                e.preventDefault(); // Prevent blur
+                                if (!isAddingThis) {
+                                    navigateToResult(result);
                                 }
                             }}
                         >
-                            {u.name}
-                        </Link>
+                            <div className="flex items-center gap-3">
+                                <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
+                                    {spotifyImage && (
+                                        <img 
+                                            src={spotifyImage} 
+                                            alt={result.name ?? "Artist"} 
+                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                        />
+                                    )}
+                                </div>
+                                <div className="flex-grow">
+                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
+                                        !result.isSpotifyOnly && 
+                                        !(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) 
+                                        ? 'flex items-center h-full' : '-mb-0.5'
+                                    }`}>
+                                        {result.name}
+                                    </div>
+                                    {result.isSpotifyOnly ? (
+                                        <div className="text-xs text-gray-500 flex items-center gap-2">
+                                            {isAddingThis ? (
+                                                <>
+                                                    <img className="h-3" src="/spinner.svg" alt="Loading" />
+                                                    <span>Adding...</span>
+                                                </>
+                                            ) : "Add to MusicNerd"}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-start gap-1">
+                                            <div className="flex flex-col w-[140px]">
+                                                {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                    <>
+                                                        <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
+                                                        <div className="flex items-center gap-2">
+                                                            {result.bandcamp && (
+                                                                <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+                                                            )}
+                                                            {result.youtubechannel && (
+                                                                <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+                                                            )}
+                                                            {result.instagram && (
+                                                                <img src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                            )}
+                                                            {result.x && (
+                                                                <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
+                                                            )}
+                                                            {result.facebook && (
+                                                                <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
+                                                            )}
+                                                            {result.tiktok && (
+                                                                <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )
             })}
@@ -89,10 +271,11 @@ function Users({
     )
 }
 
-interface UserResults {
-    users: Artist[]
-}
-
+// Main search bar component that provides artist search functionality
+// Params:
+//      isTopSide: Boolean indicating if the search bar is at the top of the page
+// Returns:
+//      JSX.Element - The rendered search bar with results dropdown
 const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const router = useRouter();
     const [query, setQuery] = useState('');
@@ -101,47 +284,82 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const searchParams = useSearchParams();
     const resultsContainer = useRef(null);
     const search = searchParams.get('search');
+    const blurTimeoutRef = useRef<NodeJS.Timeout>();
+    const [isAddingArtist, setIsAddingArtist] = useState(false);
 
-    const { data, isLoading, isFetching } = useQuery({
-        queryKey: ['userSearchResults', debouncedQuery],
+    // Handle blur with a slight delay to allow click events to process
+    const handleBlur = () => {
+        blurTimeoutRef.current = setTimeout(() => {
+            setShowResults(false);
+        }, 200);
+    };
+
+    // Clear the blur timeout if we focus back
+    const handleFocus = () => {
+        if (blurTimeoutRef.current) {
+            clearTimeout(blurTimeoutRef.current);
+        }
+        setShowResults(true);
+    };
+
+    // Fetches combined search results from both database and Spotify
+    // Uses react-query for caching and automatic request management
+    const { data, isLoading } = useQuery({
+        queryKey: ['combinedSearchResults', debouncedQuery],
         queryFn: async () => {
             if (!debouncedQuery) return null;
-            const data = await searchForArtistByName(debouncedQuery)
-            return data
+            const response = await fetch('/api/searchArtists', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query: debouncedQuery }),
+            });
+            if (!response.ok) {
+                throw new Error('Search request failed');
+            }
+            const data = await response.json();
+            return data.results;
         },
-    })
+        enabled: debouncedQuery.length > 0,
+        retry: 2,
+        refetchOnWindowFocus: false
+    });
 
-    const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    // Updates the search query and triggers the search
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         const value = e.target.value;
         setQuery(value);
     };
 
     return (
-        <div className="relative w-full max-w-[400px] z-30 text-black">
-            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                <Search size={24} strokeWidth={2.5} />
-                <Input
-                    onBlur={() => setShowResults(false)}
-                    onFocus={() => setShowResults(true)}
-                    type="text"
-                    value={query}
-                    onChange={handleInputChange}
-                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                    placeholder="Search"
-                />
-            </div>
-            {(showResults && query.length >= 1) && (
-                <div ref={resultsContainer} className={`absolute left   -0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}>
-                    {isLoading ? <Spinner />
-                        :
-                        <>
-                            {data &&
-                                <Users users={data} search={search ?? ""} setQuery={setQuery} />
-                            }
-                        </>
-                    }
+        <>
+            {isAddingArtist && <LoadingPage message="Adding artist..." />}
+            <div className="relative w-full max-w-[400px] z-40 text-black">
+                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                    <Search size={24} strokeWidth={2.5} />
+                    <Input
+                        onBlur={handleBlur}
+                        onFocus={handleFocus}
+                        type="text"
+                        value={query}
+                        onChange={handleInputChange}
+                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                        placeholder="Search"
+                    />
                 </div>
-            )}
-        </div>
+                {(showResults && query.length >= 1) && (
+                    <div 
+                        ref={resultsContainer} 
+                        className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
+                        scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400`}
+                        style={{ scrollbarGutter: 'stable' }}
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
+                    >
+                        {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}
+                    </div>
+                )}
+            </div>
+        </>
     );
 };
