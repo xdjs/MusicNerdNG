@@ -36,6 +36,24 @@ interface SpotifySearchResponse {
   };
 }
 
+// Helper function to calculate match score for sorting
+function getMatchScore(name: string, query: string) {
+  const nameLower = name.toLowerCase();
+  const queryLower = query.toLowerCase();
+
+  // Exact match gets highest priority (0)
+  if (nameLower === queryLower) return 0;
+  
+  // Starts with match gets second priority (1)
+  if (nameLower.startsWith(queryLower)) return 1;
+  
+  // Contains match gets third priority (2)
+  if (nameLower.includes(queryLower)) return 2;
+  
+  // No direct match, will be sorted by similarity (3)
+  return 3;
+}
+
 // POST endpoint handler for combined artist search across local database and Spotify
 // Params:
 //      req: Request object containing search query in the body
@@ -74,31 +92,33 @@ export async function POST(req: Request) {
             return {
               ...artist,
               images: spotifyData.data.images,
-              isSpotifyOnly: false
+              isSpotifyOnly: false,
+              matchScore: getMatchScore(artist.name || "", query)
             };
           } catch (error) {
             console.error(`Failed to fetch Spotify data for artist ${artist.spotify}:`, error);
             return {
               ...artist,
-              isSpotifyOnly: false
+              isSpotifyOnly: false,
+              matchScore: getMatchScore(artist.name || "", query)
             };
           }
         }
         return {
           ...artist,
-          isSpotifyOnly: false
+          isSpotifyOnly: false,
+          matchScore: getMatchScore(artist.name || "", query)
         };
       })
     );
 
     // Search Spotify's API for matching artists
     const spotifyResponse = await axios.get<SpotifySearchResponse>(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`,
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=10`,
       spotifyHeaders
     );
 
-    // Transform Spotify results to match the application's format
-    // Filters out artists that exist anywhere in the database
+    // Transform Spotify results and filter out existing artists
     const spotifyArtists = spotifyResponse.data.artists.items
       .filter((spotifyArtist: SpotifyArtist) => !existingSpotifyIds.has(spotifyArtist.id))
       .map((artist: SpotifyArtist) => ({
@@ -106,38 +126,21 @@ export async function POST(req: Request) {
         name: artist.name,
         spotify: artist.id,
         images: artist.images,
-        isSpotifyOnly: true // Flag to identify Spotify-only results
+        isSpotifyOnly: true,
+        matchScore: getMatchScore(artist.name, query)
       }));
 
-    // Combine and sort results with database entries appearing first
-    const combinedResults = [
-      ...dbArtistsWithImages,
-      ...spotifyArtists
-    ].sort((a, b) => {
-      // First, prioritize database results over Spotify results
-      if (!a.isSpotifyOnly && b.isSpotifyOnly) return -1;
-      if (a.isSpotifyOnly && !b.isSpotifyOnly) return 1;
+    // Combine all results and sort them by match score and name
+    const combinedResults = [...dbArtistsWithImages, ...spotifyArtists]
+      .sort((a, b) => {
+        // First sort by match score
+        if (a.matchScore !== b.matchScore) {
+          return a.matchScore - b.matchScore;
+        }
 
-      // For items from the same source, prioritize exact matches
-      const aNameLower = (a.name || '').toLowerCase();
-      const bNameLower = (b.name || '').toLowerCase();
-      const queryLower = query.toLowerCase();
-
-      // Exact string match gets highest priority
-      if (aNameLower === queryLower && bNameLower !== queryLower) return -1;
-      if (bNameLower === queryLower && aNameLower !== queryLower) return 1;
-
-      // Starts with match gets second priority
-      if (aNameLower.startsWith(queryLower) && !bNameLower.startsWith(queryLower)) return -1;
-      if (bNameLower.startsWith(queryLower) && !aNameLower.startsWith(queryLower)) return 1;
-
-      // Contains match gets third priority
-      if (aNameLower.includes(queryLower) && !bNameLower.includes(queryLower)) return -1;
-      if (bNameLower.includes(queryLower) && !aNameLower.includes(queryLower)) return 1;
-
-      // If both have same match type, sort alphabetically
-      return aNameLower.localeCompare(bNameLower);
-    });
+        // For same match score, sort by name
+        return (a.name || '').localeCompare(b.name || '');
+      });
 
     return Response.json({ results: combinedResults });
     
