@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation'
-import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { Artist } from '@/server/db/DbTypes';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
@@ -14,7 +14,14 @@ import { useSession } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 1000 * 60 * 5, // 5 minutes
+            refetchOnWindowFocus: false,
+        },
+    },
+})
 
 // Defines the structure of a Spotify artist's image
 interface SpotifyArtistImage {
@@ -217,7 +224,7 @@ function SearchResults({
                                                     <img className="h-3" src="/spinner.svg" alt="Loading" />
                                                     <span>Adding...</span>
                                                 </>
-                                            ) : "Add from Spotify"}
+                                            ) : "Add to MusicNerd"}
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-start gap-1">
@@ -307,8 +314,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             return data.results;
         },
         enabled: debouncedQuery.length > 0,
-        staleTime: 1000 * 60 * 5, // Cache results for 5 minutes
-        retry: 2
+        retry: 2,
+        refetchOnWindowFocus: false
     });
 
     // Updates the search query and triggers the search
@@ -336,7 +343,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
-                        className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto px-1 py-1 scrollbar-hide ${isTopSide ? "bottom-14" : "top-12"}`}
+                        className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
+                        scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400`}
+                        style={{ scrollbarGutter: 'stable' }}
                         onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
                     >
                         {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}

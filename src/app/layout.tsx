@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import '@rainbow-me/rainbowkit/styles.css';
 import Nav from "./_components/nav";
 import { Toaster } from "@/components/ui/toaster";
 import Footer from "./_components/Footer";

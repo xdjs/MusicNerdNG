@@ -1,6 +1,5 @@
 "use client"
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import '@rainbow-me/rainbowkit/styles.css';
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from 'react';
 import { useSession } from "next-auth/react";
