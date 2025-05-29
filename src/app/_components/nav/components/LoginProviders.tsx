@@ -1,6 +1,7 @@
 "use client"
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { WagmiProvider, createConfig, http } from 'wagmi';
+import { walletConnect, injected } from 'wagmi/connectors';
 import {
     RainbowKitSiweNextAuthProvider,
     GetSiweMessageOptions,
@@ -24,22 +25,16 @@ const projectId = '929ab7024658ec19d047d5df44fb0f63';
 
 const config = createConfig({
     chains: [mainnet, polygon, optimism, arbitrum, base],
+    connectors: [
+        injected(),
+        walletConnect({ projectId })
+    ],
     transports: {
-        [mainnet.id]: http(
-            `https://rpc.walletconnect.com/v1?chainId=${mainnet.id}&projectId=${projectId}`
-        ),
-        [polygon.id]: http(
-            `https://rpc.walletconnect.com/v1?chainId=${polygon.id}&projectId=${projectId}`
-        ),
-        [optimism.id]: http(
-            `https://rpc.walletconnect.com/v1?chainId=${optimism.id}&projectId=${projectId}`
-        ),
-        [arbitrum.id]: http(
-            `https://rpc.walletconnect.com/v1?chainId=${arbitrum.id}&projectId=${projectId}`
-        ),
-        [base.id]: http(
-            `https://rpc.walletconnect.com/v1?chainId=${base.id}&projectId=${projectId}`
-        ),
+        [mainnet.id]: http(),
+        [polygon.id]: http(),
+        [optimism.id]: http(),
+        [arbitrum.id]: http(),
+        [base.id]: http(),
     },
     ssr: true,
 });
