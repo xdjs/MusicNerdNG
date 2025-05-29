@@ -42,7 +42,10 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
                     getSiweMessageOptions={getSiweMessageOptions}
                     enabled={true}
                 >
-                    <RainbowKitProvider modalSize="compact">
+                    <RainbowKitProvider 
+                        modalSize="compact"
+                        showRecentTransactions={true}
+                    >
                         {children}
                     </RainbowKitProvider>
                 </RainbowKitSiweNextAuthProvider>
