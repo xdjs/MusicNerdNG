@@ -140,32 +140,14 @@ function SearchResults({
                 return;
             }
 
-            // Store the artist info in sessionStorage before starting auth flow
-            const pendingData = {
-                spotify: result.spotify,
-                name: result.name,
-                images: result.images,
-                isSpotifyOnly: true,
-                timestamp: Date.now()
-            };
-
-            // Clear any existing pending data first
-            sessionStorage.removeItem('pendingArtistAdd');
-            sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
-
             // If not connected or no session, handle login first
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
-                // Add a loading state while we wait for the connect modal
-                setIsAddingArtist(true);
-
                 try {
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
                         openConnectModal();
-                        // Don't clear loading state - let the Login component handle it
-                        return;
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
                         toast({
@@ -173,7 +155,6 @@ function SearchResults({
                             title: "Error",
                             description: "Unable to connect wallet - please try again"
                         });
-                        setIsAddingArtist(false);
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
@@ -182,7 +163,6 @@ function SearchResults({
                         title: "Error",
                         description: "Failed to connect wallet - please try again"
                     });
-                    setIsAddingArtist(false);
                 }
                 return;
             }
@@ -191,7 +171,6 @@ function SearchResults({
             try {
                 console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAdding(result.spotify ?? "");
-                setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
                 console.log("[SearchBar] Add artist result:", addResult);
                 
@@ -220,7 +199,6 @@ function SearchResults({
                 }
             } finally {
                 setIsAdding(null);
-                setIsAddingArtist(false);
             }
         } else {
             // For existing artists, just navigate to their page
