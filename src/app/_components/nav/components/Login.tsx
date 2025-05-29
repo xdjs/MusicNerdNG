@@ -194,7 +194,11 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     return (
         <div style={{ display: 'flex', gap: 12 }}>
             <Button 
-                onClick={openAccountModal} 
+                onClick={() => {
+                    if (openAccountModal) {
+                        openAccountModal();
+                    }
+                }}
                 type="button" 
                 className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
                 size="lg"
