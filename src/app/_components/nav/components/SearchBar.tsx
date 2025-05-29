@@ -17,7 +17,8 @@ import LoadingPage from "@/app/_components/LoadingPage";
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 5, // 5 minutes
+            staleTime: 0, // Set to 0 to always refetch
+            gcTime: 0, // Disable caching (formerly cacheTime)
             refetchOnWindowFocus: false,
         },
     },
@@ -328,7 +329,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         },
         enabled: debouncedQuery.length > 0,
         retry: 2,
-        refetchOnWindowFocus: false
     });
 
     // Updates the search query and triggers the search
