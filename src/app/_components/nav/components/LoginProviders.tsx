@@ -1,6 +1,6 @@
 "use client"
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import { WagmiProvider } from 'wagmi';
+import { WagmiProvider, createConfig, http } from 'wagmi';
 import {
     RainbowKitSiweNextAuthProvider,
     GetSiweMessageOptions,
@@ -20,11 +20,15 @@ import { ReactNode } from "react";
 
 const queryClient = new QueryClient();
 
-const config = getDefaultConfig({
-    appName: 'Music Nerd',
-    projectId: '929ab7024658ec19d047d5df44fb0f63',
+const config = createConfig({
     chains: [mainnet, polygon, optimism, arbitrum, base],
-    appIcon: 'https://www.musicnerd.xyz/musicNerdLogo.png',
+    transports: {
+        [mainnet.id]: http(),
+        [polygon.id]: http(),
+        [optimism.id]: http(),
+        [arbitrum.id]: http(),
+        [base.id]: http(),
+    },
     ssr: true,
 });
 

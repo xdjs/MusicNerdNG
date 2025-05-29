@@ -167,7 +167,8 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     if (!openConnectModal || !openAccountModal || !openChainModal) {
         console.log("[Login] Modal hooks not ready, showing loading state");
         return (
-            <Button className="bg-gray-400 animate-pulse w-12 h-12 px-0" size="lg" type="button">
+            <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
+                <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
             </Button>
         );
     }
@@ -197,7 +198,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 size="lg"
             >
                 {isplaceholder ? (
-                    <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                    <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
                 ) : (
                     <span className="text-xl">🥳</span>
                 )}
