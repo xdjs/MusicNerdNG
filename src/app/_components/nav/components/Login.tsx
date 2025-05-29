@@ -2,18 +2,18 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useCallback } from 'react';
-import { useSession, signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { addArtist } from "@/app/actions/addArtist";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount, useSignMessage } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { SiweMessage } from 'siwe';
 
 export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
     const router = useRouter();
     const { toast } = useToast();
-    const { data: session, status } = useSession();
+    const { data: session, status, update: updateSession } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
     const [isProcessingPendingArtist, setIsProcessingPendingArtist] = useState(false);
     const { isConnected, address } = useAccount();
@@ -55,6 +55,14 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 try {
                     setIsProcessingPendingArtist(true);
                     const artistData = JSON.parse(pendingArtist);
+                    
+                    // Check if the stored data is too old (more than 5 minutes)
+                    const isDataStale = artistData.timestamp && (Date.now() - artistData.timestamp > 5 * 60 * 1000);
+                    if (isDataStale) {
+                        console.log("[Login] Pending artist data is stale, removing");
+                        sessionStorage.removeItem('pendingArtistAdd');
+                        return;
+                    }
                     
                     if (artistData.isSpotifyOnly) {
                         console.log("[Login] Processing Spotify artist addition:", artistData);
@@ -136,7 +144,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                     ready &&
                     account &&
                     chain &&
-                    (authenticationStatus === 'authenticated');
+                    (!session ? true : authenticationStatus === 'authenticated');
 
                 if (!ready) {
                     console.log("[Login] Component not ready, showing loading state");

@@ -156,7 +156,8 @@ function SearchResults({
                     spotify: result.spotify,
                     name: result.name,
                     images: result.images,
-                    isSpotifyOnly: true
+                    isSpotifyOnly: true,
+                    timestamp: Date.now() // Add timestamp to track when this was stored
                 };
                 sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
 
@@ -165,11 +166,14 @@ function SearchResults({
 
                 if (openConnectModal) {
                     console.log("[SearchBar] Opening connect modal");
-                    openConnectModal();
-                    
-                    // Add a small delay to show loading state
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    setIsAddingArtist(false);
+                    try {
+                        await openConnectModal();
+                    } catch (error) {
+                        console.error("[SearchBar] Error opening connect modal:", error);
+                    } finally {
+                        // Remove loading state after modal is closed
+                        setIsAddingArtist(false);
+                    }
                 } else {
                     console.warn("[SearchBar] Connect modal not available");
                     setIsAddingArtist(false);
@@ -207,13 +211,18 @@ function SearchResults({
                         spotify: result.spotify,
                         name: result.name,
                         images: result.images,
-                        isSpotifyOnly: true
+                        isSpotifyOnly: true,
+                        timestamp: Date.now()
                     };
                     sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
 
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
-                        openConnectModal();
+                        try {
+                            await openConnectModal();
+                        } catch (error) {
+                            console.error("[SearchBar] Error opening connect modal:", error);
+                        }
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
                     }
