@@ -141,18 +141,25 @@ function SearchResults({
             }
 
             if (!isConnected || !session) {
-                console.log("[SearchBar] No session found, initiating login flow for Spotify artist:", {
+                console.log("[SearchBar] No session/connection, storing artist data:", {
                     name: result.name,
                     spotify: result.spotify,
+                    images: result.images,
                     isSpotifyOnly: true
                 });
+
+                // Clear any existing pending data first
+                sessionStorage.removeItem('pendingArtistAdd');
+                
                 // Store the artist info in sessionStorage before redirecting to login
-                sessionStorage.setItem('pendingArtistAdd', JSON.stringify({
+                const pendingData = {
                     spotify: result.spotify,
                     name: result.name,
                     images: result.images,
                     isSpotifyOnly: true
-                }));
+                };
+                sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
+
                 if (openConnectModal) {
                     console.log("[SearchBar] Opening connect modal");
                     openConnectModal();
@@ -167,6 +174,7 @@ function SearchResults({
                 setIsAdding(result.spotify ?? "");
                 setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
+                console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                     await router.replace(`/artist/${addResult.artistId}`);
@@ -182,14 +190,19 @@ function SearchResults({
                 console.error("[SearchBar] Error adding artist:", err);
                 setIsAddingArtist(false);
                 if (err instanceof Error && err.message.includes('Not authenticated')) {
-                    console.log("[SearchBar] Session expired, initiating login flow");
+                    console.log("[SearchBar] Session expired, storing artist data");
+                    // Clear any existing pending data first
+                    sessionStorage.removeItem('pendingArtistAdd');
+                    
                     // Store the artist info in sessionStorage before redirecting to login
-                    sessionStorage.setItem('pendingArtistAdd', JSON.stringify({
+                    const pendingData = {
                         spotify: result.spotify,
                         name: result.name,
                         images: result.images,
                         isSpotifyOnly: true
-                    }));
+                    };
+                    sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
+
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
                         openConnectModal();

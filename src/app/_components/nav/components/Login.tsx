@@ -1,7 +1,7 @@
 "use client"
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSession } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -15,72 +15,92 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     const { data: session, status } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
     const [isProcessingPendingArtist, setIsProcessingPendingArtist] = useState(false);
-    const { isConnected } = useAccount();
+    const { isConnected, address } = useAccount();
+    const [lastProcessedAddress, setLastProcessedAddress] = useState<string | undefined>();
 
-    useEffect(() => {
-        // Handle post-login artist addition
-        const handlePendingArtistAdd = async () => {
-            console.log("[Login] Checking for pending artist, auth status:", status, "isConnected:", isConnected);
-            if (status === "authenticated" && isConnected && !isProcessingPendingArtist) {
-                const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
-                console.log("[Login] Found pending artist data:", pendingArtist);
-                if (pendingArtist) {
-                    try {
-                        setIsProcessingPendingArtist(true);
-                        const artistData = JSON.parse(pendingArtist);
+    // Memoize the handler to prevent unnecessary re-renders
+    const handlePendingArtistAdd = useCallback(async () => {
+        console.log("[Login] Checking for pending artist:", {
+            status,
+            isConnected,
+            address,
+            lastProcessedAddress,
+            isProcessing: isProcessingPendingArtist
+        });
+
+        // Only process if we haven't handled this address yet
+        if (address === lastProcessedAddress) {
+            console.log("[Login] Already processed this address, skipping");
+            return;
+        }
+
+        if (status === "authenticated" && isConnected && !isProcessingPendingArtist) {
+            const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
+            console.log("[Login] Found pending artist data:", pendingArtist);
+            
+            if (pendingArtist) {
+                try {
+                    setIsProcessingPendingArtist(true);
+                    const artistData = JSON.parse(pendingArtist);
+                    
+                    if (artistData.isSpotifyOnly) {
+                        console.log("[Login] Processing Spotify artist addition:", artistData);
+                        const addResult = await addArtist(artistData.spotify);
+                        console.log("[Login] Add artist result:", addResult);
                         
-                        // Only handle Spotify artist additions after login
-                        if (artistData.isSpotifyOnly) {
-                            console.log("[Login] Processing Spotify artist addition:", artistData.name);
-                            const addResult = await addArtist(artistData.spotify);
-                            
-                            if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                                console.log("[Login] Successfully added artist, redirecting to:", addResult.artistId);
-                                // Clear storage before navigation
-                                sessionStorage.removeItem('pendingArtistAdd');
-                                await router.replace(`/artist/${addResult.artistId}`);
-                            } else {
-                                console.error("[Login] Failed to add artist:", addResult);
-                                toast({
-                                    variant: "destructive",
-                                    title: "Error",
-                                    description: addResult.message || "Failed to add artist"
-                                });
-                            }
+                        if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                            console.log("[Login] Successfully added artist, redirecting to:", addResult.artistId);
+                            // Clear storage and update last processed address before navigation
+                            sessionStorage.removeItem('pendingArtistAdd');
+                            setLastProcessedAddress(address);
+                            await router.replace(`/artist/${addResult.artistId}`);
                         } else {
-                            console.log("[Login] Skipping non-Spotify artist");
+                            console.error("[Login] Failed to add artist:", addResult);
+                            toast({
+                                variant: "destructive",
+                                title: "Error",
+                                description: addResult.message || "Failed to add artist"
+                            });
                         }
-                    } catch (error) {
-                        console.error("[Login] Error processing pending artist:", error);
-                        toast({
-                            variant: "destructive",
-                            title: "Error",
-                            description: "Failed to add artist after login"
-                        });
-                    } finally {
-                        sessionStorage.removeItem('pendingArtistAdd');
-                        setIsProcessingPendingArtist(false);
+                    } else {
+                        console.log("[Login] Skipping non-Spotify artist");
                     }
-                } else {
-                    console.log("[Login] No pending artist found");
+                } catch (error) {
+                    console.error("[Login] Error processing pending artist:", error);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to add artist after login"
+                    });
+                } finally {
+                    sessionStorage.removeItem('pendingArtistAdd');
+                    setIsProcessingPendingArtist(false);
                 }
-            }
-        };
-
-        // Handle auth status changes
-        if (status !== currentStatus || isConnected) {
-            console.log("[Login] Auth/Connection status changed:", { 
-                authFrom: currentStatus, 
-                authTo: status,
-                isConnected: isConnected 
-            });
-            setCurrentStatus(status);
-            if (status === "authenticated" && isConnected) {
-                console.log("[Login] User authenticated and connected, handling pending artist");
-                handlePendingArtistAdd();
+            } else {
+                console.log("[Login] No pending artist found");
             }
         }
-    }, [status, currentStatus, router, isProcessingPendingArtist, toast, isConnected]);
+    }, [status, isConnected, address, lastProcessedAddress, isProcessingPendingArtist, router, toast]);
+
+    useEffect(() => {
+        console.log("[Login] State changed:", {
+            authFrom: currentStatus,
+            authTo: status,
+            isConnected,
+            address,
+            lastProcessedAddress
+        });
+
+        // Update current status if it changed
+        if (status !== currentStatus) {
+            setCurrentStatus(status);
+        }
+
+        // Process pending artist if we're authenticated and connected
+        if (status === "authenticated" && isConnected) {
+            handlePendingArtistAdd();
+        }
+    }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress]);
 
     return (
         <ConnectButton.Custom>
