@@ -140,6 +140,7 @@ function SearchResults({
                 return;
             }
 
+            // If not connected or no session, handle login first
             if (!isConnected || !session) {
                 console.log("[SearchBar] No session/connection, storing artist data:", {
                     name: result.name,
@@ -157,69 +158,34 @@ function SearchResults({
                     name: result.name,
                     images: result.images,
                     isSpotifyOnly: true,
-                    timestamp: Date.now() // Add timestamp to track when this was stored
+                    timestamp: Date.now()
                 };
                 sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
 
                 // Add a loading state while we wait for the connect modal
                 setIsAddingArtist(true);
 
-                if (openConnectModal) {
-                    console.log("[SearchBar] Opening connect modal");
-                    try {
-                        // Open the connect modal and wait for it to complete
+                try {
+                    if (openConnectModal) {
+                        console.log("[SearchBar] Opening connect modal");
                         await openConnectModal();
-                        
-                        // Add a small delay to allow the SIWE modal to appear
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        
-                        // Keep the loading state until we have a session or timeout
-                        let attempts = 0;
-                        const maxAttempts = 30; // 30 seconds max wait
-                        while (!session && attempts < maxAttempts) {
-                            console.log("[SearchBar] Waiting for session to be established...");
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            attempts++;
-                        }
-
-                        // If we have a session, try to add the artist
-                        if (session) {
-                            const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
-                            if (pendingArtist) {
-                                const artistData = JSON.parse(pendingArtist);
-                                console.log("[SearchBar] Adding pending artist after login:", artistData);
-                                const addResult = await addArtist(artistData.spotify);
-                                console.log("[SearchBar] Add artist result:", addResult);
-                                
-                                if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                                    sessionStorage.removeItem('pendingArtistAdd');
-                                    await router.replace(`/artist/${addResult.artistId}`);
-                                } else {
-                                    toast({
-                                        variant: "destructive",
-                                        title: "Error",
-                                        description: addResult.message || "Failed to add artist"
-                                    });
-                                }
-                            }
-                        }
-                    } catch (error) {
-                        console.error("[SearchBar] Error during connection flow:", error);
-                        toast({
-                            variant: "destructive",
-                            title: "Error",
-                            description: "Failed to add artist - please try again"
-                        });
-                    } finally {
-                        setIsAddingArtist(false);
+                    } else {
+                        console.warn("[SearchBar] Connect modal not available");
                     }
-                } else {
-                    console.warn("[SearchBar] Connect modal not available");
+                } catch (error) {
+                    console.error("[SearchBar] Error during connection flow:", error);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to connect wallet - please try again"
+                    });
+                } finally {
                     setIsAddingArtist(false);
                 }
                 return;
             }
 
+            // Only try to add the artist if we have a session
             try {
                 console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAdding(result.spotify ?? "");
@@ -256,54 +222,7 @@ function SearchResults({
                     sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
 
                     if (openConnectModal) {
-                        console.log("[SearchBar] Opening connect modal for re-auth");
-                        try {
-                            // Open the connect modal and wait for it to complete
-                            await openConnectModal();
-                            
-                            // Add a small delay to allow the SIWE modal to appear
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            
-                            // Keep the loading state until we have a session or timeout
-                            let attempts = 0;
-                            const maxAttempts = 30; // 30 seconds max wait
-                            while (!session && attempts < maxAttempts) {
-                                console.log("[SearchBar] Waiting for session to be established...");
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                attempts++;
-                            }
-
-                            // If we have a session, try to add the artist
-                            if (session) {
-                                const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
-                                if (pendingArtist) {
-                                    const artistData = JSON.parse(pendingArtist);
-                                    console.log("[SearchBar] Adding pending artist after re-auth:", artistData);
-                                    const addResult = await addArtist(artistData.spotify);
-                                    console.log("[SearchBar] Add artist result:", addResult);
-                                    
-                                    if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                                        sessionStorage.removeItem('pendingArtistAdd');
-                                        await router.replace(`/artist/${addResult.artistId}`);
-                                    } else {
-                                        toast({
-                                            variant: "destructive",
-                                            title: "Error",
-                                            description: addResult.message || "Failed to add artist"
-                                        });
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            console.error("[SearchBar] Error during re-auth:", error);
-                            toast({
-                                variant: "destructive",
-                                title: "Error",
-                                description: "Failed to add artist - please try again"
-                            });
-                        }
-                    } else {
-                        console.warn("[SearchBar] Connect modal not available");
+                        openConnectModal();
                     }
                 } else {
                     toast({
@@ -312,11 +231,9 @@ function SearchResults({
                         description: "Failed to add artist - please try again"
                     });
                 }
-            } finally {
-                setIsAdding(null);
             }
         } else {
-            console.log("[SearchBar] Navigating to existing artist:", result.name);
+            // For non-Spotify artists, just navigate to their page
             router.push(`/artist/${result.id}`);
         }
     }
