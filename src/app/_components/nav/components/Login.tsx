@@ -95,7 +95,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                         return;
                     }
                     
-                    if (artistData.isSpotifyOnly) {
+                    if (artistData.isSpotifyOnly && artistData.spotify) {
                         console.log("[Login] Processing Spotify artist addition:", artistData);
                         
                         // Add a small delay to ensure session is fully established
@@ -123,7 +123,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             sessionStorage.removeItem('pendingArtistAdd');
                         }
                     } else {
-                        console.log("[Login] Skipping non-Spotify artist");
+                        console.log("[Login] Invalid or non-Spotify artist data");
                         sessionStorage.removeItem('pendingArtistAdd');
                     }
                 } catch (error) {

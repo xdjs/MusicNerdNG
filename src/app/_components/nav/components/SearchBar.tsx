@@ -164,6 +164,9 @@ function SearchResults({
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
                         await openConnectModal();
+                        // Don't clear loading state here - it will be cleared by the Login component
+                        // after artist is added
+                        return;
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
                         toast({
@@ -171,6 +174,7 @@ function SearchResults({
                             title: "Error",
                             description: "Unable to connect wallet - please try again"
                         });
+                        setIsAddingArtist(false);
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
@@ -179,7 +183,6 @@ function SearchResults({
                         title: "Error",
                         description: "Failed to connect wallet - please try again"
                     });
-                } finally {
                     setIsAddingArtist(false);
                 }
                 return;
@@ -196,7 +199,6 @@ function SearchResults({
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                     await router.replace(`/artist/${addResult.artistId}`);
                 } else {
-                    setIsAddingArtist(false);
                     toast({
                         variant: "destructive",
                         title: "Error",
@@ -205,7 +207,6 @@ function SearchResults({
                 }
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
-                setIsAddingArtist(false);
                 toast({
                     variant: "destructive",
                     title: "Error",
@@ -213,6 +214,7 @@ function SearchResults({
                 });
             } finally {
                 setIsAdding(null);
+                setIsAddingArtist(false);
             }
         } else {
             // For existing artists, just navigate to their page
