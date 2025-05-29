@@ -212,7 +212,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             return (
                                 <div style={{ display: 'flex', gap: 12 }}>
                                     <Button 
-                                        onClick={handleDisconnect} 
+                                        onClick={openAccountModal} 
                                         type="button" 
                                         className="bg-pastypink text-black px-3 hover:bg-gray-200 transition-colors duration-300" 
                                         size="lg"
