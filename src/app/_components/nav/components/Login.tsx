@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { addArtist } from "@/app/actions/addArtist";
 import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect } from 'wagmi';
-import { SiweMessage } from 'siwe';
+import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
 
 export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
     const router = useRouter();
@@ -18,6 +18,9 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     const [isProcessingPendingArtist, setIsProcessingPendingArtist] = useState(false);
     const { isConnected, address } = useAccount();
     const { disconnect } = useDisconnect();
+    const { openConnectModal } = useConnectModal();
+    const { openAccountModal } = useAccountModal();
+    const { openChainModal } = useChainModal();
     const [lastProcessedAddress, setLastProcessedAddress] = useState<string | undefined>();
 
     // Handle disconnection and cleanup
@@ -161,81 +164,45 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
     }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress, session]);
 
+    if (!openConnectModal || !openAccountModal || !openChainModal) {
+        console.log("[Login] Modal hooks not ready, showing loading state");
+        return (
+            <Button className="bg-gray-400 animate-pulse w-12 h-12 px-0" size="lg" type="button">
+            </Button>
+        );
+    }
+
+    if (!isConnected) {
+        console.log("[Login] User not connected, showing login button");
+        return (
+            <Button 
+                className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
+                id="login-btn" 
+                size="lg" 
+                onClick={openConnectModal} 
+                type="button"
+            >
+                {buttonChildren ?? <Wallet color="white" />}
+            </Button>
+        );
+    }
+
+    console.log("[Login] User connected, showing account button");
     return (
-        <ConnectButton.Custom>
-            {({
-                account,
-                chain,
-                openAccountModal,
-                openChainModal,
-                openConnectModal,
-                authenticationStatus,
-                mounted,
-            }) => {
-                const ready = mounted && authenticationStatus !== 'loading';
-                const connected =
-                    ready &&
-                    account &&
-                    chain &&
-                    (!session ? true : authenticationStatus === 'authenticated');
-
-                if (!ready) {
-                    console.log("[Login] Component not ready, showing loading state");
-                    return (
-                        <Button className={` bg-gray-400 animate-pulse w-12 h-12 px-0`} size="lg" onClick={openConnectModal} type="button" >
-                        </Button>
-                    )
-                }
-
-                return (
-                    <div>
-                        {(() => {
-                            if (!connected) {
-                                console.log("[Login] User not connected, showing login button");
-                                return (
-                                    <Button 
-                                        className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
-                                        id="login-btn" 
-                                        size="lg" 
-                                        onClick={openConnectModal} 
-                                        type="button"
-                                    >
-                                        {buttonChildren ?? <Wallet color="white" />}
-                                    </Button>
-                                );
-                            }
-
-                            if (chain.unsupported) {
-                                console.log("[Login] Unsupported chain detected");
-                                return (
-                                    <button onClick={openChainModal} type="button">
-                                        Wrong network
-                                    </button>
-                                );
-                            }
-
-                            console.log("[Login] User connected, showing account button");
-                            return (
-                                <div style={{ display: 'flex', gap: 12 }}>
-                                    <Button 
-                                        onClick={openAccountModal} 
-                                        type="button" 
-                                        className="bg-pastypink text-black px-3 hover:bg-gray-200 transition-colors duration-300" 
-                                        size="lg"
-                                    >
-                                        {isplaceholder ? (
-                                            <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
-                                        ) : (
-                                            <label className="text-xl">🥳</label>
-                                        )}
-                                    </Button>
-                                </div>
-                            );
-                        })()}
-                    </div>
-                );
-            }}
-        </ConnectButton.Custom>
-    )
+        <div style={{ display: 'flex', gap: 12 }}>
+            <Button 
+                onClick={openAccountModal} 
+                type="button" 
+                className="bg-pastypink text-black px-3 hover:bg-gray-200 transition-colors duration-300" 
+                size="lg"
+            >
+                {isplaceholder ? (
+                    <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                ) : (
+                    <label className="text-xl">🥳</label>
+                )}
+            </Button>
+        </div>
+    );
 }
 

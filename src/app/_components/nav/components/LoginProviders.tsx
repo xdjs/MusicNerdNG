@@ -40,11 +40,14 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
             <QueryClientProvider client={queryClient}>
                 <RainbowKitSiweNextAuthProvider
                     getSiweMessageOptions={getSiweMessageOptions}
-                    enabled={true}
                 >
                     <RainbowKitProvider 
                         modalSize="compact"
                         showRecentTransactions={true}
+                        appInfo={{
+                            appName: 'Music Nerd',
+                            learnMoreUrl: 'https://www.musicnerd.xyz',
+                        }}
                     >
                         {children}
                     </RainbowKitProvider>
