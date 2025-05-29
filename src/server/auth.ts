@@ -19,9 +19,7 @@ declare module "next-auth" {
   interface Session extends DefaultSession {
     user: {
       id: string;
-
-      // ...other properties
-      // role: UserRole;
+      walletAddress?: string;
     } & DefaultSession["user"];
   }
 
@@ -43,8 +41,11 @@ declare module "next-auth" {
  */
 export const authOptions: NextAuthOptions = {
   callbacks: {
-    signIn() {
-      return true;
+    async jwt({ token, user }) {
+      if (user) {
+        token.walletAddress = user.walletAddress;
+      }
+      return token;
     },
     async session({ session, token }) {
       return {
@@ -52,12 +53,18 @@ export const authOptions: NextAuthOptions = {
         user: {
           ...session.user,
           id: token.sub,
+          walletAddress: token.walletAddress,
         },
       }
     },
   },
+  pages: {
+    signIn: '/',
+    error: '/',
+  },
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   providers: [
     CredentialsProvider({
@@ -76,25 +83,45 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials): Promise<any> {
         try {
+          console.log("[Auth] Starting authorization with credentials:", credentials);
+          
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
-            const authUrl = new URL(NEXTAUTH_URL);
-            const result = await siwe.verify({
-              signature: credentials?.signature || "",
-              domain: authUrl.host,
-              nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
-            })
-            let user = await getUserByWallet(siwe.address);
-            if (!user) user = await createUser(siwe.address);
-            if (result.success) {
-              return {
-                id: user.id,
-                walletAddress: siwe.address,
-              }
-            }
-            return null
+          const authUrl = new URL(NEXTAUTH_URL);
+          
+          console.log("[Auth] Verifying SIWE message:", {
+            address: siwe.address,
+            domain: authUrl.host,
+            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0]
+          });
+
+          const result = await siwe.verify({
+            signature: credentials?.signature || "",
+            domain: authUrl.host,
+            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
+          });
+
+          console.log("[Auth] SIWE verification result:", result);
+
+          if (!result.success) {
+            console.error("[Auth] SIWE verification failed:", result);
+            return null;
+          }
+
+          let user = await getUserByWallet(siwe.address);
+          if (!user) {
+            console.log("[Auth] Creating new user for wallet:", siwe.address);
+            user = await createUser(siwe.address);
+          }
+
+          console.log("[Auth] Returning user:", user);
+          
+          return {
+            id: user.id,
+            walletAddress: siwe.address,
+          }
         } catch (e) {
-          console.error("error authorizing", e);
-          return null
+          console.error("[Auth] Error during authorization:", e);
+          return null;
         }
       },
     }),

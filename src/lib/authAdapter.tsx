@@ -11,7 +11,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
     return new SiweMessage({
       domain: window.location.host,
       address,
-      statement: 'Sign in with Ethereum to the app.',
+      statement: 'Sign in with Ethereum to MusicNerd.',
       uri: window.location.origin,
       version: '1',
       chainId,
@@ -23,18 +23,24 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
   verify: async ({ message, signature }) => {
     try {
-      // Get the return URL from sessionStorage if it exists
-      const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
-      const callbackUrl = window.location.origin + (pendingArtist ? '' : '/signup');
-      
-      console.log("[AuthAdapter] Signing in with callback URL:", callbackUrl);
-      
-      await signIn("credentials", {
+      console.log("[AuthAdapter] Starting verification with:", {
+        message: JSON.stringify(message),
+        signature
+      });
+
+      const response = await signIn("credentials", {
         message: JSON.stringify(message),
         signature,
-        redirect: false, // Don't redirect automatically
+        redirect: false,
       });
-      
+
+      console.log("[AuthAdapter] Sign in response:", response);
+
+      if (response?.error) {
+        console.error("[AuthAdapter] Sign in failed:", response.error);
+        return false;
+      }
+
       return true;
     } catch (error) {
       console.error("[AuthAdapter] Error during verification:", error);

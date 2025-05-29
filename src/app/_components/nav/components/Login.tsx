@@ -27,12 +27,12 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             address,
             lastProcessedAddress,
             isProcessing: isProcessingPendingArtist,
-            session: session?.user?.id
+            session: session?.user
         });
 
         // Only process if we haven't handled this address yet and we have a session
-        if (!session?.user?.id) {
-            console.log("[Login] No session user ID yet, waiting...");
+        if (!session?.user?.id || !session?.user?.walletAddress) {
+            console.log("[Login] No session user data yet, waiting...");
             return;
         }
 
@@ -96,7 +96,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             isConnected,
             address,
             lastProcessedAddress,
-            sessionUser: session?.user?.id
+            sessionUser: session?.user
         });
 
         // Update current status if it changed
@@ -105,7 +105,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
 
         // Process pending artist if we're authenticated and connected
-        if (status === "authenticated" && isConnected && session?.user?.id) {
+        if (status === "authenticated" && isConnected && session?.user?.id && session?.user?.walletAddress) {
             handlePendingArtistAdd();
         }
     }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress, session]);
