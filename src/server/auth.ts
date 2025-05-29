@@ -24,8 +24,10 @@ declare module "next-auth" {
   }
 
   interface User {
+    id: string;
     walletAddress: string;
     email?: string;
+    username?: string;
     location?: string;
     businessName?: string;
     image?: string;
@@ -43,7 +45,10 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        // Copy all user properties to the token
         token.walletAddress = user.walletAddress;
+        token.email = user.email;
+        token.name = user.name || user.username;
       }
       return token;
     },
@@ -54,6 +59,8 @@ export const authOptions: NextAuthOptions = {
           ...session.user,
           id: token.sub,
           walletAddress: token.walletAddress,
+          email: token.email,
+          name: token.name,
         },
       }
     },
@@ -115,10 +122,15 @@ export const authOptions: NextAuthOptions = {
 
           console.log("[Auth] Returning user:", user);
           
+          // Map the database user to the NextAuth user format
           return {
             id: user.id,
-            walletAddress: siwe.address,
-          }
+            walletAddress: user.wallet, // Map wallet to walletAddress
+            email: user.email,
+            name: user.username,
+            username: user.username,
+            isSignupComplete: true,
+          };
         } catch (e) {
           console.error("[Auth] Error during authorization:", e);
           return null;
@@ -126,6 +138,7 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  debug: true, // Enable debug mode to see more detailed logs
 };
 
 /**

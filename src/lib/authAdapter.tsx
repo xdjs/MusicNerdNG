@@ -32,6 +32,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
         message: JSON.stringify(message),
         signature,
         redirect: false,
+        callbackUrl: window.location.origin,
       });
 
       console.log("[AuthAdapter] Sign in response:", response);
