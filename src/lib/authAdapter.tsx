@@ -4,10 +4,13 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
+    console.log("[AuthAdapter] Getting CSRF token for nonce");
     const token = await getCsrfToken() ?? "";
+    console.log("[AuthAdapter] Got CSRF token:", token);
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
+    console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
     return new SiweMessage({
       domain: window.location.host,
       address,
@@ -16,10 +19,15 @@ export const authenticationAdapter = createAuthenticationAdapter({
       version: '1',
       chainId,
       nonce,
+      // Add these fields to make the message more secure
+      issuedAt: new Date().toISOString(),
+      expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
     });
   },
   getMessageBody: ({ message }: { message: SiweMessage }) => {
-    return message.prepareMessage();
+    const messageBody = message.prepareMessage();
+    console.log("[AuthAdapter] Prepared message body:", messageBody);
+    return messageBody;
   },
   verify: async ({ message, signature }) => {
     try {
@@ -43,7 +51,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
       }
 
       // Wait a moment for the session to be established
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       return true;
     } catch (error) {
@@ -53,6 +61,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
   signOut: async () => {
     try {
+      console.log("[AuthAdapter] Signing out");
       await signOut({ 
         redirect: false,
         callbackUrl: '/' 

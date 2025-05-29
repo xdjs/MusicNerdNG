@@ -167,11 +167,20 @@ function SearchResults({
                 if (openConnectModal) {
                     console.log("[SearchBar] Opening connect modal");
                     try {
+                        // Wait for the connect modal to be ready
+                        await new Promise(resolve => setTimeout(resolve, 500));
                         await openConnectModal();
+                        
+                        // Wait for potential SIWE message to appear
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     } catch (error) {
                         console.error("[SearchBar] Error opening connect modal:", error);
                     } finally {
-                        // Remove loading state after modal is closed
+                        // Keep loading state until the session is established
+                        if (!session) {
+                            console.log("[SearchBar] Waiting for session to be established...");
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                        }
                         setIsAddingArtist(false);
                     }
                 } else {
@@ -219,7 +228,12 @@ function SearchResults({
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
                         try {
+                            // Wait for the connect modal to be ready
+                            await new Promise(resolve => setTimeout(resolve, 500));
                             await openConnectModal();
+                            
+                            // Wait for potential SIWE message to appear
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                         } catch (error) {
                             console.error("[SearchBar] Error opening connect modal:", error);
                         }
