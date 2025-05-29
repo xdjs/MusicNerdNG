@@ -26,10 +26,16 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             isConnected,
             address,
             lastProcessedAddress,
-            isProcessing: isProcessingPendingArtist
+            isProcessing: isProcessingPendingArtist,
+            session: session?.user?.id
         });
 
-        // Only process if we haven't handled this address yet
+        // Only process if we haven't handled this address yet and we have a session
+        if (!session?.user?.id) {
+            console.log("[Login] No session user ID yet, waiting...");
+            return;
+        }
+
         if (address === lastProcessedAddress) {
             console.log("[Login] Already processed this address, skipping");
             return;
@@ -81,7 +87,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 console.log("[Login] No pending artist found");
             }
         }
-    }, [status, isConnected, address, lastProcessedAddress, isProcessingPendingArtist, router, toast]);
+    }, [status, isConnected, address, lastProcessedAddress, isProcessingPendingArtist, router, toast, session]);
 
     useEffect(() => {
         console.log("[Login] State changed:", {
@@ -89,7 +95,8 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             authTo: status,
             isConnected,
             address,
-            lastProcessedAddress
+            lastProcessedAddress,
+            sessionUser: session?.user?.id
         });
 
         // Update current status if it changed
@@ -98,10 +105,10 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
 
         // Process pending artist if we're authenticated and connected
-        if (status === "authenticated" && isConnected) {
+        if (status === "authenticated" && isConnected && session?.user?.id) {
             handlePendingArtistAdd();
         }
-    }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress]);
+    }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress, session]);
 
     return (
         <ConnectButton.Custom>
