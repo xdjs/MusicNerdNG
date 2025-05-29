@@ -13,6 +13,8 @@ import { addArtist } from "@/app/actions/addArtist";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
+import { useAccount, useConnect } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -125,29 +127,43 @@ function SearchResults({
     const { data: session, status } = useSession();
     const [isAdding, setIsAdding] = useState<string | null>(null);
     const { toast } = useToast();
+    const { openConnectModal } = useConnectModal();
+    const { isConnected } = useAccount();
 
     async function navigateToResult(result: SearchResult) {
         setQuery(result.name ?? "");
         setShowResults(false);
 
         if (result.isSpotifyOnly) {
-            if (status === "loading") return;
+            if (status === "loading") {
+                console.log("[SearchBar] Auth status is loading, waiting...");
+                return;
+            }
 
-            if (!session) {
+            if (!isConnected || !session) {
+                console.log("[SearchBar] No session found, initiating login flow for Spotify artist:", {
+                    name: result.name,
+                    spotify: result.spotify,
+                    isSpotifyOnly: true
+                });
                 // Store the artist info in sessionStorage before redirecting to login
                 sessionStorage.setItem('pendingArtistAdd', JSON.stringify({
                     spotify: result.spotify,
                     name: result.name,
-                    images: result.images
+                    images: result.images,
+                    isSpotifyOnly: true
                 }));
-                const loginBtn = document.getElementById("login-btn");
-                if (loginBtn) {
-                    loginBtn.click();
+                if (openConnectModal) {
+                    console.log("[SearchBar] Opening connect modal");
+                    openConnectModal();
+                } else {
+                    console.warn("[SearchBar] Connect modal not available");
                 }
                 return;
             }
 
             try {
+                console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAdding(result.spotify ?? "");
                 setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
@@ -163,18 +179,22 @@ function SearchResults({
                     });
                 }
             } catch (err) {
-                console.error("Error adding artist:", err);
+                console.error("[SearchBar] Error adding artist:", err);
                 setIsAddingArtist(false);
                 if (err instanceof Error && err.message.includes('Not authenticated')) {
+                    console.log("[SearchBar] Session expired, initiating login flow");
                     // Store the artist info in sessionStorage before redirecting to login
                     sessionStorage.setItem('pendingArtistAdd', JSON.stringify({
                         spotify: result.spotify,
                         name: result.name,
-                        images: result.images
+                        images: result.images,
+                        isSpotifyOnly: true
                     }));
-                    const loginBtn = document.getElementById("login-btn");
-                    if (loginBtn) {
-                        loginBtn.click();
+                    if (openConnectModal) {
+                        console.log("[SearchBar] Opening connect modal");
+                        openConnectModal();
+                    } else {
+                        console.warn("[SearchBar] Connect modal not available");
                     }
                 } else {
                     toast({
@@ -187,6 +207,7 @@ function SearchResults({
                 setIsAdding(null);
             }
         } else {
+            console.log("[SearchBar] Navigating to existing artist:", result.name);
             router.push(`/artist/${result.id}`);
         }
     }
@@ -296,6 +317,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout>();
     const [isAddingArtist, setIsAddingArtist] = useState(false);
+    const { data: session, status } = useSession();
 
     // Add effect to handle loading state cleanup after navigation
     useEffect(() => {
