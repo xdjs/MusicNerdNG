@@ -26,6 +26,7 @@ const config = getDefaultConfig({
     projectId: '929ab7024658ec19d047d5df44fb0f63',
     chains: [mainnet, polygon, optimism, arbitrum, base],
     appIcon: 'https://www.musicnerd.xyz/musicNerdLogo.png',
+    ssr: true,
 });
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
@@ -36,7 +37,7 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
     return (
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>
-                <SessionProvider>
+                <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
                     <RainbowKitSiweNextAuthProvider
                         getSiweMessageOptions={getSiweMessageOptions}
                     >

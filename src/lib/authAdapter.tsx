@@ -18,7 +18,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
       nonce,
     });
   },
-  getMessageBody: ({ message }) => {
+  getMessageBody: ({ message }: { message: SiweMessage }) => {
     return message.prepareMessage();
   },
   verify: async ({ message, signature }) => {
@@ -28,11 +28,11 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
+      // First attempt to sign in
       const response = await signIn("credentials", {
         message: JSON.stringify(message),
         signature,
         redirect: false,
-        callbackUrl: window.location.origin,
       });
 
       console.log("[AuthAdapter] Sign in response:", response);
@@ -42,6 +42,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
         return false;
       }
 
+      // Wait a moment for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       return true;
     } catch (error) {
       console.error("[AuthAdapter] Error during verification:", error);
@@ -49,6 +52,13 @@ export const authenticationAdapter = createAuthenticationAdapter({
     }
   },
   signOut: async () => {
-    await signOut({ callbackUrl: '/', redirect: true });
+    try {
+      await signOut({ 
+        redirect: false,
+        callbackUrl: '/' 
+      });
+    } catch (error) {
+      console.error("[AuthAdapter] Error during sign out:", error);
+    }
   },
 });
