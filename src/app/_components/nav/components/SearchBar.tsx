@@ -13,11 +13,14 @@ import { addArtist } from "@/app/actions/addArtist";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
+import { useAccount, useConnect } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 5, // 5 minutes
+            staleTime: 0, // Set to 0 to always refetch
+            gcTime: 0, // Disable caching (formerly cacheTime)
             refetchOnWindowFocus: false,
         },
     },
@@ -124,30 +127,58 @@ function SearchResults({
     const { data: session, status } = useSession();
     const [isAdding, setIsAdding] = useState<string | null>(null);
     const { toast } = useToast();
+    const { openConnectModal } = useConnectModal();
+    const { isConnected } = useAccount();
 
     async function navigateToResult(result: SearchResult) {
         setQuery(result.name ?? "");
         setShowResults(false);
 
         if (result.isSpotifyOnly) {
-            if (status === "loading") return;
+            if (status === "loading") {
+                console.log("[SearchBar] Auth status is loading, waiting...");
+                return;
+            }
 
-            if (!session) {
-                const loginBtn = document.getElementById("login-btn");
-                if (loginBtn) {
-                    loginBtn.click();
+            // If not connected or no session, handle login first
+            if (!isConnected || !session) {
+                console.log("[SearchBar] Starting auth flow for artist:", result.name);
+                
+                // Store minimal data to indicate we came from search flow
+                sessionStorage.setItem('searchFlow', 'true');
+                
+                try {
+                    if (openConnectModal) {
+                        console.log("[SearchBar] Opening connect modal");
+                        openConnectModal();
+                    } else {
+                        console.warn("[SearchBar] Connect modal not available");
+                        toast({
+                            variant: "destructive",
+                            title: "Error",
+                            description: "Unable to connect wallet - please try again"
+                        });
+                    }
+                } catch (error) {
+                    console.error("[SearchBar] Error during connection flow:", error);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to connect wallet - please try again"
+                    });
                 }
                 return;
             }
 
+            // Only try to add the artist if we have a session
             try {
+                console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAdding(result.spotify ?? "");
                 setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
+                console.log("[SearchBar] Add artist result:", addResult);
                 
-                if (addResult.status === "success" && addResult.artistId) {
-                    router.push(`/artist/${addResult.artistId}`);
-                } else if (addResult.status === "exists" && addResult.artistId) {
+                if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                     router.push(`/artist/${addResult.artistId}`);
                 } else {
                     toast({
@@ -155,13 +186,14 @@ function SearchResults({
                         title: "Error",
                         description: addResult.message || "Failed to add artist"
                     });
+                    setIsAddingArtist(false);
                 }
-            } catch (err) {
-                console.error("Error adding artist:", err);
-                if (err instanceof Error && err.message.includes('Not authenticated')) {
-                    const loginBtn = document.getElementById("login-btn");
-                    if (loginBtn) {
-                        loginBtn.click();
+            } catch (error) {
+                console.error("[SearchBar] Error adding artist:", error);
+                if (error instanceof Error && error.message.includes('Not authenticated')) {
+                    console.log("[SearchBar] Session expired, restarting auth flow");
+                    if (openConnectModal) {
+                        openConnectModal();
                     }
                 } else {
                     toast({
@@ -170,12 +202,15 @@ function SearchResults({
                         description: "Failed to add artist - please try again"
                     });
                 }
+                setIsAddingArtist(false);
             } finally {
                 setIsAdding(null);
-                setIsAddingArtist(false);
             }
         } else {
-            router.push(`/artist/${result.id}`);
+            // For existing artists, just navigate to their page
+            if (result.id) {
+                router.push(`/artist/${result.id}`);
+            }
         }
     }
     
@@ -205,13 +240,11 @@ function SearchResults({
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
-                                    {spotifyImage && (
-                                        <img 
-                                            src={spotifyImage} 
-                                            alt={result.name ?? "Artist"} 
-                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
-                                        />
-                                    )}
+                                    <img 
+                                        src={spotifyImage || "/default_pfp_pink.png"} 
+                                        alt={result.name ?? "Artist"} 
+                                        className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                    />
                                 </div>
                                 <div className="flex-grow">
                                     <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
@@ -286,6 +319,34 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout>();
     const [isAddingArtist, setIsAddingArtist] = useState(false);
+    const { data: session, status } = useSession();
+    const { openConnectModal } = useConnectModal();
+    const { isConnected } = useAccount();
+    const { toast } = useToast();
+
+    // Add effect to handle loading state cleanup after navigation
+    useEffect(() => {
+        return () => {
+            // Only cleanup loading state if we're not in the middle of auth flow
+            if (!sessionStorage.getItem('searchFlow')) {
+                setIsAddingArtist(false);
+            }
+        };
+    }, []);
+
+    // Add effect to handle auth flow completion
+    useEffect(() => {
+        // If we just completed auth flow, clear the search flow flag
+        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
+            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
+            sessionStorage.removeItem('searchFlow');
+            // Show toast to indicate user can now add the artist
+            toast({
+                title: "Connected!",
+                description: "You can now add the artist to your collection.",
+            });
+        }
+    }, [isConnected, session, toast]);
 
     // Handle blur with a slight delay to allow click events to process
     const handleBlur = () => {
@@ -323,7 +384,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         },
         enabled: debouncedQuery.length > 0,
         retry: 2,
-        refetchOnWindowFocus: false
     });
 
     // Updates the search query and triggers the search
@@ -336,19 +396,19 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         <>
             {isAddingArtist && <LoadingPage message="Adding artist..." />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                    <Search size={24} strokeWidth={2.5} />
-                    <Input
+            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                <Search size={24} strokeWidth={2.5} />
+                <Input
                         onBlur={handleBlur}
                         onFocus={handleFocus}
-                        type="text"
-                        value={query}
-                        onChange={handleInputChange}
-                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                        placeholder="Search"
-                    />
-                </div>
-                {(showResults && query.length >= 1) && (
+                    type="text"
+                    value={query}
+                    onChange={handleInputChange}
+                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                    placeholder="Search"
+                />
+            </div>
+            {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
                         className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
@@ -357,9 +417,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
                     >
                         {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
+        </div>
         </>
     );
 };
