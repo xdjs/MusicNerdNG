@@ -192,24 +192,41 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
 
     console.log("[Login] User connected, showing account button");
     return (
-        <div style={{ display: 'flex', gap: 12 }}>
-            <Button 
-                onClick={() => {
-                    if (openAccountModal) {
-                        openAccountModal();
-                    }
-                }}
-                type="button" 
-                className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
-                size="lg"
-            >
-                {isplaceholder ? (
-                    <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
-                ) : (
-                    <span className="text-xl">🥳</span>
-                )}
-            </Button>
-        </div>
+        <ConnectButton.Custom>
+            {({
+                account,
+                chain,
+                openAccountModal,
+                openChainModal,
+                openConnectModal,
+                mounted,
+            }) => {
+                const ready = mounted;
+                if (!ready) {
+                    return (
+                        <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
+                            <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
+                        </Button>
+                    );
+                }
+                return (
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <Button 
+                            onClick={openAccountModal}
+                            type="button" 
+                            className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
+                            size="lg"
+                        >
+                            {isplaceholder ? (
+                                <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
+                            ) : (
+                                <span className="text-xl">🥳</span>
+                            )}
+                        </Button>
+                    </div>
+                );
+            }}
+        </ConnectButton.Custom>
     );
 }
 

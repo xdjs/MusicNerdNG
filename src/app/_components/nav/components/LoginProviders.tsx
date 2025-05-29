@@ -50,7 +50,8 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
                         showRecentTransactions={true}
                         appInfo={{
                             appName: 'Music Nerd',
-                            learnMoreUrl: 'https://www.musicnerd.xyz'
+                            learnMoreUrl: 'https://www.musicnerd.xyz',
+                            disclaimer: undefined
                         }}
                     >
                         {children}
