@@ -146,7 +146,6 @@ function SearchResults({
                 
                 // Store minimal data to indicate we came from search flow
                 sessionStorage.setItem('searchFlow', 'true');
-                setIsAddingArtist(true);
                 
                 try {
                     if (openConnectModal) {
@@ -159,7 +158,6 @@ function SearchResults({
                             title: "Error",
                             description: "Unable to connect wallet - please try again"
                         });
-                        setIsAddingArtist(false);
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
@@ -168,7 +166,6 @@ function SearchResults({
                         title: "Error",
                         description: "Failed to connect wallet - please try again"
                     });
-                    setIsAddingArtist(false);
                 }
                 return;
             }
@@ -325,6 +322,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { data: session, status } = useSession();
     const { openConnectModal } = useConnectModal();
     const { isConnected } = useAccount();
+    const { toast } = useToast();
 
     // Add effect to handle loading state cleanup after navigation
     useEffect(() => {
@@ -335,6 +333,20 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             }
         };
     }, []);
+
+    // Add effect to handle auth flow completion
+    useEffect(() => {
+        // If we just completed auth flow, clear the search flow flag
+        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
+            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
+            sessionStorage.removeItem('searchFlow');
+            // Show toast to indicate user can now add the artist
+            toast({
+                title: "Connected!",
+                description: "You can now add the artist to your collection.",
+            });
+        }
+    }, [isConnected, session, toast]);
 
     // Handle blur with a slight delay to allow click events to process
     const handleBlur = () => {
