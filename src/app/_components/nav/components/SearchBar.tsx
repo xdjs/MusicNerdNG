@@ -140,22 +140,22 @@ function SearchResults({
                 return;
             }
 
+            // Store the artist info in sessionStorage before starting auth flow
+            const pendingData = {
+                spotify: result.spotify,
+                name: result.name,
+                images: result.images,
+                isSpotifyOnly: true,
+                timestamp: Date.now()
+            };
+
+            // Clear any existing pending data first
+            sessionStorage.removeItem('pendingArtistAdd');
+            sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
+
             // If not connected or no session, handle login first
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
-                
-                // Store the artist info in sessionStorage before starting auth flow
-                const pendingData = {
-                    spotify: result.spotify,
-                    name: result.name,
-                    images: result.images,
-                    isSpotifyOnly: true,
-                    timestamp: Date.now()
-                };
-
-                // Clear any existing pending data first
-                sessionStorage.removeItem('pendingArtistAdd');
-                sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
                 
                 // Add a loading state while we wait for the connect modal
                 setIsAddingArtist(true);
@@ -163,7 +163,7 @@ function SearchResults({
                 try {
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
-                        await openConnectModal();
+                        openConnectModal();
                         // Don't clear loading state - let the Login component handle it
                         return;
                     } else {
@@ -206,11 +206,18 @@ function SearchResults({
                 }
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Failed to add artist - please try again"
-                });
+                if (error instanceof Error && error.message.includes('Not authenticated')) {
+                    console.log("[SearchBar] Session expired, restarting auth flow");
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to add artist - please try again"
+                    });
+                }
             } finally {
                 setIsAdding(null);
                 setIsAddingArtist(false);
