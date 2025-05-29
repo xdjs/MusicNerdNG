@@ -20,14 +20,26 @@ import { ReactNode } from "react";
 
 const queryClient = new QueryClient();
 
+const projectId = '929ab7024658ec19d047d5df44fb0f63';
+
 const config = createConfig({
     chains: [mainnet, polygon, optimism, arbitrum, base],
     transports: {
-        [mainnet.id]: http(),
-        [polygon.id]: http(),
-        [optimism.id]: http(),
-        [arbitrum.id]: http(),
-        [base.id]: http(),
+        [mainnet.id]: http(
+            `https://rpc.walletconnect.com/v1?chainId=${mainnet.id}&projectId=${projectId}`
+        ),
+        [polygon.id]: http(
+            `https://rpc.walletconnect.com/v1?chainId=${polygon.id}&projectId=${projectId}`
+        ),
+        [optimism.id]: http(
+            `https://rpc.walletconnect.com/v1?chainId=${optimism.id}&projectId=${projectId}`
+        ),
+        [arbitrum.id]: http(
+            `https://rpc.walletconnect.com/v1?chainId=${arbitrum.id}&projectId=${projectId}`
+        ),
+        [base.id]: http(
+            `https://rpc.walletconnect.com/v1?chainId=${base.id}&projectId=${projectId}`
+        ),
     },
     ssr: true,
 });
