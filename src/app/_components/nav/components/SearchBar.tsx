@@ -140,28 +140,23 @@ function SearchResults({
                 return;
             }
 
+            // Store the artist info in sessionStorage before starting auth flow
+            const pendingData = {
+                spotify: result.spotify,
+                name: result.name,
+                images: result.images,
+                isSpotifyOnly: true,
+                timestamp: Date.now()
+            };
+
+            // Clear any existing pending data first
+            sessionStorage.removeItem('pendingArtistAdd');
+            sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
+
             // If not connected or no session, handle login first
             if (!isConnected || !session) {
-                console.log("[SearchBar] No session/connection, storing artist data:", {
-                    name: result.name,
-                    spotify: result.spotify,
-                    images: result.images,
-                    isSpotifyOnly: true
-                });
-
-                // Clear any existing pending data first
-                sessionStorage.removeItem('pendingArtistAdd');
+                console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
-                // Store the artist info in sessionStorage before redirecting to login
-                const pendingData = {
-                    spotify: result.spotify,
-                    name: result.name,
-                    images: result.images,
-                    isSpotifyOnly: true,
-                    timestamp: Date.now()
-                };
-                sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
-
                 // Add a loading state while we wait for the connect modal
                 setIsAddingArtist(true);
 
@@ -171,6 +166,11 @@ function SearchResults({
                         await openConnectModal();
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
+                        toast({
+                            variant: "destructive",
+                            title: "Error",
+                            description: "Unable to connect wallet - please try again"
+                        });
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
@@ -203,38 +203,22 @@ function SearchResults({
                         description: addResult.message || "Failed to add artist"
                     });
                 }
-            } catch (err) {
-                console.error("[SearchBar] Error adding artist:", err);
+            } catch (error) {
+                console.error("[SearchBar] Error adding artist:", error);
                 setIsAddingArtist(false);
-                if (err instanceof Error && err.message.includes('Not authenticated')) {
-                    console.log("[SearchBar] Session expired, storing artist data");
-                    // Clear any existing pending data first
-                    sessionStorage.removeItem('pendingArtistAdd');
-                    
-                    // Store the artist info in sessionStorage before redirecting to login
-                    const pendingData = {
-                        spotify: result.spotify,
-                        name: result.name,
-                        images: result.images,
-                        isSpotifyOnly: true,
-                        timestamp: Date.now()
-                    };
-                    sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
-
-                    if (openConnectModal) {
-                        openConnectModal();
-                    }
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to add artist - please try again"
-                    });
-                }
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to add artist - please try again"
+                });
+            } finally {
+                setIsAdding(null);
             }
         } else {
-            // For non-Spotify artists, just navigate to their page
-            router.push(`/artist/${result.id}`);
+            // For existing artists, just navigate to their page
+            if (result.id) {
+                await router.replace(`/artist/${result.id}`);
+            }
         }
     }
     
