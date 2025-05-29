@@ -2,12 +2,12 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { addArtist } from "@/app/actions/addArtist";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount } from 'wagmi';
+import { useAccount, useDisconnect } from 'wagmi';
 import { SiweMessage } from 'siwe';
 
 export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
@@ -17,7 +17,34 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     const [currentStatus, setCurrentStatus] = useState(status);
     const [isProcessingPendingArtist, setIsProcessingPendingArtist] = useState(false);
     const { isConnected, address } = useAccount();
+    const { disconnect } = useDisconnect();
     const [lastProcessedAddress, setLastProcessedAddress] = useState<string | undefined>();
+
+    // Handle disconnection and cleanup
+    const handleDisconnect = useCallback(async () => {
+        try {
+            console.log("[Login] Disconnecting wallet and cleaning up session");
+            // First sign out of NextAuth session
+            await signOut({ redirect: false });
+            // Then disconnect the wallet
+            disconnect();
+            // Clear any pending artist data
+            sessionStorage.removeItem('pendingArtistAdd');
+            setLastProcessedAddress(undefined);
+            
+            toast({
+                title: "Disconnected",
+                description: "Your wallet has been disconnected",
+            });
+        } catch (error) {
+            console.error("[Login] Error during disconnect:", error);
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to disconnect wallet"
+            });
+        }
+    }, [disconnect, toast]);
 
     // Memoize the handler to prevent unnecessary re-renders
     const handlePendingArtistAdd = useCallback(async () => {
@@ -184,10 +211,17 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             console.log("[Login] User connected, showing account button");
                             return (
                                 <div style={{ display: 'flex', gap: 12 }}>
-                                    <Button onClick={openAccountModal} type="button" className="bg-pastypink text-black px-3  hover:bg-gray-200 transition-colors duration-300" size="lg" >
-                                        {isplaceholder ? <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
-                                            : <label className="text-xl">🥳</label>
-                                        }
+                                    <Button 
+                                        onClick={handleDisconnect} 
+                                        type="button" 
+                                        className="bg-pastypink text-black px-3 hover:bg-gray-200 transition-colors duration-300" 
+                                        size="lg"
+                                    >
+                                        {isplaceholder ? (
+                                            <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                                        ) : (
+                                            <label className="text-xl">🥳</label>
+                                        )}
                                     </Button>
                                 </div>
                             );
