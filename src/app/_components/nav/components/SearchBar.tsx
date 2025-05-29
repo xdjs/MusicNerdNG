@@ -146,6 +146,7 @@ function SearchResults({
                 
                 // Store minimal data to indicate we came from search flow
                 sessionStorage.setItem('searchFlow', 'true');
+                setIsAddingArtist(true);
                 
                 try {
                     if (openConnectModal) {
@@ -158,6 +159,7 @@ function SearchResults({
                             title: "Error",
                             description: "Unable to connect wallet - please try again"
                         });
+                        setIsAddingArtist(false);
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
@@ -166,6 +168,7 @@ function SearchResults({
                         title: "Error",
                         description: "Failed to connect wallet - please try again"
                     });
+                    setIsAddingArtist(false);
                 }
                 return;
             }
@@ -174,17 +177,19 @@ function SearchResults({
             try {
                 console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAdding(result.spotify ?? "");
+                setIsAddingArtist(true);
                 const addResult = await addArtist(result.spotify ?? "");
                 console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    await router.replace(`/artist/${addResult.artistId}`);
+                    router.push(`/artist/${addResult.artistId}`);
                 } else {
                     toast({
                         variant: "destructive",
                         title: "Error",
                         description: addResult.message || "Failed to add artist"
                     });
+                    setIsAddingArtist(false);
                 }
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
@@ -200,13 +205,14 @@ function SearchResults({
                         description: "Failed to add artist - please try again"
                     });
                 }
+                setIsAddingArtist(false);
             } finally {
                 setIsAdding(null);
             }
         } else {
             // For existing artists, just navigate to their page
             if (result.id) {
-                await router.replace(`/artist/${result.id}`);
+                router.push(`/artist/${result.id}`);
             }
         }
     }
@@ -323,9 +329,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     // Add effect to handle loading state cleanup after navigation
     useEffect(() => {
         return () => {
-            // Only cleanup loading state if we're not in the middle of adding an artist
-            const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
-            if (!pendingArtist) {
+            // Only cleanup loading state if we're not in the middle of auth flow
+            if (!sessionStorage.getItem('searchFlow')) {
                 setIsAddingArtist(false);
             }
         };
