@@ -1,7 +1,6 @@
 "use client"
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import { WagmiProvider, createConfig, http } from 'wagmi';
-import { walletConnect, injected } from 'wagmi/connectors';
+import { WagmiProvider, http } from 'wagmi';
 import {
     RainbowKitSiweNextAuthProvider,
     GetSiweMessageOptions,
@@ -23,14 +22,12 @@ const queryClient = new QueryClient();
 
 const projectId = '929ab7024658ec19d047d5df44fb0f63';
 
-const config = createConfig({
+const config = getDefaultConfig({
+    appName: 'Music Nerd',
+    projectId,
     chains: [mainnet],
-    connectors: [
-        injected(),
-        walletConnect({ projectId })
-    ],
     transports: {
-        [mainnet.id]: http(),
+        [mainnet.id]: http()
     },
     ssr: true,
 });
@@ -53,7 +50,7 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
                         showRecentTransactions={true}
                         appInfo={{
                             appName: 'Music Nerd',
-                            learnMoreUrl: 'https://www.musicnerd.xyz',
+                            learnMoreUrl: 'https://www.musicnerd.xyz'
                         }}
                     >
                         {children}
