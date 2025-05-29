@@ -17,7 +17,6 @@ import {
     base,
 } from 'wagmi/chains';
 import { ReactNode } from "react";
-import { SessionProvider } from "next-auth/react";
 
 const queryClient = new QueryClient();
 
@@ -37,15 +36,13 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
     return (
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>
-                <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
-                    <RainbowKitSiweNextAuthProvider
-                        getSiweMessageOptions={getSiweMessageOptions}
-                    >
-                        <RainbowKitProvider>
-                            {children}
-                        </RainbowKitProvider>
-                    </RainbowKitSiweNextAuthProvider>
-                </SessionProvider>
+                <RainbowKitSiweNextAuthProvider
+                    getSiweMessageOptions={getSiweMessageOptions}
+                >
+                    <RainbowKitProvider>
+                        {children}
+                    </RainbowKitProvider>
+                </RainbowKitSiweNextAuthProvider>
             </QueryClientProvider>
         </WagmiProvider>
     )
