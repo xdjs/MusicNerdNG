@@ -164,7 +164,8 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
     }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress, session]);
 
-    if (!openConnectModal || !openAccountModal || !openChainModal) {
+    // Show loading state only if we're not connected and the hooks aren't ready
+    if (!isConnected && (!openConnectModal || !openAccountModal || !openChainModal)) {
         console.log("[Login] Modal hooks not ready, showing loading state");
         return (
             <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
