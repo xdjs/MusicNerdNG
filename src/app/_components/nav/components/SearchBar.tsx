@@ -167,9 +167,22 @@ function SearchResults({
                 if (openConnectModal) {
                     console.log("[SearchBar] Opening connect modal");
                     try {
+                        // Open the connect modal and wait for it to complete
                         await openConnectModal();
+                        
+                        // Add a small delay to allow the SIWE modal to appear
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        // Keep the loading state until we have a session or timeout
+                        let attempts = 0;
+                        const maxAttempts = 30; // 30 seconds max wait
+                        while (!session && attempts < maxAttempts) {
+                            console.log("[SearchBar] Waiting for session to be established...");
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            attempts++;
+                        }
                     } catch (error) {
-                        console.error("[SearchBar] Error opening connect modal:", error);
+                        console.error("[SearchBar] Error during connection flow:", error);
                     } finally {
                         setIsAddingArtist(false);
                     }
@@ -216,11 +229,24 @@ function SearchResults({
                     sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
 
                     if (openConnectModal) {
-                        console.log("[SearchBar] Opening connect modal");
+                        console.log("[SearchBar] Opening connect modal for re-auth");
                         try {
+                            // Open the connect modal and wait for it to complete
                             await openConnectModal();
+                            
+                            // Add a small delay to allow the SIWE modal to appear
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            
+                            // Keep the loading state until we have a session or timeout
+                            let attempts = 0;
+                            const maxAttempts = 30; // 30 seconds max wait
+                            while (!session && attempts < maxAttempts) {
+                                console.log("[SearchBar] Waiting for session to be established...");
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                attempts++;
+                            }
                         } catch (error) {
-                            console.error("[SearchBar] Error opening connect modal:", error);
+                            console.error("[SearchBar] Error during re-auth:", error);
                         }
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
