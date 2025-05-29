@@ -17,6 +17,7 @@ import {
     base,
 } from 'wagmi/chains';
 import { ReactNode } from "react";
+import { SessionProvider } from "next-auth/react";
 
 const queryClient = new QueryClient();
 
@@ -28,20 +29,22 @@ const config = getDefaultConfig({
 });
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
-    statement: 'Sign in to MusicNerd',
+    statement: 'Sign in to MusicNerd to add artists and manage your collection.',
 });
 
 export default function LoginProviders({ children }: { children: ReactNode }) {
     return (
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>
-                <RainbowKitSiweNextAuthProvider
-                    getSiweMessageOptions={getSiweMessageOptions}
-                >
-                    <RainbowKitProvider>
-                        {children}
-                    </RainbowKitProvider>
-                </RainbowKitSiweNextAuthProvider>
+                <SessionProvider>
+                    <RainbowKitSiweNextAuthProvider
+                        getSiweMessageOptions={getSiweMessageOptions}
+                    >
+                        <RainbowKitProvider>
+                            {children}
+                        </RainbowKitProvider>
+                    </RainbowKitSiweNextAuthProvider>
+                </SessionProvider>
             </QueryClientProvider>
         </WagmiProvider>
     )

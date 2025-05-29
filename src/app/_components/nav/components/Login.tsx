@@ -2,12 +2,13 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from "next-auth/react";
+import { useSession, signIn } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { addArtist } from "@/app/actions/addArtist";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount } from 'wagmi';
+import { useAccount, useSignMessage } from 'wagmi';
+import { SiweMessage } from 'siwe';
 
 export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
     const router = useRouter();
@@ -134,7 +135,13 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             if (!connected) {
                                 console.log("[Login] User not connected, showing login button");
                                 return (
-                                    <Button className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} id="login-btn" size="lg" onClick={openConnectModal} type="button" >
+                                    <Button 
+                                        className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
+                                        id="login-btn" 
+                                        size="lg" 
+                                        onClick={openConnectModal} 
+                                        type="button"
+                                    >
                                         {buttonChildren ?? <Wallet color="white" />}
                                     </Button>
                                 );
