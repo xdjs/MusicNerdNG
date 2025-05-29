@@ -30,9 +30,15 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             session: session?.user
         });
 
+        // Wait for session to be properly established
+        if (status === "loading") {
+            console.log("[Login] Session still loading, waiting...");
+            return;
+        }
+
         // Only process if we haven't handled this address yet and we have a session
         if (!session?.user?.id || !session?.user?.walletAddress) {
-            console.log("[Login] No session user data yet, waiting...");
+            console.log("[Login] No session user data yet");
             return;
         }
 
@@ -52,6 +58,10 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                     
                     if (artistData.isSpotifyOnly) {
                         console.log("[Login] Processing Spotify artist addition:", artistData);
+                        
+                        // Add a small delay to ensure session is fully established
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
                         const addResult = await addArtist(artistData.spotify);
                         console.log("[Login] Add artist result:", addResult);
                         

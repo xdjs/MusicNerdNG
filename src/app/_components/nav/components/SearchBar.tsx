@@ -160,11 +160,19 @@ function SearchResults({
                 };
                 sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
 
+                // Add a loading state while we wait for the connect modal
+                setIsAddingArtist(true);
+
                 if (openConnectModal) {
                     console.log("[SearchBar] Opening connect modal");
                     openConnectModal();
+                    
+                    // Add a small delay to show loading state
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    setIsAddingArtist(false);
                 } else {
                     console.warn("[SearchBar] Connect modal not available");
+                    setIsAddingArtist(false);
                 }
                 return;
             }
