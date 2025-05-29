@@ -134,6 +134,12 @@ function SearchResults({
             if (status === "loading") return;
 
             if (!session) {
+                // Store the artist info in sessionStorage before redirecting to login
+                sessionStorage.setItem('pendingArtistAdd', JSON.stringify({
+                    spotify: result.spotify,
+                    name: result.name,
+                    images: result.images
+                }));
                 const loginBtn = document.getElementById("login-btn");
                 if (loginBtn) {
                     loginBtn.click();
@@ -160,6 +166,12 @@ function SearchResults({
                 console.error("Error adding artist:", err);
                 setIsAddingArtist(false);
                 if (err instanceof Error && err.message.includes('Not authenticated')) {
+                    // Store the artist info in sessionStorage before redirecting to login
+                    sessionStorage.setItem('pendingArtistAdd', JSON.stringify({
+                        spotify: result.spotify,
+                        name: result.name,
+                        images: result.images
+                    }));
                     const loginBtn = document.getElementById("login-btn");
                     if (loginBtn) {
                         loginBtn.click();
