@@ -23,18 +23,17 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     const { openChainModal } = useChainModal();
     const [lastProcessedAddress, setLastProcessedAddress] = useState<string | undefined>();
     const config = useConfig();
+    const [hasAttemptedProcess, setHasAttemptedProcess] = useState(false);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
-            // First sign out of NextAuth session
             await signOut({ redirect: false });
-            // Then disconnect the wallet
             disconnect();
-            // Clear any pending artist data
             sessionStorage.removeItem('pendingArtistAdd');
             setLastProcessedAddress(undefined);
+            setHasAttemptedProcess(false);
             
             toast({
                 title: "Disconnected",
@@ -52,6 +51,11 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
 
     // Memoize the handler to prevent unnecessary re-renders
     const handlePendingArtistAdd = useCallback(async () => {
+        if (isProcessingPendingArtist || hasAttemptedProcess) {
+            console.log("[Login] Already processing or attempted, skipping");
+            return;
+        }
+
         console.log("[Login] Checking for pending artist:", {
             status,
             isConnected,
@@ -61,7 +65,6 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             session: session?.user
         });
 
-        // Wait for session to be properly established
         if (status === "loading") {
             console.log("[Login] Session still loading, waiting...");
             return;
@@ -78,13 +81,15 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             return;
         }
 
-        if (status === "authenticated" && isConnected && !isProcessingPendingArtist) {
+        // Check if we have a pending artist and we're authenticated
+        if (status === "authenticated" && isConnected) {
             const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
             console.log("[Login] Found pending artist data:", pendingArtist);
             
             if (pendingArtist) {
                 try {
                     setIsProcessingPendingArtist(true);
+                    setHasAttemptedProcess(true);
                     const artistData = JSON.parse(pendingArtist);
                     
                     // Check if the stored data is too old (more than 5 minutes)
@@ -92,6 +97,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                     if (isDataStale) {
                         console.log("[Login] Pending artist data is stale, removing");
                         sessionStorage.removeItem('pendingArtistAdd');
+                        setIsProcessingPendingArtist(false);
                         return;
                     }
                     
@@ -111,7 +117,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             setLastProcessedAddress(address);
                             // Add a small delay before navigation to ensure state is updated
                             await new Promise(resolve => setTimeout(resolve, 500));
-                            await router.replace(`/artist/${addResult.artistId}`);
+                            router.push(`/artist/${addResult.artistId}`);
                         } else {
                             console.error("[Login] Failed to add artist:", addResult);
                             toast({
@@ -119,7 +125,6 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                                 title: "Error",
                                 description: addResult.message || "Failed to add artist"
                             });
-                            // Clear the pending data since we failed
                             sessionStorage.removeItem('pendingArtistAdd');
                         }
                     } else {
@@ -133,7 +138,6 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                         title: "Error",
                         description: "Failed to add artist after login"
                     });
-                    // Clear the pending data since we failed
                     sessionStorage.removeItem('pendingArtistAdd');
                 } finally {
                     setIsProcessingPendingArtist(false);
@@ -142,7 +146,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 console.log("[Login] No pending artist found");
             }
         }
-    }, [status, isConnected, address, lastProcessedAddress, isProcessingPendingArtist, router, toast, session]);
+    }, [status, isConnected, address, lastProcessedAddress, isProcessingPendingArtist, router, toast, session, hasAttemptedProcess]);
 
     useEffect(() => {
         console.log("[Login] State changed:", {
@@ -154,7 +158,6 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             sessionUser: session?.user
         });
 
-        // Update current status if it changed
         if (status !== currentStatus) {
             setCurrentStatus(status);
             
