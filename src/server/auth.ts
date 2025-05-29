@@ -64,6 +64,13 @@ export const authOptions: NextAuthOptions = {
         },
       }
     },
+    async redirect({ url, baseUrl }) {
+      // Allow relative URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allow URLs from same origin
+      else if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
+    },
   },
   pages: {
     signIn: '/',
@@ -138,7 +145,22 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-  debug: true, // Enable debug mode to see more detailed logs
+  // Enable debug mode only in development
+  debug: process.env.NODE_ENV === "development",
+  // Add CSRF protection
+  secret: process.env.NEXTAUTH_SECRET,
+  // Add secure cookies in production
+  cookies: {
+    sessionToken: {
+      name: `${process.env.NODE_ENV === 'production' ? '__Secure-' : ''}next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
 };
 
 /**
