@@ -144,6 +144,9 @@ function SearchResults({
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
+                // Store minimal data to indicate we came from search flow
+                sessionStorage.setItem('searchFlow', 'true');
+                
                 try {
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");

@@ -44,6 +44,7 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
             <QueryClientProvider client={queryClient}>
                 <RainbowKitSiweNextAuthProvider
                     getSiweMessageOptions={getSiweMessageOptions}
+                    enabled={true}
                 >
                     <RainbowKitProvider 
                         modalSize="compact"

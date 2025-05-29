@@ -24,7 +24,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             console.log("[Login] Disconnecting wallet and cleaning up session");
             await signOut({ redirect: false });
             disconnect();
-            sessionStorage.removeItem('pendingArtistAdd');
+            sessionStorage.removeItem('searchFlow');
             
             toast({
                 title: "Disconnected",
@@ -46,11 +46,17 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             authTo: status,
             isConnected,
             address,
-            sessionUser: session?.user
+            sessionUser: session?.user,
+            isSearchFlow: sessionStorage.getItem('searchFlow')
         });
 
         if (status !== currentStatus) {
             setCurrentStatus(status);
+        }
+
+        // Clean up search flow flag if we're authenticated
+        if (status === "authenticated" && sessionStorage.getItem('searchFlow')) {
+            sessionStorage.removeItem('searchFlow');
         }
     }, [status, currentStatus, isConnected, address, session]);
 
@@ -81,7 +87,15 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
                             id="login-btn" 
                             size="lg" 
-                            onClick={openConnectModal} 
+                            onClick={() => {
+                                if (openConnectModal) {
+                                    // If we're not in the search flow, set a flag to indicate this is a direct login
+                                    if (!sessionStorage.getItem('searchFlow')) {
+                                        sessionStorage.setItem('directLogin', 'true');
+                                    }
+                                    openConnectModal();
+                                }
+                            }}
                             type="button"
                         >
                             {buttonChildren ?? <Wallet color="white" />}
