@@ -7,7 +7,7 @@ import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { addArtist } from "@/app/actions/addArtist";
 import { useToast } from "@/hooks/use-toast";
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
 
 export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
@@ -22,6 +22,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     const { openAccountModal } = useAccountModal();
     const { openChainModal } = useChainModal();
     const [lastProcessedAddress, setLastProcessedAddress] = useState<string | undefined>();
+    const config = useConfig();
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
@@ -164,9 +165,9 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
     }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress, session]);
 
-    // Show loading state only if we're not connected and the hooks aren't ready
-    if (!isConnected && (!openConnectModal || !openAccountModal || !openChainModal)) {
-        console.log("[Login] Modal hooks not ready, showing loading state");
+    // Show loading state only if Wagmi is not initialized
+    if (!config) {
+        console.log("[Login] Wagmi not initialized, showing loading state");
         return (
             <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
                 <img className="max-h-6" src="/spinner.svg" alt="Loading..." />

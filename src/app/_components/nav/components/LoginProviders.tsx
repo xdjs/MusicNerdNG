@@ -24,17 +24,13 @@ const queryClient = new QueryClient();
 const projectId = '929ab7024658ec19d047d5df44fb0f63';
 
 const config = createConfig({
-    chains: [mainnet, polygon, optimism, arbitrum, base],
+    chains: [mainnet],
     connectors: [
         injected(),
         walletConnect({ projectId })
     ],
     transports: {
         [mainnet.id]: http(),
-        [polygon.id]: http(),
-        [optimism.id]: http(),
-        [arbitrum.id]: http(),
-        [base.id]: http(),
     },
     ssr: true,
 });
