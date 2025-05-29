@@ -72,16 +72,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setIsModalOpen(isOpen);
         form.reset();
     }
-    function handleAddArtistDataClick() {
-        if (session != null) {
-            setIsModalOpen(true);
-            return;
-        }
-        const loginBtn = document.getElementById("login-btn");
-        if (loginBtn) {
-            loginBtn.click();
-        }
-    }
 
     function checkInput() {
         if (addArtistResp?.status === "success") {
@@ -89,14 +79,20 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
             setAddArtistResp(null);
         }
     }
+
     return (
         <>
-            <Button
-                className="text-white bg-pastypink p-2"
-                onClick={handleAddArtistDataClick} variant="outline"
-            >
-                <Plus />
-            </Button>
+            {session ? (
+                <Button
+                    className="text-white bg-pastypink p-2"
+                    onClick={() => setIsModalOpen(true)} 
+                    variant="outline"
+                >
+                    <Plus />
+                </Button>
+            ) : (
+                <Login buttonStyles="bg-pastypink" />
+            )}
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
                     <Form {...form}>

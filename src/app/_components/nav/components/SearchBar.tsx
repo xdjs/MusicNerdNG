@@ -181,8 +181,35 @@ function SearchResults({
                             await new Promise(resolve => setTimeout(resolve, 1000));
                             attempts++;
                         }
+
+                        // If we have a session, try to add the artist
+                        if (session) {
+                            const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
+                            if (pendingArtist) {
+                                const artistData = JSON.parse(pendingArtist);
+                                console.log("[SearchBar] Adding pending artist after login:", artistData);
+                                const addResult = await addArtist(artistData.spotify);
+                                console.log("[SearchBar] Add artist result:", addResult);
+                                
+                                if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                                    sessionStorage.removeItem('pendingArtistAdd');
+                                    await router.replace(`/artist/${addResult.artistId}`);
+                                } else {
+                                    toast({
+                                        variant: "destructive",
+                                        title: "Error",
+                                        description: addResult.message || "Failed to add artist"
+                                    });
+                                }
+                            }
+                        }
                     } catch (error) {
                         console.error("[SearchBar] Error during connection flow:", error);
+                        toast({
+                            variant: "destructive",
+                            title: "Error",
+                            description: "Failed to add artist - please try again"
+                        });
                     } finally {
                         setIsAddingArtist(false);
                     }
@@ -245,8 +272,35 @@ function SearchResults({
                                 await new Promise(resolve => setTimeout(resolve, 1000));
                                 attempts++;
                             }
+
+                            // If we have a session, try to add the artist
+                            if (session) {
+                                const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
+                                if (pendingArtist) {
+                                    const artistData = JSON.parse(pendingArtist);
+                                    console.log("[SearchBar] Adding pending artist after re-auth:", artistData);
+                                    const addResult = await addArtist(artistData.spotify);
+                                    console.log("[SearchBar] Add artist result:", addResult);
+                                    
+                                    if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                                        sessionStorage.removeItem('pendingArtistAdd');
+                                        await router.replace(`/artist/${addResult.artistId}`);
+                                    } else {
+                                        toast({
+                                            variant: "destructive",
+                                            title: "Error",
+                                            description: addResult.message || "Failed to add artist"
+                                        });
+                                    }
+                                }
+                            }
                         } catch (error) {
                             console.error("[SearchBar] Error during re-auth:", error);
+                            toast({
+                                variant: "destructive",
+                                title: "Error",
+                                description: "Failed to add artist - please try again"
+                            });
                         }
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
@@ -432,19 +486,19 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         <>
             {isAddingArtist && <LoadingPage message="Adding artist..." />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                    <Search size={24} strokeWidth={2.5} />
-                    <Input
+            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                <Search size={24} strokeWidth={2.5} />
+                <Input
                         onBlur={handleBlur}
                         onFocus={handleFocus}
-                        type="text"
-                        value={query}
-                        onChange={handleInputChange}
-                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                        placeholder="Search"
-                    />
-                </div>
-                {(showResults && query.length >= 1) && (
+                    type="text"
+                    value={query}
+                    onChange={handleInputChange}
+                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                    placeholder="Search"
+                />
+            </div>
+            {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
                         className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
@@ -453,9 +507,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
                     >
                         {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
+        </div>
         </>
     );
 };
