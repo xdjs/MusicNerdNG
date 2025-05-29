@@ -157,6 +157,15 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         // Update current status if it changed
         if (status !== currentStatus) {
             setCurrentStatus(status);
+            
+            // If we're transitioning from unauthenticated to authenticated,
+            // wait a bit before processing pending artist to ensure SIWE is complete
+            if (currentStatus === "unauthenticated" && status === "authenticated") {
+                setTimeout(() => {
+                    handlePendingArtistAdd();
+                }, 1000);
+                return;
+            }
         }
 
         // Process pending artist if we're authenticated and connected

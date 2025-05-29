@@ -140,22 +140,22 @@ function SearchResults({
                 return;
             }
 
-            // Store the artist info in sessionStorage before starting auth flow
-            const pendingData = {
-                spotify: result.spotify,
-                name: result.name,
-                images: result.images,
-                isSpotifyOnly: true,
-                timestamp: Date.now()
-            };
-
-            // Clear any existing pending data first
-            sessionStorage.removeItem('pendingArtistAdd');
-            sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
-
             // If not connected or no session, handle login first
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
+                
+                // Store the artist info in sessionStorage before starting auth flow
+                const pendingData = {
+                    spotify: result.spotify,
+                    name: result.name,
+                    images: result.images,
+                    isSpotifyOnly: true,
+                    timestamp: Date.now()
+                };
+
+                // Clear any existing pending data first
+                sessionStorage.removeItem('pendingArtistAdd');
+                sessionStorage.setItem('pendingArtistAdd', JSON.stringify(pendingData));
                 
                 // Add a loading state while we wait for the connect modal
                 setIsAddingArtist(true);
@@ -164,8 +164,7 @@ function SearchResults({
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
                         await openConnectModal();
-                        // Don't clear loading state here - it will be cleared by the Login component
-                        // after artist is added
+                        // Don't clear loading state - let the Login component handle it
                         return;
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
@@ -336,8 +335,11 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     // Add effect to handle loading state cleanup after navigation
     useEffect(() => {
         return () => {
-            // Cleanup loading state when component unmounts (during navigation)
-            setIsAddingArtist(false);
+            // Only cleanup loading state if we're not in the middle of adding an artist
+            const pendingArtist = sessionStorage.getItem('pendingArtistAdd');
+            if (!pendingArtist) {
+                setIsAddingArtist(false);
+            }
         };
     }, []);
 
