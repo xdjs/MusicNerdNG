@@ -86,7 +86,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                 <Button
                     className="text-white bg-pastypink p-2"
                     onClick={() => setIsModalOpen(true)} 
-                    variant="outline"
                 >
                     <Plus />
                 </Button>

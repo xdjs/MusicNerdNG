@@ -193,13 +193,13 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             <Button 
                 onClick={openAccountModal} 
                 type="button" 
-                className="bg-pastypink text-black px-3 hover:bg-gray-200 transition-colors duration-300" 
+                className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
                 size="lg"
             >
                 {isplaceholder ? (
                     <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                 ) : (
-                    <label className="text-xl">🥳</label>
+                    <span className="text-xl">🥳</span>
                 )}
             </Button>
         </div>
