@@ -165,32 +165,6 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
     }, [status, currentStatus, isConnected, address, handlePendingArtistAdd, lastProcessedAddress, session]);
 
-    // Show loading state only if Wagmi is not initialized
-    if (!config) {
-        console.log("[Login] Wagmi not initialized, showing loading state");
-        return (
-            <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
-                <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
-            </Button>
-        );
-    }
-
-    if (!isConnected) {
-        console.log("[Login] User not connected, showing login button");
-        return (
-            <Button 
-                className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
-                id="login-btn" 
-                size="lg" 
-                onClick={openConnectModal} 
-                type="button"
-            >
-                {buttonChildren ?? <Wallet color="white" />}
-            </Button>
-        );
-    }
-
-    console.log("[Login] User connected, showing account button");
     return (
         <ConnectButton.Custom>
             {({
@@ -202,13 +176,31 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 mounted,
             }) => {
                 const ready = mounted;
-                if (!ready) {
+
+                if (!ready || !config) {
                     return (
                         <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
                             <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
                         </Button>
                     );
                 }
+
+                if (!isConnected || status !== "authenticated") {
+                    console.log("[Login] User not connected or not authenticated, showing connect button");
+                    return (
+                        <Button 
+                            className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
+                            id="login-btn" 
+                            size="lg" 
+                            onClick={openConnectModal} 
+                            type="button"
+                        >
+                            {buttonChildren ?? <Wallet color="white" />}
+                        </Button>
+                    );
+                }
+
+                console.log("[Login] User connected and authenticated, showing account button");
                 return (
                     <div style={{ display: 'flex', gap: 12 }}>
                         <Button 
