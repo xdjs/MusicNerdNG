@@ -41,6 +41,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
         message: JSON.stringify(message),
         signature,
         redirect: false,
+        callbackUrl: window.location.origin,
       });
 
       console.log("[AuthAdapter] Sign in response:", response);
@@ -51,7 +52,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
       }
 
       // Wait a moment for the session to be established
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       return true;
     } catch (error) {
@@ -64,8 +65,13 @@ export const authenticationAdapter = createAuthenticationAdapter({
       console.log("[AuthAdapter] Signing out");
       await signOut({ 
         redirect: false,
-        callbackUrl: '/' 
+        callbackUrl: window.location.origin
       });
+      
+      // Wait for session cleanup
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log("[AuthAdapter] Sign out completed");
     } catch (error) {
       console.error("[AuthAdapter] Error during sign out:", error);
     }
