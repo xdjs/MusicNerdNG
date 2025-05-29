@@ -95,7 +95,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                         console.log("[Login] Processing Spotify artist addition:", artistData);
                         
                         // Add a small delay to ensure session is fully established
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        await new Promise(resolve => setTimeout(resolve, 1500));
                         
                         const addResult = await addArtist(artistData.spotify);
                         console.log("[Login] Add artist result:", addResult);
@@ -105,6 +105,8 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                             // Clear storage and update last processed address before navigation
                             sessionStorage.removeItem('pendingArtistAdd');
                             setLastProcessedAddress(address);
+                            // Add a small delay before navigation to ensure state is updated
+                            await new Promise(resolve => setTimeout(resolve, 500));
                             await router.replace(`/artist/${addResult.artistId}`);
                         } else {
                             console.error("[Login] Failed to add artist:", addResult);
@@ -113,9 +115,12 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                                 title: "Error",
                                 description: addResult.message || "Failed to add artist"
                             });
+                            // Clear the pending data since we failed
+                            sessionStorage.removeItem('pendingArtistAdd');
                         }
                     } else {
                         console.log("[Login] Skipping non-Spotify artist");
+                        sessionStorage.removeItem('pendingArtistAdd');
                     }
                 } catch (error) {
                     console.error("[Login] Error processing pending artist:", error);
@@ -124,8 +129,9 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                         title: "Error",
                         description: "Failed to add artist after login"
                     });
-                } finally {
+                    // Clear the pending data since we failed
                     sessionStorage.removeItem('pendingArtistAdd');
+                } finally {
                     setIsProcessingPendingArtist(false);
                 }
             } else {
