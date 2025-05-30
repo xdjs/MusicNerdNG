@@ -115,17 +115,18 @@ function SearchResults({
     setQuery,
     setShowResults,
     setIsAddingArtist,
+    setIsAddingNew,
 }: {
     results: SearchResult[] | undefined,
     search: string,
     setQuery: (query: string) => void,
     setShowResults: (show: boolean) => void,
     setIsAddingArtist: (isAdding: boolean) => void,
+    setIsAddingNew: (isAddingNew: boolean) => void,
 }
 ) {
     const router = useRouter();
     const { data: session, status } = useSession();
-    const [isAdding, setIsAdding] = useState<string | null>(null);
     const { toast } = useToast();
     const { openConnectModal } = useConnectModal();
     const { isConnected } = useAccount();
@@ -173,8 +174,8 @@ function SearchResults({
             // Only try to add the artist if we have a session
             try {
                 console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
-                setIsAdding(result.spotify ?? "");
                 setIsAddingArtist(true);
+                setIsAddingNew(true);
                 const addResult = await addArtist(result.spotify ?? "");
                 console.log("[SearchBar] Add artist result:", addResult);
                 
@@ -187,6 +188,7 @@ function SearchResults({
                         description: addResult.message || "Failed to add artist"
                     });
                     setIsAddingArtist(false);
+                    setIsAddingNew(false);
                 }
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
@@ -203,12 +205,13 @@ function SearchResults({
                     });
                 }
                 setIsAddingArtist(false);
-            } finally {
-                setIsAdding(null);
+                setIsAddingNew(false);
             }
         } else {
-            // For existing artists, just navigate to their page
+            // For existing artists, show loading screen and navigate
             if (result.id) {
+                setIsAddingArtist(true);
+                setIsAddingNew(false);
                 router.push(`/artist/${result.id}`);
             }
         }
@@ -226,7 +229,7 @@ function SearchResults({
         <>
             {[...results].map(result => {
                 const spotifyImage = result.images?.[0]?.url;
-                const isAddingThis = isAdding === result.spotify;
+                const isAddingThis = result.isSpotifyOnly && result.spotify;
                 return (
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <div
@@ -319,6 +322,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout>();
     const [isAddingArtist, setIsAddingArtist] = useState(false);
+    const [isAddingNew, setIsAddingNew] = useState(false);
     const { data: session, status } = useSession();
     const { openConnectModal } = useConnectModal();
     const { isConnected } = useAccount();
@@ -394,7 +398,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
 
     return (
         <>
-            {isAddingArtist && <LoadingPage message="Adding artist..." />}
+            {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
             <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
                 <Search size={24} strokeWidth={2.5} />
@@ -416,7 +420,16 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         style={{ scrollbarGutter: 'stable' }}
                         onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
                     >
-                        {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}
+                        {isLoading ? <Spinner /> : (
+                            <SearchResults 
+                                results={data} 
+                                search={search ?? ""} 
+                                setQuery={setQuery} 
+                                setShowResults={setShowResults} 
+                                setIsAddingArtist={setIsAddingArtist}
+                                setIsAddingNew={setIsAddingNew}
+                            />
+                        )}
                 </div>
             )}
         </div>
