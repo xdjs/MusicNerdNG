@@ -1,15 +1,27 @@
 "use client"
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, forwardRef, useRef } from 'react';
 import { useSession, signOut } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
+import { addArtist } from "@/app/actions/addArtist";
+import type { AddArtistResp } from "@/app/actions/addArtist";
 
-export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
+// Add type for the SearchBar ref
+interface SearchBarRef {
+    clearLoading: () => void;
+}
+
+const Login = forwardRef<HTMLButtonElement, { 
+    buttonChildren?: React.ReactNode, 
+    buttonStyles: string, 
+    isplaceholder?: boolean,
+    searchBarRef?: React.RefObject<SearchBarRef>
+}>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
     const router = useRouter();
     const { toast } = useToast();
     const { data: session, status } = useSession();
@@ -17,14 +29,28 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
     const { isConnected, address } = useAccount();
     const { disconnect } = useDisconnect();
     const config = useConfig();
+    const { openConnectModal } = useConnectModal();
+    const shouldPromptRef = useRef(false);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
+            
+            // First clear all session and local storage
+            sessionStorage.clear();
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
+            localStorage.removeItem('wagmi.store');
+            localStorage.removeItem('wagmi.cache');
+            
+            // Reset prompt flag
+            shouldPromptRef.current = false;
+            
+            // Then disconnect and sign out
             await signOut({ redirect: false });
             disconnect();
-            sessionStorage.removeItem('searchFlow');
             
             toast({
                 title: "Disconnected",
@@ -47,18 +73,53 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             isConnected,
             address,
             sessionUser: session?.user,
-            isSearchFlow: sessionStorage.getItem('searchFlow')
+            isSearchFlow: sessionStorage.getItem('searchFlow'),
+            pendingArtist: sessionStorage.getItem('pendingArtistName'),
+            shouldPrompt: shouldPromptRef.current
         });
+
+        // Handle successful authentication
+        if (isConnected && session) {
+            // Reset prompt flag
+            shouldPromptRef.current = false;
+            
+            // Clear loading state if it was set
+            if (searchBarRef?.current) {
+                searchBarRef.current.clearLoading();
+            }
+            
+            if (sessionStorage.getItem('searchFlow')) {
+                // Show success toast
+                toast({
+                    title: "Connected!",
+                    description: "You can now add artists to your collection.",
+                });
+            }
+        }
+
+        // Only handle reconnection if explicitly triggered
+        if (shouldPromptRef.current && !session && status === "unauthenticated" && !isConnected) {
+            console.log("[Login] Detected explicit login action, initiating connection");
+            if (openConnectModal) {
+                openConnectModal();
+            }
+        }
 
         if (status !== currentStatus) {
             setCurrentStatus(status);
+            
+            // Clean up flags if authentication fails
+            if (status === "unauthenticated" && currentStatus === "loading") {
+                sessionStorage.clear();
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+                shouldPromptRef.current = false;
+            }
         }
-
-        // Clean up search flow flag if we're authenticated
-        if (status === "authenticated" && sessionStorage.getItem('searchFlow')) {
-            sessionStorage.removeItem('searchFlow');
-        }
-    }, [status, currentStatus, isConnected, address, session]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
     return (
         <ConnectButton.Custom>
@@ -84,15 +145,15 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                     console.log("[Login] User not connected or not authenticated, showing connect button");
                     return (
                         <Button 
+                            ref={ref}
                             className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
                             id="login-btn" 
                             size="lg" 
                             onClick={() => {
                                 if (openConnectModal) {
-                                    // If we're not in the search flow, set a flag to indicate this is a direct login
-                                    if (!sessionStorage.getItem('searchFlow')) {
-                                        sessionStorage.setItem('directLogin', 'true');
-                                    }
+                                    // Set flag to indicate explicit user action
+                                    shouldPromptRef.current = true;
+                                    sessionStorage.setItem('directLogin', 'true');
                                     openConnectModal();
                                 }
                             }}
@@ -107,6 +168,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 return (
                     <div style={{ display: 'flex', gap: 12 }}>
                         <Button 
+                            ref={ref}
                             onClick={openAccountModal}
                             type="button" 
                             className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
@@ -123,5 +185,9 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             }}
         </ConnectButton.Custom>
     );
-}
+});
+
+Login.displayName = 'Login';
+
+export default Login;
 

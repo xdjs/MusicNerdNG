@@ -34,7 +34,7 @@ const config = getDefaultConfig({
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
     statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-    nonce: undefined, // Let RainbowKit handle the nonce
+    nonce: undefined,
     expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
 });
 

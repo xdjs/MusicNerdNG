@@ -1,6 +1,6 @@
 "use client"
-import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useRef, ReactNode, Suspense, forwardRef, useImperativeHandle } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation'
@@ -13,8 +13,10 @@ import { addArtist } from "@/app/actions/addArtist";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
-import { useAccount, useConnect } from 'wagmi';
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
+import Login from "./Login";
+import { signOut } from 'next-auth/react';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -40,12 +42,22 @@ interface SearchResult extends Artist {
   supercollector?: string | null;
 }
 
+// Add type for the ref
+interface SearchBarRef {
+    clearLoading: () => void;
+}
+
 export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boolean}) {
+    const searchBarRef = useRef<SearchBarRef>(null);
+    
     return (
         <QueryClientProvider client={queryClient}>
-            <SearchBar isTopSide={isTopSide} />
+            <SearchBar ref={searchBarRef} isTopSide={isTopSide} />
+            <div className="hidden">
+                <Login buttonStyles="" ref={null} searchBarRef={searchBarRef} />
+            </div>
         </QueryClientProvider>
-    )
+    );
 }
 
 export function Skeleton() {
@@ -210,8 +222,10 @@ function SearchResults({
 //      isTopSide: Boolean indicating if the search bar is at the top of the page
 // Returns:
 //      JSX.Element - The rendered search bar with results dropdown
-const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
+const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) => {
+    const { isTopSide } = props;
     const router = useRouter();
+    const pathname = usePathname();
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
@@ -224,21 +238,35 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { data: session, status } = useSession();
     const { openConnectModal } = useConnectModal();
     const { isConnected } = useAccount();
+    const { disconnect } = useDisconnect();
     const { toast } = useToast();
+    const loginRef = useRef<HTMLButtonElement>(null);
 
-    // Add effect to handle auth flow completion
-    useEffect(() => {
-        // If we just completed auth flow, clear the search flow flag
-        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
-            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
-            sessionStorage.removeItem('searchFlow');
-            // Show toast to indicate user can now add the artist
-            toast({
-                title: "Connected!",
-                description: "You can now add the artist to your collection.",
-            });
+    // Expose clearLoading function to parent components
+    useImperativeHandle(ref, () => ({
+        clearLoading: () => {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
         }
-    }, [isConnected, session, toast]);
+    }));
+
+    // Add cleanup effect for loading states
+    useEffect(() => {
+        // Clear loading states when component unmounts
+        return () => {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        };
+    }, []);
+
+    // Add effect to clear loading states after navigation
+    useEffect(() => {
+        // Only clear loading states if we're not in the middle of authentication
+        if (!sessionStorage.getItem('searchFlow')) {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        }
+    }, [pathname]);
 
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
@@ -253,27 +281,39 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             // If not connected or no session, handle login first
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
-                sessionStorage.setItem('searchFlow', 'true');
                 
                 try {
+                    // Only disconnect if we're connected but don't have a session
+                    if (isConnected && !session) {
+                        console.log("[SearchBar] Connected but no session, disconnecting wallet");
+                        await signOut({ redirect: false });
+                        disconnect();
+                        // Small delay to ensure disconnect completes
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+
+                    // Store the artist info for after auth
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    sessionStorage.setItem('searchFlow', 'true');
+                    
+                    // Open connect modal
                     if (openConnectModal) {
-                        console.log("[SearchBar] Opening connect modal");
                         openConnectModal();
-                    } else {
-                        console.warn("[SearchBar] Connect modal not available");
-                        toast({
-                            variant: "destructive",
-                            title: "Error",
-                            description: "Unable to connect wallet - please try again"
-                        });
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
+                    // Clean up all stored data on error
+                    sessionStorage.removeItem('searchFlow');
+                    sessionStorage.removeItem('pendingArtistSpotifyId');
+                    sessionStorage.removeItem('pendingArtistName');
                     toast({
                         variant: "destructive",
                         title: "Error",
                         description: "Failed to connect wallet - please try again"
                     });
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
                 }
                 return;
             }
@@ -287,12 +327,16 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    // Navigate using replace to prevent back button issues
+                    // Clean up stored data before navigation
+                    sessionStorage.removeItem('searchFlow');
+                    sessionStorage.removeItem('pendingArtistSpotifyId');
+                    sessionStorage.removeItem('pendingArtistName');
+                    
+                    // Navigate using push
                     const url = `/artist/${addResult.artistId}`;
                     try {
-                        await router.replace(url);
-                        // Force a page refresh to ensure clean state
-                        window.location.href = url;
+                        router.prefetch(url);
+                        await router.push(url);
                     } catch (error) {
                         console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
@@ -311,6 +355,10 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.error("[SearchBar] Error adding artist:", error);
                 if (error instanceof Error && error.message.includes('Not authenticated')) {
                     console.log("[SearchBar] Session expired, restarting auth flow");
+                    // Store the artist info before restarting auth
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    sessionStorage.setItem('searchFlow', 'true');
                     if (openConnectModal) {
                         openConnectModal();
                     }
@@ -331,10 +379,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 setIsAddingNew(false);
                 try {
                     const url = `/artist/${result.id}`;
-                    // First try the router navigation
-                    await router.replace(url);
-                    // Force a page refresh to ensure clean state
-                    window.location.href = url;
+                    router.prefetch(url);
+                    await router.push(url);
                 } catch (error) {
                     console.error("[SearchBar] Error navigating to artist:", error);
                     setIsAddingArtist(false);
@@ -392,23 +438,24 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         setShowResults(true);
     };
 
+    // Add hidden Login component for search flow
     return (
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                    <Search size={24} strokeWidth={2.5} />
-                    <Input
+            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                <Search size={24} strokeWidth={2.5} />
+                <Input
                         onBlur={handleBlur}
                         onFocus={handleFocus}
-                        type="text"
-                        value={query}
-                        onChange={handleInputChange}
-                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                        placeholder="Search"
-                    />
-                </div>
-                {(showResults && query.length >= 1) && (
+                    type="text"
+                    value={query}
+                    onChange={handleInputChange}
+                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                    placeholder="Search"
+                />
+            </div>
+            {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
                         className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
@@ -494,9 +541,11 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                                 })}
                             </div>
                         )}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
+        </div>
         </>
     );
-};
+});
+
+SearchBar.displayName = 'SearchBar';
