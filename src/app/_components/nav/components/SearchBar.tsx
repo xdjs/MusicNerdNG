@@ -226,6 +226,20 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { isConnected } = useAccount();
     const { toast } = useToast();
 
+    // Add effect to handle auth flow completion
+    useEffect(() => {
+        // If we just completed auth flow, clear the search flow flag
+        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
+            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
+            sessionStorage.removeItem('searchFlow');
+            // Show toast to indicate user can now add the artist
+            toast({
+                title: "Connected!",
+                description: "You can now add the artist to your collection.",
+            });
+        }
+    }, [isConnected, session, toast]);
+
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
         setShowResults(false);
@@ -273,9 +287,15 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    const targetPath = `/artist/${addResult.artistId}`;
-                    // Navigate and wait for it to complete
-                    await router.push(targetPath);
+                    // Navigate using replace to prevent back button issues
+                    const url = `/artist/${addResult.artistId}`;
+                    try {
+                        await router.replace(url);
+                    } catch (error) {
+                        console.error("[SearchBar] Navigation error:", error);
+                        setIsAddingArtist(false);
+                        setIsAddingNew(false);
+                    }
                 } else {
                     toast({
                         variant: "destructive",
@@ -308,8 +328,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 setIsAddingArtist(true);
                 setIsAddingNew(false);
                 try {
-                    // Navigate and wait for it to complete
-                    await router.push(`/artist/${result.id}`);
+                    // Navigate using replace to prevent back button issues
+                    await router.replace(`/artist/${result.id}`);
                 } catch (error) {
                     console.error("[SearchBar] Error navigating to artist:", error);
                     setIsAddingArtist(false);
@@ -323,31 +343,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             }
         }
     };
-
-    // Add effect to handle loading state cleanup
-    useEffect(() => {
-        return () => {
-            // Only cleanup loading state if we're not in the middle of auth flow
-            if (!sessionStorage.getItem('searchFlow')) {
-                setIsAddingArtist(false);
-                setIsAddingNew(false);
-            }
-        };
-    }, []);
-
-    // Add effect to handle auth flow completion
-    useEffect(() => {
-        // If we just completed auth flow, clear the search flow flag
-        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
-            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
-            sessionStorage.removeItem('searchFlow');
-            // Show toast to indicate user can now add the artist
-            toast({
-                title: "Connected!",
-                description: "You can now add the artist to your collection.",
-            });
-        }
-    }, [isConnected, session, toast]);
 
     // Fetches combined search results from both database and Spotify
     const { data, isLoading } = useQuery({
