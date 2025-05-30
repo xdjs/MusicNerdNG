@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
+import { useEffect, useState, useRef, ReactNode, Suspense, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
@@ -42,12 +42,22 @@ interface SearchResult extends Artist {
   supercollector?: string | null;
 }
 
+// Add type for the ref
+interface SearchBarRef {
+    clearLoading: () => void;
+}
+
 export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boolean}) {
+    const searchBarRef = useRef<SearchBarRef>(null);
+    
     return (
         <QueryClientProvider client={queryClient}>
-            <SearchBar isTopSide={isTopSide} />
+            <SearchBar ref={searchBarRef} isTopSide={isTopSide} />
+            <div className="hidden">
+                <Login buttonStyles="" ref={null} searchBarRef={searchBarRef} />
+            </div>
         </QueryClientProvider>
-    )
+    );
 }
 
 export function Skeleton() {
@@ -212,7 +222,8 @@ function SearchResults({
 //      isTopSide: Boolean indicating if the search bar is at the top of the page
 // Returns:
 //      JSX.Element - The rendered search bar with results dropdown
-const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
+const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) => {
+    const { isTopSide } = props;
     const router = useRouter();
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
@@ -229,6 +240,14 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { disconnect } = useDisconnect();
     const { toast } = useToast();
     const loginRef = useRef<HTMLButtonElement>(null);
+
+    // Expose clearLoading function to parent components
+    useImperativeHandle(ref, () => ({
+        clearLoading: () => {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        }
+    }));
 
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
@@ -413,10 +432,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         placeholder="Search"
                     />
                 </div>
-                {/* Hidden Login component for search flow */}
-                <div className="hidden">
-                    <Login buttonStyles="" ref={loginRef} />
-                </div>
                 {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
@@ -508,4 +523,4 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             </div>
         </>
     );
-};
+});

@@ -11,11 +11,17 @@ import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rai
 import { addArtist } from "@/app/actions/addArtist";
 import type { AddArtistResp } from "@/app/actions/addArtist";
 
+// Add type for the SearchBar ref
+interface SearchBarRef {
+    clearLoading: () => void;
+}
+
 const Login = forwardRef<HTMLButtonElement, { 
     buttonChildren?: React.ReactNode, 
     buttonStyles: string, 
-    isplaceholder?: boolean 
-}>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }, ref) => {
+    isplaceholder?: boolean,
+    searchBarRef?: React.RefObject<SearchBarRef>
+}>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
     const router = useRouter();
     const { toast } = useToast();
     const { data: session, status } = useSession();
@@ -79,10 +85,19 @@ const Login = forwardRef<HTMLButtonElement, {
                 
                 // Add the artist
                 addArtist(pendingArtistId)
-                    .then((result: AddArtistResp) => {
+                    .then(async (result: AddArtistResp) => {
                         if ((result.status === "success" || result.status === "exists") && result.artistId) {
-                            router.replace(`/artist/${result.artistId}`);
+                            // Navigate and clear loading state
+                            await router.replace(`/artist/${result.artistId}`);
+                            // Clear loading state after navigation
+                            if (searchBarRef?.current) {
+                                searchBarRef.current.clearLoading();
+                            }
                         } else {
+                            // Clear loading state on error
+                            if (searchBarRef?.current) {
+                                searchBarRef.current.clearLoading();
+                            }
                             toast({
                                 variant: "destructive",
                                 title: "Error",
@@ -91,6 +106,10 @@ const Login = forwardRef<HTMLButtonElement, {
                         }
                     })
                     .catch((error: Error) => {
+                        // Clear loading state on error
+                        if (searchBarRef?.current) {
+                            searchBarRef.current.clearLoading();
+                        }
                         console.error("[Login] Error adding pending artist:", error);
                         toast({
                             variant: "destructive",
