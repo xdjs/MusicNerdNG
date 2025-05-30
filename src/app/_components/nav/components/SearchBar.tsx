@@ -291,6 +291,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         await router.replace(url);
+                        // Force a page refresh to ensure clean state
+                        window.location.href = url;
                     } catch (error) {
                         console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
@@ -328,8 +330,11 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 setIsAddingArtist(true);
                 setIsAddingNew(false);
                 try {
-                    // Navigate using replace to prevent back button issues
-                    await router.replace(`/artist/${result.id}`);
+                    const url = `/artist/${result.id}`;
+                    // First try the router navigation
+                    await router.replace(url);
+                    // Force a page refresh to ensure clean state
+                    window.location.href = url;
                 } catch (error) {
                     console.error("[SearchBar] Error navigating to artist:", error);
                     setIsAddingArtist(false);
