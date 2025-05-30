@@ -35,8 +35,7 @@ const config = getDefaultConfig({
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
     statement: 'Sign in to MusicNerd to add artists and manage your collection.',
     nonce: undefined,
-    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
-    version: `1-${Date.now()}`,
+    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
 });
 
 export default function LoginProviders({ children }: { children: ReactNode }) {

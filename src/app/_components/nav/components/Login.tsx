@@ -1,7 +1,7 @@
 "use client"
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, forwardRef } from 'react';
 import { useSession, signOut } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -9,7 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
 
-export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }: { buttonChildren?: React.ReactNode, buttonStyles: string, isplaceholder?: boolean }) {
+const Login = forwardRef<HTMLButtonElement, { 
+    buttonChildren?: React.ReactNode, 
+    buttonStyles: string, 
+    isplaceholder?: boolean 
+}>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false }, ref) => {
     const router = useRouter();
     const { toast } = useToast();
     const { data: session, status } = useSession();
@@ -89,6 +93,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                     console.log("[Login] User not connected or not authenticated, showing connect button");
                     return (
                         <Button 
+                            ref={ref}
                             className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
                             id="login-btn" 
                             size="lg" 
@@ -112,6 +117,7 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
                 return (
                     <div style={{ display: 'flex', gap: 12 }}>
                         <Button 
+                            ref={ref}
                             onClick={openAccountModal}
                             type="button" 
                             className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
@@ -128,5 +134,9 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             }}
         </ConnectButton.Custom>
     );
-}
+});
+
+Login.displayName = 'Login';
+
+export default Login;
 

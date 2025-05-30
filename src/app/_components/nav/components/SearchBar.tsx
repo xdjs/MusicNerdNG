@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
+import Login from "./Login";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -226,6 +227,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { isConnected } = useAccount();
     const { disconnect } = useDisconnect();
     const { toast } = useToast();
+    const loginRef = useRef<HTMLButtonElement>(null);
 
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
@@ -256,17 +258,8 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
 
-                    if (openConnectModal) {
-                        console.log("[SearchBar] Opening connect modal");
-                        openConnectModal();
-                    } else {
-                        console.warn("[SearchBar] Connect modal not available");
-                        toast({
-                            variant: "destructive",
-                            title: "Error",
-                            description: "Unable to connect wallet - please try again"
-                        });
-                    }
+                    // Use the Login component directly
+                    loginRef.current?.click();
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
                     toast({
@@ -407,6 +400,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         setShowResults(true);
     };
 
+    // Add hidden Login component for search flow
     return (
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
@@ -422,6 +416,10 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
                         placeholder="Search"
                     />
+                </div>
+                {/* Hidden Login component for search flow */}
+                <div className="hidden">
+                    <Login buttonStyles="" ref={loginRef} />
                 </div>
                 {(showResults && query.length >= 1) && (
                     <div 
