@@ -180,7 +180,10 @@ function SearchResults({
                 console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    router.push(`/artist/${addResult.artistId}`);
+                    await router.push(`/artist/${addResult.artistId}`);
+                    // Clean up loading state after successful navigation
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
                 } else {
                     toast({
                         variant: "destructive",
@@ -212,7 +215,21 @@ function SearchResults({
             if (result.id) {
                 setIsAddingArtist(true);
                 setIsAddingNew(false);
-                router.push(`/artist/${result.id}`);
+                try {
+                    await router.push(`/artist/${result.id}`);
+                    // Clean up loading state after successful navigation
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
+                } catch (error) {
+                    console.error("[SearchBar] Error navigating to artist:", error);
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to navigate to artist page"
+                    });
+                }
             }
         }
     }
@@ -320,12 +337,13 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { isConnected } = useAccount();
     const { toast } = useToast();
 
-    // Add effect to handle loading state cleanup after navigation
+    // Add effect to handle loading state cleanup
     useEffect(() => {
         return () => {
             // Only cleanup loading state if we're not in the middle of auth flow
             if (!sessionStorage.getItem('searchFlow')) {
                 setIsAddingArtist(false);
+                setIsAddingNew(false);
             }
         };
     }, []);
