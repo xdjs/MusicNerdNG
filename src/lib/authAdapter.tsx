@@ -7,16 +7,20 @@ export const authenticationAdapter = createAuthenticationAdapter({
     console.log("[AuthAdapter] Getting CSRF token for nonce");
     // Clear any existing nonce to force a new message prompt
     sessionStorage.removeItem('siwe-nonce');
+    // Also clear the SIWE state
+    sessionStorage.removeItem('siwe');
     const token = await getCsrfToken() ?? "";
     console.log("[AuthAdapter] Got CSRF token:", token);
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
     console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
+    // Clear any existing SIWE state
+    sessionStorage.removeItem('siwe');
     return new SiweMessage({
       domain: window.location.host,
       address,
-      statement: `Sign in with Ethereum to MusicNerd. Timestamp: ${Date.now()}`,
+      statement: 'Sign in with Ethereum to MusicNerd.',
       uri: window.location.origin,
       version: '1',
       chainId,
@@ -38,8 +42,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
-      // Clear any existing nonce to force a new message prompt on next sign-in
+      // Clear any existing nonce and SIWE state
       sessionStorage.removeItem('siwe-nonce');
+      sessionStorage.removeItem('siwe');
 
       // First attempt to sign in
       const response = await signIn("credentials", {
@@ -68,8 +73,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
   signOut: async () => {
     try {
       console.log("[AuthAdapter] Signing out");
-      // Clear any existing nonce
+      // Clear all SIWE-related state
       sessionStorage.removeItem('siwe-nonce');
+      sessionStorage.removeItem('siwe');
       await signOut({ 
         redirect: false,
         callbackUrl: window.location.origin
