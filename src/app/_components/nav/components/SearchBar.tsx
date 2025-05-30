@@ -114,106 +114,15 @@ function SearchResults({
     search,
     setQuery,
     setShowResults,
-    setIsAddingArtist,
+    onNavigate,
 }: {
     results: SearchResult[] | undefined,
     search: string,
     setQuery: (query: string) => void,
     setShowResults: (show: boolean) => void,
-    setIsAddingArtist: (isAdding: boolean) => void,
+    onNavigate: (result: SearchResult) => void,
 }
 ) {
-    const router = useRouter();
-    const { data: session, status } = useSession();
-    const [isAdding, setIsAdding] = useState<string | null>(null);
-    const { toast } = useToast();
-    const { openConnectModal } = useConnectModal();
-    const { isConnected } = useAccount();
-
-    async function navigateToResult(result: SearchResult) {
-        setQuery(result.name ?? "");
-        setShowResults(false);
-
-        if (result.isSpotifyOnly) {
-            if (status === "loading") {
-                console.log("[SearchBar] Auth status is loading, waiting...");
-                return;
-            }
-
-            // If not connected or no session, handle login first
-            if (!isConnected || !session) {
-                console.log("[SearchBar] Starting auth flow for artist:", result.name);
-                
-                // Store minimal data to indicate we came from search flow
-                sessionStorage.setItem('searchFlow', 'true');
-                
-                try {
-                    if (openConnectModal) {
-                        console.log("[SearchBar] Opening connect modal");
-                        openConnectModal();
-                    } else {
-                        console.warn("[SearchBar] Connect modal not available");
-                        toast({
-                            variant: "destructive",
-                            title: "Error",
-                            description: "Unable to connect wallet - please try again"
-                        });
-                    }
-                } catch (error) {
-                    console.error("[SearchBar] Error during connection flow:", error);
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to connect wallet - please try again"
-                    });
-                }
-                return;
-            }
-
-            // Only try to add the artist if we have a session
-            try {
-                console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
-                setIsAdding(result.spotify ?? "");
-                setIsAddingArtist(true);
-                const addResult = await addArtist(result.spotify ?? "");
-                console.log("[SearchBar] Add artist result:", addResult);
-                
-                if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    router.push(`/artist/${addResult.artistId}`);
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: addResult.message || "Failed to add artist"
-                    });
-                    setIsAddingArtist(false);
-                }
-            } catch (error) {
-                console.error("[SearchBar] Error adding artist:", error);
-                if (error instanceof Error && error.message.includes('Not authenticated')) {
-                    console.log("[SearchBar] Session expired, restarting auth flow");
-                    if (openConnectModal) {
-                        openConnectModal();
-                    }
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to add artist - please try again"
-                    });
-                }
-                setIsAddingArtist(false);
-            } finally {
-                setIsAdding(null);
-            }
-        } else {
-            // For existing artists, just navigate to their page
-            if (result.id) {
-                router.push(`/artist/${result.id}`);
-            }
-        }
-    }
-    
     if(!results || results.length === 0) {
         return (
             <div className="flex justify-center items-center p-3 font-medium">
@@ -224,18 +133,15 @@ function SearchResults({
 
     return (
         <>
-            {[...results].map(result => {
+            {results.map(result => {
                 const spotifyImage = result.images?.[0]?.url;
-                const isAddingThis = isAdding === result.spotify;
                 return (
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <div
-                            className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg ${isAddingThis ? 'opacity-50' : ''}`}
+                            className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg`}
                             onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur
-                                if (!isAddingThis) {
-                                    navigateToResult(result);
-                                }
+                                onNavigate(result);
                             }}
                         >
                             <div className="flex items-center gap-3">
@@ -256,12 +162,7 @@ function SearchResults({
                                     </div>
                                     {result.isSpotifyOnly ? (
                                         <div className="text-xs text-gray-500 flex items-center gap-2">
-                                            {isAddingThis ? (
-                                                <>
-                                                    <img className="h-3" src="/spinner.svg" alt="Loading" />
-                                                    <span>Adding...</span>
-                                                </>
-                                            ) : "Add to MusicNerd"}
+                                            Add to MusicNerd
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-start gap-1">
@@ -319,20 +220,11 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout>();
     const [isAddingArtist, setIsAddingArtist] = useState(false);
+    const [isAddingNew, setIsAddingNew] = useState(false);
     const { data: session, status } = useSession();
     const { openConnectModal } = useConnectModal();
     const { isConnected } = useAccount();
     const { toast } = useToast();
-
-    // Add effect to handle loading state cleanup after navigation
-    useEffect(() => {
-        return () => {
-            // Only cleanup loading state if we're not in the middle of auth flow
-            if (!sessionStorage.getItem('searchFlow')) {
-                setIsAddingArtist(false);
-            }
-        };
-    }, []);
 
     // Add effect to handle auth flow completion
     useEffect(() => {
@@ -348,23 +240,116 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         }
     }, [isConnected, session, toast]);
 
-    // Handle blur with a slight delay to allow click events to process
-    const handleBlur = () => {
-        blurTimeoutRef.current = setTimeout(() => {
-            setShowResults(false);
-        }, 200);
-    };
+    const handleNavigate = async (result: SearchResult) => {
+        setQuery(result.name ?? "");
+        setShowResults(false);
 
-    // Clear the blur timeout if we focus back
-    const handleFocus = () => {
-        if (blurTimeoutRef.current) {
-            clearTimeout(blurTimeoutRef.current);
+        if (result.isSpotifyOnly) {
+            if (status === "loading") {
+                console.log("[SearchBar] Auth status is loading, waiting...");
+                return;
+            }
+
+            // If not connected or no session, handle login first
+            if (!isConnected || !session) {
+                console.log("[SearchBar] Starting auth flow for artist:", result.name);
+                sessionStorage.setItem('searchFlow', 'true');
+                
+                try {
+                    if (openConnectModal) {
+                        console.log("[SearchBar] Opening connect modal");
+                        openConnectModal();
+                    } else {
+                        console.warn("[SearchBar] Connect modal not available");
+                        toast({
+                            variant: "destructive",
+                            title: "Error",
+                            description: "Unable to connect wallet - please try again"
+                        });
+                    }
+                } catch (error) {
+                    console.error("[SearchBar] Error during connection flow:", error);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to connect wallet - please try again"
+                    });
+                }
+                return;
+            }
+
+            // Only try to add the artist if we have a session
+            try {
+                console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
+                setIsAddingArtist(true);
+                setIsAddingNew(true);
+                const addResult = await addArtist(result.spotify ?? "");
+                console.log("[SearchBar] Add artist result:", addResult);
+                
+                if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                    // Navigate using replace to prevent back button issues
+                    const url = `/artist/${addResult.artistId}`;
+                    try {
+                        await router.replace(url);
+                        // Force a page refresh to ensure clean state
+                        window.location.href = url;
+                    } catch (error) {
+                        console.error("[SearchBar] Navigation error:", error);
+                        setIsAddingArtist(false);
+                        setIsAddingNew(false);
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: addResult.message || "Failed to add artist"
+                    });
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
+                }
+            } catch (error) {
+                console.error("[SearchBar] Error adding artist:", error);
+                if (error instanceof Error && error.message.includes('Not authenticated')) {
+                    console.log("[SearchBar] Session expired, restarting auth flow");
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to add artist - please try again"
+                    });
+                }
+                setIsAddingArtist(false);
+                setIsAddingNew(false);
+            }
+        } else {
+            // For existing artists, show loading screen and navigate
+            if (result.id) {
+                setIsAddingArtist(true);
+                setIsAddingNew(false);
+                try {
+                    const url = `/artist/${result.id}`;
+                    // First try the router navigation
+                    await router.replace(url);
+                    // Force a page refresh to ensure clean state
+                    window.location.href = url;
+                } catch (error) {
+                    console.error("[SearchBar] Error navigating to artist:", error);
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to navigate to artist page"
+                    });
+                }
+            }
         }
-        setShowResults(true);
     };
 
     // Fetches combined search results from both database and Spotify
-    // Uses react-query for caching and automatic request management
     const { data, isLoading } = useQuery({
         queryKey: ['combinedSearchResults', debouncedQuery],
         queryFn: async () => {
@@ -392,23 +377,38 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
         setQuery(value);
     };
 
+    // Handle blur with a slight delay to allow click events to process
+    const handleBlur = () => {
+        blurTimeoutRef.current = setTimeout(() => {
+            setShowResults(false);
+        }, 200);
+    };
+
+    // Clear the blur timeout if we focus back
+    const handleFocus = () => {
+        if (blurTimeoutRef.current) {
+            clearTimeout(blurTimeoutRef.current);
+        }
+        setShowResults(true);
+    };
+
     return (
         <>
-            {isAddingArtist && <LoadingPage message="Adding artist..." />}
+            {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                <Search size={24} strokeWidth={2.5} />
-                <Input
+                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                    <Search size={24} strokeWidth={2.5} />
+                    <Input
                         onBlur={handleBlur}
                         onFocus={handleFocus}
-                    type="text"
-                    value={query}
-                    onChange={handleInputChange}
-                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                    placeholder="Search"
-                />
-            </div>
-            {(showResults && query.length >= 1) && (
+                        type="text"
+                        value={query}
+                        onChange={handleInputChange}
+                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                        placeholder="Search"
+                    />
+                </div>
+                {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
                         className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
@@ -416,10 +416,87 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         style={{ scrollbarGutter: 'stable' }}
                         onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
                     >
-                        {isLoading ? <Spinner /> : <SearchResults results={data} search={search ?? ""} setQuery={setQuery} setShowResults={setShowResults} setIsAddingArtist={setIsAddingArtist} />}
-                </div>
-            )}
-        </div>
+                        {isLoading ? (
+                            <Spinner />
+                        ) : !data || data.length === 0 ? (
+                            <div className="flex justify-center items-center p-3 font-medium">
+                                <p>Artist not found!</p>
+                            </div>
+                        ) : (
+                            <div>
+                                {data.map((result: SearchResult) => {
+                                    const spotifyImage = result.images?.[0]?.url;
+                                    return (
+                                        <div key={result.isSpotifyOnly ? result.spotify : result.id}>
+                                            <div
+                                                className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg`}
+                                                onMouseDown={(e) => {
+                                                    e.preventDefault(); // Prevent blur
+                                                    handleNavigate(result);
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
+                                                        <img 
+                                                            src={spotifyImage || "/default_pfp_pink.png"} 
+                                                            alt={result.name ?? "Artist"} 
+                                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                                        />
+                                                    </div>
+                                                    <div className="flex-grow">
+                                                        <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
+                                                            !result.isSpotifyOnly && 
+                                                            !(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) 
+                                                            ? 'flex items-center h-full' : '-mb-0.5'
+                                                        }`}>
+                                                            {result.name}
+                                                        </div>
+                                                        {result.isSpotifyOnly ? (
+                                                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                                                                Add to MusicNerd
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col items-start gap-1">
+                                                                <div className="flex flex-col w-[140px]">
+                                                                    {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                                        <>
+                                                                            <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                {result.bandcamp && (
+                                                                                    <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+                                                                                )}
+                                                                                {result.youtubechannel && (
+                                                                                    <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+                                                                                )}
+                                                                                {result.instagram && (
+                                                                                    <img src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                                                )}
+                                                                                {result.x && (
+                                                                                    <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
+                                                                                )}
+                                                                                {result.facebook && (
+                                                                                    <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
+                                                                                )}
+                                                                                {result.tiktok && (
+                                                                                    <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
+                                                                                )}
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
         </>
     );
 };
