@@ -244,6 +244,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
                 try {
+                    // Set search flow flag before disconnecting
+                    sessionStorage.setItem('searchFlow', 'true');
+                    
                     // Ensure we're fully disconnected before starting new auth flow
                     if (isConnected) {
                         console.log("[SearchBar] Disconnecting existing wallet connection");
@@ -251,20 +254,12 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         // Small delay to ensure disconnect completes
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
-
-                    // Force a clean state by clearing all storage
-                    sessionStorage.clear();
-                    localStorage.removeItem('wagmi.wallet');
-                    localStorage.removeItem('wagmi.connected');
-                    localStorage.removeItem('wagmi.injected.connected');
-                    
-                    // Set search flow flag
-                    sessionStorage.setItem('searchFlow', 'true');
                     
                     // Use the Login component directly
                     loginRef.current?.click();
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
+                    sessionStorage.removeItem('searchFlow'); // Clean up flag on error
                     toast({
                         variant: "destructive",
                         title: "Error",
@@ -283,6 +278,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                    // Clean up search flow flag before navigation
+                    sessionStorage.removeItem('searchFlow');
+                    
                     // Navigate using replace to prevent back button issues
                     const url = `/artist/${addResult.artistId}`;
                     try {
@@ -307,6 +305,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.error("[SearchBar] Error adding artist:", error);
                 if (error instanceof Error && error.message.includes('Not authenticated')) {
                     console.log("[SearchBar] Session expired, restarting auth flow");
+                    sessionStorage.setItem('searchFlow', 'true'); // Set flag before restarting auth
                     if (openConnectModal) {
                         openConnectModal();
                     }

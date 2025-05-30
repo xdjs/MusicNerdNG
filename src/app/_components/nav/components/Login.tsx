@@ -26,14 +26,14 @@ const Login = forwardRef<HTMLButtonElement, {
     const handleDisconnect = useCallback(async () => {
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
+            
+            // Clean up flags before disconnecting
+            sessionStorage.removeItem('searchFlow');
+            sessionStorage.removeItem('directLogin');
+            
+            // Disconnect wallet and sign out
             await signOut({ redirect: false });
             disconnect();
-            
-            // Clear all storage
-            sessionStorage.clear();
-            localStorage.removeItem('wagmi.wallet');
-            localStorage.removeItem('wagmi.connected');
-            localStorage.removeItem('wagmi.injected.connected');
             
             toast({
                 title: "Disconnected",
@@ -61,14 +61,12 @@ const Login = forwardRef<HTMLButtonElement, {
 
         if (status !== currentStatus) {
             setCurrentStatus(status);
-        }
-
-        // Clean up all storage if we're authenticated
-        if (status === "authenticated") {
-            sessionStorage.clear();
-            localStorage.removeItem('wagmi.wallet');
-            localStorage.removeItem('wagmi.connected');
-            localStorage.removeItem('wagmi.injected.connected');
+            
+            // Clean up flags if authentication fails
+            if (status === "unauthenticated" && currentStatus === "loading") {
+                sessionStorage.removeItem('searchFlow');
+                sessionStorage.removeItem('directLogin');
+            }
         }
     }, [status, currentStatus, isConnected, address, session]);
 
@@ -104,11 +102,6 @@ const Login = forwardRef<HTMLButtonElement, {
                                 if (openConnectModal) {
                                     // If we're not in the search flow, set a flag to indicate this is a direct login
                                     if (!sessionStorage.getItem('searchFlow')) {
-                                        // Clear all storage first
-                                        sessionStorage.clear();
-                                        localStorage.removeItem('wagmi.wallet');
-                                        localStorage.removeItem('wagmi.connected');
-                                        localStorage.removeItem('wagmi.injected.connected');
                                         sessionStorage.setItem('directLogin', 'true');
                                     }
                                     openConnectModal();
