@@ -229,16 +229,13 @@ function SearchResults({
         <>
             {[...results].map(result => {
                 const spotifyImage = result.images?.[0]?.url;
-                const isAddingThis = result.isSpotifyOnly && result.spotify;
                 return (
                     <div key={result.isSpotifyOnly ? result.spotify : result.id}>
                         <div
-                            className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg ${isAddingThis ? 'opacity-50' : ''}`}
+                            className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg`}
                             onMouseDown={(e) => {
                                 e.preventDefault(); // Prevent blur
-                                if (!isAddingThis) {
-                                    navigateToResult(result);
-                                }
+                                navigateToResult(result);
                             }}
                         >
                             <div className="flex items-center gap-3">
@@ -259,12 +256,7 @@ function SearchResults({
                                     </div>
                                     {result.isSpotifyOnly ? (
                                         <div className="text-xs text-gray-500 flex items-center gap-2">
-                                            {isAddingThis ? (
-                                                <>
-                                                    <img className="h-3" src="/spinner.svg" alt="Loading" />
-                                                    <span>Adding...</span>
-                                                </>
-                                            ) : "Add to MusicNerd"}
+                                            Add to MusicNerd
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-start gap-1">
