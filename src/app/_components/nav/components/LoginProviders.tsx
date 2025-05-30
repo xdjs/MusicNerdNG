@@ -34,8 +34,8 @@ const config = getDefaultConfig({
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
     statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-    nonce: undefined, // Let RainbowKit handle the nonce
-    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
+    nonce: undefined,
+    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
 });
 
 export default function LoginProviders({ children }: { children: ReactNode }) {

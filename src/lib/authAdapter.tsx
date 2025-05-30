@@ -5,6 +5,8 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     console.log("[AuthAdapter] Getting CSRF token for nonce");
+    // Clear any existing nonce to force a new message prompt
+    sessionStorage.removeItem('siwe-nonce');
     const token = await getCsrfToken() ?? "";
     console.log("[AuthAdapter] Got CSRF token:", token);
     return token;
@@ -36,6 +38,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
+      // Clear any existing nonce to force a new message prompt on next sign-in
+      sessionStorage.removeItem('siwe-nonce');
+
       // First attempt to sign in
       const response = await signIn("credentials", {
         message: JSON.stringify(message),
@@ -63,6 +68,8 @@ export const authenticationAdapter = createAuthenticationAdapter({
   signOut: async () => {
     try {
       console.log("[AuthAdapter] Signing out");
+      // Clear any existing nonce
+      sessionStorage.removeItem('siwe-nonce');
       await signOut({ 
         redirect: false,
         callbackUrl: window.location.origin
