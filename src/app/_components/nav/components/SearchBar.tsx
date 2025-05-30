@@ -13,7 +13,7 @@ import { addArtist } from "@/app/actions/addArtist";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
-import { useAccount, useConnect } from 'wagmi';
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 const queryClient = new QueryClient({
@@ -224,6 +224,7 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { data: session, status } = useSession();
     const { openConnectModal } = useConnectModal();
     const { isConnected } = useAccount();
+    const { disconnect } = useDisconnect();
     const { toast } = useToast();
 
     const handleNavigate = async (result: SearchResult) => {
@@ -247,6 +248,14 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 sessionStorage.setItem('searchFlow', 'true');
                 
                 try {
+                    // Ensure we're fully disconnected before starting new auth flow
+                    if (isConnected) {
+                        console.log("[SearchBar] Disconnecting existing wallet connection");
+                        disconnect();
+                        // Small delay to ensure disconnect completes
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
                         openConnectModal();
