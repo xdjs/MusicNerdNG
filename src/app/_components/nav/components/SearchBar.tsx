@@ -249,6 +249,28 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
         }
     }));
 
+    // Add cleanup effect for loading states
+    useEffect(() => {
+        // Clear loading states when component unmounts or route changes
+        return () => {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        };
+    }, []);
+
+    // Add effect to clear loading states after navigation
+    useEffect(() => {
+        const handleRouteChange = () => {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        };
+
+        window.addEventListener('popstate', handleRouteChange);
+        return () => {
+            window.removeEventListener('popstate', handleRouteChange);
+        };
+    }, []);
+
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
         setShowResults(false);
@@ -293,6 +315,8 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                         title: "Error",
                         description: "Failed to connect wallet - please try again"
                     });
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
                 }
                 return;
             }
@@ -315,6 +339,11 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         await router.replace(url);
+                        // Add a small delay before clearing loading states
+                        setTimeout(() => {
+                            setIsAddingArtist(false);
+                            setIsAddingNew(false);
+                        }, 100);
                     } catch (error) {
                         console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
@@ -358,6 +387,11 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                 try {
                     const url = `/artist/${result.id}`;
                     await router.replace(url);
+                    // Add a small delay before clearing loading states
+                    setTimeout(() => {
+                        setIsAddingArtist(false);
+                        setIsAddingNew(false);
+                    }, 100);
                 } catch (error) {
                     console.error("[SearchBar] Error navigating to artist:", error);
                     setIsAddingArtist(false);
