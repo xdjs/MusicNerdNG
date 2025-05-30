@@ -335,10 +335,12 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                     sessionStorage.removeItem('pendingArtistSpotifyId');
                     sessionStorage.removeItem('pendingArtistName');
                     
-                    // Navigate using replace to prevent back button issues
+                    // Navigate using push to prevent back button issues
                     const url = `/artist/${addResult.artistId}`;
                     try {
-                        await router.replace(url);
+                        // Prefetch the page before navigation
+                        router.prefetch(url);
+                        await router.push(url);
                         // Add a small delay before clearing loading states
                         setTimeout(() => {
                             setIsAddingArtist(false);
@@ -386,7 +388,9 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                 setIsAddingNew(false);
                 try {
                     const url = `/artist/${result.id}`;
-                    await router.replace(url);
+                    // Prefetch the page before navigation
+                    router.prefetch(url);
+                    await router.push(url);
                     // Add a small delay before clearing loading states
                     setTimeout(() => {
                         setIsAddingArtist(false);
