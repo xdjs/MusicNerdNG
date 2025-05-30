@@ -90,9 +90,10 @@ const Login = forwardRef<HTMLButtonElement, {
             });
         }
 
-        // Only handle search flow reconnection if we have a search flow flag
-        if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated") {
-            console.log("[Login] Detected search flow without session, initiating connection");
+        // Only handle reconnection if we have an explicit user action flag
+        const hasExplicitAction = sessionStorage.getItem('searchFlow') || sessionStorage.getItem('directLogin');
+        if (hasExplicitAction && !session && status === "unauthenticated") {
+            console.log("[Login] Detected explicit login action, initiating connection");
             if (openConnectModal) {
                 // Clear any stale wagmi state before opening modal
                 localStorage.removeItem('wagmi.wallet');
