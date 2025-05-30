@@ -8,7 +8,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input"
-import Login from "@/app/_components/nav/components/Login";
 import { useState } from "react";
 import { Artist } from "@/server/db/DbTypes";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
@@ -31,6 +30,7 @@ import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
@@ -39,6 +39,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
     const router = useRouter();
     const { toast } = useToast();
+    const { openConnectModal } = useConnectModal();
 
     const formSchema = useMemo(() => z.object({
         artistDataUrl: z.string()
@@ -72,16 +73,6 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setIsModalOpen(isOpen);
         form.reset();
     }
-    function handleAddArtistDataClick() {
-        if (session != null) {
-            setIsModalOpen(true);
-            return;
-        }
-        const loginBtn = document.getElementById("login-btn");
-        if (loginBtn) {
-            loginBtn.click();
-        }
-    }
 
     function checkInput() {
         if (addArtistResp?.status === "success") {
@@ -89,11 +80,20 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
             setAddArtistResp(null);
         }
     }
+
+    function handleClick() {
+        if (session) {
+            setIsModalOpen(true);
+        } else {
+            openConnectModal?.();
+        }
+    }
+
     return (
         <>
             <Button
                 className="text-white bg-pastypink p-2"
-                onClick={handleAddArtistDataClick} variant="outline"
+                onClick={handleClick}
             >
                 <Plus />
             </Button>

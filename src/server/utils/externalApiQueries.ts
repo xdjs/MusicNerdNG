@@ -5,7 +5,10 @@ import { unstable_cache } from 'next/cache';
 
 
 type SpotifyHeaderType = {
-    headers: { Authorization: string }
+    headers: { 
+        Authorization: string;
+        'x-token-expiry'?: string;
+    }
 }
 
 export type ArtistSpotifyImage = {
@@ -19,14 +22,19 @@ export type SpotifyHeaders = {
 
 export const getSpotifyHeaders = unstable_cache(async () => {
     try {
+        if (!SPOTIFY_WEB_CLIENT_ID || !SPOTIFY_WEB_CLIENT_SECRET) {
+            console.error("Missing Spotify credentials");
+            throw new Error("Spotify credentials not configured");
+        }
+
         const headers = {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
             }
         };
-        let payload = {
+        
+        const payload = {
             grant_type: "client_credentials",
-            redirectUri: "https://localhost:8000/callback",
             client_id: SPOTIFY_WEB_CLIENT_ID,
             client_secret: SPOTIFY_WEB_CLIENT_SECRET,
         };
@@ -37,14 +45,38 @@ export const getSpotifyHeaders = unstable_cache(async () => {
             headers
         )
 
+        if (!data.access_token) {
+            console.error("No access token in Spotify response");
+            throw new Error("Failed to get Spotify access token");
+        }
+
+        // Store the expiration time (default is 1 hour)
+        const expiresAt = Date.now() + (data.expires_in * 1000);
+
         return {
-            headers: { Authorization: `Bearer ${data.access_token}` }
+            headers: { 
+                Authorization: `Bearer ${data.access_token}`,
+                'x-token-expiry': expiresAt.toString()
+            }
         };
     } catch (e) {
-        console.error("Error fetching Spotify headers", e)
+        console.error("Error fetching Spotify headers:", e);
+        if (e instanceof Error) {
+            throw e;
+        }
         throw new Error("Error fetching Spotify headers");
     }
-}, ["spotify-headers"], { tags: ["spotify-headers"], revalidate: 60 * 60 * 1 });
+}, ["spotify-headers"], { 
+    tags: ["spotify-headers"], 
+    revalidate: 3300 // 55 minutes - refresh slightly before the token expires
+});
+
+// Helper function to check if token is expired or about to expire
+const isTokenExpired = (headers: SpotifyHeaderType): boolean => {
+    const expiryTime = parseInt(headers.headers['x-token-expiry'] || '0');
+    // Return true if token expires in less than 5 minutes
+    return Date.now() + (5 * 60 * 1000) >= expiryTime;
+};
 
 export type SpotifyArtistApiResponse = {
     error: string | null,
@@ -52,23 +84,86 @@ export type SpotifyArtistApiResponse = {
 }
 
 export type SpotifyArtist = {
-    name: string,
-    id:string,
+    name: string;
+    id: string;
+    images: Array<{
+        url: string;
+        height: number;
+        width: number;
+    }>;
+    followers: {
+        total: number;
+    };
+    genres: string[];
+    type: string;
+    uri: string;
+    external_urls: {
+        spotify: string;
+    };
 }
 
-export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType) : Promise<SpotifyArtistApiResponse> => {
+export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
-        const {data}: {data: SpotifyArtist} = await axios.get(
+        console.log("Fetching Spotify artist with ID:", artistId);
+        
+        if (!headers?.headers?.Authorization) {
+            console.error("Missing Spotify authorization header");
+            return { error: "Spotify authentication failed", data: null };
+        }
+
+        // Check if token is expired or about to expire
+        if (isTokenExpired(headers)) {
+            console.log("Token expired or about to expire, fetching new token");
+            headers = await getSpotifyHeaders();
+        }
+
+        const { data } = await axios.get<SpotifyArtist>(
             `https://api.spotify.com/v1/artists/${artistId}`,
             headers
         );
-        return {data, error: null};
-    } catch (e:any) {
-        if(e.response.data.error.message === "invalid id"){
-            return {error: "Invlid Spotify Id", data: null}
-        }  
-        console.error("Error fetching Spotify data for artist", e)
-        throw new Error(`Error fetching Spotify data for artist ${artistId}`);
+        
+        // Validate the response has all required fields
+        if (!data) {
+            console.error("No data returned from Spotify API");
+            return { error: "No data returned from Spotify", data: null };
+        }
+
+        if (!data.name || !data.id) {
+            console.error("Invalid Spotify artist data - missing required fields:", data);
+            return { error: "Invalid artist data format from Spotify", data: null };
+        }
+        
+        // Ensure arrays are initialized even if empty
+        const safeData = {
+            ...data,
+            images: Array.isArray(data.images) ? data.images : [],
+            genres: Array.isArray(data.genres) ? data.genres : [],
+            followers: data.followers || { total: 0 }
+        };
+        
+        return { data: safeData, error: null };
+    } catch (e: any) {
+        console.error("Error fetching Spotify data for artist", {
+            artistId,
+            error: e?.response?.data || e,
+            status: e?.response?.status
+        });
+        
+        if (!e.response) {
+            return { error: "Network error while fetching artist data", data: null };
+        }
+        
+        if (e.response?.status === 404 || e.response?.data?.error?.message === "invalid id") {
+            return { error: "Invalid Spotify ID", data: null };
+        }
+        if (e.response?.status === 401) {
+            return { error: "Spotify authentication failed", data: null };
+        }
+        if (e.response?.status === 429) {
+            return { error: "Rate limit exceeded, please try again later", data: null };
+        }
+        
+        return { error: "Failed to fetch artist data from Spotify", data: null };
     }
 }, ["spotify-artist"], { tags: ["spotify-artist"], revalidate: 60 * 60 * 24 });
 
@@ -125,6 +220,7 @@ export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | nul
   
     } catch(e) {
         console.error(`Error fetching Spotify data for artist`, e);
+        return 0;
     }
 }, ["spotify-releases"], { tags: ["spotify-releases"], revalidate: 60 * 60 * 24 });
 

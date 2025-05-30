@@ -1,4 +1,3 @@
-
 import { getArtistById, getAllLinks, getArtistLinks } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
@@ -53,27 +52,25 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 <div className="bg-white rounded-lg md:w-2/3 gap-y-4 shadow-2xl px-5 py-5 md:py-10 md:px-10 space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
                         {/* Left Column: Image and Song */}
-                        {(spotifyImg.artistImage) &&
-                            <div className="flex flex-col items-center md:items-end">
-                                <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                                    {(spotifyImg) && <img src={spotifyImg.artistImage} alt="Artist Image" className="object-cover w-full h-full" />}
-                                </AspectRatio>
-                                {artist.spotify &&
-                                    <div className="w-full">
-                                        <div className="justify-center overflow-hidden rounded-xl">
-                                            <div style={{
-                                                height: 'calc(100% + 32px)',
-                                                width: 'calc(100% + 72px)',
-                                                marginLeft: '-72px',
-                                                marginTop: '-32px',
-                                            }}>
-                                                <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
-                                            </div>
+                        <div className="flex flex-col items-center md:items-end">
+                            <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
+                                <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
+                            </AspectRatio>
+                            {artist.spotify &&
+                                <div className="w-full">
+                                    <div className="justify-center overflow-hidden rounded-xl">
+                                        <div style={{
+                                            height: 'calc(100% + 32px)',
+                                            width: 'calc(100% + 72px)',
+                                            marginLeft: '-72px',
+                                            marginTop: '-32px',
+                                        }}>
+                                            <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
                                         </div>
                                     </div>
-                                }
-                            </div>
-                        }
+                                </div>
+                            }
+                        </div>
                         {/* Right Column: Name and Description */}
                         <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
                             <div className="mb-2 flex justify-between items-center">

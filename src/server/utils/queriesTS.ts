@@ -11,6 +11,7 @@ import { DateRange } from 'react-day-picker';
 import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
+import { headers } from 'next/headers';
 
 export async function getFeaturedArtistsTS() {
     const featuredObj = await db.query.featured.findMany({
@@ -78,6 +79,12 @@ export async function getArtistByNameApiResp(name: string) {
     }
 }
 
+// Searches for artists in the database by name using fuzzy matching and similarity scoring
+// Uses PostgreSQL's similarity function to find close matches and prioritizes exact prefix matches
+// Params:
+//      name: The artist name to search for
+// Returns:
+//      Promise<Artist[]> - Array of matching artists, limited to 10 results
 export async function searchForArtistByName(name: string) {
     try {
         const startTime = performance.now();
@@ -85,17 +92,29 @@ export async function searchForArtistByName(name: string) {
             SELECT 
                 id, 
                 name, 
-                spotify, 
+                spotify,
+                bandcamp,
+                youtubechannel,
                 instagram,
+                x,
+                facebook,
+                tiktok,
                 CASE 
-                    WHEN LOWER(name) LIKE LOWER(${name || ''} || '%') THEN 1  -- Exact prefix match
-                    ELSE 2
+                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') THEN 0  -- Contains match (0 ranks first)
+                    ELSE 1  -- Similarity match
                 END as match_type
             FROM artists
-            WHERE similarity(name, ${name}) > 0.3
+            WHERE 
+                (LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') OR similarity(name, ${name}) > 0.3)
+                AND spotify IS NOT NULL
             ORDER BY 
-                match_type,  -- Prefix matches first
-                similarity(name, ${name}) DESC  -- Then by similarity
+                match_type ASC,  -- Contains matches first (0 before 1)
+                CASE 
+                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') 
+                    THEN -POSITION(LOWER(${name}) IN LOWER(name))  -- Negative position to reverse order
+                    ELSE -999999  -- Keep non-contains matches at the end
+                END DESC,  -- DESC on negative numbers puts smallest positions first
+                similarity(name, ${name}) DESC  -- Higher similarity first
             LIMIT 10
         `);
         const endTime = performance.now();
@@ -162,31 +181,100 @@ export type AddArtistResp = {
     artistName?: string
 }
 
-
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
-    const session = await getServerAuthSession();
-    if (!session) throw new Error("Not authenticated");
     try {
+        console.log("[Server] Starting addArtist for spotifyId:", spotifyId);
+        
+        const headersList = headers();
+        console.log("[Server] Request headers:", {
+            cookie: headersList.get('cookie'),
+            authorization: headersList.get('authorization')
+        });
+        
+        const session = await getServerAuthSession();
+        console.log("[Server] Session state:", {
+            exists: !!session,
+            userId: session?.user?.id
+        });
+
+        if (!session) {
+            console.log("[Server] No session found - authentication failed");
+            throw new Error("Not authenticated");
+        }
+        
+        console.log("[Server] Getting user data...");
         const user = await getUserById(session.user.id);
-        const headers = await getSpotifyHeaders();
-        const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-        if (spotifyArtist.error) return { status: "error", message: "That spotify id you entered doesn't exist" };
+        console.log("[Server] User data:", {
+            userId: user?.id,
+            isWhitelisted: user?.isWhiteListed,
+            wallet: user?.wallet
+        });
+
+        console.log("[Server] Getting Spotify headers...");
+        const spotifyHeaders = await getSpotifyHeaders();
+        if (!spotifyHeaders?.headers?.Authorization) {
+            console.error("[Server] Failed to get Spotify headers");
+            return { status: "error", message: "Failed to authenticate with Spotify" };
+        }
+
+        console.log("[Server] Fetching Spotify artist data...");
+        const spotifyArtist = await getSpotifyArtist(spotifyId, spotifyHeaders);
+        console.log("[Server] Spotify artist response:", spotifyArtist);
+
+        if (spotifyArtist.error) {
+            console.error("[Server] Spotify artist error:", spotifyArtist.error);
+            return { status: "error", message: spotifyArtist.error };
+        }
+
+        if (!spotifyArtist.data?.name) {
+            console.error("[Server] Invalid artist data received from Spotify");
+            return { status: "error", message: "Invalid artist data received from Spotify" };
+        }
+
+        console.log("[Server] Checking if artist exists in database...");
         const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
-        if (artist) return { status: "exists", artistId: artist.id, artistName: artist.name ?? "", message: "That artist is already in our database" };
-        const [newArtist] = await db.insert(artists).values(
-            {
-                spotify: spotifyId,
-                addedBy: session.user.id,
-                lcname: spotifyArtist.data?.name.toLowerCase(),
-                name: spotifyArtist.data?.name
-            }).returning();
+        if (artist) {
+            console.log("[Server] Artist already exists:", artist);
+            return { 
+                status: "exists", 
+                artistId: artist.id, 
+                artistName: artist.name ?? "", 
+                message: "That artist is already in our database" 
+            };
+        }
+
+        console.log("[Server] Inserting new artist into database...");
+        const [newArtist] = await db.insert(artists).values({
+            spotify: spotifyId,
+            addedBy: session.user.id,
+            lcname: spotifyArtist.data.name.toLowerCase(),
+            name: spotifyArtist.data.name
+        }).returning();
+        console.log("[Server] New artist created:", newArtist);
 
         await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
-        return { status: "success", artistId: newArtist.id, artistName: newArtist.name ?? "", message: "Success! You can now find this artist in our directory" };
+        return { 
+            status: "success", 
+            artistId: newArtist.id, 
+            artistName: newArtist.name ?? "", 
+            message: "Success! You can now find this artist in our directory" 
+        };
     } catch (e) {
-        console.error("error adding artist", e);
-        return { status: "error", artistId: undefined, message: "Something went wrong on our end, please try again" };   
-     }
+        console.error("[Server] Error in addArtist:", e);
+        if (e instanceof Error) {
+            if (e.message.includes('auth')) {
+                return { status: "error", message: "Please log in to add artists" };
+            }
+            if (e.message.includes('duplicate')) {
+                return { status: "error", message: "This artist is already in our database" };
+            }
+        }
+        return { 
+            status: "error", 
+            artistId: undefined, 
+            message: "Something went wrong on our end, please try again" 
+        };   
+    }
 }
 
 export async function approveUgcAdmin(ugcIds: string[]) {
@@ -393,6 +481,20 @@ export async function sendDiscordMessage(message: string) {
         const resp = await axios.post(discordWebhookUrl, { content: message });
     } catch(e) {
         console.error("error sending discord ping ", e);
+    }
+}
+
+export async function getAllSpotifyIds(): Promise<string[]> {
+    try {
+        const result = await db.execute<{ spotify: string }>(sql`
+            SELECT spotify 
+            FROM artists 
+            WHERE spotify IS NOT NULL
+        `);
+        return result.map(r => r.spotify);
+    } catch (e) {
+        console.error('Error fetching Spotify IDs:', e);
+        return [];
     }
 }
 

@@ -1,8 +1,6 @@
 "use client"
-import { SessionProvider } from "next-auth/react";
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import '@rainbow-me/rainbowkit/styles.css';
-import { WagmiProvider } from 'wagmi';
+import { WagmiProvider, http } from 'wagmi';
 import {
     RainbowKitSiweNextAuthProvider,
     GetSiweMessageOptions,
@@ -22,31 +20,45 @@ import { ReactNode } from "react";
 
 const queryClient = new QueryClient();
 
+const projectId = '929ab7024658ec19d047d5df44fb0f63';
+
 const config = getDefaultConfig({
     appName: 'Music Nerd',
-    projectId: '929ab7024658ec19d047d5df44fb0f63',
-    chains: [mainnet, polygon, optimism, arbitrum, base],
-    appIcon: 'https://www.musicnerd.xyz/musicNerdLogo.png',
+    projectId,
+    chains: [mainnet],
+    transports: {
+        [mainnet.id]: http()
+    },
+    ssr: true,
 });
 
 const getSiweMessageOptions: GetSiweMessageOptions = () => ({
-    statement: 'Sign in to MusicNerd',
+    statement: 'Sign in to MusicNerd to add artists and manage your collection.',
+    nonce: undefined,
+    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
 });
 
 export default function LoginProviders({ children }: { children: ReactNode }) {
     return (
-        <SessionProvider>
-            <WagmiProvider config={config}>
-                <QueryClientProvider client={queryClient}>
-                    <RainbowKitSiweNextAuthProvider
-                        getSiweMessageOptions={getSiweMessageOptions}
+        <WagmiProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+                <RainbowKitSiweNextAuthProvider
+                    getSiweMessageOptions={getSiweMessageOptions}
+                    enabled={true}
+                >
+                    <RainbowKitProvider 
+                        modalSize="compact"
+                        showRecentTransactions={true}
+                        appInfo={{
+                            appName: 'Music Nerd',
+                            learnMoreUrl: 'https://www.musicnerd.xyz',
+                            disclaimer: undefined
+                        }}
                     >
-                        <RainbowKitProvider>
-                            {children}
-                        </RainbowKitProvider>
-                    </RainbowKitSiweNextAuthProvider>
-                </QueryClientProvider>
-            </WagmiProvider>
-        </SessionProvider>
+                        {children}
+                    </RainbowKitProvider>
+                </RainbowKitSiweNextAuthProvider>
+            </QueryClientProvider>
+        </WagmiProvider>
     )
 }
