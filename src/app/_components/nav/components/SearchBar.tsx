@@ -254,7 +254,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
 
-                    // Set search flow flag
+                    // Store the artist info for after auth
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
                     sessionStorage.setItem('searchFlow', 'true');
                     
                     // Open connect modal
@@ -263,7 +265,10 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
-                    sessionStorage.removeItem('searchFlow'); // Clean up flag on error
+                    // Clean up all stored data on error
+                    sessionStorage.removeItem('searchFlow');
+                    sessionStorage.removeItem('pendingArtistSpotifyId');
+                    sessionStorage.removeItem('pendingArtistName');
                     toast({
                         variant: "destructive",
                         title: "Error",
@@ -282,86 +287,71 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    // Clean up search flow flag before navigation
+                    // Clean up stored data before navigation
                     sessionStorage.removeItem('searchFlow');
+                    sessionStorage.removeItem('pendingArtistSpotifyId');
+                    sessionStorage.removeItem('pendingArtistName');
                     
                     // Navigate using replace to prevent back button issues
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         await router.replace(url);
-                        // Force a page refresh to ensure clean state
-                        window.location.href = url;
-                    } catch (error) {
-                        console.error("[SearchBar] Navigation error:", error);
-                        setIsAddingArtist(false);
-                        setIsAddingNew(false);
-                    }
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: addResult.message || "Failed to add artist"
-                    });
+                } catch (error) {
+                    console.error("[SearchBar] Navigation error:", error);
                     setIsAddingArtist(false);
                     setIsAddingNew(false);
                 }
-            } catch (error) {
-                console.error("[SearchBar] Error adding artist:", error);
-                if (error instanceof Error && error.message.includes('Not authenticated')) {
-                    console.log("[SearchBar] Session expired, restarting auth flow");
-                    sessionStorage.setItem('searchFlow', 'true'); // Set flag before restarting auth
-                    if (openConnectModal) {
-                        openConnectModal();
-                    }
-                } else {
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to add artist - please try again"
-                    });
-                }
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: addResult.message || "Failed to add artist"
+                });
                 setIsAddingArtist(false);
                 setIsAddingNew(false);
             }
-        } else {
-            // For existing artists, show loading screen and navigate
-            if (result.id) {
-                setIsAddingArtist(true);
-                setIsAddingNew(false);
-                try {
-                    const url = `/artist/${result.id}`;
-                    // First try the router navigation
-                    await router.replace(url);
-                    // Force a page refresh to ensure clean state
-                    window.location.href = url;
-                } catch (error) {
-                    console.error("[SearchBar] Error navigating to artist:", error);
-                    setIsAddingArtist(false);
-                    setIsAddingNew(false);
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to navigate to artist page"
-                    });
+        } catch (error) {
+            console.error("[SearchBar] Error adding artist:", error);
+            if (error instanceof Error && error.message.includes('Not authenticated')) {
+                console.log("[SearchBar] Session expired, restarting auth flow");
+                // Store the artist info before restarting auth
+                sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                sessionStorage.setItem('searchFlow', 'true');
+                if (openConnectModal) {
+                    openConnectModal();
                 }
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to add artist - please try again"
+                });
+            }
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        }
+    } else {
+        // For existing artists, show loading screen and navigate
+        if (result.id) {
+            setIsAddingArtist(true);
+            setIsAddingNew(false);
+            try {
+                const url = `/artist/${result.id}`;
+                await router.replace(url);
+            } catch (error) {
+                console.error("[SearchBar] Error navigating to artist:", error);
+                setIsAddingArtist(false);
+                setIsAddingNew(false);
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to navigate to artist page"
+                });
             }
         }
-    };
-
-    // Add effect to handle auth flow completion
-    useEffect(() => {
-        // If we just completed auth flow, clear the search flow flag
-        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
-            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
-            sessionStorage.removeItem('searchFlow');
-            
-            // Show toast to indicate successful connection
-            toast({
-                title: "Connected!",
-                description: "You can now add the artist to your collection.",
-            });
-        }
-    }, [isConnected, session, toast]);
+    }
+};
 
     // Fetches combined search results from both database and Spotify
     const { data, isLoading } = useQuery({

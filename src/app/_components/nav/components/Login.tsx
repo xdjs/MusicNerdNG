@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation';
 import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
+import { addArtist } from "@/app/actions/addArtist";
+import type { AddArtistResp } from "@/app/actions/addArtist";
 
 const Login = forwardRef<HTMLButtonElement, { 
     buttonChildren?: React.ReactNode, 
@@ -28,9 +30,11 @@ const Login = forwardRef<HTMLButtonElement, {
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
             
-            // Clean up flags before disconnecting
+            // Clean up all stored data
             sessionStorage.removeItem('searchFlow');
             sessionStorage.removeItem('directLogin');
+            sessionStorage.removeItem('pendingArtistSpotifyId');
+            sessionStorage.removeItem('pendingArtistName');
             
             // Disconnect wallet and sign out
             await signOut({ redirect: false });
@@ -57,8 +61,45 @@ const Login = forwardRef<HTMLButtonElement, {
             isConnected,
             address,
             sessionUser: session?.user,
-            isSearchFlow: sessionStorage.getItem('searchFlow')
+            isSearchFlow: sessionStorage.getItem('searchFlow'),
+            pendingArtist: sessionStorage.getItem('pendingArtistName')
         });
+
+        // Handle successful authentication
+        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
+            const pendingArtistId = sessionStorage.getItem('pendingArtistSpotifyId');
+            const pendingArtistName = sessionStorage.getItem('pendingArtistName');
+            
+            if (pendingArtistId) {
+                console.log("[Login] Auth completed, adding pending artist:", pendingArtistName);
+                // Clean up stored data
+                sessionStorage.removeItem('searchFlow');
+                sessionStorage.removeItem('pendingArtistSpotifyId');
+                sessionStorage.removeItem('pendingArtistName');
+                
+                // Add the artist
+                addArtist(pendingArtistId)
+                    .then((result: AddArtistResp) => {
+                        if ((result.status === "success" || result.status === "exists") && result.artistId) {
+                            router.replace(`/artist/${result.artistId}`);
+                        } else {
+                            toast({
+                                variant: "destructive",
+                                title: "Error",
+                                description: result.message || "Failed to add artist"
+                            });
+                        }
+                    })
+                    .catch((error: Error) => {
+                        console.error("[Login] Error adding pending artist:", error);
+                        toast({
+                            variant: "destructive",
+                            title: "Error",
+                            description: "Failed to add artist - please try again"
+                        });
+                    });
+            }
+        }
 
         // Handle search flow reconnection
         if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated") {
@@ -75,9 +116,11 @@ const Login = forwardRef<HTMLButtonElement, {
             if (status === "unauthenticated" && currentStatus === "loading") {
                 sessionStorage.removeItem('searchFlow');
                 sessionStorage.removeItem('directLogin');
+                sessionStorage.removeItem('pendingArtistSpotifyId');
+                sessionStorage.removeItem('pendingArtistName');
             }
         }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast]);
 
     return (
         <ConnectButton.Custom>
