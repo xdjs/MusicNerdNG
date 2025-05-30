@@ -46,6 +46,11 @@ const Login = forwardRef<HTMLButtonElement, {
             await signOut({ redirect: false });
             disconnect();
             
+            // Force a clean state for wagmi
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
+            
             toast({
                 title: "Disconnected",
                 description: "Your wallet has been disconnected",
@@ -89,6 +94,11 @@ const Login = forwardRef<HTMLButtonElement, {
         if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated") {
             console.log("[Login] Detected search flow without session, initiating connection");
             if (openConnectModal) {
+                // Clear any stale wagmi state before opening modal
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                
                 openConnectModal();
             }
         }
@@ -102,6 +112,11 @@ const Login = forwardRef<HTMLButtonElement, {
                 sessionStorage.removeItem('directLogin');
                 sessionStorage.removeItem('pendingArtistSpotifyId');
                 sessionStorage.removeItem('pendingArtistName');
+                
+                // Also clean up wagmi state
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
             }
         }
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
@@ -138,6 +153,12 @@ const Login = forwardRef<HTMLButtonElement, {
                                 if (openConnectModal) {
                                     // Set direct login flag to indicate this was a button click
                                     sessionStorage.setItem('directLogin', 'true');
+                                    
+                                    // Clear any stale wagmi state
+                                    localStorage.removeItem('wagmi.wallet');
+                                    localStorage.removeItem('wagmi.connected');
+                                    localStorage.removeItem('wagmi.injected.connected');
+                                    
                                     openConnectModal();
                                 }
                             }}
