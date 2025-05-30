@@ -16,6 +16,7 @@ import LoadingPage from "@/app/_components/LoadingPage";
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import Login from "./Login";
+import { signOut } from 'next-auth/react';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -244,19 +245,22 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
                 try {
-                    // Set search flow flag before disconnecting
-                    sessionStorage.setItem('searchFlow', 'true');
-                    
-                    // Ensure we're fully disconnected before starting new auth flow
-                    if (isConnected) {
-                        console.log("[SearchBar] Disconnecting existing wallet connection");
+                    // Only disconnect if we're connected but don't have a session
+                    if (isConnected && !session) {
+                        console.log("[SearchBar] Connected but no session, disconnecting wallet");
+                        await signOut({ redirect: false });
                         disconnect();
                         // Small delay to ensure disconnect completes
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
+
+                    // Set search flow flag
+                    sessionStorage.setItem('searchFlow', 'true');
                     
-                    // Use the Login component directly
-                    loginRef.current?.click();
+                    // Open connect modal
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
                     sessionStorage.removeItem('searchFlow'); // Clean up flag on error

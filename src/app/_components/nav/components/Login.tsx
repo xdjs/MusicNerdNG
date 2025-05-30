@@ -21,6 +21,7 @@ const Login = forwardRef<HTMLButtonElement, {
     const { isConnected, address } = useAccount();
     const { disconnect } = useDisconnect();
     const config = useConfig();
+    const { openConnectModal } = useConnectModal();
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
@@ -59,6 +60,14 @@ const Login = forwardRef<HTMLButtonElement, {
             isSearchFlow: sessionStorage.getItem('searchFlow')
         });
 
+        // Handle search flow reconnection
+        if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated") {
+            console.log("[Login] Detected search flow without session, initiating connection");
+            if (openConnectModal) {
+                openConnectModal();
+            }
+        }
+
         if (status !== currentStatus) {
             setCurrentStatus(status);
             
@@ -68,7 +77,7 @@ const Login = forwardRef<HTMLButtonElement, {
                 sessionStorage.removeItem('directLogin');
             }
         }
-    }, [status, currentStatus, isConnected, address, session]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal]);
 
     return (
         <ConnectButton.Custom>
