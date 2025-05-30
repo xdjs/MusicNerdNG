@@ -252,7 +252,7 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
 
     // Add cleanup effect for loading states
     useEffect(() => {
-        // Clear loading states when component unmounts or route changes
+        // Clear loading states when component unmounts
         return () => {
             setIsAddingArtist(false);
             setIsAddingNew(false);
@@ -261,9 +261,11 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
 
     // Add effect to clear loading states after navigation
     useEffect(() => {
-        // Clear loading states when pathname changes (navigation complete)
-        setIsAddingArtist(false);
-        setIsAddingNew(false);
+        // Only clear loading states if we're not in the middle of authentication
+        if (!sessionStorage.getItem('searchFlow')) {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        }
     }, [pathname]);
 
     const handleNavigate = async (result: SearchResult) => {
@@ -334,8 +336,7 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         router.prefetch(url);
-                        router.push(url);
-                        // Loading state will be cleared by pathname change effect
+                        await router.push(url);
                     } catch (error) {
                         console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
@@ -379,8 +380,7 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                 try {
                     const url = `/artist/${result.id}`;
                     router.prefetch(url);
-                    router.push(url);
-                    // Loading state will be cleared by pathname change effect
+                    await router.push(url);
                 } catch (error) {
                     console.error("[SearchBar] Error navigating to artist:", error);
                     setIsAddingArtist(false);
