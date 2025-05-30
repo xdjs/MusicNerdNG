@@ -55,8 +55,9 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
         }
 
         // Clean up search flow flag if we're authenticated
-        if (status === "authenticated" && sessionStorage.getItem('searchFlow')) {
+        if (status === "authenticated") {
             sessionStorage.removeItem('searchFlow');
+            sessionStorage.removeItem('directLogin');
         }
     }, [status, currentStatus, isConnected, address, session]);
 

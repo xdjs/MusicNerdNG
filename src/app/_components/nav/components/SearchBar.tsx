@@ -240,8 +240,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
-                // Store data to indicate we came from search flow
+                // Store data to indicate we came from search flow and remove any direct login flag
                 sessionStorage.setItem('searchFlow', 'true');
+                sessionStorage.removeItem('directLogin');
                 
                 try {
                     if (openConnectModal) {
