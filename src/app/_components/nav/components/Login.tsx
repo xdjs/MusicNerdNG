@@ -73,51 +73,16 @@ const Login = forwardRef<HTMLButtonElement, {
 
         // Handle successful authentication
         if (isConnected && session && sessionStorage.getItem('searchFlow')) {
-            const pendingArtistId = sessionStorage.getItem('pendingArtistSpotifyId');
-            const pendingArtistName = sessionStorage.getItem('pendingArtistName');
-            
-            if (pendingArtistId) {
-                console.log("[Login] Auth completed, adding pending artist:", pendingArtistName);
-                // Clean up stored data
-                sessionStorage.removeItem('searchFlow');
-                sessionStorage.removeItem('pendingArtistSpotifyId');
-                sessionStorage.removeItem('pendingArtistName');
-                
-                // Add the artist
-                addArtist(pendingArtistId)
-                    .then(async (result: AddArtistResp) => {
-                        if ((result.status === "success" || result.status === "exists") && result.artistId) {
-                            // Navigate and clear loading state
-                            await router.replace(`/artist/${result.artistId}`);
-                            // Clear loading state after navigation
-                            if (searchBarRef?.current) {
-                                searchBarRef.current.clearLoading();
-                            }
-                        } else {
-                            // Clear loading state on error
-                            if (searchBarRef?.current) {
-                                searchBarRef.current.clearLoading();
-                            }
-                            toast({
-                                variant: "destructive",
-                                title: "Error",
-                                description: result.message || "Failed to add artist"
-                            });
-                        }
-                    })
-                    .catch((error: Error) => {
-                        // Clear loading state on error
-                        if (searchBarRef?.current) {
-                            searchBarRef.current.clearLoading();
-                        }
-                        console.error("[Login] Error adding pending artist:", error);
-                        toast({
-                            variant: "destructive",
-                            title: "Error",
-                            description: "Failed to add artist - please try again"
-                        });
-                    });
+            // Clear loading state if it was set
+            if (searchBarRef?.current) {
+                searchBarRef.current.clearLoading();
             }
+            
+            // Show success toast
+            toast({
+                title: "Connected!",
+                description: "You can now add artists to your collection.",
+            });
         }
 
         // Handle search flow reconnection
@@ -139,7 +104,7 @@ const Login = forwardRef<HTMLButtonElement, {
                 sessionStorage.removeItem('pendingArtistName');
             }
         }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
     return (
         <ConnectButton.Custom>
