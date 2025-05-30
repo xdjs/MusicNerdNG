@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useState, useRef, ReactNode, Suspense, forwardRef, useImperativeHandle } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation'
@@ -225,6 +225,7 @@ function SearchResults({
 const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) => {
     const { isTopSide } = props;
     const router = useRouter();
+    const pathname = usePathname();
     const [query, setQuery] = useState('');
     const [showResults, setShowResults] = useState(false);
     const [debouncedQuery] = useDebounce(query, 200);
@@ -260,16 +261,10 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
 
     // Add effect to clear loading states after navigation
     useEffect(() => {
-        const handleRouteChange = () => {
-            setIsAddingArtist(false);
-            setIsAddingNew(false);
-        };
-
-        window.addEventListener('popstate', handleRouteChange);
-        return () => {
-            window.removeEventListener('popstate', handleRouteChange);
-        };
-    }, []);
+        // Clear loading states when pathname changes (navigation complete)
+        setIsAddingArtist(false);
+        setIsAddingNew(false);
+    }, [pathname]);
 
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
@@ -335,17 +330,12 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                     sessionStorage.removeItem('pendingArtistSpotifyId');
                     sessionStorage.removeItem('pendingArtistName');
                     
-                    // Navigate using push to prevent back button issues
+                    // Navigate using push
                     const url = `/artist/${addResult.artistId}`;
                     try {
-                        // Prefetch the page before navigation
                         router.prefetch(url);
-                        await router.push(url);
-                        // Add a small delay before clearing loading states
-                        setTimeout(() => {
-                            setIsAddingArtist(false);
-                            setIsAddingNew(false);
-                        }, 100);
+                        router.push(url);
+                        // Loading state will be cleared by pathname change effect
                     } catch (error) {
                         console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
@@ -388,14 +378,9 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                 setIsAddingNew(false);
                 try {
                     const url = `/artist/${result.id}`;
-                    // Prefetch the page before navigation
                     router.prefetch(url);
-                    await router.push(url);
-                    // Add a small delay before clearing loading states
-                    setTimeout(() => {
-                        setIsAddingArtist(false);
-                        setIsAddingNew(false);
-                    }, 100);
+                    router.push(url);
+                    // Loading state will be cleared by pathname change effect
                 } catch (error) {
                     console.error("[SearchBar] Error navigating to artist:", error);
                     setIsAddingArtist(false);
