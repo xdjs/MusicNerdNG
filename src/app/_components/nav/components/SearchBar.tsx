@@ -226,20 +226,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
     const { isConnected } = useAccount();
     const { toast } = useToast();
 
-    // Add effect to handle auth flow completion
-    useEffect(() => {
-        // If we just completed auth flow, clear the search flow flag
-        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
-            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
-            sessionStorage.removeItem('searchFlow');
-            // Show toast to indicate user can now add the artist
-            toast({
-                title: "Connected!",
-                description: "You can now add the artist to your collection.",
-            });
-        }
-    }, [isConnected, session, toast]);
-
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
         setShowResults(false);
@@ -253,12 +239,19 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             // If not connected or no session, handle login first
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
+                
+                // Store data to indicate we came from search flow
                 sessionStorage.setItem('searchFlow', 'true');
+                // Store the current URL to handle the case where we're on an artist page
+                sessionStorage.setItem('currentPath', window.location.pathname);
                 
                 try {
                     if (openConnectModal) {
                         console.log("[SearchBar] Opening connect modal");
-                        openConnectModal();
+                        // Force a page refresh to ensure clean SIWE state
+                        const searchParams = new URLSearchParams(window.location.search);
+                        searchParams.set('triggerConnect', 'true');
+                        window.location.href = `/?${searchParams.toString()}`;
                     } else {
                         console.warn("[SearchBar] Connect modal not available");
                         toast({
@@ -348,6 +341,29 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             }
         }
     };
+
+    // Add effect to handle auth flow completion and return to previous page
+    useEffect(() => {
+        // If we just completed auth flow, clear the search flow flag and handle navigation
+        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
+            console.log("[SearchBar] Auth flow completed, clearing search flow flag");
+            sessionStorage.removeItem('searchFlow');
+            
+            // Always show the toast to indicate successful connection
+            toast({
+                title: "Connected!",
+                description: "You can now add the artist to your collection.",
+            });
+
+            // Check if we need to return to a previous page
+            const previousPath = sessionStorage.getItem('currentPath');
+            if (previousPath) {
+                sessionStorage.removeItem('currentPath');
+                // Return to the previous page
+                window.location.href = previousPath;
+            }
+        }
+    }, [isConnected, session, toast]);
 
     // Fetches combined search results from both database and Spotify
     const { data, isLoading } = useQuery({
