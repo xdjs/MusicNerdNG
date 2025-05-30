@@ -1,7 +1,7 @@
 "use client"
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
-import { useEffect, useState, useCallback, forwardRef } from 'react';
+import { useEffect, useState, useCallback, forwardRef, useRef } from 'react';
 import { useSession, signOut } from "next-auth/react";
 import { Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -30,6 +30,7 @@ const Login = forwardRef<HTMLButtonElement, {
     const { disconnect } = useDisconnect();
     const config = useConfig();
     const { openConnectModal } = useConnectModal();
+    const shouldPromptRef = useRef(false);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
@@ -37,12 +38,15 @@ const Login = forwardRef<HTMLButtonElement, {
             console.log("[Login] Disconnecting wallet and cleaning up session");
             
             // First clear all session and local storage
-            sessionStorage.clear(); // Clear all session storage
+            sessionStorage.clear();
             localStorage.removeItem('wagmi.wallet');
             localStorage.removeItem('wagmi.connected');
             localStorage.removeItem('wagmi.injected.connected');
             localStorage.removeItem('wagmi.store');
             localStorage.removeItem('wagmi.cache');
+            
+            // Reset prompt flag
+            shouldPromptRef.current = false;
             
             // Then disconnect and sign out
             await signOut({ redirect: false });
@@ -52,9 +56,6 @@ const Login = forwardRef<HTMLButtonElement, {
                 title: "Disconnected",
                 description: "Your wallet has been disconnected",
             });
-
-            // Force a clean state by reloading the page
-            window.location.reload();
         } catch (error) {
             console.error("[Login] Error during disconnect:", error);
             toast({
@@ -73,26 +74,31 @@ const Login = forwardRef<HTMLButtonElement, {
             address,
             sessionUser: session?.user,
             isSearchFlow: sessionStorage.getItem('searchFlow'),
-            pendingArtist: sessionStorage.getItem('pendingArtistName')
+            pendingArtist: sessionStorage.getItem('pendingArtistName'),
+            shouldPrompt: shouldPromptRef.current
         });
 
         // Handle successful authentication
-        if (isConnected && session && sessionStorage.getItem('searchFlow')) {
+        if (isConnected && session) {
+            // Reset prompt flag
+            shouldPromptRef.current = false;
+            
             // Clear loading state if it was set
             if (searchBarRef?.current) {
                 searchBarRef.current.clearLoading();
             }
             
-            // Show success toast
-            toast({
-                title: "Connected!",
-                description: "You can now add artists to your collection.",
-            });
+            if (sessionStorage.getItem('searchFlow')) {
+                // Show success toast
+                toast({
+                    title: "Connected!",
+                    description: "You can now add artists to your collection.",
+                });
+            }
         }
 
-        // Only handle reconnection if we have an explicit user action flag
-        const hasExplicitAction = sessionStorage.getItem('searchFlow') || sessionStorage.getItem('directLogin');
-        if (hasExplicitAction && !session && status === "unauthenticated" && !localStorage.getItem('wagmi.connected')) {
+        // Only handle reconnection if explicitly triggered
+        if (shouldPromptRef.current && !session && status === "unauthenticated" && !isConnected) {
             console.log("[Login] Detected explicit login action, initiating connection");
             if (openConnectModal) {
                 openConnectModal();
@@ -104,15 +110,13 @@ const Login = forwardRef<HTMLButtonElement, {
             
             // Clean up flags if authentication fails
             if (status === "unauthenticated" && currentStatus === "loading") {
-                // Clear all session storage
                 sessionStorage.clear();
-                
-                // Clear all wagmi state
                 localStorage.removeItem('wagmi.wallet');
                 localStorage.removeItem('wagmi.connected');
                 localStorage.removeItem('wagmi.injected.connected');
                 localStorage.removeItem('wagmi.store');
                 localStorage.removeItem('wagmi.cache');
+                shouldPromptRef.current = false;
             }
         }
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
@@ -147,7 +151,8 @@ const Login = forwardRef<HTMLButtonElement, {
                             size="lg" 
                             onClick={() => {
                                 if (openConnectModal) {
-                                    // Set direct login flag to indicate this was a button click
+                                    // Set flag to indicate explicit user action
+                                    shouldPromptRef.current = true;
                                     sessionStorage.setItem('directLogin', 'true');
                                     openConnectModal();
                                 }
