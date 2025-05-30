@@ -36,25 +36,25 @@ const Login = forwardRef<HTMLButtonElement, {
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
             
-            // Clean up all stored data
-            sessionStorage.removeItem('searchFlow');
-            sessionStorage.removeItem('directLogin');
-            sessionStorage.removeItem('pendingArtistSpotifyId');
-            sessionStorage.removeItem('pendingArtistName');
-            
-            // Disconnect wallet and sign out
-            await signOut({ redirect: false });
-            disconnect();
-            
-            // Force a clean state for wagmi
+            // First clear all session and local storage
+            sessionStorage.clear(); // Clear all session storage
             localStorage.removeItem('wagmi.wallet');
             localStorage.removeItem('wagmi.connected');
             localStorage.removeItem('wagmi.injected.connected');
+            localStorage.removeItem('wagmi.store');
+            localStorage.removeItem('wagmi.cache');
+            
+            // Then disconnect and sign out
+            await signOut({ redirect: false });
+            disconnect();
             
             toast({
                 title: "Disconnected",
                 description: "Your wallet has been disconnected",
             });
+
+            // Force a clean state by reloading the page
+            window.location.reload();
         } catch (error) {
             console.error("[Login] Error during disconnect:", error);
             toast({
@@ -92,14 +92,9 @@ const Login = forwardRef<HTMLButtonElement, {
 
         // Only handle reconnection if we have an explicit user action flag
         const hasExplicitAction = sessionStorage.getItem('searchFlow') || sessionStorage.getItem('directLogin');
-        if (hasExplicitAction && !session && status === "unauthenticated") {
+        if (hasExplicitAction && !session && status === "unauthenticated" && !localStorage.getItem('wagmi.connected')) {
             console.log("[Login] Detected explicit login action, initiating connection");
             if (openConnectModal) {
-                // Clear any stale wagmi state before opening modal
-                localStorage.removeItem('wagmi.wallet');
-                localStorage.removeItem('wagmi.connected');
-                localStorage.removeItem('wagmi.injected.connected');
-                
                 openConnectModal();
             }
         }
@@ -109,15 +104,15 @@ const Login = forwardRef<HTMLButtonElement, {
             
             // Clean up flags if authentication fails
             if (status === "unauthenticated" && currentStatus === "loading") {
-                sessionStorage.removeItem('searchFlow');
-                sessionStorage.removeItem('directLogin');
-                sessionStorage.removeItem('pendingArtistSpotifyId');
-                sessionStorage.removeItem('pendingArtistName');
+                // Clear all session storage
+                sessionStorage.clear();
                 
-                // Also clean up wagmi state
+                // Clear all wagmi state
                 localStorage.removeItem('wagmi.wallet');
                 localStorage.removeItem('wagmi.connected');
                 localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
             }
         }
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
@@ -154,12 +149,6 @@ const Login = forwardRef<HTMLButtonElement, {
                                 if (openConnectModal) {
                                     // Set direct login flag to indicate this was a button click
                                     sessionStorage.setItem('directLogin', 'true');
-                                    
-                                    // Clear any stale wagmi state
-                                    localStorage.removeItem('wagmi.wallet');
-                                    localStorage.removeItem('wagmi.connected');
-                                    localStorage.removeItem('wagmi.injected.connected');
-                                    
                                     openConnectModal();
                                 }
                             }}
