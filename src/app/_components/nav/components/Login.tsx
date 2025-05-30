@@ -29,8 +29,11 @@ const Login = forwardRef<HTMLButtonElement, {
             await signOut({ redirect: false });
             disconnect();
             
-            // Clear all auth-related flags
+            // Clear all storage
             sessionStorage.clear();
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
             
             toast({
                 title: "Disconnected",
@@ -60,9 +63,12 @@ const Login = forwardRef<HTMLButtonElement, {
             setCurrentStatus(status);
         }
 
-        // Clean up search flow flag if we're authenticated
+        // Clean up all storage if we're authenticated
         if (status === "authenticated") {
             sessionStorage.clear();
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
         }
     }, [status, currentStatus, isConnected, address, session]);
 
@@ -98,8 +104,11 @@ const Login = forwardRef<HTMLButtonElement, {
                                 if (openConnectModal) {
                                     // If we're not in the search flow, set a flag to indicate this is a direct login
                                     if (!sessionStorage.getItem('searchFlow')) {
-                                        // Clear any existing flags first
+                                        // Clear all storage first
                                         sessionStorage.clear();
+                                        localStorage.removeItem('wagmi.wallet');
+                                        localStorage.removeItem('wagmi.connected');
+                                        localStorage.removeItem('wagmi.injected.connected');
                                         sessionStorage.setItem('directLogin', 'true');
                                     }
                                     openConnectModal();

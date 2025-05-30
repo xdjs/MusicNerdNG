@@ -252,7 +252,13 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
 
-                    // Set search flow flag after disconnect
+                    // Force a clean state by clearing all storage
+                    sessionStorage.clear();
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    
+                    // Set search flow flag
                     sessionStorage.setItem('searchFlow', 'true');
                     
                     // Use the Login component directly
