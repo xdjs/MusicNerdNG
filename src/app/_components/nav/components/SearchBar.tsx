@@ -524,3 +524,5 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
         </>
     );
 });
+
+SearchBar.displayName = 'SearchBar';
