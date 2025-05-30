@@ -30,9 +30,7 @@ const Login = forwardRef<HTMLButtonElement, {
             disconnect();
             
             // Clear all auth-related flags
-            sessionStorage.removeItem('searchFlow');
-            sessionStorage.removeItem('directLogin');
-            sessionStorage.removeItem('currentPath');
+            sessionStorage.clear();
             
             toast({
                 title: "Disconnected",
@@ -64,8 +62,7 @@ const Login = forwardRef<HTMLButtonElement, {
 
         // Clean up search flow flag if we're authenticated
         if (status === "authenticated") {
-            sessionStorage.removeItem('searchFlow');
-            sessionStorage.removeItem('directLogin');
+            sessionStorage.clear();
         }
     }, [status, currentStatus, isConnected, address, session]);
 
@@ -101,6 +98,8 @@ const Login = forwardRef<HTMLButtonElement, {
                                 if (openConnectModal) {
                                     // If we're not in the search flow, set a flag to indicate this is a direct login
                                     if (!sessionStorage.getItem('searchFlow')) {
+                                        // Clear any existing flags first
+                                        sessionStorage.clear();
                                         sessionStorage.setItem('directLogin', 'true');
                                     }
                                     openConnectModal();

@@ -243,12 +243,6 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
             if (!isConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
-                // Clear any existing auth flags and set search flow
-                sessionStorage.removeItem('directLogin');
-                sessionStorage.removeItem('currentPath');
-                sessionStorage.removeItem('searchFlow');
-                sessionStorage.setItem('searchFlow', 'true');
-                
                 try {
                     // Ensure we're fully disconnected before starting new auth flow
                     if (isConnected) {
@@ -258,6 +252,9 @@ const SearchBar = ({isTopSide}: {isTopSide: boolean}) => {
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
 
+                    // Set search flow flag after disconnect
+                    sessionStorage.setItem('searchFlow', 'true');
+                    
                     // Use the Login component directly
                     loginRef.current?.click();
                 } catch (error) {
