@@ -16,7 +16,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
     return new SiweMessage({
       domain: window.location.host,
       address,
-      statement: 'Sign in with Ethereum to MusicNerd.',
+      statement: `Sign in with Ethereum to MusicNerd. Timestamp: ${Date.now()}`,
       uri: window.location.origin,
       version: '1',
       chainId,
