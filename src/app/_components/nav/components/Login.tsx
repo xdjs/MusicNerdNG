@@ -24,7 +24,11 @@ export default function Login({ buttonChildren, buttonStyles = "bg-gray-100", is
             console.log("[Login] Disconnecting wallet and cleaning up session");
             await signOut({ redirect: false });
             disconnect();
+            
+            // Clear all auth-related flags
             sessionStorage.removeItem('searchFlow');
+            sessionStorage.removeItem('directLogin');
+            sessionStorage.removeItem('currentPath');
             
             toast({
                 title: "Disconnected",
