@@ -315,62 +315,62 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         await router.replace(url);
-                } catch (error) {
-                    console.error("[SearchBar] Navigation error:", error);
+                    } catch (error) {
+                        console.error("[SearchBar] Navigation error:", error);
+                        setIsAddingArtist(false);
+                        setIsAddingNew(false);
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: addResult.message || "Failed to add artist"
+                    });
                     setIsAddingArtist(false);
                     setIsAddingNew(false);
                 }
-            } else {
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: addResult.message || "Failed to add artist"
-                });
-                setIsAddingArtist(false);
-                setIsAddingNew(false);
-            }
-        } catch (error) {
-            console.error("[SearchBar] Error adding artist:", error);
-            if (error instanceof Error && error.message.includes('Not authenticated')) {
-                console.log("[SearchBar] Session expired, restarting auth flow");
-                // Store the artist info before restarting auth
-                sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                sessionStorage.setItem('searchFlow', 'true');
-                if (openConnectModal) {
-                    openConnectModal();
-                }
-            } else {
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Failed to add artist - please try again"
-                });
-            }
-            setIsAddingArtist(false);
-            setIsAddingNew(false);
-        }
-    } else {
-        // For existing artists, show loading screen and navigate
-        if (result.id) {
-            setIsAddingArtist(true);
-            setIsAddingNew(false);
-            try {
-                const url = `/artist/${result.id}`;
-                await router.replace(url);
             } catch (error) {
-                console.error("[SearchBar] Error navigating to artist:", error);
+                console.error("[SearchBar] Error adding artist:", error);
+                if (error instanceof Error && error.message.includes('Not authenticated')) {
+                    console.log("[SearchBar] Session expired, restarting auth flow");
+                    // Store the artist info before restarting auth
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    sessionStorage.setItem('searchFlow', 'true');
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to add artist - please try again"
+                    });
+                }
                 setIsAddingArtist(false);
                 setIsAddingNew(false);
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Failed to navigate to artist page"
-                });
+            }
+        } else {
+            // For existing artists, show loading screen and navigate
+            if (result.id) {
+                setIsAddingArtist(true);
+                setIsAddingNew(false);
+                try {
+                    const url = `/artist/${result.id}`;
+                    await router.replace(url);
+                } catch (error) {
+                    console.error("[SearchBar] Error navigating to artist:", error);
+                    setIsAddingArtist(false);
+                    setIsAddingNew(false);
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: "Failed to navigate to artist page"
+                    });
+                }
             }
         }
-    }
-};
+    };
 
     // Fetches combined search results from both database and Spotify
     const { data, isLoading } = useQuery({
@@ -420,19 +420,19 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                    <Search size={24} strokeWidth={2.5} />
-                    <Input
+            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                <Search size={24} strokeWidth={2.5} />
+                <Input
                         onBlur={handleBlur}
                         onFocus={handleFocus}
-                        type="text"
-                        value={query}
-                        onChange={handleInputChange}
-                        className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                        placeholder="Search"
-                    />
-                </div>
-                {(showResults && query.length >= 1) && (
+                    type="text"
+                    value={query}
+                    onChange={handleInputChange}
+                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
+                    placeholder="Search"
+                />
+            </div>
+            {(showResults && query.length >= 1) && (
                     <div 
                         ref={resultsContainer} 
                         className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
@@ -518,9 +518,9 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                                 })}
                             </div>
                         )}
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
+        </div>
         </>
     );
 });

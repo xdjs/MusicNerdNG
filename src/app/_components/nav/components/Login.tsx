@@ -85,7 +85,7 @@ const Login = forwardRef<HTMLButtonElement, {
             });
         }
 
-        // Handle search flow reconnection
+        // Only handle search flow reconnection if we have a search flow flag
         if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated") {
             console.log("[Login] Detected search flow without session, initiating connection");
             if (openConnectModal) {
@@ -136,10 +136,8 @@ const Login = forwardRef<HTMLButtonElement, {
                             size="lg" 
                             onClick={() => {
                                 if (openConnectModal) {
-                                    // If we're not in the search flow, set a flag to indicate this is a direct login
-                                    if (!sessionStorage.getItem('searchFlow')) {
-                                        sessionStorage.setItem('directLogin', 'true');
-                                    }
+                                    // Set direct login flag to indicate this was a button click
+                                    sessionStorage.setItem('directLogin', 'true');
                                     openConnectModal();
                                 }
                             }}
