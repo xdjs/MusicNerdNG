@@ -39,6 +39,17 @@ const getSiweMessageOptions: GetSiweMessageOptions = () => ({
 });
 
 export default function LoginProviders({ children }: { children: ReactNode }) {
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    // If wallet is not required, don't wrap with wallet providers
+    if (!isWalletRequired) {
+        return (
+            <QueryClientProvider client={queryClient}>
+                {children}
+            </QueryClientProvider>
+        );
+    }
+
     return (
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>

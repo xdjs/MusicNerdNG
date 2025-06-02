@@ -29,6 +29,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
 import { Plus } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
 
@@ -44,6 +46,9 @@ export default function AddArtist({ session }: { session: Session | null }) {
     const [isLoading, setIsLoading] = useState(false);
     const [addedArtist, setAddedArtist] = useState<{ artistId: string | undefined, artistName: string | undefined } | null>(null);
     const [addArtistStatus, setAddArtistStatus] = useState<AddArtistResp | null>(null);
+    const { toast } = useToast();
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    const { openConnectModal } = isWalletRequired ? useConnectModal() : { openConnectModal: undefined };
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -80,8 +85,6 @@ export default function AddArtist({ session }: { session: Session | null }) {
     }
 
     function handleAddArtistClick() {
-        const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
-        
         if (!isWalletRequired || session != null) {
             setIsModalOpen(true);
             return;

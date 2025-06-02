@@ -236,11 +236,14 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
     const [isAddingArtist, setIsAddingArtist] = useState(false);
     const [isAddingNew, setIsAddingNew] = useState(false);
     const { data: session, status } = useSession();
-    const { openConnectModal } = useConnectModal();
-    const { isConnected } = useAccount();
-    const { disconnect } = useDisconnect();
     const { toast } = useToast();
     const loginRef = useRef<HTMLButtonElement>(null);
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    // Only use wagmi hooks if wallet is required
+    const { openConnectModal } = isWalletRequired ? useConnectModal() : { openConnectModal: undefined };
+    const { isConnected } = isWalletRequired ? useAccount() : { isConnected: false };
+    const { disconnect } = isWalletRequired ? useDisconnect() : { disconnect: undefined };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -286,7 +289,7 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                 
                 try {
                     // Only disconnect if we're connected but don't have a session
-                    if (isConnected && !session) {
+                    if (isConnected && !session && disconnect) {
                         console.log("[SearchBar] Connected but no session, disconnecting wallet");
                         await signOut({ redirect: false });
                         disconnect();

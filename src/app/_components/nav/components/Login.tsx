@@ -26,14 +26,19 @@ const Login = forwardRef<HTMLButtonElement, {
     const { toast } = useToast();
     const { data: session, status } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
-    const { isConnected, address } = useAccount();
-    const { disconnect } = useDisconnect();
-    const config = useConfig();
-    const { openConnectModal } = useConnectModal();
     const shouldPromptRef = useRef(false);
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    // Only use wagmi hooks if wallet is required
+    const { isConnected, address } = isWalletRequired ? useAccount() : { isConnected: false, address: undefined };
+    const { disconnect } = isWalletRequired ? useDisconnect() : { disconnect: undefined };
+    const config = isWalletRequired ? useConfig() : undefined;
+    const { openConnectModal } = isWalletRequired ? useConnectModal() : { openConnectModal: undefined };
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
+        if (!isWalletRequired) return;
+        
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
             
@@ -50,7 +55,7 @@ const Login = forwardRef<HTMLButtonElement, {
             
             // Then disconnect and sign out
             await signOut({ redirect: false });
-            disconnect();
+            disconnect?.();
             
             toast({
                 title: "Disconnected",
@@ -64,9 +69,11 @@ const Login = forwardRef<HTMLButtonElement, {
                 description: "Failed to disconnect wallet"
             });
         }
-    }, [disconnect, toast]);
+    }, [disconnect, toast, isWalletRequired]);
 
     useEffect(() => {
+        if (!isWalletRequired) return;
+
         console.log("[Login] State changed:", {
             authFrom: currentStatus,
             authTo: status,
@@ -119,7 +126,12 @@ const Login = forwardRef<HTMLButtonElement, {
                 shouldPromptRef.current = false;
             }
         }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef, isWalletRequired]);
+
+    // If wallet is not required, don't show any login UI
+    if (!isWalletRequired) {
+        return null;
+    }
 
     return (
         <ConnectButton.Custom>
@@ -131,21 +143,14 @@ const Login = forwardRef<HTMLButtonElement, {
                 openConnectModal,
                 mounted,
             }) => {
-                const ready = mounted;
+                const ready = mounted && config;
 
-                if (!ready || !config) {
+                if (!ready) {
                     return (
                         <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
                             <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
                         </Button>
                     );
-                }
-
-                const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
-                
-                // If wallet is not required, don't show the button at all
-                if (!isWalletRequired) {
-                    return null;
                 }
 
                 if (!isConnected || status !== "authenticated") {
