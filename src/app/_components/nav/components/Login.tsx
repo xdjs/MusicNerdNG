@@ -194,7 +194,10 @@ WalletLogin.displayName = 'WalletLogin';
 
 // Component for non-wallet mode
 const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
-    return null;
+    // Return a placeholder div with the same dimensions as the wallet button
+    return (
+        <div className="w-12 h-12" />
+    );
 });
 
 NoWalletLogin.displayName = 'NoWalletLogin';
