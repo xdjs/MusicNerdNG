@@ -17,7 +17,6 @@ describe('URL Pattern Tests', () => {
     { regex: /^https:\/\/www\.sound\.xyz\/([^/]+)$/, sitename: "sound" },
     { regex: /^https:\/\/rainbow\.me\/([^/]+)$/, sitename: "rainbow" },
     { regex: /^https:\/\/wikipedia\.org\/wiki\/([^/]+)$/, sitename: "wikipedia" },
-    { regex: /^https:\/\/superbadge\.xyz\/badges\/([^/]+)$/, sitename: "superbadge" },
     { regex: /^https:\/\/www\.tiktok\.com\/@([^/]+)$/, sitename: "tiktok" },
   ];
 
@@ -43,7 +42,6 @@ describe('URL Pattern Tests', () => {
     ['sound', 'https://www.sound.xyz/artist123'],
     ['rainbow', 'https://rainbow.me/wallet123'],
     ['wikipedia', 'https://wikipedia.org/wiki/Article_Name'],
-    ['superbadge', 'https://superbadge.xyz/badges/badge123'],
     ['tiktok', 'https://www.tiktok.com/@user123'],
   ])('should match valid %s URL', (sitename, url) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
@@ -73,7 +71,6 @@ describe('URL Pattern Tests', () => {
     ['sound', 'https://sound.xyz/artist123'],
     ['rainbow', 'https://rainbow.me/wallet/extra'],
     ['wikipedia', 'https://wikipedia.org/Article_Name'],
-    ['superbadge', 'https://superbadge.xyz/badge123'],
     ['tiktok', 'https://tiktok.com/@user123'],
   ])('should not match invalid %s URL', (sitename, url) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
