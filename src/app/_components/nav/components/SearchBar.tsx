@@ -101,7 +101,7 @@ function SocialIcons({ result }: { result: SearchResult }) {
     
     if (result.instagram) {
         icons.push(
-            <img key="instagram" src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+            <img key="instagram" src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
         );
     }
     
@@ -190,7 +190,7 @@ function SearchResults({
                                                                 <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
                                                             )}
                                                             {result.instagram && (
-                                                                <img src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                                <img src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
                                                             )}
                                                             {result.x && (
                                                                 <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
@@ -516,7 +516,7 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                                                                                     <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
                                                                                 )}
                                                                                 {result.instagram && (
-                                                                                    <img src="/siteIcons/instagram_icon.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                                                    <img src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
                                                                                 )}
                                                                                 {result.x && (
                                                                                     <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
