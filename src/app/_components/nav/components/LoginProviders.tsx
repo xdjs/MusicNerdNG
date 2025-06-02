@@ -56,7 +56,7 @@ const WalletProviders = dynamic(
     },
     {
         ssr: false, // This ensures the component only loads on the client side
-        loading: () => <div>Loading wallet functionality...</div>
+        loading: () => null // Remove loading message
     }
 );
 
@@ -77,7 +77,7 @@ export default function LoginProviders({ children }: { children: ReactNode }) {
     }
 
     return (
-        <Suspense fallback={<div>Loading wallet functionality...</div>}>
+        <Suspense fallback={null}>
             <WalletProviders>{children}</WalletProviders>
         </Suspense>
     );
