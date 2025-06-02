@@ -53,12 +53,11 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 <div className="bg-white rounded-lg md:w-2/3 gap-y-4 shadow-2xl px-5 py-5 md:py-10 md:px-10 space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
                         {/* Left Column: Image and Song */}
-<<<<<<< HEAD
                         <div className="flex flex-col items-center md:items-end">
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                 <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
                             </AspectRatio>
-                            {artist.spotify &&
+                            {artist?.spotify &&
                                 <div className="w-full">
                                     <div className="justify-center overflow-hidden rounded-xl">
                                         <div style={{
@@ -69,32 +68,6 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                         }}>
                                             <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
                                         </div>
-=======
-                        {(spotifyImg.artistImage) &&
-                            <div className="flex flex-col items-center mt-1">
-                                <div className="w-full">
-                                    <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full">
-                                        {(spotifyImg) && <img src={spotifyImg.artistImage} alt="Artist Image" className="object-cover w-full h-full" />}
-                                    </AspectRatio>
-                                </div>
-                                {artist.spotify &&
-                                    <div className="w-[90%] mt-4">
-                                        <Link 
-                                            href={`https://open.spotify.com/artist/${artist.spotify}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="w-full bg-[#1DB954] hover:bg-[#1ed760] transition-colors rounded-lg p-3 flex flex-col items-center gap-2"
-                                        >
-                                            <img 
-                                                src="/siteIcons/Spotify_Primary_Logo_RGB_White.png"
-                                                alt="Spotify"
-                                                className="w-8 h-8"
-                                            />
-                                            <span className="text-white font-medium">
-                                                Listen on Spotify
-                                            </span>
-                                        </Link>
->>>>>>> 3a63213 (added button that directs to artists spotify page)
                                     </div>
                                 </div>
                             }
