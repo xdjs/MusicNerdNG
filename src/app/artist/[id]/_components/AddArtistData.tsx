@@ -82,7 +82,9 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     }
 
     function handleClick() {
-        if (session) {
+        const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+        
+        if (!isWalletRequired || session) {
             setIsModalOpen(true);
         } else {
             openConnectModal?.();

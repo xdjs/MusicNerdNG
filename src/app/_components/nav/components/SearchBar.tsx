@@ -278,8 +278,10 @@ const SearchBar = forwardRef<SearchBarRef, {isTopSide: boolean}>((props, ref) =>
                 return;
             }
 
-            // If not connected or no session, handle login first
-            if (!isConnected || !session) {
+            const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+            // If wallet is required and not connected or no session, handle login first
+            if (isWalletRequired && (!isConnected || !session)) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
                 try {

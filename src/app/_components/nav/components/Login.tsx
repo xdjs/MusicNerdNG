@@ -141,6 +141,13 @@ const Login = forwardRef<HTMLButtonElement, {
                     );
                 }
 
+                const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+                
+                // If wallet is not required, don't show the button at all
+                if (!isWalletRequired) {
+                    return null;
+                }
+
                 if (!isConnected || status !== "authenticated") {
                     console.log("[Login] User not connected or not authenticated, showing connect button");
                     return (

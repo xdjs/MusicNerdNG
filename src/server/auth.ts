@@ -99,6 +99,20 @@ export const authOptions: NextAuthOptions = {
         try {
           console.log("[Auth] Starting authorization with credentials:", credentials);
           
+          // Check if wallet requirement is disabled
+          if (process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true') {
+            // Create or get a temporary user without wallet
+            const tempUserId = 'temp-' + Math.random().toString(36).substring(2);
+            return {
+              id: tempUserId,
+              walletAddress: null,
+              email: null,
+              name: 'Guest User',
+              username: 'guest',
+              isSignupComplete: true,
+            };
+          }
+
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
           const authUrl = new URL(NEXTAUTH_URL);
           

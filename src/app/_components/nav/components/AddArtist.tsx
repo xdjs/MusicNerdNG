@@ -80,7 +80,9 @@ export default function AddArtist({ session }: { session: Session | null }) {
     }
 
     function handleAddArtistClick() {
-        if (session != null) {
+        const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+        
+        if (!isWalletRequired || session != null) {
             setIsModalOpen(true);
             return;
         }
