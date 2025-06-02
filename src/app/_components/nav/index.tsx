@@ -15,7 +15,7 @@ export default function Nav() {
 
     return (
         <nav className="p-6 nav-bar flex items-center justify-between max-w-[1000px] mx-auto">
-            <Link href={"/"} className="">
+            <Link href={"/"} className="translate-x-[-17rem]">
                 <img
                     src="/musicNerdLogo.png"
                     className="w-16 hover:animate-[spin_3s_linear_infinite]"

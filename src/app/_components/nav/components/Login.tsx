@@ -9,36 +9,34 @@ import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
 import { addArtist } from "@/app/actions/addArtist";
-import type { AddArtistResp } from "@/app/actions/addArtist";
 
 // Add type for the SearchBar ref
 interface SearchBarRef {
     clearLoading: () => void;
 }
 
-const Login = forwardRef<HTMLButtonElement, { 
-    buttonChildren?: React.ReactNode, 
-    buttonStyles: string, 
-    isplaceholder?: boolean,
-    searchBarRef?: React.RefObject<SearchBarRef>
-}>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
+interface LoginProps {
+    buttonChildren?: React.ReactNode;
+    buttonStyles: string;
+    isplaceholder?: boolean;
+    searchBarRef?: React.RefObject<SearchBarRef>;
+}
+
+// Component for wallet-enabled mode
+const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
     const router = useRouter();
     const { toast } = useToast();
     const { data: session, status } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
     const shouldPromptRef = useRef(false);
-    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
 
-    // Only use wagmi hooks if wallet is required
-    const { isConnected, address } = isWalletRequired ? useAccount() : { isConnected: false, address: undefined };
-    const { disconnect } = isWalletRequired ? useDisconnect() : { disconnect: undefined };
-    const config = isWalletRequired ? useConfig() : undefined;
-    const { openConnectModal } = isWalletRequired ? useConnectModal() : { openConnectModal: undefined };
+    const { isConnected, address } = useAccount();
+    const { disconnect } = useDisconnect();
+    const config = useConfig();
+    const { openConnectModal } = useConnectModal();
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
-        if (!isWalletRequired) return;
-        
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
             
@@ -55,7 +53,7 @@ const Login = forwardRef<HTMLButtonElement, {
             
             // Then disconnect and sign out
             await signOut({ redirect: false });
-            disconnect?.();
+            if (disconnect) disconnect();
             
             toast({
                 title: "Disconnected",
@@ -69,11 +67,9 @@ const Login = forwardRef<HTMLButtonElement, {
                 description: "Failed to disconnect wallet"
             });
         }
-    }, [disconnect, toast, isWalletRequired]);
+    }, [disconnect, toast]);
 
     useEffect(() => {
-        if (!isWalletRequired) return;
-
         console.log("[Login] State changed:", {
             authFrom: currentStatus,
             authTo: status,
@@ -126,12 +122,7 @@ const Login = forwardRef<HTMLButtonElement, {
                 shouldPromptRef.current = false;
             }
         }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef, isWalletRequired]);
-
-    // If wallet is not required, don't show any login UI
-    if (!isWalletRequired) {
-        return null;
-    }
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
     return (
         <ConnectButton.Custom>
@@ -197,6 +188,26 @@ const Login = forwardRef<HTMLButtonElement, {
             }}
         </ConnectButton.Custom>
     );
+});
+
+WalletLogin.displayName = 'WalletLogin';
+
+// Component for non-wallet mode
+const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
+    return null;
+});
+
+NoWalletLogin.displayName = 'NoWalletLogin';
+
+// Main component that decides which version to render
+const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    
+    if (!isWalletRequired) {
+        return <NoWalletLogin {...props} ref={ref} />;
+    }
+
+    return <WalletLogin {...props} ref={ref} />;
 });
 
 Login.displayName = 'Login';

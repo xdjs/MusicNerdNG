@@ -48,7 +48,9 @@ export default function AddArtist({ session }: { session: Session | null }) {
     const [addArtistStatus, setAddArtistStatus] = useState<AddArtistResp | null>(null);
     const { toast } = useToast();
     const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
-    const { openConnectModal } = isWalletRequired ? useConnectModal() : { openConnectModal: undefined };
+    
+    // Always call hooks, conditionally use their results
+    const { openConnectModal } = useConnectModal();
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
