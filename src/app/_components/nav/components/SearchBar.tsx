@@ -39,7 +39,6 @@ interface SpotifyArtistImage {
 interface SearchResult extends Artist {
   isSpotifyOnly?: boolean;
   images?: SpotifyArtistImage[];
-  supercollector?: string | null;
 }
 
 // Add type for the ref
