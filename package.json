@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest"
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "type-check": "tsc --noEmit",
+    "ci": "npm run type-check && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

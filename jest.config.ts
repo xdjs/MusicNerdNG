@@ -10,38 +10,30 @@ const createJestConfig = nextJest({
     dir: './',
 });
 
-const customJestConfig: Config = {
-    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+const config: Config = {
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+    testEnvironment: 'jest-environment-jsdom',
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
     },
-    testEnvironment: 'jest-environment-jsdom',
-    transformIgnorePatterns: [
-        'node_modules/(?!(jose|openid-client|oidc-token-hash|next-auth|@panva|uuid|jose/dist/browser)/)'
+    coverageDirectory: 'coverage',
+    collectCoverageFrom: [
+        'src/**/*.{js,jsx,ts,tsx}',
+        '!src/**/*.d.ts',
+        '!src/**/*.stories.{js,jsx,ts,tsx}',
+        '!src/**/*.test.{js,jsx,ts,tsx}',
+        '!src/**/index.{js,jsx,ts,tsx}',
+        '!src/pages/_app.tsx',
+        '!src/pages/_document.tsx',
     ],
-    transform: {
-        '^.+\\.(t|j)sx?$': ['@swc/jest', {
-            jsc: {
-                target: 'es2021',
-                transform: {
-                    react: {
-                        runtime: 'automatic'
-                    }
-                }
-            }
-        }]
+    coverageThreshold: {
+        global: {
+            branches: 70,
+            functions: 70,
+            lines: 70,
+            statements: 70,
+        },
     },
-    moduleDirectories: ['node_modules', '<rootDir>'],
-    testPathIgnorePatterns: [
-        '/node_modules/',
-        '/.next/',
-        '/src/server/utils/__tests__/__utils__/',
-        '/src/server/utils/__tests__/__mocks__/',
-        '/__tests__/utils.test.ts',
-        'queriesTS.test.ts'
-    ],
-    extensionsToTreatAsEsm: ['.ts', '.tsx'],
-    moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node']
 };
 
-export default createJestConfig(customJestConfig);
+export default createJestConfig(config);
