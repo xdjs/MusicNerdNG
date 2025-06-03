@@ -153,7 +153,8 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames: ArtistLink[] = [];
         for (const platform of allLinkObjects) {
-            if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
+            // Only add a link if the artist has a non-null, non-undefined value for this platform
+            if (isObjKey(platform.siteName, artist) && artist[platform.siteName] !== null && artist[platform.siteName] !== undefined && artist[platform.siteName] !== "") {
                 let artistUrl = platform.appStringFormat;
                 // Special handling for YouTube channel URLs
                 if (platform.siteName === 'youtubechannel') {
@@ -161,6 +162,11 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
                     artistUrl = value.startsWith('@') 
                         ? `https://www.youtube.com/${value}`
                         : `https://www.youtube.com/channel/${value}`;
+                } else if (platform.siteName === 'supercollector') {
+                    // Remove .eth from Supercollector URLs if present
+                    const value = artist[platform.siteName]?.toString() ?? "";
+                    const ethRemoved = value.endsWith('.eth') ? value.slice(0, -4) : value;
+                    artistUrl = platform.appStringFormat.replace("%@", ethRemoved);
                 } else {
                     artistUrl = platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "");
                 }
