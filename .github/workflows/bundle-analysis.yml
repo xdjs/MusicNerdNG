@@ -1,0 +1,30 @@
+name: Bundle Analysis
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Analyze bundle
+        uses: nextjs-components/next-bundle-analysis@v0.5.0
+        with:
+          budget: 250000 # Size budget in bytes (250KB)
+          budget-total: 5000000 # Total bundle budget in bytes (5MB) 
