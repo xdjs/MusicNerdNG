@@ -146,6 +146,7 @@ export const artists = pgTable("artists", {
 	addedBy: uuid("added_by").notNull().default(sql`uuid_generate_v4()`),
 	cameo: text("cameo"),
 	farcaster: text("farcaster"),
+	supercollector: text("supercollector"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 },
