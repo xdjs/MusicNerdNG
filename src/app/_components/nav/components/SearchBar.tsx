@@ -294,11 +294,11 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                     >
                         {isLoading ? (
                             <Spinner />
-                        ) : !data || data.length === 0 ? (
+                        ) : (debouncedQuery && (!data || data.length === 0)) ? (
                             <div className="flex justify-center items-center p-3 font-medium">
                                 <p>Artist not found!</p>
                             </div>
-                        ) : (
+                        ) : data ? (
                             <div>
                                 {data.map((result: SearchResult) => {
                                     const spotifyImage = result.images?.[0]?.url;
@@ -369,7 +369,7 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                                     );
                                 })}
                             </div>
-                        )}
+                        ) : null}
                 </div>
             )}
         </div>
@@ -566,11 +566,11 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
                     >
                         {isLoading ? (
                             <Spinner />
-                        ) : !data || data.length === 0 ? (
+                        ) : (debouncedQuery && (!data || data.length === 0)) ? (
                             <div className="flex justify-center items-center p-3 font-medium">
                                 <p>Artist not found!</p>
                             </div>
-                        ) : (
+                        ) : data ? (
                             <div>
                                 {data.map((result: SearchResult) => {
                                     const spotifyImage = result.images?.[0]?.url;
@@ -641,7 +641,7 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
                                     );
                                 })}
                             </div>
-                        )}
+                        ) : null}
                 </div>
             )}
         </div>
