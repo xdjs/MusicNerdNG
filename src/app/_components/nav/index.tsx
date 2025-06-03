@@ -15,13 +15,15 @@ export default function Nav() {
 
     return (
         <nav className="p-6 nav-bar flex items-center justify-between max-w-[1000px] mx-auto">
-            <Link href={"/"} className="translate-x-[-17rem]">
-                <img
-                    src="/musicNerdLogo.png"
-                    className="w-16 hover:animate-[spin_3s_linear_infinite]"
-                    alt="logo"
-                />
-            </Link>
+            <div className="flex gap-2">
+                <Link href={"/"}>
+                    <img
+                        src="/musicNerdLogo.png"
+                        className="w-16 hover:animate-[spin_3s_linear_infinite]"
+                        alt="logo"
+                    />
+                </Link>
+            </div>
 
             <div className="flex items-center justify-center gap-2 flex-grow">
                 <Suspense>
