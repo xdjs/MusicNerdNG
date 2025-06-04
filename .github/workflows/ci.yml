@@ -47,10 +47,14 @@ jobs:
       - name: Check Status
         if: always()
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
+          STATUS="${{ job.status }}"
+          echo "Current job status: $STATUS"
+          if [ "$STATUS" = "success" ]; then
             echo "✅ All checks passed!"
+            exit 0
           else
             echo "❌ Some checks failed!"
+            echo "Job status was: $STATUS"
             exit 1
           fi
 
