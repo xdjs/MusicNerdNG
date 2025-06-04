@@ -9,10 +9,13 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
+    
     env:
       SPOTIFY_WEB_CLIENT_ID: ${{ secrets.SPOTIFY_WEB_CLIENT_ID }}
       SPOTIFY_WEB_CLIENT_SECRET: ${{ secrets.SPOTIFY_WEB_CLIENT_SECRET }}
+      NEXTAUTH_SECRET: test-secret-for-ci
+      NEXTAUTH_URL: http://localhost:3000
+      SUPABASE_DB_CONNECTION: test-connection-for-ci
 
     steps:
       - uses: actions/checkout@v4
@@ -28,15 +31,30 @@ jobs:
 
       - name: Type check
         run: npm run type-check || npm run tsc
-        
+        if: success()
+
       - name: Lint
         run: npm run lint
+        if: success()
 
       - name: Run tests
         run: npm run test
+        if: success()
 
       - name: Build
         run: npm run build
+        if: success()
+
+      # Add a status check summary
+      - name: Check Status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All checks passed!"
+          else
+            echo "❌ Some checks failed!"
+            exit 1
+          fi
 
   coverage:
     needs: build-and-test
@@ -57,8 +75,18 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage || npm run test -- --coverage
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false 
+      - name: Check coverage thresholds
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            COVERAGE=$(jq '.total.lines.pct' coverage/coverage-summary.json)
+            if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+              echo "❌ Coverage ($COVERAGE%) is below threshold (70%)"
+              exit 1
+            else
+              echo "✅ Coverage ($COVERAGE%) meets threshold"
+            fi
+          else
+            echo "❌ No coverage report found"
+            exit 1
+          fi 
