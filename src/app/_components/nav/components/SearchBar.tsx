@@ -272,26 +272,19 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                <Search size={24} strokeWidth={2.5} />
-                <Input
-                        onBlur={handleBlur}
-                        onFocus={handleFocus}
-                    type="text"
-                    value={query}
-                    onChange={handleInputChange}
-                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                    placeholder="Search"
-                />
-            </div>
-            {(showResults && query.length >= 1) && (
-                    <div 
-                        ref={resultsContainer} 
-                        className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
-                        scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400`}
-                        style={{ scrollbarGutter: 'stable' }}
-                        onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
-                    >
+                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                    <Search size={24} strokeWidth={2.5} />
+                    <Input
+                        type="text"
+                        placeholder="Search artists..."
+                        value={query}
+                        onChange={handleInputChange}
+                        className="bg-transparent border-none focus:outline-none w-full"
+                    />
+                </div>
+                {/* Search results dropdown */}
+                {showResults && (
+                    <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg overflow-hidden">
                         {isLoading ? (
                             <Spinner />
                         ) : (debouncedQuery && (!data || data.length === 0)) ? (
@@ -303,76 +296,72 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                                 {data.map((result: SearchResult) => {
                                     const spotifyImage = result.images?.[0]?.url;
                                     return (
-                                        <div key={result.isSpotifyOnly ? result.spotify : result.id}>
-                                            <div
-                                                className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg`}
-                                                onMouseDown={(e) => {
-                                                    e.preventDefault(); // Prevent blur
-                                                    handleNavigate(result);
-                                                }}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
-                                                        <img 
-                                                            src={spotifyImage || "/default_pfp_pink.png"} 
-                                                            alt={result.name ?? "Artist"} 
-                                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
-                                                        />
+                                        <div
+                                            key={result.isSpotifyOnly ? result.spotify : result.id}
+                                            className="p-3 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
+                                            onClick={() => handleNavigate(result)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
+                                                    <img 
+                                                        src={spotifyImage || "/default_pfp_pink.png"} 
+                                                        alt={result.name ?? "Artist"} 
+                                                        className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                                    />
+                                                </div>
+                                                <div className="flex-grow">
+                                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
+                                                        !result.isSpotifyOnly && 
+                                                        !(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) 
+                                                        ? 'flex items-center h-full' : '-mb-0.5'
+                                                    }`}>
+                                                        {result.name}
                                                     </div>
-                                                    <div className="flex-grow">
-                                                        <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
-                                                            !result.isSpotifyOnly && 
-                                                            !(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) 
-                                                            ? 'flex items-center h-full' : '-mb-0.5'
-                                                        }`}>
-                                                            {result.name}
+                                                    {result.isSpotifyOnly ? (
+                                                        <div className="text-xs text-gray-500 flex items-center gap-2">
+                                                            Add to MusicNerd
                                                         </div>
-                                                        {result.isSpotifyOnly ? (
-                                                            <div className="text-xs text-gray-500 flex items-center gap-2">
-                                                                Add to MusicNerd
+                                                    ) : (
+                                                        <div className="flex flex-col items-start gap-1">
+                                                            <div className="flex flex-col w-[140px]">
+                                                                {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                                    <>
+                                                                        <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {result.bandcamp && (
+                                                                                <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.youtubechannel && (
+                                                                                <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.instagram && (
+                                                                                <img src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.x && (
+                                                                                <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.facebook && (
+                                                                                <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.tiktok && (
+                                                                                <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                        </div>
+                                                                    </>
+                                                                )}
                                                             </div>
-                                                        ) : (
-                                                            <div className="flex flex-col items-start gap-1">
-                                                                <div className="flex flex-col w-[140px]">
-                                                                    {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
-                                                                        <>
-                                                                            <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
-                                                                            <div className="flex items-center gap-2">
-                                                                                {result.bandcamp && (
-                                                                                    <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.youtubechannel && (
-                                                                                    <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.instagram && (
-                                                                                    <img src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.x && (
-                                                                                    <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.facebook && (
-                                                                                    <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.tiktok && (
-                                                                                    <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
-                        ) : null}
-                </div>
-            )}
-        </div>
+                        )}
+                    </div>
+                )}
+            </div>
         </>
     );
 });
@@ -544,26 +533,19 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
             <div className="relative w-full max-w-[400px] z-40 text-black">
-            <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                <Search size={24} strokeWidth={2.5} />
-                <Input
-                        onBlur={handleBlur}
-                        onFocus={handleFocus}
-                    type="text"
-                    value={query}
-                    onChange={handleInputChange}
-                    className="w-full p-0 bg-transparent rounded-lg focus:outline-none text-lg"
-                    placeholder="Search"
-                />
-            </div>
-            {(showResults && query.length >= 1) && (
-                    <div 
-                        ref={resultsContainer} 
-                        className={`absolute left-0 w-full mt-2 bg-white rounded-lg shadow-2xl max-h-60 overflow-y-auto pl-1 pr-0 py-1 ${isTopSide ? "bottom-14" : "top-12"}
-                        scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400`}
-                        style={{ scrollbarGutter: 'stable' }}
-                        onMouseDown={(e) => e.preventDefault()} // Prevent blur from hiding results during click
-                    >
+                <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
+                    <Search size={24} strokeWidth={2.5} />
+                    <Input
+                        type="text"
+                        placeholder="Search artists..."
+                        value={query}
+                        onChange={handleInputChange}
+                        className="bg-transparent border-none focus:outline-none w-full"
+                    />
+                </div>
+                {/* Search results dropdown */}
+                {showResults && (
+                    <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg overflow-hidden">
                         {isLoading ? (
                             <Spinner />
                         ) : (debouncedQuery && (!data || data.length === 0)) ? (
@@ -575,76 +557,72 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
                                 {data.map((result: SearchResult) => {
                                     const spotifyImage = result.images?.[0]?.url;
                                     return (
-                                        <div key={result.isSpotifyOnly ? result.spotify : result.id}>
-                                            <div
-                                                className={`block px-4 ${result.isSpotifyOnly ? 'py-1.5' : 'py-2'} hover:bg-gray-200 cursor-pointer rounded-lg`}
-                                                onMouseDown={(e) => {
-                                                    e.preventDefault(); // Prevent blur
-                                                    handleNavigate(result);
-                                                }}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
-                                                        <img 
-                                                            src={spotifyImage || "/default_pfp_pink.png"} 
-                                                            alt={result.name ?? "Artist"} 
-                                                            className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
-                                                        />
+                                        <div
+                                            key={result.isSpotifyOnly ? result.spotify : result.id}
+                                            className="p-3 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
+                                            onClick={() => handleNavigate(result)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`flex items-center justify-center ${result.isSpotifyOnly ? 'h-10 w-10' : ''}`}>
+                                                    <img 
+                                                        src={spotifyImage || "/default_pfp_pink.png"} 
+                                                        alt={result.name ?? "Artist"} 
+                                                        className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                                    />
+                                                </div>
+                                                <div className="flex-grow">
+                                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
+                                                        !result.isSpotifyOnly && 
+                                                        !(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) 
+                                                        ? 'flex items-center h-full' : '-mb-0.5'
+                                                    }`}>
+                                                        {result.name}
                                                     </div>
-                                                    <div className="flex-grow">
-                                                        <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm' : 'text-base'} ${
-                                                            !result.isSpotifyOnly && 
-                                                            !(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) 
-                                                            ? 'flex items-center h-full' : '-mb-0.5'
-                                                        }`}>
-                                                            {result.name}
+                                                    {result.isSpotifyOnly ? (
+                                                        <div className="text-xs text-gray-500 flex items-center gap-2">
+                                                            Add to MusicNerd
                                                         </div>
-                                                        {result.isSpotifyOnly ? (
-                                                            <div className="text-xs text-gray-500 flex items-center gap-2">
-                                                                Add to MusicNerd
+                                                    ) : (
+                                                        <div className="flex flex-col items-start gap-1">
+                                                            <div className="flex flex-col w-[140px]">
+                                                                {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                                    <>
+                                                                        <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {result.bandcamp && (
+                                                                                <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.youtubechannel && (
+                                                                                <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.instagram && (
+                                                                                <img src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.x && (
+                                                                                <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.facebook && (
+                                                                                <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                            {result.tiktok && (
+                                                                                <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
+                                                                            )}
+                                                                        </div>
+                                                                    </>
+                                                                )}
                                                             </div>
-                                                        ) : (
-                                                            <div className="flex flex-col items-start gap-1">
-                                                                <div className="flex flex-col w-[140px]">
-                                                                    {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
-                                                                        <>
-                                                                            <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
-                                                                            <div className="flex items-center gap-2">
-                                                                                {result.bandcamp && (
-                                                                                    <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.youtubechannel && (
-                                                                                    <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.instagram && (
-                                                                                    <img src="/siteIcons/instagram-svgrepo-com.svg" alt="Instagram" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.x && (
-                                                                                    <img src="/siteIcons/x_icon.svg" alt="X" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.facebook && (
-                                                                                    <img src="/siteIcons/facebook_icon.svg" alt="Facebook" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                                {result.tiktok && (
-                                                                                    <img src="/siteIcons/tiktok_icon.svg" alt="TikTok" className="w-3.5 h-3.5 opacity-70" />
-                                                                                )}
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
-                        ) : null}
-                </div>
-            )}
-        </div>
+                        )}
+                    </div>
+                )}
+            </div>
         </>
     );
 });

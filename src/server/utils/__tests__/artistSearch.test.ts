@@ -1,15 +1,23 @@
 import { Artist } from '@/server/db/DbTypes';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { db } from '@/server/db/drizzle';
+import { searchForArtistByName as searchArtist } from '../queriesTS';
 
 // Mock the database
-jest.mock('@/server/db/drizzle', () => ({
-    execute: jest.fn(),
-    query: {
-        artists: {
-            findFirst: jest.fn(),
-            findMany: jest.fn()
+vi.mock('@/server/db/drizzle', () => {
+    return {
+        db: {
+            execute: vi.fn(),
+            query: {
+                select: vi.fn(),
+                from: vi.fn(),
+                where: vi.fn(),
+                orderBy: vi.fn(),
+                limit: vi.fn()
+            }
         }
-    }
-}));
+    };
+});
 
 // Mock the functions we're testing
 const searchForArtistByName = async (name: string): Promise<Artist[]> => {
@@ -104,18 +112,18 @@ describe('Complex Artist Search Scenarios', () => {
     ];
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     describe('Case Sensitivity Tests', () => {
         it('should find artists regardless of input case', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([mockArtists[0], mockArtists[1]]);
+            const mockExecute = vi.fn().mockResolvedValue([mockArtists[0], mockArtists[1]]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results1 = await searchForArtistByName('DEADMAU5');
-            const results2 = await searchForArtistByName('deadmau5');
-            const results3 = await searchForArtistByName('DeAdMaU5');
+            const results1 = await searchArtist('DEADMAU5');
+            const results2 = await searchArtist('deadmau5');
+            const results3 = await searchArtist('DeAdMaU5');
 
             expect(results1).toHaveLength(2);
             expect(results2).toHaveLength(2);
@@ -126,13 +134,13 @@ describe('Complex Artist Search Scenarios', () => {
 
     describe('Special Characters Tests', () => {
         it('should handle special characters and diacritics', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([mockArtists[2], mockArtists[3]]);
+            const mockExecute = vi.fn().mockResolvedValue([mockArtists[2], mockArtists[3]]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results1 = await searchForArtistByName('RUFUS DU SOL');
-            const results2 = await searchForArtistByName('RÜFÜS DU SOL');
-            const results3 = await searchForArtistByName('Rufus');
+            const results1 = await searchArtist('RUFUS DU SOL');
+            const results2 = await searchArtist('RÜFÜS DU SOL');
+            const results3 = await searchArtist('Rufus');
 
             expect(results1).toHaveLength(2);
             expect(results2).toHaveLength(2);
@@ -143,13 +151,13 @@ describe('Complex Artist Search Scenarios', () => {
 
     describe('Partial Match Tests', () => {
         it('should handle partial name matches', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([mockArtists[0], mockArtists[1]]);
+            const mockExecute = vi.fn().mockResolvedValue([mockArtists[0], mockArtists[1]]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results1 = await searchForArtistByName('dead');
-            const results2 = await searchForArtistByName('mau');
-            const results3 = await searchForArtistByName('5');
+            const results1 = await searchArtist('dead');
+            const results2 = await searchArtist('mau');
+            const results3 = await searchArtist('5');
 
             expect(results1).toHaveLength(2);
             expect(results2).toHaveLength(2);
@@ -157,11 +165,11 @@ describe('Complex Artist Search Scenarios', () => {
         });
 
         it('should prioritize exact matches over partial matches', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([mockArtists[0], mockArtists[1]]);
+            const mockExecute = vi.fn().mockResolvedValue([mockArtists[0], mockArtists[1]]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results = await searchForArtistByName('Deadmau5');
+            const results = await searchArtist('Deadmau5');
 
             expect(results[0].name).toBe('Deadmau5');
             expect(results[1].name).toBe('DeadMau5 (Remix)');
@@ -177,21 +185,21 @@ describe('Complex Artist Search Scenarios', () => {
                 name: `Artist ${i}`
             }));
             
-            const mockExecute = jest.fn().mockResolvedValue(manyResults.slice(0, 10));
+            const mockExecute = vi.fn().mockResolvedValue(manyResults.slice(0, 10));
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results = await searchForArtistByName('Artist');
+            const results = await searchArtist('Artist');
             
             expect(results.length).toBeLessThanOrEqual(10);
         });
 
         it('should handle empty results', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([]);
+            const mockExecute = vi.fn().mockResolvedValue([]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results = await searchForArtistByName('NonexistentArtist');
+            const results = await searchArtist('NonexistentArtist');
             
             expect(results).toHaveLength(0);
         });
@@ -199,42 +207,42 @@ describe('Complex Artist Search Scenarios', () => {
 
     describe('Edge Cases', () => {
         it('should handle empty search string', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([]);
+            const mockExecute = vi.fn().mockResolvedValue([]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results = await searchForArtistByName('');
+            const results = await searchArtist('');
             
             expect(results).toHaveLength(0);
         });
 
         it('should handle search strings with only spaces', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([]);
+            const mockExecute = vi.fn().mockResolvedValue([]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results = await searchForArtistByName('   ');
+            const results = await searchArtist('   ');
             
             expect(results).toHaveLength(0);
         });
 
         it('should handle very long search strings', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([]);
+            const mockExecute = vi.fn().mockResolvedValue([]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
             const longString = 'a'.repeat(1000);
-            const results = await searchForArtistByName(longString);
+            const results = await searchArtist(longString);
             
             expect(results).toHaveLength(0);
         });
 
         it('should handle special characters only', async () => {
-            const mockExecute = jest.fn().mockResolvedValue([]);
+            const mockExecute = vi.fn().mockResolvedValue([]);
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            const results = await searchForArtistByName('!@#$%^&*()');
+            const results = await searchArtist('!@#$%^&*()');
             
             expect(results).toHaveLength(0);
         });
@@ -242,11 +250,42 @@ describe('Complex Artist Search Scenarios', () => {
 
     describe('Error Handling', () => {
         it('should handle database errors gracefully', async () => {
-            const mockExecute = jest.fn().mockRejectedValue(new Error('Database error'));
+            const mockExecute = vi.fn().mockRejectedValue(new Error('Database error'));
             const db = require('@/server/db/drizzle');
             db.execute.mockImplementation(mockExecute);
 
-            await expect(searchForArtistByName('test')).rejects.toThrow('Error searching for artist by name');
+            await expect(searchArtist('test')).rejects.toThrow('Error searching for artist by name');
         });
+    });
+});
+
+describe('Artist Search', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('should search artists by name', async () => {
+        const mockResults = [
+            { id: '1', name: 'Artist 1' },
+            { id: '2', name: 'Artist 2' }
+        ];
+
+        (db.execute as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mockResults);
+
+        const results = await searchArtist('test');
+        expect(results).toEqual(mockResults);
+    });
+
+    it('should handle empty search results', async () => {
+        (db.execute as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+        const results = await searchArtist('nonexistent');
+        expect(results).toEqual([]);
+    });
+
+    it('should handle database errors', async () => {
+        (db.execute as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Database error'));
+
+        await expect(searchArtist('test')).rejects.toThrow('Error searching artists');
     });
 }); 

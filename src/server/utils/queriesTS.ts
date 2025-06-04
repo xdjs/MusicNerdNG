@@ -370,19 +370,27 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
 export async function getUserByWallet(wallet: string) {
     try {
-        return await db.query.users.findFirst({ where: eq(users.wallet, wallet) });
-    } catch (e) {
-        console.error("error getting user by wallet", e);
-        throw new Error("Error finding user");
+        const result = await db.query.users.findFirst({ where: eq(users.wallet, wallet) });
+        return result;
+    } catch (error) {
+        console.error("error getting user by wallet", error);
+        if (error instanceof Error) {
+            throw new Error(`Error finding user: ${error.message}`);
+        }
+        throw new Error('Error finding user: Unknown error');
     }
 }
 
 export async function getUserById(id: string) {
     try {
-        return await db.query.users.findFirst({ where: eq(users.id, id) });
-    } catch (e) {
-        console.error("error getting user by Id", e);
-        throw new Error("Error finding user");
+        const result = await db.query.users.findFirst({ where: eq(users.id, id) });
+        return result;
+    } catch (error) {
+        console.error("error getting user by Id", error);
+        if (error instanceof Error) {
+            throw new Error(`Error finding user: ${error.message}`);
+        }
+        throw new Error('Error finding user: Unknown error');
     }
 }
 
@@ -458,13 +466,15 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
 }
 
 export async function getWhitelistedUsers() {
-    const user = await getServerAuthSession();
-    if (!user) throw new Error("Not authenticated");
+    const session = await getServerAuthSession();
+    if (!session) throw new Error("Unauthorized");
     try {
         const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
+        if (!result) return [];
         return result;
     } catch(e) {
         console.error("error getting whitelisted users", e);
+        throw new Error("Error getting whitelisted users");
     }
 }
 
