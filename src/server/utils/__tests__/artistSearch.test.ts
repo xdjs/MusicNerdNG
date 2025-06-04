@@ -1,6 +1,158 @@
-import { Artist } from '@/server/db/DbTypes';
+// Set up test environment
+import './setup/testEnv';
 
-// Mock the database
+import { Artist } from '@/server/db/DbTypes';
+import { sql } from 'drizzle-orm';
+import { artists } from '@/server/db/schema';
+import { eq, and, or, like } from 'drizzle-orm';
+
+// Mock database for non-performance tests
+const mockDb = {
+    execute: jest.fn(),
+    query: {
+        artists: {
+            findFirst: jest.fn(),
+            findMany: jest.fn()
+        }
+    }
+};
+
+jest.mock('@/server/db/drizzle', () => mockDb);
+
+// Import the real database module for performance tests
+const { db: realDb } = jest.requireActual('@/server/db/drizzle');
+
+// Real database tests first
+describe('Real Database Performance Tests', () => {
+    let isRealDbAvailable = false;
+
+    beforeAll(async () => {
+        try {
+            // Try to connect to the real database
+            const result = await searchWithRealDb('test');
+            isRealDbAvailable = true;
+            console.log('\n🌐 Remote database connection available - running tests with real Supabase DB\n');
+        } catch (e) {
+            console.log('\n🔧 Remote database not available - skipping real database tests\n');
+            isRealDbAvailable = false;
+        }
+    });
+
+    const testWithRealDb = isRealDbAvailable ? test : test.skip;
+    const REMOTE_SEARCH_THRESHOLD = 400; // .4 second threshold for remote DB queries
+    const REMOTE_CONCURRENT_THRESHOLD = 1200; // 1.2 seconds threshold for concurrent remote DB queries
+
+    // Test with real artists that we know exist in the dev DB
+    const testQueries = [
+        'deadmau5',
+        'rüfüs',
+        'test', // general term to test partial matches
+        'a', // single letter to test large result sets
+        'zzzzzz' // non-existent to test no-results case
+    ];
+
+    async function searchWithRealDb(name: string): Promise<Artist[]> {
+        try {
+            const startTime = performance.now();
+            const result = await realDb.execute(sql`
+                SELECT 
+                    id::text, 
+                    name::text,
+                    spotify::text,
+                    bandcamp::text,
+                    youtubechannel::text,
+                    instagram::text,
+                    x::text,
+                    facebook::text,
+                    tiktok::text,
+                    created_at::text as "createdAt",
+                    updated_at::text as "updatedAt",
+                    added_by::text as "addedBy",
+                    lcname::text
+                FROM artists
+                WHERE 
+                    (LOWER(name) LIKE LOWER('%' || ${name} || '%') OR similarity(name, ${name}) > 0.3)
+                    AND spotify IS NOT NULL
+                ORDER BY 
+                    CASE 
+                        WHEN LOWER(name) LIKE LOWER('%' || ${name} || '%') THEN 0
+                        ELSE 1
+                    END,
+                    CASE 
+                        WHEN LOWER(name) LIKE LOWER('%' || ${name} || '%') 
+                        THEN -POSITION(LOWER(${name}) IN LOWER(name))
+                        ELSE -999999
+                    END DESC,
+                    similarity(name, ${name}) DESC
+                LIMIT 10
+            `);
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+            console.log(`🌐 Remote DB search for "${name}" took ${duration}ms`);
+            return result as unknown as Artist[];
+        } catch(e) {
+            console.error(`Error in real DB search:`, e);
+            throw e;
+        }
+    }
+
+    testWithRealDb('should complete remote search for "deadmau5" within performance threshold', async () => {
+        const startTime = performance.now();
+        const result = await searchWithRealDb('deadmau5');
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🌐 Remote DB search for "deadmau5" took ${duration}ms`);
+        expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
+    });
+
+    testWithRealDb('should complete remote search for "rüfüs" within performance threshold', async () => {
+        const startTime = performance.now();
+        const result = await searchWithRealDb('rüfüs');
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🌐 Remote DB search for "rüfüs" took ${duration}ms`);
+        expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
+    });
+
+    testWithRealDb('should complete remote search for "test" within performance threshold', async () => {
+        const startTime = performance.now();
+        const result = await searchWithRealDb('test');
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🌐 Remote DB search for "test" took ${duration}ms`);
+        expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
+    });
+
+    testWithRealDb('should complete remote search for "a" within performance threshold', async () => {
+        const startTime = performance.now();
+        const result = await searchWithRealDb('a');
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🌐 Remote DB search for "a" took ${duration}ms`);
+        expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
+    });
+
+    testWithRealDb('should complete remote search for "zzzzzz" within performance threshold', async () => {
+        const startTime = performance.now();
+        const result = await searchWithRealDb('zzzzzz');
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🌐 Remote DB search for "zzzzzz" took ${duration}ms`);
+        expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
+    });
+
+    testWithRealDb('should handle concurrent remote searches efficiently', async () => {
+        const searches = ['Deadmau5', 'RÜFÜS DU SOL', 'C418', 'Daft Punk', 'The Glitch Mob'];
+        const startTime = performance.now();
+        await Promise.all(searches.map(search => searchWithRealDb(search)));
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🌐 Remote DB concurrent searches took ${duration}ms`);
+        expect(duration).toBeLessThan(REMOTE_CONCURRENT_THRESHOLD);
+    });
+});
+
+// Now set up mocks for the rest of the tests
 jest.mock('@/server/db/drizzle', () => ({
     execute: jest.fn(),
     query: {
@@ -248,5 +400,64 @@ describe('Complex Artist Search Scenarios', () => {
 
             await expect(searchForArtistByName('test')).rejects.toThrow('Error searching for artist by name');
         });
+    });
+
+    describe('Performance Tests', () => {
+        const SEARCH_TIME_THRESHOLD_MS = 100; // Maximum acceptable search time in milliseconds
+
+        it('should complete search within performance threshold', async () => {
+            const mockExecute = jest.fn().mockResolvedValue([mockArtists[0]]);
+            const db = require('@/server/db/drizzle');
+            db.execute.mockImplementation(mockExecute);
+
+            const startTime = performance.now();
+            await searchForArtistByName('Deadmau5');
+            const endTime = performance.now();
+            const searchTime = endTime - startTime;
+
+            expect(searchTime).toBeLessThan(SEARCH_TIME_THRESHOLD_MS);
+        });
+
+        it('should handle multiple concurrent searches efficiently', async () => {
+            const mockExecute = jest.fn().mockResolvedValue([mockArtists[0]]);
+            const db = require('@/server/db/drizzle');
+            db.execute.mockImplementation(mockExecute);
+
+            const searchTerms = ['Deadmau5', 'RÜFÜS DU SOL', 'C418'];
+            const startTime = performance.now();
+            
+            await Promise.all(searchTerms.map(term => searchForArtistByName(term)));
+            
+            const endTime = performance.now();
+            const totalTime = endTime - startTime;
+            const averageTime = totalTime / searchTerms.length;
+
+            expect(averageTime).toBeLessThan(SEARCH_TIME_THRESHOLD_MS);
+        });
+    });
+});
+
+// Mock database tests
+describe('Mock Database Performance Tests', () => {
+    const MOCK_SEARCH_THRESHOLD = 50; // 50ms threshold for mock DB queries
+    const MOCK_CONCURRENT_THRESHOLD = 200; // 200ms threshold for concurrent mock DB queries
+
+    test('should complete mock search within performance threshold', async () => {
+        const startTime = performance.now();
+        const result = await searchForArtistByName('deadmau5');
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🔧 Mock DB search for "deadmau5" took ${duration}ms`);
+        expect(duration).toBeLessThan(MOCK_SEARCH_THRESHOLD);
+    });
+
+    test('should handle multiple concurrent mock searches efficiently', async () => {
+        const searches = ['Deadmau5', 'RÜFÜS DU SOL', 'C418', 'Daft Punk', 'The Glitch Mob'];
+        const startTime = performance.now();
+        await Promise.all(searches.map(search => searchForArtistByName(search)));
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(`🔧 Mock DB concurrent searches took ${duration}ms`);
+        expect(duration).toBeLessThan(MOCK_CONCURRENT_THRESHOLD);
     });
 }); 
