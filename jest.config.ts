@@ -9,7 +9,7 @@ const config: Config = {
     preset: 'ts-jest',
     testEnvironment: 'node',
     setupFilesAfterEnv: [
-        '<rootDir>/src/server/utils/__tests__/setup/testEnv.ts',
+        '<rootDir>/src/server/utils/setup/testEnv.ts',
         '<rootDir>/jest.setup.ts'
     ],
     moduleNameMapper: {

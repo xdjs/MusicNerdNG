@@ -1,5 +1,5 @@
 // Set up test environment
-import './setup/testEnv';
+import '../setup/testEnv';
 
 import { Artist } from '@/server/db/DbTypes';
 import { sql } from 'drizzle-orm';
