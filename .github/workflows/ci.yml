@@ -9,11 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     
     env:
-      SPOTIFY_WEB_CLIENT_ID: ${{ secrets.SPOTIFY_WEB_CLIENT_ID }}
-      SPOTIFY_WEB_CLIENT_SECRET: ${{ secrets.SPOTIFY_WEB_CLIENT_SECRET }}
+      NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID: ${{ secrets.SPOTIFY_WEB_CLIENT_ID }}
+      NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET: ${{ secrets.SPOTIFY_WEB_CLIENT_SECRET }}
       NEXTAUTH_SECRET: test-secret-for-ci
       NEXTAUTH_URL: http://localhost:3000
-      SUPABASE_DB_CONNECTION: test-connection-for-ci
+      SUPABASE_DB_CONNECTION: ${{ secrets.SUPABASE_DB_CONNECTION }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
