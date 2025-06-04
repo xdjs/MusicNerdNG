@@ -25,7 +25,7 @@ import { db } from '@/server/db/drizzle';
 // Get the mocked function with type assertion
 const mockFindMany = (db.query.urlmap.findMany as unknown) as jest.MockedFunction<() => Promise<UrlMap[]>>;
 
-// Mock URL mapping data that would come from the database
+// Mock URL mapping data that would come from the db
 const mockUrlMaps: UrlMap[] = [
     {
         id: '1',

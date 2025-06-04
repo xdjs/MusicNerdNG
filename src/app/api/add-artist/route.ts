@@ -1,11 +1,10 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/server/auth";
+import { getServerAuthSession } from "@/server/auth";
 import { addArtist } from "@/server/utils/queriesTS";
 
 export async function POST(request: Request) {
     console.log("[Server] Add Artist API route called");
     
-    const session = await getServerSession(authOptions);
+    const session = await getServerAuthSession();
     if (!session) {
         console.log("[Server] No session in API route");
         return Response.json({ error: "Not authenticated" }, { status: 401 });

@@ -4,17 +4,21 @@
  */
 
 import type { Config } from 'jest';
-import nextJest from 'next/jest';
-
-const createJestConfig = nextJest({
-    dir: './',
-});
 
 const config: Config = {
-    setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-    testEnvironment: 'jest-environment-jsdom',
+    preset: 'ts-jest',
+    testEnvironment: 'node',
+    setupFilesAfterEnv: [
+        '<rootDir>/src/server/utils/setup/testEnv.ts',
+        '<rootDir>/jest.setup.ts'
+    ],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
+    },
+    transform: {
+        '^.+\\.tsx?$': ['ts-jest', {
+            tsconfig: 'tsconfig.json',
+        }],
     },
     coverageDirectory: 'coverage',
     collectCoverageFrom: [
@@ -36,4 +40,4 @@ const config: Config = {
     },
 };
 
-export default createJestConfig(config);
+export default config;
