@@ -8,9 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
+    "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage",
     "type-check": "tsc --noEmit",
-    "ci": "npm run type-check && npm run lint && npm run test && npm run build"
+    "ci": "npm run type-check && npm run lint && npm run test:ci && npm run build"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -74,6 +76,7 @@
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.5.2",
     "@types/jest": "^29.5.14",
     "@types/node": "^20",
     "@types/parse": "^3.0.9",
