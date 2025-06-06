@@ -117,6 +117,12 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
                 try {
+                    // Store the artist info for after auth
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    sessionStorage.setItem('searchFlow', 'true');
+                    sessionStorage.setItem('directLogin', 'true');
+                    
                     // Only disconnect if we're connected but don't have a session
                     if (walletConnected && !session && disconnectWallet) {
                         console.log("[SearchBar] Connected but no session, disconnecting wallet");
@@ -125,50 +131,8 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                         // Small delay to ensure disconnect completes
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     }
-
-                    // Store the artist info for after auth
-                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    sessionStorage.setItem('searchFlow', 'true');
                     
-                    // If this was a manual disconnect, we need to handle state differently
-                    const wasManualDisconnect = sessionStorage.getItem('manualDisconnect') === 'true';
-                    console.log("[SearchBar] Manual disconnect state:", wasManualDisconnect);
-
-                    if (!wasManualDisconnect) {
-                        // Clear only specific session data to force a fresh connection
-                        // but preserve search flow data
-                        const searchSpotifyId = sessionStorage.getItem('pendingArtistSpotifyId');
-                        const searchArtistName = sessionStorage.getItem('pendingArtistName');
-                        const searchFlow = sessionStorage.getItem('searchFlow');
-                        
-                        // Clear session storage but preserve search flow data
-                        sessionStorage.clear();
-                        sessionStorage.setItem('pendingArtistSpotifyId', searchSpotifyId ?? '');
-                        sessionStorage.setItem('pendingArtistName', searchArtistName ?? '');
-                        sessionStorage.setItem('searchFlow', searchFlow ?? 'true');
-                        sessionStorage.setItem('directLogin', 'true');
-                        
-                        // Clear only wallet-related local storage items
-                        localStorage.removeItem('wagmi.wallet');
-                        localStorage.removeItem('wagmi.connected');
-                        localStorage.removeItem('wagmi.injected.connected');
-                        localStorage.removeItem('wagmi.store');
-                        localStorage.removeItem('wagmi.cache');
-                        localStorage.removeItem('siwe.session');
-                        localStorage.removeItem('wagmi.siwe.message');
-                        localStorage.removeItem('wagmi.siwe.signature');
-                    } else {
-                        // For manual disconnect, just ensure we have the right flags set
-                        sessionStorage.setItem('directLogin', 'true');
-                        console.log("[SearchBar] Preserving state after manual disconnect");
-                    }
-                    
-                    // Force a longer delay to ensure state is properly cleared
-                    // and SIWE has time to initialize
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    // Open connect modal
+                    // Open connect modal - let RainbowKit handle the state management
                     if (connectModal) {
                         connectModal();
                     }
