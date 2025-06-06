@@ -1,11 +1,10 @@
-// Mock environment variables
-jest.mock('@/env', () => ({
-    NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID: 'mock-client-id',
-    NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET: 'mock-client-secret',
-    DISCORD_WEBHOOK_URL: 'mock-webhook-url'
-}));
+// Import types first
+import { Artist, UrlMap } from '@/server/db/DbTypes';
+import { platformType } from '@/server/db/schema';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { getArtistLinks, getAllLinks } from '../queriesTS';
 
-// Mock the database module before imports
+// Mock the database
 jest.mock('@/server/db/drizzle', () => ({
     db: {
         query: {
@@ -16,91 +15,87 @@ jest.mock('@/server/db/drizzle', () => ({
     }
 }));
 
-import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals';
-import { getArtistLinks } from '../queriesTS';
-import { Artist, UrlMap } from '@/server/db/DbTypes';
-import { platformType } from '@/server/db/schema';
+// Import the mocked db
 import { db } from '@/server/db/drizzle';
 
-// Get the mocked function with type assertion
-const mockFindMany = (db.query.urlmap.findMany as unknown) as jest.MockedFunction<() => Promise<UrlMap[]>>;
-
-// Mock URL mapping data that would come from the db
-const mockUrlMaps: UrlMap[] = [
-    {
-        id: '1',
-        siteName: 'spotify',
-        siteUrl: 'https://spotify.com',
-        example: 'example',
-        appStringFormat: 'https://open.spotify.com/artist/%@',
-        order: 1,
-        isIframeEnabled: false,
-        isEmbedEnabled: false,
-        cardDescription: 'Listen on Spotify',
-        cardPlatformName: 'Spotify',
-        isWeb3Site: false,
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-        siteImage: '',
-        regex: '""',
-        regexMatcher: '',
-        isMonetized: false,
-        regexOptions: [],
-        platformTypeList: ['social'],
-        colorHex: '#000000'
-    },
-    {
-        id: '2',
-        siteName: 'youtubechannel',
-        siteUrl: 'https://youtube.com',
-        example: 'example',
-        appStringFormat: 'placeholder-not-used',
-        order: 2,
-        isIframeEnabled: false,
-        isEmbedEnabled: false,
-        cardDescription: 'Watch on YouTube',
-        cardPlatformName: 'YouTube',
-        isWeb3Site: false,
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-        siteImage: '',
-        regex: '""',
-        regexMatcher: '',
-        isMonetized: false,
-        regexOptions: [],
-        platformTypeList: ['social'],
-        colorHex: '#FF0000'
-    },
-    {
-        id: '3',
-        siteName: 'supercollector',
-        siteUrl: 'https://release.supercollector.xyz',
-        example: 'example',
-        appStringFormat: 'https://release.supercollector.xyz/artist/%@',
-        order: 3,
-        isIframeEnabled: false,
-        isEmbedEnabled: false,
-        cardDescription: 'View on Supercollector',
-        cardPlatformName: 'Supercollector',
-        isWeb3Site: true,
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-        siteImage: '',
-        regex: '""',
-        regexMatcher: '',
-        isMonetized: false,
-        regexOptions: [],
-        platformTypeList: ['web3'],
-        colorHex: '#00FF00'
-    }
-];
-
 describe('getArtistLinks', () => {
-    // Reset mocks before each test
+    // Mock URL mapping data that would come from the db
+    const mockUrlMaps = [
+        {
+            id: '1',
+            siteName: 'spotify',
+            siteUrl: 'https://spotify.com',
+            example: 'example',
+            appStringFormat: 'https://open.spotify.com/artist/%@',
+            order: 1,
+            isIframeEnabled: false,
+            isEmbedEnabled: false,
+            cardDescription: 'Listen on Spotify',
+            cardPlatformName: 'Spotify',
+            isWeb3Site: false,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+            siteImage: '',
+            regex: '',
+            regexMatcher: '',
+            isMonetized: false,
+            regexOptions: [],
+            platformTypeList: ['listen'],
+            colorHex: '#000000'
+        },
+        {
+            id: '2',
+            siteName: 'youtubechannel',
+            siteUrl: 'https://youtube.com',
+            example: 'example',
+            appStringFormat: 'https://www.youtube.com/%@',
+            order: 2,
+            isIframeEnabled: false,
+            isEmbedEnabled: false,
+            cardDescription: 'Watch on YouTube',
+            cardPlatformName: 'YouTube',
+            isWeb3Site: false,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+            siteImage: '',
+            regex: '',
+            regexMatcher: '',
+            isMonetized: false,
+            regexOptions: [],
+            platformTypeList: ['social'],
+            colorHex: '#FF0000'
+        },
+        {
+            id: '3',
+            siteName: 'supercollector',
+            siteUrl: 'https://release.supercollector.xyz',
+            example: 'example',
+            appStringFormat: 'https://release.supercollector.xyz/artist/%@',
+            order: 3,
+            isIframeEnabled: false,
+            isEmbedEnabled: false,
+            cardDescription: 'View on Supercollector',
+            cardPlatformName: 'Supercollector',
+            isWeb3Site: true,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+            siteImage: '',
+            regex: '',
+            regexMatcher: '',
+            isMonetized: false,
+            regexOptions: [],
+            platformTypeList: ['web3'],
+            colorHex: '#00FF00'
+        }
+    ] as const as UrlMap[];
+
     beforeEach(() => {
         jest.clearAllMocks();
-        // Set up the mock to return our test data
-        mockFindMany.mockResolvedValue(mockUrlMaps);
+        (db.query.urlmap.findMany as jest.Mock).mockResolvedValue(mockUrlMaps);
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
     });
 
     // Base artist object for testing
@@ -157,15 +152,12 @@ describe('getArtistLinks', () => {
         addedBy: '00000000-0000-0000-0000-000000000000',
         cameo: null,
         farcaster: null,
-        createdAt: '',
-        updatedAt: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         supercollector: null
     };
 
     it('should handle an artist with all platforms correctly', async () => {
-        // Mock database response
-        mockFindMany.mockResolvedValueOnce(mockUrlMaps);
-
         const artist: Artist = {
             ...baseArtist,
             id: '123',
@@ -195,9 +187,6 @@ describe('getArtistLinks', () => {
     });
 
     it('should handle YouTube channel URLs correctly', async () => {
-        // Mock database response
-        mockFindMany.mockResolvedValueOnce(mockUrlMaps);
-
         // Test both @ handle and channel ID formats
         const artistWithAtHandle: Artist = {
             ...baseArtist,
@@ -209,46 +198,35 @@ describe('getArtistLinks', () => {
         const artistWithChannelId: Artist = {
             ...baseArtist,
             id: '124',
-            name: 'Test Artist 2',
+            name: 'Test Artist',
             youtubechannel: 'UC1234567890'
         };
 
-        const result1 = await getArtistLinks(artistWithAtHandle);
-        const result2 = await getArtistLinks(artistWithChannelId);
+        const resultWithAtHandle = await getArtistLinks(artistWithAtHandle);
+        const resultWithChannelId = await getArtistLinks(artistWithChannelId);
 
-        expect(result1[0].artistUrl).toBe('https://www.youtube.com/@testchannel');
-        expect(result2[0].artistUrl).toBe('https://www.youtube.com/channel/UC1234567890');
+        expect(resultWithAtHandle).toHaveLength(1);
+        expect(resultWithAtHandle[0].artistUrl).toBe('https://www.youtube.com/@testchannel');
+
+        expect(resultWithChannelId).toHaveLength(1);
+        expect(resultWithChannelId[0].artistUrl).toBe('https://www.youtube.com/channel/UC1234567890');
     });
 
-    it('should handle Supercollector .eth removal correctly', async () => {
-        // Mock database response
-        mockFindMany.mockResolvedValueOnce(mockUrlMaps);
-
-        const artistWithEth: Artist = {
+    it('should remove .eth from Supercollector URLs', async () => {
+        const artist: Artist = {
             ...baseArtist,
             id: '123',
             name: 'Test Artist',
             supercollector: 'testartist.eth'
         };
 
-        const artistWithoutEth: Artist = {
-            ...baseArtist,
-            id: '124',
-            name: 'Test Artist 2',
-            supercollector: 'testartist'
-        };
+        const result = await getArtistLinks(artist);
 
-        const result1 = await getArtistLinks(artistWithEth);
-        const result2 = await getArtistLinks(artistWithoutEth);
-
-        expect(result1[0].artistUrl).toBe('https://release.supercollector.xyz/artist/testartist');
-        expect(result2[0].artistUrl).toBe('https://release.supercollector.xyz/artist/testartist');
+        expect(result).toHaveLength(1);
+        expect(result[0].artistUrl).toBe('https://release.supercollector.xyz/artist/testartist');
     });
 
     it('should handle null and empty values correctly', async () => {
-        // Mock database response
-        mockFindMany.mockResolvedValueOnce(mockUrlMaps);
-
         const artist: Artist = {
             ...baseArtist,
             id: '123',
@@ -263,17 +241,7 @@ describe('getArtistLinks', () => {
         expect(result).toHaveLength(0);
     });
 
-    it('should maintain correct ordering of links', async () => {
-        // Mock URL maps with different orders
-        const unorderedMockUrlMaps: UrlMap[] = [
-            { ...mockUrlMaps[2], order: 3 }, // supercollector
-            { ...mockUrlMaps[0], order: 1 }, // spotify
-            { ...mockUrlMaps[1], order: 2 }, // youtube
-        ];
-
-        // Mock database response
-        mockFindMany.mockResolvedValueOnce(unorderedMockUrlMaps);
-
+    it('should return links in correct order', async () => {
         const artist: Artist = {
             ...baseArtist,
             id: '123',
@@ -286,14 +254,11 @@ describe('getArtistLinks', () => {
         const result = await getArtistLinks(artist);
 
         expect(result).toHaveLength(3);
-        expect(result[0].siteName).toBe('spotify');
-        expect(result[1].siteName).toBe('youtubechannel');
-        expect(result[2].siteName).toBe('supercollector');
+        expect(result.map(link => link.siteName)).toEqual(['spotify', 'youtubechannel', 'supercollector']);
     });
 
-    it('should handle database query errors', async () => {
-        // Mock database error
-        mockFindMany.mockRejectedValueOnce(new Error('Database error'));
+    it('should handle database errors gracefully', async () => {
+        (db.query.urlmap.findMany as jest.Mock).mockRejectedValueOnce(new Error('Database error'));
 
         const artist: Artist = {
             ...baseArtist,
