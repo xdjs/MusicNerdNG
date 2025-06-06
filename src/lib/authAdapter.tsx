@@ -8,13 +8,15 @@ export const authenticationAdapter = createAuthenticationAdapter({
     // Clear any existing nonce to force a new message prompt
     sessionStorage.removeItem('siwe-nonce');
     localStorage.removeItem('siwe.session');
+    localStorage.removeItem('wagmi.siwe.message');
+    localStorage.removeItem('wagmi.siwe.signature');
     const token = await getCsrfToken() ?? "";
     console.log("[AuthAdapter] Got CSRF token:", token);
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
     console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
-    return new SiweMessage({
+    const message = new SiweMessage({
       domain: window.location.host,
       address,
       statement: 'Sign in with Ethereum to MusicNerd.',
@@ -25,7 +27,10 @@ export const authenticationAdapter = createAuthenticationAdapter({
       // Add these fields to make the message more secure
       issuedAt: new Date().toISOString(),
       expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
+      resources: ['https://musicnerd.xyz/*'] // Add resources to make the message more specific
     });
+    console.log("[AuthAdapter] Created message:", message);
+    return message;
   },
   getMessageBody: ({ message }: { message: SiweMessage }) => {
     const messageBody = message.prepareMessage();
@@ -42,6 +47,8 @@ export const authenticationAdapter = createAuthenticationAdapter({
       // Clear any existing nonce and session data
       sessionStorage.removeItem('siwe-nonce');
       localStorage.removeItem('siwe.session');
+      localStorage.removeItem('wagmi.siwe.message');
+      localStorage.removeItem('wagmi.siwe.signature');
 
       // First attempt to sign in
       const response = await signIn("credentials", {
@@ -73,6 +80,8 @@ export const authenticationAdapter = createAuthenticationAdapter({
       // Clear all session data
       sessionStorage.clear();
       localStorage.removeItem('siwe.session');
+      localStorage.removeItem('wagmi.siwe.message');
+      localStorage.removeItem('wagmi.siwe.signature');
       sessionStorage.removeItem('siwe-nonce');
       
       await signOut({ 
