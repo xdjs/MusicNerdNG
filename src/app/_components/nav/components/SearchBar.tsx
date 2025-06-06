@@ -120,13 +120,17 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                         await signOut({ redirect: false });
                         disconnect();
                         // Small delay to ensure disconnect completes
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
 
                     // Store the artist info for after auth
                     sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
                     sessionStorage.setItem('pendingArtistName', result.name ?? '');
                     sessionStorage.setItem('searchFlow', 'true');
+                    
+                    // Clear any existing nonce to force a new message prompt
+                    sessionStorage.removeItem('siwe-nonce');
+                    localStorage.removeItem('siwe.session');
                     
                     // Open connect modal
                     if (openConnectModal) {

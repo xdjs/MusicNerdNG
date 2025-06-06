@@ -7,6 +7,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
     console.log("[AuthAdapter] Getting CSRF token for nonce");
     // Clear any existing nonce to force a new message prompt
     sessionStorage.removeItem('siwe-nonce');
+    localStorage.removeItem('siwe.session');
     const token = await getCsrfToken() ?? "";
     console.log("[AuthAdapter] Got CSRF token:", token);
     return token;
@@ -38,8 +39,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
-      // Clear any existing nonce to force a new message prompt on next sign-in
+      // Clear any existing nonce and session data
       sessionStorage.removeItem('siwe-nonce');
+      localStorage.removeItem('siwe.session');
 
       // First attempt to sign in
       const response = await signIn("credentials", {
@@ -68,8 +70,11 @@ export const authenticationAdapter = createAuthenticationAdapter({
   signOut: async () => {
     try {
       console.log("[AuthAdapter] Signing out");
-      // Clear any existing nonce
+      // Clear all session data
+      sessionStorage.clear();
+      localStorage.removeItem('siwe.session');
       sessionStorage.removeItem('siwe-nonce');
+      
       await signOut({ 
         redirect: false,
         callbackUrl: window.location.origin
@@ -77,6 +82,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
       
       // Wait for session cleanup
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Force a page reload to clear any lingering state
+      window.location.reload();
       
       console.log("[AuthAdapter] Sign out completed");
     } catch (error) {
