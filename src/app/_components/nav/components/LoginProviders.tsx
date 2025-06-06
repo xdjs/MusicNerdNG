@@ -32,7 +32,8 @@ const WalletProviders = dynamic(
                         <RainbowKitSiweNextAuthProvider
                             getSiweMessageOptions={() => ({
                                 statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-                                nonce: undefined,
+                                version: '1',
+                                uri: window.location.origin,
                                 expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
                             })}
                             enabled={true}

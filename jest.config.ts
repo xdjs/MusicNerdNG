@@ -7,22 +7,35 @@ import type { Config } from 'jest';
 import nextJest from 'next/jest';
 
 const createJestConfig = nextJest({
+    // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
     dir: './',
 });
 
+// Add any custom config to be passed to Jest
 const customJestConfig: Config = {
-    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    setupFilesAfterEnv: [
+        '<rootDir>/jest.setup.ts'
+    ],
+    testEnvironment: 'jest-environment-jsdom',
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
+        // Handle module aliases
+        '^@components/(.*)$': '<rootDir>/src/components/$1',
+        '^@lib/(.*)$': '<rootDir>/src/lib/$1',
+        '^@utils/(.*)$': '<rootDir>/src/utils/$1',
+        '^jose/(.*)$': '<rootDir>/node_modules/jose/dist/node/cjs/$1',
+        // Handle CSS imports
+        '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
+        // Handle image imports
+        '\\.(gif|ttf|eot|svg|png|jpg|jpeg)$': '<rootDir>/__mocks__/fileMock.js',
     },
-    testEnvironment: 'jest-environment-jsdom',
     transformIgnorePatterns: [
-        'node_modules/(?!(jose|openid-client|oidc-token-hash|next-auth|@panva|uuid|jose/dist/browser)/)'
+        'node_modules/(?!(jose|@rainbow-me|@radix-ui|next-auth|openid-client|@auth/core|@panva|@tanstack|wagmi|viem)/)'
     ],
+    testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
     transform: {
-        '^.+\\.(t|j)sx?$': ['@swc/jest', {
+        '^.+\\.(js|jsx|ts|tsx|mjs)$': ['@swc/jest', {
             jsc: {
-                target: 'es2021',
                 transform: {
                     react: {
                         runtime: 'automatic'
@@ -31,17 +44,40 @@ const customJestConfig: Config = {
             }
         }]
     },
-    moduleDirectories: ['node_modules', '<rootDir>'],
-    testPathIgnorePatterns: [
-        '/node_modules/',
-        '/.next/',
-        '/src/server/utils/__tests__/__utils__/',
-        '/src/server/utils/__tests__/__mocks__/',
-        '/__tests__/utils.test.ts',
-        'queriesTS.test.ts'
+    moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json', 'node', 'mjs'],
+    coverageDirectory: 'coverage',
+    collectCoverageFrom: [
+        'src/**/*.{js,jsx,ts,tsx}',
+        '!src/**/*.d.ts',
+        '!src/**/*.stories.{js,jsx,ts,tsx}',
+        '!src/**/*.test.{js,jsx,ts,tsx}',
+        '!src/**/index.{js,jsx,ts,tsx}',
+        '!src/pages/_app.tsx',
+        '!src/pages/_document.tsx',
+        '!src/types/**/*',
+        '!src/styles/**/*',
+        '!**/node_modules/**',
+        '!**/.next/**',
     ],
-    extensionsToTreatAsEsm: ['.ts', '.tsx'],
-    moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node']
+    coverageThreshold: {
+        global: {
+            branches: 70,
+            functions: 70,
+            lines: 70,
+            statements: 70,
+        },
+    },
+    coverageReporters: ['json', 'lcov', 'text', 'clover', 'html'],
+    testMatch: [
+        '**/__tests__/**/*.[jt]s?(x)',
+        '**/?(*.)+(spec|test).[jt]s?(x)'
+    ],
+    globals: {
+        'ts-jest': {
+            tsconfig: '<rootDir>/tsconfig.json'
+        }
+    },
 };
 
+// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
 export default createJestConfig(customJestConfig);

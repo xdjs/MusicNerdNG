@@ -93,22 +93,79 @@ export default function AddArtist({ session }: { session: Session | null }) {
             setIsModalOpen(true);
             return;
         }
-        const loginBtn = document.getElementById("login-btn");
-        if (loginBtn) {
-            loginBtn.click();
+        if (openConnectModal) {
+            openConnectModal();
         }
     }
 
     // Return a placeholder div in non-wallet mode to maintain layout
     if (!isWalletRequired) {
         return (
-            <Button
-                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-12 h-12"
-                onClick={handleAddArtistClick}
-                size="lg"
-            >
-                <Plus color="white" />
-            </Button>
+            <>
+                <Button
+                    className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-12 h-12"
+                    onClick={handleAddArtistClick}
+                    size="lg"
+                >
+                    <Plus color="white" />
+                </Button>
+
+                <Dialog open={isModalOpen} onOpenChange={closeModal}>
+                    <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
+                        <DialogHeader>
+                            <DialogTitle>Add Artist</DialogTitle>
+                            <DialogDescription>
+                                Add an artist by pasting their Spotify URL
+                            </DialogDescription>
+                        </DialogHeader>
+                        <Form {...form}>
+                            <div className="space-y-8">
+                                <FormField
+                                    control={form.control}
+                                    name="artistSpotifyUrl"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Spotify URL</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="https://open.spotify.com/artist/..." {...field} />
+                                            </FormControl>
+                                            <FormDescription>
+                                                Copy the URL from the artist&apos;s Spotify page
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <div>
+                                    <Button onClick={form.handleSubmit(onSubmit)} className="w-auto self-start bg-pastypink">
+                                        {isLoading ?
+                                            <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                                            : <span>Add Artist</span>
+                                        }
+                                    </Button>
+                                    {addArtistStatus &&
+                                        <p className={cn(addArtistStatus.status === "error" ? "text-red-500" : "text-green-500")}>
+                                            {addArtistStatus.message}
+                                        </p>
+                                    }
+                                    <div className="flex flex-col gap-2 text-black overflow-auto">
+                                        {addedArtist &&
+                                            <>
+                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key="check-out">
+                                                    <Button variant="outline">Check out {addedArtist.artistName}</Button>
+                                                </Link>
+                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
+                                                    <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                                </Link>
+                                            </>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </Form>
+                    </DialogContent>
+                </Dialog>
+            </>
         );
     }
 
@@ -122,7 +179,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                 <Plus color="white" />
             </Button>
 
-            <Dialog open={isModalOpen} onOpenChange={closeModal} >
+            <Dialog open={isModalOpen} onOpenChange={closeModal}>
                 <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
                     <DialogHeader>
                         <DialogTitle>Add Artist</DialogTitle>
@@ -131,7 +188,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                         </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                        <div className="space-y-8">
                             <FormField
                                 control={form.control}
                                 name="artistSpotifyUrl"
@@ -148,8 +205,8 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                     </FormItem>
                                 )}
                             />
-                            <DialogFooter className="flex sm:flex-col gap-2 sm:justify-start">
-                                <Button type="submit" className="w-auto self-start bg-pastypink">
+                            <div>
+                                <Button onClick={form.handleSubmit(onSubmit)} className="w-auto self-start bg-pastypink">
                                     {isLoading ?
                                         <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                         : <span>Add Artist</span>
@@ -163,20 +220,20 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                 <div className="flex flex-col gap-2 text-black overflow-auto">
                                     {addedArtist &&
                                         <>
-                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key={addedArtist.artistId}>
+                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key="check-out">
                                                 <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                             </Link>
-                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key={addedArtist.artistId}>
+                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
                                                 <Button variant="outline">Add data for {addedArtist.artistName}</Button>
                                             </Link>
                                         </>
                                     }
                                 </div>
-                            </DialogFooter>
-                        </form>
+                            </div>
+                        </div>
                     </Form>
                 </DialogContent>
             </Dialog>
         </>
-    )
+    );
 }

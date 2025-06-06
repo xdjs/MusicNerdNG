@@ -47,13 +47,21 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             localStorage.removeItem('wagmi.injected.connected');
             localStorage.removeItem('wagmi.store');
             localStorage.removeItem('wagmi.cache');
+            localStorage.removeItem('siwe.session');
             
             // Reset prompt flag
             shouldPromptRef.current = false;
             
             // Then disconnect and sign out
+            if (disconnect) {
+                disconnect();
+                // Small delay to ensure disconnect completes
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
             await signOut({ redirect: false });
-            if (disconnect) disconnect();
+            
+            // Force a page reload to clear any lingering state
+            window.location.reload();
             
             toast({
                 title: "Disconnected",
