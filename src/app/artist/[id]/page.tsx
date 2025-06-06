@@ -1,5 +1,5 @@
 import { getArtistById, getAllLinks, getArtistLinks } from "@/server/utils/queriesTS";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
+import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
@@ -26,11 +26,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     const { opADM } = searchParams;
     const headers = await getSpotifyHeaders();
 
-    const [spotifyImg, numReleases, wiki, allLinks] = await Promise.all([
+    const [spotifyImg, numReleases, wiki, allLinks, topTrackId] = await Promise.all([
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
         getArtistWiki(artist.wikipedia ?? ""),
         getArtistLinks(artist),
+        getArtistTopTrack(artist.spotify ?? "", headers),
         // getAiResponse(`Give me a 230 characterbio of the artist ${JSON.stringify(artist)} be casual and focus on web3 only if they are a web3 artist don't add any extra details of how the composition was made`)
     ]);
 
@@ -56,7 +57,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                 <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
                             </AspectRatio>
-                            {artist.spotify &&
+                            {artist?.spotify &&
                                 <div className="w-full">
                                     <div className="justify-center overflow-hidden rounded-xl">
                                         <div style={{
@@ -94,7 +95,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             }
                         </div>
                     </div>
-                    <div className="space-y-6">
+                    <div className="space-y-6 mt-8">
                         <strong className="text-black text-2xl">
                             Check out {artist?.name} on other media platforms!
                         </strong>

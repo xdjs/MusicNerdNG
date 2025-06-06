@@ -9,28 +9,31 @@ import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
 import { addArtist } from "@/app/actions/addArtist";
-import type { AddArtistResp } from "@/app/actions/addArtist";
 
 // Add type for the SearchBar ref
 interface SearchBarRef {
     clearLoading: () => void;
 }
 
-const Login = forwardRef<HTMLButtonElement, { 
-    buttonChildren?: React.ReactNode, 
-    buttonStyles: string, 
-    isplaceholder?: boolean,
-    searchBarRef?: React.RefObject<SearchBarRef>
-}>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
+interface LoginProps {
+    buttonChildren?: React.ReactNode;
+    buttonStyles: string;
+    isplaceholder?: boolean;
+    searchBarRef?: React.RefObject<SearchBarRef>;
+}
+
+// Component for wallet-enabled mode
+const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
     const router = useRouter();
     const { toast } = useToast();
     const { data: session, status } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
+    const shouldPromptRef = useRef(false);
+
     const { isConnected, address } = useAccount();
     const { disconnect } = useDisconnect();
     const config = useConfig();
     const { openConnectModal } = useConnectModal();
-    const shouldPromptRef = useRef(false);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
@@ -44,13 +47,21 @@ const Login = forwardRef<HTMLButtonElement, {
             localStorage.removeItem('wagmi.injected.connected');
             localStorage.removeItem('wagmi.store');
             localStorage.removeItem('wagmi.cache');
+            localStorage.removeItem('siwe.session');
             
             // Reset prompt flag
             shouldPromptRef.current = false;
             
             // Then disconnect and sign out
+            if (disconnect) {
+                disconnect();
+                // Small delay to ensure disconnect completes
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
             await signOut({ redirect: false });
-            disconnect();
+            
+            // Force a page reload to clear any lingering state
+            window.location.reload();
             
             toast({
                 title: "Disconnected",
@@ -131,9 +142,9 @@ const Login = forwardRef<HTMLButtonElement, {
                 openConnectModal,
                 mounted,
             }) => {
-                const ready = mounted;
+                const ready = mounted && config;
 
-                if (!ready || !config) {
+                if (!ready) {
                     return (
                         <Button className="bg-pastypink animate-pulse w-12 h-12 px-0" size="lg" type="button">
                             <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
@@ -185,6 +196,29 @@ const Login = forwardRef<HTMLButtonElement, {
             }}
         </ConnectButton.Custom>
     );
+});
+
+WalletLogin.displayName = 'WalletLogin';
+
+// Component for non-wallet mode
+const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
+    // Return a placeholder div with the same dimensions as the wallet button
+    return (
+        <div className="w-12 h-12" />
+    );
+});
+
+NoWalletLogin.displayName = 'NoWalletLogin';
+
+// Main component that decides which version to render
+const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    
+    if (!isWalletRequired) {
+        return <NoWalletLogin {...props} ref={ref} />;
+    }
+
+    return <WalletLogin {...props} ref={ref} />;
 });
 
 Login.displayName = 'Login';

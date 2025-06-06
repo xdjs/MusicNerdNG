@@ -153,7 +153,8 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames: ArtistLink[] = [];
         for (const platform of allLinkObjects) {
-            if (isObjKey(platform.siteName, artist) && artist[platform.siteName]) {
+            // Only add a link if the artist has a non-null, non-undefined value for this platform
+            if (isObjKey(platform.siteName, artist) && artist[platform.siteName] !== null && artist[platform.siteName] !== undefined && artist[platform.siteName] !== "") {
                 let artistUrl = platform.appStringFormat;
                 // Special handling for YouTube channel URLs
                 if (platform.siteName === 'youtubechannel') {
@@ -161,6 +162,11 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
                     artistUrl = value.startsWith('@') 
                         ? `https://www.youtube.com/${value}`
                         : `https://www.youtube.com/channel/${value}`;
+                } else if (platform.siteName === 'supercollector') {
+                    // Remove .eth from Supercollector URLs if present
+                    const value = artist[platform.siteName]?.toString() ?? "";
+                    const ethRemoved = value.endsWith('.eth') ? value.slice(0, -4) : value;
+                    artistUrl = platform.appStringFormat.replace("%@", ethRemoved);
                 } else {
                     artistUrl = platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "");
                 }
@@ -197,18 +203,13 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             userId: session?.user?.id
         });
 
-        if (!session) {
+        // Check if wallet requirement is disabled
+        const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+        if (isWalletRequired && !session) {
             console.log("[Server] No session found - authentication failed");
             throw new Error("Not authenticated");
         }
-        
-        console.log("[Server] Getting user data...");
-        const user = await getUserById(session.user.id);
-        console.log("[Server] User data:", {
-            userId: user?.id,
-            isWhitelisted: user?.isWhiteListed,
-            wallet: user?.wallet
-        });
 
         console.log("[Server] Getting Spotify headers...");
         const spotifyHeaders = await getSpotifyHeaders();
@@ -244,15 +245,24 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         }
 
         console.log("[Server] Inserting new artist into database...");
-        const [newArtist] = await db.insert(artists).values({
+        const artistData = {
             spotify: spotifyId,
-            addedBy: session.user.id,
             lcname: spotifyArtist.data.name.toLowerCase(),
-            name: spotifyArtist.data.name
-        }).returning();
+            name: spotifyArtist.data.name,
+            addedBy: session?.user?.id || undefined
+        };
+
+        const [newArtist] = await db.insert(artists).values(artistData).returning();
         console.log("[Server] New artist created:", newArtist);
 
-        await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
+        // Only send Discord message if we have a user
+        if (session?.user?.id) {
+            const user = await getUserById(session.user.id);
+            if (user) {
+                await sendDiscordMessage(`${user.wallet || 'Anonymous'} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
+            }
+        }
+
         return { 
             status: "success", 
             artistId: newArtist.id, 
@@ -314,27 +324,43 @@ export type AddArtistDataResp = {
 
 export async function addArtistData(artistUrl: string, artist: Artist): Promise<AddArtistDataResp> {
     const session = await getServerAuthSession();
-    if (!session) throw new Error("Not authenticated");
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    if (isWalletRequired && !session) {
+        throw new Error("Not authenticated");
+    }
+
     const artistIdFromUrl = await extractArtistId(artistUrl);
-    if (!artistIdFromUrl) return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
+    if (!artistIdFromUrl) {
+        return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
+    }
+
     try {
-        const existingArtistUGC = await db.query.ugcresearch.findFirst({ where: and(eq(ugcresearch.ugcUrl, artistUrl), eq(ugcresearch.artistId, artist.id)) });
-        if (existingArtistUGC) return { status: "error", message: "This artist data has already been added" };
-        const [newUGC] = await db.insert(ugcresearch).values(
-            {
-                ugcUrl: artistUrl,
-                siteName: artistIdFromUrl.siteName,
-                siteUsername: artistIdFromUrl.id,
-                artistId: artist.id,
-                name: artist.name,
-                userId: session.user.id
-            }).returning();
-        const user = await getUserById(session.user.id);
-        await sendDiscordMessage(`${user?.wallet} added ${artist.name}'s ${artistIdFromUrl.cardPlatformName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`);
-        if (user?.isWhiteListed) {
-            await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
-            return { status: "success", message: "We updated the artist with that data", siteName: artistIdFromUrl.cardPlatformName ?? "" };
+        const existingArtistUGC = await db.query.ugcresearch.findFirst({ 
+            where: and(eq(ugcresearch.ugcUrl, artistUrl), eq(ugcresearch.artistId, artist.id)) 
+        });
+
+        if (existingArtistUGC) {
+            return { status: "error", message: "This artist data has already been added" };
         }
+
+        const [newUGC] = await db.insert(ugcresearch).values({
+            ugcUrl: artistUrl,
+            siteName: artistIdFromUrl.siteName,
+            siteUsername: artistIdFromUrl.id,
+            artistId: artist.id,
+            name: artist.name ?? "",
+            userId: session?.user?.id || undefined
+        }).returning();
+
+        // Only send Discord message if we have a user
+        if (session?.user?.id) {
+            const user = await getUserById(session.user.id);
+            if (user) {
+                await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
+            }
+        }
+
         return { status: "success", message: "Thanks for adding, we'll review this addition before posting", siteName: artistIdFromUrl.cardPlatformName ?? "" };
     } catch (e) {
         console.error("error adding artist data", e);

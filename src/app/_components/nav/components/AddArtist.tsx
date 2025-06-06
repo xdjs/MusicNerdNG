@@ -22,13 +22,17 @@ import {
     FormField,
     FormItem,
     FormMessage,
+    FormLabel,
+    FormDescription,
 } from "@/components/ui/form";
 import { addArtist } from "@/app/actions/addArtist";
-import type { AddArtistResp } from "@/app/actions/addArtist";
+import type { AddArtistResp } from "@/server/utils/queriesTS";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
 import { Plus } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
 
@@ -44,6 +48,11 @@ export default function AddArtist({ session }: { session: Session | null }) {
     const [isLoading, setIsLoading] = useState(false);
     const [addedArtist, setAddedArtist] = useState<{ artistId: string | undefined, artistName: string | undefined } | null>(null);
     const [addArtistStatus, setAddArtistStatus] = useState<AddArtistResp | null>(null);
+    const { toast } = useToast();
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    
+    // Always call hooks, conditionally use their results
+    const { openConnectModal } = useConnectModal();
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -80,68 +89,55 @@ export default function AddArtist({ session }: { session: Session | null }) {
     }
 
     function handleAddArtistClick() {
-        if (session != null) {
+        if (!isWalletRequired || session != null) {
             setIsModalOpen(true);
             return;
         }
-        const loginBtn = document.getElementById("login-btn");
-        if (loginBtn) {
-            loginBtn.click();
+        if (openConnectModal) {
+            openConnectModal();
         }
     }
 
-    return (
-        <>
+    // Return a placeholder div in non-wallet mode to maintain layout
+    if (!isWalletRequired) {
+        return (
+            <>
+                <Button
+                    className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-12 h-12"
+                    onClick={handleAddArtistClick}
+                    size="lg"
+                >
+                    <Plus color="white" />
+                </Button>
 
-            <Button
-                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300"
-                onClick={handleAddArtistClick}
-                size="lg"
-            >
-                <Plus color="white" />
-            </Button>
-
-            <Dialog open={isModalOpen} onOpenChange={closeModal} >
-                <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 justify-items-center">
-                        {spotifyArtistUrlRegex.test(form.getValues().artistSpotifyUrl) ?
-                            <Spotify link={artistSpotifyUrl} /> :
-                            <div className="w-[300px] h-[380px] rounded-lg bg-black flex justify-center items-center text-white">
-                                <img src="/siteIcons/spotify_icon.png" alt="logo" className="w-36" />
-                            </div>
-                        }
+                <Dialog open={isModalOpen} onOpenChange={closeModal}>
+                    <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
+                        <DialogHeader>
+                            <DialogTitle>Add Artist</DialogTitle>
+                            <DialogDescription>
+                                Add an artist by pasting their Spotify URL
+                            </DialogDescription>
+                        </DialogHeader>
                         <Form {...form}>
-                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 w-full">
-                                <DialogHeader>
-                                    <DialogTitle>Add Artist!</DialogTitle>
-                                    <DialogDescription>
-                                        Let&apos;s start by inputting their Spotify artist ID
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <FormField
-                                        control={form.control}
-                                        name="artistSpotifyUrl"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormControl>
-                                                    <div className="flex-grow px-3 py-0 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                                                        <Input
-                                                            placeholder="https://open.spotify.com/artist/Id"
-                                                            onClick={checkAddedArtistStatus}
-                                                            id="name"
-                                                            className="w-full p-0 bg-transparent focus:outline-none"
-                                                            {...field}
-                                                        />
-                                                    </div>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-                                <DialogFooter className="flex sm:flex-col gap-2 sm:justify-start">
-                                    <Button type="submit" className="w-auto self-start bg-pastypink">
+                            <div className="space-y-8">
+                                <FormField
+                                    control={form.control}
+                                    name="artistSpotifyUrl"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Spotify URL</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="https://open.spotify.com/artist/..." {...field} />
+                                            </FormControl>
+                                            <FormDescription>
+                                                Copy the URL from the artist&apos;s Spotify page
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <div>
+                                    <Button onClick={form.handleSubmit(onSubmit)} className="w-auto self-start bg-pastypink">
                                         {isLoading ?
                                             <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
                                             : <span>Add Artist</span>
@@ -155,21 +151,89 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                     <div className="flex flex-col gap-2 text-black overflow-auto">
                                         {addedArtist &&
                                             <>
-                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key={addedArtist.artistId}>
+                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key="check-out">
                                                     <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                                 </Link>
-                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key={addedArtist.artistId}>
+                                                <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
                                                     <Button variant="outline">Add data for {addedArtist.artistName}</Button>
                                                 </Link>
                                             </>
                                         }
                                     </div>
-                                </DialogFooter>
-                            </form>
+                                </div>
+                            </div>
                         </Form>
-                    </div>
+                    </DialogContent>
+                </Dialog>
+            </>
+        );
+    }
+
+    return (
+        <>
+            <Button
+                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-12 h-12"
+                onClick={handleAddArtistClick}
+                size="lg"
+            >
+                <Plus color="white" />
+            </Button>
+
+            <Dialog open={isModalOpen} onOpenChange={closeModal}>
+                <DialogContent className="max-w-sm px-4 sm:max-w-[700px] max-h-screen overflow-auto scrollbar-hide text:black rounded-lg" >
+                    <DialogHeader>
+                        <DialogTitle>Add Artist</DialogTitle>
+                        <DialogDescription>
+                            Add an artist by pasting their Spotify URL
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Form {...form}>
+                        <div className="space-y-8">
+                            <FormField
+                                control={form.control}
+                                name="artistSpotifyUrl"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Spotify URL</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="https://open.spotify.com/artist/..." {...field} />
+                                        </FormControl>
+                                        <FormDescription>
+                                            Copy the URL from the artist&apos;s Spotify page
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <div>
+                                <Button onClick={form.handleSubmit(onSubmit)} className="w-auto self-start bg-pastypink">
+                                    {isLoading ?
+                                        <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
+                                        : <span>Add Artist</span>
+                                    }
+                                </Button>
+                                {addArtistStatus &&
+                                    <p className={cn(addArtistStatus.status === "error" ? "text-red-500" : "text-green-500")}>
+                                        {addArtistStatus.message}
+                                    </p>
+                                }
+                                <div className="flex flex-col gap-2 text-black overflow-auto">
+                                    {addedArtist &&
+                                        <>
+                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}`} key="check-out">
+                                                <Button variant="outline">Check out {addedArtist.artistName}</Button>
+                                            </Link>
+                                            <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
+                                                <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                            </Link>
+                                        </>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </Form>
                 </DialogContent>
             </Dialog>
         </>
-    )
+    );
 }

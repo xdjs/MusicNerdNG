@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import SearchBar from "./nav/components/SearchBar";
 import SlidingText from "./SlidingText";
 import TypewriterText from "./TypeWriter";
+import Login from "./nav/components/Login";
 
 export default function HomePage({ animation }: { animation: string }) {
 
@@ -95,6 +96,9 @@ export default function HomePage({ animation }: { animation: string }) {
 
     return (
         <div className="p-6 sm:p-8 flex flex-col justify-center flex-grow h-full w-full">
+            <div className="absolute top-6 right-6">
+                <Login buttonStyles="" />
+            </div>
 
             <div className="w-full">
                 <div className="flex flex-col items-center md:fixed md:left-8 md:top-8 mb-4">

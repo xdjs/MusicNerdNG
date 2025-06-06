@@ -143,9 +143,10 @@ export const artists = pgTable("artists", {
 	wallets: text("wallets").array(),
 	ens: text("ens"),
 	lens: text("lens"),
-	addedBy: uuid("added_by"),
+	addedBy: uuid("added_by").notNull().default(sql`uuid_generate_v4()`),
 	cameo: text("cameo"),
 	farcaster: text("farcaster"),
+	supercollector: text("supercollector"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 },
@@ -184,7 +185,7 @@ export const ugcresearch = pgTable("ugcresearch", {
 				columns: [table.userId],
 				foreignColumns: [users.id],
 				name: "ugcresearch_userID_fkey"
-			}),
+			}).onDelete("set null"),
 		}
 	});
 

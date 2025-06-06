@@ -3,7 +3,7 @@ describe('URL Pattern Tests', () => {
     { regex: /^https:\/\/x\.com\/([^/]+)$/, sitename: "x" },
     { regex: /^https:\/\/www\.instagram\.com\/([^/]+)(\/.*)?$/, sitename: "instagram" },
     { regex: /^https:\/\/www\.facebook\.com\/([^/]+)$/, sitename: "facebook" },
-    { regex: /^https:\/\/supercollector\.xyz\/([^/]+)$/, sitename: "supercollector" },
+    { regex: /^https:\/\/release\.supercollector\.xyz\/artist\/([^/]+)(?:\/.*)?$/, sitename: "supercollector" },
     { regex: /^https:\/\/www\.bandsintown\.com\/a\/([^/]+)$/, sitename: "bandsintown" },
     { regex: /^https:\/\/hey\.xyz\/u\/([^/]+)$/, sitename: "hey" },
     { regex: /^https:\/\/warpcast\.com\/([^/]+)$/, sitename: "warpcast" },
@@ -17,7 +17,6 @@ describe('URL Pattern Tests', () => {
     { regex: /^https:\/\/www\.sound\.xyz\/([^/]+)$/, sitename: "sound" },
     { regex: /^https:\/\/rainbow\.me\/([^/]+)$/, sitename: "rainbow" },
     { regex: /^https:\/\/wikipedia\.org\/wiki\/([^/]+)$/, sitename: "wikipedia" },
-    { regex: /^https:\/\/superbadge\.xyz\/badges\/([^/]+)$/, sitename: "superbadge" },
     { regex: /^https:\/\/www\.tiktok\.com\/@([^/]+)$/, sitename: "tiktok" },
   ];
 
@@ -28,7 +27,7 @@ describe('URL Pattern Tests', () => {
     ['instagram', 'https://www.instagram.com/zuck/'],
     ['instagram', 'https://www.instagram.com/zuck/posts'],
     ['facebook', 'https://www.facebook.com/mark'],
-    ['supercollector', 'https://supercollector.xyz/collector123'],
+    ['supercollector', 'https://release.supercollector.xyz/artist/collector123'],
     ['bandsintown', 'https://www.bandsintown.com/a/artist123'],
     ['hey', 'https://hey.xyz/u/user123'],
     ['warpcast', 'https://warpcast.com/user123'],
@@ -43,7 +42,6 @@ describe('URL Pattern Tests', () => {
     ['sound', 'https://www.sound.xyz/artist123'],
     ['rainbow', 'https://rainbow.me/wallet123'],
     ['wikipedia', 'https://wikipedia.org/wiki/Article_Name'],
-    ['superbadge', 'https://superbadge.xyz/badges/badge123'],
     ['tiktok', 'https://www.tiktok.com/@user123'],
   ])('should match valid %s URL', (sitename, url) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
@@ -58,7 +56,8 @@ describe('URL Pattern Tests', () => {
     ['x', 'https://x.com/user/extra'],
     ['instagram', 'https://instagram.com/user'],
     ['facebook', 'https://facebook.com/user/extra'],
-    ['supercollector', 'https://supercollector.xyz'],
+    ['supercollector', 'https://release.supercollector.xyz/artist'],
+    ['supercollector', 'https://release.supercollector.xyz'],
     ['bandsintown', 'https://www.bandsintown.com/artist123'],
     ['hey', 'https://hey.xyz/user123'],
     ['warpcast', 'https://warpcast.com/user/extra'],
@@ -73,7 +72,6 @@ describe('URL Pattern Tests', () => {
     ['sound', 'https://sound.xyz/artist123'],
     ['rainbow', 'https://rainbow.me/wallet/extra'],
     ['wikipedia', 'https://wikipedia.org/Article_Name'],
-    ['superbadge', 'https://superbadge.xyz/badge123'],
     ['tiktok', 'https://tiktok.com/@user123'],
   ])('should not match invalid %s URL', (sitename, url) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);

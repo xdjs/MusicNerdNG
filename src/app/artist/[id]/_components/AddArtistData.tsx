@@ -39,6 +39,9 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
     const router = useRouter();
     const { toast } = useToast();
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    
+    // Always call hooks, conditionally use their results
     const { openConnectModal } = useConnectModal();
 
     const formSchema = useMemo(() => z.object({
@@ -82,10 +85,10 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     }
 
     function handleClick() {
-        if (session) {
+        if (!isWalletRequired || session) {
             setIsModalOpen(true);
-        } else {
-            openConnectModal?.();
+        } else if (openConnectModal) {
+            openConnectModal();
         }
     }
 

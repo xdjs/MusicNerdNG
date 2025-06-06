@@ -1,44 +1,28 @@
 "use server"
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/server/auth";
-import { db } from '@/server/db/drizzle';
+import { getServerAuthSession } from "@/server/auth";
 import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
-import { eq } from "drizzle-orm";
-import { artists } from '@/server/db/schema';
-import { sendDiscordMessage } from '@/server/utils/queriesTS';
-import { getUserById } from '@/server/utils/queriesTS';
-
-export type AddArtistResp = {
-    status: "success" | "error" | "exists",
-    artistId?: string,
-    message?: string,
-    artistName?: string
-}
+import { getUserById, sendDiscordMessage } from '@/server/utils/queriesTS';
+import { addArtist as dbAddArtist } from "@/server/utils/queriesTS";
+import type { AddArtistResp } from "@/server/utils/queriesTS";
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     console.log("[Server Action] Starting addArtist for spotifyId:", spotifyId);
     
-    const session = await getServerSession(authOptions);
+    const session = await getServerAuthSession();
     console.log("[Server Action] Session state:", {
         exists: !!session,
         userId: session?.user?.id
     });
 
-    if (!session) {
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    if (isWalletRequired && !session) {
         console.log("[Server Action] No session found - authentication failed");
         throw new Error("Not authenticated");
     }
-    
-    try {
-        console.log("[Server Action] Getting user data...");
-        const user = await getUserById(session.user.id);
-        console.log("[Server Action] User data:", {
-            userId: user?.id,
-            isWhitelisted: user?.isWhiteListed,
-            wallet: user?.wallet
-        });
 
+    try {
         console.log("[Server Action] Getting Spotify headers...");
         const headers = await getSpotifyHeaders();
         if (!headers?.headers?.Authorization) {
@@ -60,34 +44,26 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             return { status: "error", message: "Invalid artist data received from Spotify" };
         }
 
-        console.log("[Server Action] Checking if artist exists in database...");
-        const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
-        if (artist) {
-            console.log("[Server Action] Artist already exists:", artist);
-            return { 
-                status: "exists", 
-                artistId: artist.id, 
-                artistName: artist.name ?? "", 
-                message: "That artist is already in our database" 
-            };
+        // Get user data if we have a session
+        let user = null;
+        if (session?.user?.id) {
+            console.log("[Server Action] Getting user data...");
+            user = await getUserById(session.user.id);
+            console.log("[Server Action] User data:", {
+                userId: user?.id,
+                isWhitelisted: user?.isWhiteListed,
+                wallet: user?.wallet
+            });
         }
 
-        console.log("[Server Action] Inserting new artist into database...");
-        const [newArtist] = await db.insert(artists).values({
-            spotify: spotifyId,
-            addedBy: session.user.id,
-            lcname: spotifyArtist.data.name.toLowerCase(),
-            name: spotifyArtist.data.name
-        }).returning();
-        console.log("[Server Action] New artist created:", newArtist);
+        const result = await dbAddArtist(spotifyId);
 
-        await sendDiscordMessage(`${user?.wallet} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`);
-        return { 
-            status: "success", 
-            artistId: newArtist.id, 
-            artistName: newArtist.name ?? "", 
-            message: "Success! You can now find this artist in our directory" 
-        };
+        // Only send Discord message if we have user data
+        if (result.status === "success" && user) {
+            await sendDiscordMessage(`${user.wallet} added new artist named: ${result.artistName} (Submitted SpotifyId: ${spotifyId})`);
+        }
+
+        return result;
     } catch (e) {
         console.error("[Server Action] Error in addArtist:", e);
         if (e instanceof Error) {
@@ -98,10 +74,6 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
                 return { status: "error", message: "This artist is already in our database" };
             }
         }
-        return { 
-            status: "error", 
-            artistId: undefined, 
-            message: "Something went wrong on our end, please try again" 
-        };   
+        return { status: "error", message: "Something went wrong on our end, please try again" };
     }
 } 
