@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';
 import { configure } from '@testing-library/react';
 import React from 'react';
+import './src/test/setup/testEnv';
 
 // Make React available globally for tests
 global.React = React;

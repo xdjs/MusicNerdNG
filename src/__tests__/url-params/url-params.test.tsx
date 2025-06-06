@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import '../setup/testEnv';
+import '../../test/setup/testEnv';
 
 // Set up Request and Response for test environment
 const createTestRequest = (url: string, init?: RequestInit) => {
