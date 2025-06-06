@@ -1,18 +1,23 @@
 import { render, screen } from '@testing-library/react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import fetch, { Request, Response } from 'node-fetch';
+import '../setup/testEnv';
 
-// Polyfill Request and Response objects for Node environment
-global.Request = Request;
-global.Response = Response;
-global.Response.json = (body, init) => new Response(JSON.stringify(body), {
-    ...init,
-    headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers || {}),
-    },
-});
+// Set up Request and Response for test environment
+const createTestRequest = (url: string, init?: RequestInit) => {
+    return new Request(url, init);
+};
+
+// Helper function to create JSON response
+const createJsonResponse = (data: any, init?: ResponseInit) => {
+    return new Response(JSON.stringify(data), {
+        ...init,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(init?.headers || {}),
+        },
+    });
+};
 
 // Mock the components instead of importing them
 jest.mock('@/app/artist/[id]/page', () => ({
@@ -57,32 +62,32 @@ jest.mock('next-auth/react', () => ({
 
 // Mock API routes
 jest.mock('@/app/api/findArtistBySpotifyID/route', () => ({
-    POST: jest.fn(async (req) => {
+    POST: jest.fn(async (req: Request) => {
         const body = await req.json();
         if (!body.spotifyID) {
             return new Response('Missing or invalid required parameters: spotifyID', { status: 400 });
         }
-        return Response.json({ result: null });
+        return createJsonResponse({ result: null });
     }),
 }));
 
 jest.mock('@/app/api/findArtistByIG/route', () => ({
-    POST: jest.fn(async (req) => {
+    POST: jest.fn(async (req: Request) => {
         const body = await req.json();
         if (!body.ig) {
             return new Response('Missing or invalid required parameters: instagram handle', { status: 400 });
         }
-        return Response.json({ result: null });
+        return createJsonResponse({ result: null });
     }),
 }));
 
 jest.mock('@/app/api/searchArtists/route', () => ({
-    POST: jest.fn(async (req) => {
+    POST: jest.fn(async (req: Request) => {
         const body = await req.json();
         if (!body.query || typeof body.query !== 'string') {
-            return Response.json({ error: "Invalid query parameter" }, { status: 400 });
+            return createJsonResponse({ error: "Invalid query parameter" }, { status: 400 });
         }
-        return Response.json({ results: [] });
+        return createJsonResponse({ results: [] });
     }),
 }));
 
@@ -167,7 +172,7 @@ describe('URL Parameter Handling', () => {
     describe('API Route Parameters', () => {
         it('should handle invalid parameters for findArtistBySpotifyID', async () => {
             const { POST } = await import('@/app/api/findArtistBySpotifyID/route');
-            const response = await POST(new Request('http://localhost/api/findArtistBySpotifyID', {
+            const response = await POST(createTestRequest('http://localhost/api/findArtistBySpotifyID', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -182,7 +187,7 @@ describe('URL Parameter Handling', () => {
 
         it('should handle invalid parameters for findArtistByIG', async () => {
             const { POST } = await import('@/app/api/findArtistByIG/route');
-            const response = await POST(new Request('http://localhost/api/findArtistByIG', {
+            const response = await POST(createTestRequest('http://localhost/api/findArtistByIG', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -197,7 +202,7 @@ describe('URL Parameter Handling', () => {
 
         it('should handle invalid parameters for searchArtists', async () => {
             const { POST } = await import('@/app/api/searchArtists/route');
-            const response = await POST(new Request('http://localhost/api/searchArtists', {
+            const response = await POST(createTestRequest('http://localhost/api/searchArtists', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -206,8 +211,8 @@ describe('URL Parameter Handling', () => {
             }));
 
             expect(response.status).toBe(400);
-            const data = await response.json();
-            expect(data.error).toBe('Invalid query parameter');
+            const text = await response.json();
+            expect(text.error).toBe('Invalid query parameter');
         });
     });
 }); 
