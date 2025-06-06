@@ -131,8 +131,20 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                     sessionStorage.setItem('pendingArtistName', result.name ?? '');
                     sessionStorage.setItem('searchFlow', 'true');
                     
-                    // Clear any existing session data to force a fresh connection
+                    // Clear only specific session data to force a fresh connection
+                    // but preserve search flow data
+                    const searchSpotifyId = sessionStorage.getItem('pendingArtistSpotifyId');
+                    const searchArtistName = sessionStorage.getItem('pendingArtistName');
+                    const searchFlow = sessionStorage.getItem('searchFlow');
+                    
+                    // Clear session storage but preserve search flow data
                     sessionStorage.clear();
+                    sessionStorage.setItem('pendingArtistSpotifyId', searchSpotifyId ?? '');
+                    sessionStorage.setItem('pendingArtistName', searchArtistName ?? '');
+                    sessionStorage.setItem('searchFlow', searchFlow ?? 'true');
+                    sessionStorage.setItem('directLogin', 'true');
+                    
+                    // Clear only wallet-related local storage items
                     localStorage.removeItem('wagmi.wallet');
                     localStorage.removeItem('wagmi.connected');
                     localStorage.removeItem('wagmi.injected.connected');
@@ -142,14 +154,9 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                     localStorage.removeItem('wagmi.siwe.message');
                     localStorage.removeItem('wagmi.siwe.signature');
                     
-                    // Restore the search flow data after clearing
-                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    sessionStorage.setItem('searchFlow', 'true');
-                    sessionStorage.setItem('directLogin', 'true');
-                    
-                    // Force a small delay to ensure state is cleared
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Force a longer delay to ensure state is properly cleared
+                    // and SIWE has time to initialize
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                     
                     // Open connect modal
                     if (connectModal) {
