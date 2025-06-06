@@ -1,7 +1,7 @@
 // Mock environment variables
 jest.mock('@/env', () => ({
-    NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID: 'mock-client-id',
-    NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET: 'mock-client-secret',
+    SPOTIFY_WEB_CLIENT_ID: 'test-value',
+    SPOTIFY_WEB_CLIENT_SECRET: 'test-value',
     DISCORD_WEBHOOK_URL: 'mock-webhook-url'
 }));
 
