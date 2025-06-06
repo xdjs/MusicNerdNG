@@ -10,13 +10,16 @@ import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import Image from 'next/image';
 import { addArtist } from "@/app/actions/addArtist";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import LoadingPage from "@/app/_components/LoadingPage";
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import Login from "./Login";
-import { signOut } from 'next-auth/react';
+import { Wallet } from 'lucide-react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { Button } from "@/components/ui/button";
+import type { Session } from "next-auth";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -69,9 +72,9 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
     const loginRef = useRef<HTMLButtonElement>(null);
 
     // Wagmi hooks are safe to use here
-    const { openConnectModal } = useConnectModal();
-    const { isConnected } = useAccount();
-    const { disconnect } = useDisconnect();
+    const { openConnectModal: connectModal } = useConnectModal() ?? {};
+    const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
+    const { disconnect: disconnectWallet } = useDisconnect() ?? { disconnect: undefined };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -110,15 +113,15 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
             }
 
             // If not connected or no session, handle login first
-            if (!isConnected || !session) {
+            if (!walletConnected || !session) {
                 console.log("[SearchBar] Starting auth flow for artist:", result.name);
                 
                 try {
                     // Only disconnect if we're connected but don't have a session
-                    if (isConnected && !session && disconnect) {
+                    if (walletConnected && !session && disconnectWallet) {
                         console.log("[SearchBar] Connected but no session, disconnecting wallet");
                         await signOut({ redirect: false });
-                        disconnect();
+                        disconnectWallet();
                         // Small delay to ensure disconnect completes
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     }
@@ -128,13 +131,29 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                     sessionStorage.setItem('pendingArtistName', result.name ?? '');
                     sessionStorage.setItem('searchFlow', 'true');
                     
-                    // Clear any existing nonce to force a new message prompt
-                    sessionStorage.removeItem('siwe-nonce');
+                    // Clear any existing session data to force a fresh connection
+                    sessionStorage.clear();
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    localStorage.removeItem('wagmi.store');
+                    localStorage.removeItem('wagmi.cache');
                     localStorage.removeItem('siwe.session');
+                    localStorage.removeItem('wagmi.siwe.message');
+                    localStorage.removeItem('wagmi.siwe.signature');
+                    
+                    // Restore the search flow data after clearing
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    sessionStorage.setItem('searchFlow', 'true');
+                    sessionStorage.setItem('directLogin', 'true');
+                    
+                    // Force a small delay to ensure state is cleared
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     // Open connect modal
-                    if (openConnectModal) {
-                        openConnectModal();
+                    if (connectModal) {
+                        connectModal();
                     }
                 } catch (error) {
                     console.error("[SearchBar] Error during connection flow:", error);
@@ -194,8 +213,8 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                     sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
                     sessionStorage.setItem('pendingArtistName', result.name ?? '');
                     sessionStorage.setItem('searchFlow', 'true');
-                    if (openConnectModal) {
-                        openConnectModal();
+                    if (connectModal) {
+                        connectModal();
                     }
                 } else {
                     toast({
@@ -399,6 +418,10 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
     const [isAddingNew, setIsAddingNew] = useState(false);
     const { data: session, status } = useSession();
     const { toast } = useToast();
+    
+    // Wagmi hooks are safe to use here
+    const { openConnectModal: connectModal } = useConnectModal() ?? {};
+    const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -416,6 +439,37 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
             setIsAddingNew(false);
         };
     }, []);
+
+    // Add effect to handle authentication state changes
+    useEffect(() => {
+        console.log("[SearchBar] Auth state changed:", {
+            status,
+            walletConnected,
+            session: !!session,
+            searchFlow: sessionStorage.getItem('searchFlow'),
+            pendingArtist: sessionStorage.getItem('pendingArtistName')
+        });
+
+        // If we're in a search flow and not authenticated, try to reconnect
+        if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
+            console.log("[SearchBar] Search flow needs authentication, initiating connection");
+            // Clear any existing session data
+            sessionStorage.removeItem('siwe-nonce');
+            localStorage.removeItem('siwe.session');
+            localStorage.removeItem('wagmi.siwe.message');
+            localStorage.removeItem('wagmi.siwe.signature');
+            
+            if (connectModal) {
+                connectModal();
+            }
+        }
+
+        // If authentication fails, clean up
+        if (status === "unauthenticated" && !walletConnected) {
+            setIsAddingArtist(false);
+            setIsAddingNew(false);
+        }
+    }, [status, walletConnected, session, connectModal]);
 
     // Add effect to clear loading states after navigation
     useEffect(() => {

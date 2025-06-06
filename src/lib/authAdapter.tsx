@@ -5,7 +5,7 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     console.log("[AuthAdapter] Getting CSRF token for nonce");
-    // Clear any existing nonce to force a new message prompt
+    // Clear any existing SIWE data to force a new message
     sessionStorage.removeItem('siwe-nonce');
     localStorage.removeItem('siwe.session');
     localStorage.removeItem('wagmi.siwe.message');
@@ -27,7 +27,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
       // Add these fields to make the message more secure
       issuedAt: new Date().toISOString(),
       expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
-      resources: ['https://musicnerd.xyz/*'] // Add resources to make the message more specific
     });
     console.log("[AuthAdapter] Created message:", message);
     return message;
@@ -44,7 +43,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
-      // Clear any existing nonce and session data
+      // Clear any existing SIWE data
       sessionStorage.removeItem('siwe-nonce');
       localStorage.removeItem('siwe.session');
       localStorage.removeItem('wagmi.siwe.message');
