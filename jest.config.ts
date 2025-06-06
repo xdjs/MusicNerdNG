@@ -24,10 +24,15 @@ const customJestConfig: Config = {
         '^@lib/(.*)$': '<rootDir>/src/lib/$1',
         '^@utils/(.*)$': '<rootDir>/src/utils/$1',
         '^jose/(.*)$': '<rootDir>/node_modules/jose/dist/node/cjs/$1',
+        // Handle CSS imports
+        '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
+        // Handle image imports
+        '\\.(gif|ttf|eot|svg|png|jpg|jpeg)$': '<rootDir>/__mocks__/fileMock.js',
     },
     transformIgnorePatterns: [
-        'node_modules/(?!(jose|@rainbow-me|@radix-ui|next-auth|openid-client|@auth/core|@panva)/)'
+        'node_modules/(?!(jose|@rainbow-me|@radix-ui|next-auth|openid-client|@auth/core|@panva|@tanstack|wagmi|viem)/)'
     ],
+    testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
     transform: {
         '^.+\\.(js|jsx|ts|tsx|mjs)$': ['@swc/jest', {
             jsc: {
@@ -67,10 +72,11 @@ const customJestConfig: Config = {
         '**/__tests__/**/*.[jt]s?(x)',
         '**/?(*.)+(spec|test).[jt]s?(x)'
     ],
-    testPathIgnorePatterns: [
-        '<rootDir>/.next/',
-        '<rootDir>/node_modules/'
-    ],
+    globals: {
+        'ts-jest': {
+            tsconfig: '<rootDir>/tsconfig.json'
+        }
+    },
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

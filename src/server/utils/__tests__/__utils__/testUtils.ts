@@ -8,6 +8,7 @@ import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQ
 import { createMockDB } from '../__mocks__/mockDatabase';
 import { createMockSession } from '../__mocks__/mockAuth';
 import { createMockSpotifyHeaders, createMockSpotifyArtist, createMockSpotifyError } from '../__mocks__/mockSpotify';
+import { isTest } from '../../setup/testEnv';
 
 // Setup all mocks for a test
 export const setupMocks = () => {
@@ -34,6 +35,12 @@ export const setupMocks = () => {
             );
         },
         mockSpotify: (artistName?: string, error?: string) => {
+            // Always mock Spotify in test environment
+            if (!isTest) {
+                console.log('Not in test environment - skipping Spotify mock');
+                return;
+            }
+
             jest.mocked(getSpotifyHeaders).mockResolvedValue({
                 headers: {
                     Authorization: 'Bearer mock-token',

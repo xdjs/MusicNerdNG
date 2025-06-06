@@ -3,6 +3,10 @@ import { Artist, UrlMap } from '@/server/db/DbTypes';
 import { platformType } from '@/server/db/schema';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { getArtistLinks, getAllLinks } from '../queriesTS';
+import { hasSpotifyCredentials } from '../setup/testEnv';
+
+// Skip all tests if Spotify credentials are missing
+const testWithSpotify = hasSpotifyCredentials ? it : it.skip;
 
 // Mock the database
 jest.mock('@/server/db/drizzle', () => ({
@@ -157,7 +161,7 @@ describe('getArtistLinks', () => {
         supercollector: null
     };
 
-    it('should handle an artist with all platforms correctly', async () => {
+    testWithSpotify('should handle an artist with all platforms correctly', async () => {
         const artist: Artist = {
             ...baseArtist,
             id: '123',
