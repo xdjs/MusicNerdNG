@@ -29,7 +29,15 @@ const customJestConfig: Config = {
         'node_modules/(?!(jose|@rainbow-me|@radix-ui|next-auth|openid-client|@auth/core|@panva)/)'
     ],
     transform: {
-        '^.+\\.(js|jsx|ts|tsx|mjs)$': ['babel-jest', { presets: ['next/babel'] }]
+        '^.+\\.(js|jsx|ts|tsx|mjs)$': ['@swc/jest', {
+            jsc: {
+                transform: {
+                    react: {
+                        runtime: 'automatic'
+                    }
+                }
+            }
+        }]
     },
     moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json', 'node', 'mjs'],
     coverageDirectory: 'coverage',

@@ -1,6 +1,26 @@
 import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';
 import { configure } from '@testing-library/react';
+import React from 'react';
+
+// Make React available globally for tests
+global.React = React;
+
+// Add clearImmediate polyfill
+if (!global.clearImmediate) {
+    global.clearImmediate = function(immediateId: any) {
+        clearTimeout(immediateId);
+    } as any;
+}
+
+if (!global.setImmediate) {
+    global.setImmediate = Object.assign(
+        function(callback: Function) {
+            return setTimeout(callback, 0);
+        },
+        { __promisify__: () => Promise.resolve() }
+    ) as any;
+}
 
 // Extend expect with jest-dom matchers
 expect.extend({});
@@ -30,7 +50,7 @@ const mockIntersectionObserver = jest.fn();
 mockIntersectionObserver.mockReturnValue({
     observe: () => null,
     unobserve: () => null,
-    disconnect: () => null,
+    disconnect: () => null
 });
 window.IntersectionObserver = mockIntersectionObserver;
 
