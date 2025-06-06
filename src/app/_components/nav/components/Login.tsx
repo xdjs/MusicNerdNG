@@ -40,14 +40,32 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
         try {
             console.log("[Login] Disconnecting wallet and cleaning up session");
             
+            // Save any existing search flow data
+            const searchSpotifyId = sessionStorage.getItem('pendingArtistSpotifyId');
+            const searchArtistName = sessionStorage.getItem('pendingArtistName');
+            const searchFlow = sessionStorage.getItem('searchFlow');
+            
             // First clear all session and local storage
             sessionStorage.clear();
+            
+            // Restore search flow data if it existed
+            if (searchFlow) {
+                sessionStorage.setItem('pendingArtistSpotifyId', searchSpotifyId ?? '');
+                sessionStorage.setItem('pendingArtistName', searchArtistName ?? '');
+                sessionStorage.setItem('searchFlow', searchFlow);
+                // Add a flag to indicate this was a manual disconnect
+                sessionStorage.setItem('manualDisconnect', 'true');
+            }
+            
+            // Clear only wallet-related items
             localStorage.removeItem('wagmi.wallet');
             localStorage.removeItem('wagmi.connected');
             localStorage.removeItem('wagmi.injected.connected');
             localStorage.removeItem('wagmi.store');
             localStorage.removeItem('wagmi.cache');
             localStorage.removeItem('siwe.session');
+            localStorage.removeItem('wagmi.siwe.message');
+            localStorage.removeItem('wagmi.siwe.signature');
             
             // Reset prompt flag
             shouldPromptRef.current = false;
@@ -56,7 +74,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             if (disconnect) {
                 disconnect();
                 // Small delay to ensure disconnect completes
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
             await signOut({ redirect: false });
             
@@ -86,13 +104,15 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             sessionUser: session?.user,
             isSearchFlow: sessionStorage.getItem('searchFlow'),
             pendingArtist: sessionStorage.getItem('pendingArtistName'),
-            shouldPrompt: shouldPromptRef.current
+            shouldPrompt: shouldPromptRef.current,
+            manualDisconnect: sessionStorage.getItem('manualDisconnect')
         });
 
         // Handle successful authentication
         if (isConnected && session) {
-            // Reset prompt flag
+            // Reset prompt flag and manual disconnect flag
             shouldPromptRef.current = false;
+            sessionStorage.removeItem('manualDisconnect');
             
             // Clear loading state if it was set
             if (searchBarRef?.current) {
@@ -121,12 +141,15 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             
             // Clean up flags if authentication fails
             if (status === "unauthenticated" && currentStatus === "loading") {
-                sessionStorage.clear();
-                localStorage.removeItem('wagmi.wallet');
-                localStorage.removeItem('wagmi.connected');
-                localStorage.removeItem('wagmi.injected.connected');
-                localStorage.removeItem('wagmi.store');
-                localStorage.removeItem('wagmi.cache');
+                // Don't clear session storage if this was a manual disconnect
+                if (!sessionStorage.getItem('manualDisconnect')) {
+                    sessionStorage.clear();
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    localStorage.removeItem('wagmi.store');
+                    localStorage.removeItem('wagmi.cache');
+                }
                 shouldPromptRef.current = false;
             }
         }
