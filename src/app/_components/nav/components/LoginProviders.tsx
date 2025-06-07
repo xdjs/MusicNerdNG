@@ -33,6 +33,10 @@ const WalletProviders = dynamic(
                             getSiweMessageOptions={() => {
                                 // Clear any existing SIWE data to force a new message
                                 if (typeof window !== 'undefined') {
+                                    // Clear CSRF token cookie
+                                    document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                                    
+                                    // Clear SIWE-related storage
                                     sessionStorage.removeItem('siwe-nonce');
                                     localStorage.removeItem('siwe.session');
                                     localStorage.removeItem('wagmi.siwe.message');

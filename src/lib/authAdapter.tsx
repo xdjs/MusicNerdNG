@@ -76,6 +76,10 @@ export const authenticationAdapter = createAuthenticationAdapter({
   signOut: async () => {
     try {
       console.log("[AuthAdapter] Signing out");
+      
+      // Clear CSRF token cookie first
+      document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+      
       // Clear all session data
       sessionStorage.clear();
       localStorage.removeItem('siwe.session');
@@ -83,13 +87,20 @@ export const authenticationAdapter = createAuthenticationAdapter({
       localStorage.removeItem('wagmi.siwe.signature');
       sessionStorage.removeItem('siwe-nonce');
       
+      // Clear all wagmi-related data
+      localStorage.removeItem('wagmi.wallet');
+      localStorage.removeItem('wagmi.connected');
+      localStorage.removeItem('wagmi.injected.connected');
+      localStorage.removeItem('wagmi.store');
+      localStorage.removeItem('wagmi.cache');
+      
       await signOut({ 
         redirect: false,
         callbackUrl: window.location.origin
       });
       
-      // Wait for session cleanup
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait longer for session cleanup
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Force a page reload to clear any lingering state
       window.location.reload();
