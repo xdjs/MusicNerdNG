@@ -15,9 +15,19 @@ export const authenticationAdapter = createAuthenticationAdapter({
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
-    console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
+    // Get domain without port number
+    const domain = window.location.hostname.split(':')[0];
+    
+    console.log("[AuthAdapter] Creating SIWE message:", { 
+      nonce, 
+      address, 
+      chainId,
+      domain,
+      origin: window.location.origin
+    });
+
     const message = new SiweMessage({
-      domain: window.location.hostname,
+      domain,
       address,
       statement: 'Sign in to MusicNerd to add artists and manage your collection.',
       uri: window.location.origin,
@@ -39,7 +49,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
     try {
       console.log("[AuthAdapter] Starting verification with:", {
         message: JSON.stringify(message),
-        signature
+        signature,
+        domain: message.domain,
+        origin: window.location.origin
       });
 
       // Clear any existing SIWE data

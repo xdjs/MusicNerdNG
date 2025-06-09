@@ -23,6 +23,12 @@ const WalletProviders = dynamic(
                 [mainnet.id]: http()
             },
             ssr: true,
+            walletConnectMetadata: {
+                name: 'Music Nerd',
+                description: 'Music Nerd - Artist Database',
+                url: typeof window !== 'undefined' ? window.location.origin : 'https://music-nerd-n33p6a44c-musicnerd.vercel.app',
+                icons: ['https://music-nerd-n33p6a44c-musicnerd.vercel.app/favicon.ico']
+            }
         });
 
         return function Providers({ children }: { children: ReactNode }) {

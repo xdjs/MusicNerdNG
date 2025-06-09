@@ -118,20 +118,36 @@ export const authOptions: NextAuthOptions = {
           
           console.log("[Auth] Verifying SIWE message:", {
             address: siwe.address,
-            domain: authUrl.hostname,
-            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0]
+            domain: siwe.domain,
+            expectedDomain: authUrl.hostname,
+            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
+            message: credentials?.message,
+            signature: credentials?.signature
           });
+
+          // Normalize domains by removing port numbers if present
+          const normalizedMessageDomain = siwe.domain.split(':')[0];
+          const normalizedAuthDomain = authUrl.hostname.split(':')[0];
 
           const result = await siwe.verify({
             signature: credentials?.signature || "",
-            domain: authUrl.hostname,
+            domain: normalizedMessageDomain,
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           });
 
-          console.log("[Auth] SIWE verification result:", result);
+          console.log("[Auth] SIWE verification result:", {
+            success: result.success,
+            error: result.error,
+            normalizedMessageDomain,
+            normalizedAuthDomain
+          });
 
           if (!result.success) {
-            console.error("[Auth] SIWE verification failed:", result);
+            console.error("[Auth] SIWE verification failed:", {
+              error: result.error,
+              messageDomain: siwe.domain,
+              expectedDomain: authUrl.hostname
+            });
             return null;
           }
 
