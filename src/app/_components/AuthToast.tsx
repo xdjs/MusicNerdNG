@@ -12,7 +12,7 @@ export default function AuthToast() {
     if (status === "authenticated" && session?.user) {
       toast({
         title: "Welcome!",
-        description: session.user.name ? `Welcome back, ${session.user.name}!` : "You are now signed in",
+        description: session.user.name ? `Welcome back!` : "You are now signed in",
         duration: 3000,
       });
     } else if (status === "unauthenticated") {
