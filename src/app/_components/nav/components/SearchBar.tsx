@@ -99,6 +99,59 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
         setIsAddingNew(false);
     }, [pathname]);
 
+    // If we're in a search flow and not authenticated, try to reconnect
+    if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
+        console.log("[SearchBar] Search flow needs authentication, initiating connection");
+        
+        // Clear CSRF token cookie first
+        document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+        
+        // Clear all SIWE-related data
+        sessionStorage.removeItem('siwe-nonce');
+        localStorage.removeItem('siwe.session');
+        localStorage.removeItem('wagmi.siwe.message');
+        localStorage.removeItem('wagmi.siwe.signature');
+        
+        // Clear all wagmi-related data
+        localStorage.removeItem('wagmi.wallet');
+        localStorage.removeItem('wagmi.connected');
+        localStorage.removeItem('wagmi.injected.connected');
+        localStorage.removeItem('wagmi.store');
+        localStorage.removeItem('wagmi.cache');
+        
+        // Clear any manual disconnect flag
+        sessionStorage.removeItem('manualDisconnect');
+        
+        // Small delay to ensure cleanup is complete
+        setTimeout(() => {
+            if (openConnectModal) {
+                openConnectModal();
+            }
+        }, 100);
+    }
+
+    // Handle authentication state changes
+    useEffect(() => {
+        if (status === "unauthenticated" && walletConnected) {
+            // If wallet is connected but we're not authenticated, force a disconnect
+            if (disconnect) {
+                disconnect();
+                // Clear all session data
+                sessionStorage.clear();
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+                // Force a page reload
+                window.location.reload();
+            }
+        }
+    }, [status, walletConnected, disconnect]);
+
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
         setShowResults(false);
@@ -108,36 +161,36 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
 
             // If not connected or no session, handle login first
             if (!walletConnected || !session) {
-                // Only proceed if this wasn't a manual disconnect
-                if (!sessionStorage.getItem('manualDisconnect')) {
-                    // Set up search flow flags before initiating login
-                    sessionStorage.setItem('searchFlow', 'true');
-                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    
-                    // Clear CSRF token cookie first
-                    document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                    
-                    // Clear all SIWE-related data
-                    sessionStorage.removeItem('siwe-nonce');
-                    localStorage.removeItem('siwe.session');
-                    localStorage.removeItem('wagmi.siwe.message');
-                    localStorage.removeItem('wagmi.siwe.signature');
-                    
-                    // Clear all wagmi-related data
-                    localStorage.removeItem('wagmi.wallet');
-                    localStorage.removeItem('wagmi.connected');
-                    localStorage.removeItem('wagmi.injected.connected');
-                    localStorage.removeItem('wagmi.store');
-                    localStorage.removeItem('wagmi.cache');
-                    
-                    // Small delay to ensure cleanup is complete
-                    setTimeout(() => {
-                        if (openConnectModal) {
-                            openConnectModal();
-                        }
-                    }, 100);
-                }
+                // Set up search flow flags before initiating login
+                sessionStorage.setItem('searchFlow', 'true');
+                sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                
+                // Clear CSRF token cookie first
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                
+                // Clear all SIWE-related data
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                
+                // Clear all wagmi-related data
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+                
+                // Clear any manual disconnect flag
+                sessionStorage.removeItem('manualDisconnect');
+                
+                // Small delay to ensure cleanup is complete
+                setTimeout(() => {
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
+                }, 100);
                 return;
             }
 
@@ -435,31 +488,31 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
         if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
             console.log("[SearchBar] Search flow needs authentication, initiating connection");
             
-            // Only proceed if this wasn't a manual disconnect
-            if (!sessionStorage.getItem('manualDisconnect')) {
-                // Clear CSRF token cookie first
-                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                
-                // Clear all SIWE-related data
-                sessionStorage.removeItem('siwe-nonce');
-                localStorage.removeItem('siwe.session');
-                localStorage.removeItem('wagmi.siwe.message');
-                localStorage.removeItem('wagmi.siwe.signature');
-                
-                // Clear all wagmi-related data
-                localStorage.removeItem('wagmi.wallet');
-                localStorage.removeItem('wagmi.connected');
-                localStorage.removeItem('wagmi.injected.connected');
-                localStorage.removeItem('wagmi.store');
-                localStorage.removeItem('wagmi.cache');
-                
-                // Small delay to ensure cleanup is complete
-                setTimeout(() => {
-                    if (connectModal) {
-                        connectModal();
-                    }
-                }, 100);
-            }
+            // Clear CSRF token cookie first
+            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+            
+            // Clear all SIWE-related data
+            sessionStorage.removeItem('siwe-nonce');
+            localStorage.removeItem('siwe.session');
+            localStorage.removeItem('wagmi.siwe.message');
+            localStorage.removeItem('wagmi.siwe.signature');
+            
+            // Clear all wagmi-related data
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
+            localStorage.removeItem('wagmi.store');
+            localStorage.removeItem('wagmi.cache');
+            
+            // Clear any manual disconnect flag
+            sessionStorage.removeItem('manualDisconnect');
+            
+            // Small delay to ensure cleanup is complete
+            setTimeout(() => {
+                if (connectModal) {
+                    connectModal();
+                }
+            }, 100);
         }
 
         // If authentication fails, clean up
