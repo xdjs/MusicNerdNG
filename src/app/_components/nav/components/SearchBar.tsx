@@ -605,6 +605,13 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
             // Set flag to indicate this was a logout
             sessionStorage.setItem('logoutTriggered', 'true');
             
+            // First disconnect the wallet
+            if (disconnect) {
+                disconnect();
+                // Small delay to ensure disconnect completes
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
             // Clear CSRF token cookie first
             document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
             
@@ -625,10 +632,11 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
             // Restore the logout flag since we cleared session storage
             sessionStorage.setItem('logoutTriggered', 'true');
             
-            if (disconnect) {
-                disconnect();
-            }
+            // Sign out of NextAuth
             await signOut({ redirect: false });
+            
+            // Force a page reload to clear any lingering state
+            window.location.reload();
             
             toast({
                 title: "Logged out",
@@ -641,6 +649,8 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
                 title: "Error",
                 description: "Failed to log out"
             });
+            // If logout fails, force a page reload anyway to ensure clean state
+            window.location.reload();
         }
     };
 
