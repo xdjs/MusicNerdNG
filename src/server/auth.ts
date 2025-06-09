@@ -118,13 +118,13 @@ export const authOptions: NextAuthOptions = {
           
           console.log("[Auth] Verifying SIWE message:", {
             address: siwe.address,
-            domain: authUrl.host,
+            domain: authUrl.hostname,
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0]
           });
 
           const result = await siwe.verify({
             signature: credentials?.signature || "",
-            domain: authUrl.host,
+            domain: authUrl.hostname,
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           });
 

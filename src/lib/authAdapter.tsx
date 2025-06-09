@@ -17,14 +17,13 @@ export const authenticationAdapter = createAuthenticationAdapter({
   createMessage: ({ nonce, address, chainId }) => {
     console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
     const message = new SiweMessage({
-      domain: window.location.host,
+      domain: window.location.hostname,
       address,
-      statement: 'Sign in with Ethereum to MusicNerd.',
+      statement: 'Sign in to MusicNerd to add artists and manage your collection.',
       uri: window.location.origin,
       version: '1',
       chainId,
       nonce,
-      // Add these fields to make the message more secure
       issuedAt: new Date().toISOString(),
       expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
     });
