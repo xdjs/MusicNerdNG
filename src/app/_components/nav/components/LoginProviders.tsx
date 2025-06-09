@@ -22,13 +22,7 @@ const WalletProviders = dynamic(
             transports: {
                 [mainnet.id]: http()
             },
-            ssr: true,
-            walletConnectMetadata: {
-                name: 'Music Nerd',
-                description: 'Music Nerd - Artist Database',
-                url: typeof window !== 'undefined' ? window.location.origin : 'https://music-nerd-n33p6a44c-musicnerd.vercel.app',
-                icons: ['https://music-nerd-n33p6a44c-musicnerd.vercel.app/favicon.ico']
-            }
+            ssr: true
         });
 
         return function Providers({ children }: { children: ReactNode }) {
@@ -59,7 +53,7 @@ const WalletProviders = dynamic(
                             }}
                             enabled={true}
                         >
-                            <RainbowKitProvider 
+                            <RainbowKitProvider
                                 modalSize="compact"
                                 showRecentTransactions={true}
                                 appInfo={{
