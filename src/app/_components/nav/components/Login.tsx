@@ -105,7 +105,8 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             isSearchFlow: sessionStorage.getItem('searchFlow'),
             pendingArtist: sessionStorage.getItem('pendingArtistName'),
             shouldPrompt: shouldPromptRef.current,
-            manualDisconnect: sessionStorage.getItem('manualDisconnect')
+            manualDisconnect: sessionStorage.getItem('manualDisconnect'),
+            loginInitiator: sessionStorage.getItem('loginInitiator')
         });
 
         // Handle successful authentication
@@ -113,6 +114,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             // Reset prompt flag and manual disconnect flag
             shouldPromptRef.current = false;
             sessionStorage.removeItem('manualDisconnect');
+            sessionStorage.removeItem('loginInitiator');
             
             // Clear loading state if it was set
             if (searchBarRef?.current) {
@@ -128,11 +130,26 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             }
         }
 
-        // Only handle reconnection if explicitly triggered
-        if (shouldPromptRef.current && !session && status === "unauthenticated" && !isConnected) {
-            console.log("[Login] Detected explicit login action, initiating connection");
-            if (openConnectModal) {
-                openConnectModal();
+        // Handle login initiation
+        if (!session && status === "unauthenticated" && !isConnected) {
+            const loginInitiator = sessionStorage.getItem('loginInitiator');
+            const isSearchFlow = sessionStorage.getItem('searchFlow');
+            
+            if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) {
+                console.log("[Login] Initiating connection for:", loginInitiator);
+                
+                // Clear any existing SIWE data to force a new message
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                
+                // Clear CSRF token to force new nonce
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                
+                if (openConnectModal) {
+                    openConnectModal();
+                }
             }
         }
 

@@ -112,24 +112,14 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                 sessionStorage.setItem('searchFlow', 'true');
                 sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
                 sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                sessionStorage.setItem('loginInitiator', 'searchBar');
                 
-                // Clear CSRF token cookie first
-                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                // Set the shouldPrompt flag in the Login component
+                if (loginRef.current) {
+                    shouldPromptRef.current = true;
+                }
                 
-                // Clear all SIWE-related data
-                sessionStorage.removeItem('siwe-nonce');
-                localStorage.removeItem('siwe.session');
-                localStorage.removeItem('wagmi.siwe.message');
-                localStorage.removeItem('wagmi.siwe.signature');
-                
-                // Clear all wagmi-related data
-                localStorage.removeItem('wagmi.wallet');
-                localStorage.removeItem('wagmi.connected');
-                localStorage.removeItem('wagmi.injected.connected');
-                localStorage.removeItem('wagmi.store');
-                localStorage.removeItem('wagmi.cache');
-                
-                // Small delay to ensure cleanup is complete
+                // Small delay to ensure state is set
                 setTimeout(() => {
                     if (openConnectModal) {
                         openConnectModal();
