@@ -70,6 +70,7 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
     const { data: session, status } = useSession();
     const { toast } = useToast();
     const loginRef = useRef<HTMLButtonElement>(null);
+    const shouldPromptRef = useRef(false);
 
     // Wagmi hooks are safe to use here
     const { openConnectModal } = useConnectModal() ?? {};
@@ -107,9 +108,36 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
 
             // If not connected or no session, handle login first
             if (!walletConnected || !session) {
-                if (openConnectModal) {
-                    openConnectModal();
-                }
+                // Set up search flow flags before initiating login
+                sessionStorage.setItem('searchFlow', 'true');
+                sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                
+                // Clear CSRF token cookie first
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                
+                // Clear all SIWE-related data
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                
+                // Clear all wagmi-related data
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+                
+                // Set flag to indicate explicit user action
+                shouldPromptRef.current = true;
+                
+                // Small delay to ensure cleanup is complete
+                setTimeout(() => {
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
+                }, 100);
                 return;
             }
 
@@ -141,9 +169,36 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
                 if (error instanceof Error && error.message.includes('Not authenticated')) {
-                    if (openConnectModal) {
-                        openConnectModal();
-                    }
+                    // Set up search flow flags before initiating login
+                    sessionStorage.setItem('searchFlow', 'true');
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    
+                    // Clear CSRF token cookie first
+                    document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                    
+                    // Clear all SIWE-related data
+                    sessionStorage.removeItem('siwe-nonce');
+                    localStorage.removeItem('siwe.session');
+                    localStorage.removeItem('wagmi.siwe.message');
+                    localStorage.removeItem('wagmi.siwe.signature');
+                    
+                    // Clear all wagmi-related data
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    localStorage.removeItem('wagmi.store');
+                    localStorage.removeItem('wagmi.cache');
+                    
+                    // Set flag to indicate explicit user action
+                    shouldPromptRef.current = true;
+                    
+                    // Small delay to ensure cleanup is complete
+                    setTimeout(() => {
+                        if (openConnectModal) {
+                            openConnectModal();
+                        }
+                    }, 100);
                 } else {
                     toast({
                         variant: "destructive",
