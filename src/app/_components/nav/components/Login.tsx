@@ -35,6 +35,101 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
     const config = useConfig();
     const { openConnectModal } = useConnectModal();
 
+    useEffect(() => {
+        console.log("[Login] State changed:", {
+            authFrom: currentStatus,
+            authTo: status,
+            isConnected,
+            address,
+            sessionUser: session?.user,
+            isSearchFlow: sessionStorage.getItem('searchFlow'),
+            pendingArtist: sessionStorage.getItem('pendingArtistName'),
+            shouldPrompt: shouldPromptRef.current,
+            manualDisconnect: sessionStorage.getItem('manualDisconnect'),
+            loginInitiator: sessionStorage.getItem('loginInitiator'),
+            needsSignature: sessionStorage.getItem('needsSignature')
+        });
+
+        // Handle successful authentication
+        if (isConnected && session) {
+            // Reset all flags
+            shouldPromptRef.current = false;
+            sessionStorage.removeItem('manualDisconnect');
+            sessionStorage.removeItem('loginInitiator');
+            sessionStorage.removeItem('needsSignature');
+            
+            // Clear loading state if it was set
+            if (searchBarRef?.current) {
+                searchBarRef.current.clearLoading();
+            }
+            
+            if (sessionStorage.getItem('searchFlow')) {
+                // Show success toast
+                toast({
+                    title: "Connected!",
+                    description: "You can now add artists to your collection.",
+                });
+            }
+        }
+
+        // Handle login initiation or wallet connection without session
+        if ((!session && status === "unauthenticated" && !isConnected) || (isConnected && !session)) {
+            const loginInitiator = sessionStorage.getItem('loginInitiator');
+            const isSearchFlow = sessionStorage.getItem('searchFlow');
+            const needsSignature = sessionStorage.getItem('needsSignature');
+            
+            if (isConnected && !session && !needsSignature) {
+                // Set flag to indicate we need signature
+                sessionStorage.setItem('needsSignature', 'true');
+                
+                // Clear SIWE data to force a new message
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                
+                // Clear CSRF token to force new nonce
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                
+                // Trigger disconnect
+                disconnect?.();
+                return;
+            }
+            
+            if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow) || needsSignature) {
+                console.log("[Login] Initiating connection for:", { loginInitiator, needsSignature });
+                
+                if (!isConnected && openConnectModal) {
+                    openConnectModal();
+                }
+            }
+        }
+
+        if (status !== currentStatus) {
+            setCurrentStatus(status);
+            
+            // Clean up flags if authentication fails
+            if (status === "unauthenticated" && currentStatus === "loading") {
+                // Don't clear session storage if this was a manual disconnect
+                if (!sessionStorage.getItem('manualDisconnect')) {
+                    // Keep the needsSignature flag if it exists
+                    const needsSignature = sessionStorage.getItem('needsSignature');
+                    sessionStorage.clear();
+                    if (needsSignature) {
+                        sessionStorage.setItem('needsSignature', needsSignature);
+                    }
+                    
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    localStorage.removeItem('wagmi.store');
+                    localStorage.removeItem('wagmi.cache');
+                }
+                shouldPromptRef.current = false;
+            }
+        }
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef, disconnect]);
+
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
         try {
@@ -94,97 +189,6 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             });
         }
     }, [disconnect, toast]);
-
-    useEffect(() => {
-        console.log("[Login] State changed:", {
-            authFrom: currentStatus,
-            authTo: status,
-            isConnected,
-            address,
-            sessionUser: session?.user,
-            isSearchFlow: sessionStorage.getItem('searchFlow'),
-            pendingArtist: sessionStorage.getItem('pendingArtistName'),
-            shouldPrompt: shouldPromptRef.current,
-            manualDisconnect: sessionStorage.getItem('manualDisconnect'),
-            loginInitiator: sessionStorage.getItem('loginInitiator')
-        });
-
-        // Handle successful authentication
-        if (isConnected && session) {
-            // Reset prompt flag and manual disconnect flag
-            shouldPromptRef.current = false;
-            sessionStorage.removeItem('manualDisconnect');
-            sessionStorage.removeItem('loginInitiator');
-            
-            // Clear loading state if it was set
-            if (searchBarRef?.current) {
-                searchBarRef.current.clearLoading();
-            }
-            
-            if (sessionStorage.getItem('searchFlow')) {
-                // Show success toast
-                toast({
-                    title: "Connected!",
-                    description: "You can now add artists to your collection.",
-                });
-            }
-        }
-
-        // Handle login initiation or wallet connection without session
-        if ((!session && status === "unauthenticated" && !isConnected) || (isConnected && !session)) {
-            const loginInitiator = sessionStorage.getItem('loginInitiator');
-            const isSearchFlow = sessionStorage.getItem('searchFlow');
-            
-            // Always set shouldPromptRef to true when connected without session
-            if (isConnected && !session) {
-                shouldPromptRef.current = true;
-            }
-            
-            if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) {
-                console.log("[Login] Initiating connection for:", loginInitiator);
-                
-                // Always clear SIWE data to force a new message
-                sessionStorage.removeItem('siwe-nonce');
-                localStorage.removeItem('siwe.session');
-                localStorage.removeItem('wagmi.siwe.message');
-                localStorage.removeItem('wagmi.siwe.signature');
-                
-                // Clear CSRF token to force new nonce
-                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                
-                // If already connected but no session, disconnect first
-                if (isConnected && !session) {
-                    disconnect?.();
-                    // Small delay before reconnecting
-                    setTimeout(() => {
-                        if (openConnectModal) {
-                            openConnectModal();
-                        }
-                    }, 500);
-                } else if (openConnectModal) {
-                    openConnectModal();
-                }
-            }
-        }
-
-        if (status !== currentStatus) {
-            setCurrentStatus(status);
-            
-            // Clean up flags if authentication fails
-            if (status === "unauthenticated" && currentStatus === "loading") {
-                // Don't clear session storage if this was a manual disconnect
-                if (!sessionStorage.getItem('manualDisconnect')) {
-                    sessionStorage.clear();
-                    localStorage.removeItem('wagmi.wallet');
-                    localStorage.removeItem('wagmi.connected');
-                    localStorage.removeItem('wagmi.injected.connected');
-                    localStorage.removeItem('wagmi.store');
-                    localStorage.removeItem('wagmi.cache');
-                }
-                shouldPromptRef.current = false;
-            }
-        }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef, disconnect]);
 
     return (
         <ConnectButton.Custom>
