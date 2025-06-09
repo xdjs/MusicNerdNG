@@ -99,59 +99,6 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
         setIsAddingNew(false);
     }, [pathname]);
 
-    // If we're in a search flow and not authenticated, try to reconnect
-    if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
-        console.log("[SearchBar] Search flow needs authentication, initiating connection");
-        
-        // Clear CSRF token cookie first
-        document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-        
-        // Clear all SIWE-related data
-        sessionStorage.removeItem('siwe-nonce');
-        localStorage.removeItem('siwe.session');
-        localStorage.removeItem('wagmi.siwe.message');
-        localStorage.removeItem('wagmi.siwe.signature');
-        
-        // Clear all wagmi-related data
-        localStorage.removeItem('wagmi.wallet');
-        localStorage.removeItem('wagmi.connected');
-        localStorage.removeItem('wagmi.injected.connected');
-        localStorage.removeItem('wagmi.store');
-        localStorage.removeItem('wagmi.cache');
-        
-        // Clear any manual disconnect flag
-        sessionStorage.removeItem('manualDisconnect');
-        
-        // Small delay to ensure cleanup is complete
-        setTimeout(() => {
-            if (openConnectModal) {
-                openConnectModal();
-            }
-        }, 100);
-    }
-
-    // Handle authentication state changes
-    useEffect(() => {
-        if (status === "unauthenticated" && walletConnected) {
-            // If wallet is connected but we're not authenticated, force a disconnect
-            if (disconnect) {
-                disconnect();
-                // Clear all session data
-                sessionStorage.clear();
-                localStorage.removeItem('siwe.session');
-                localStorage.removeItem('wagmi.siwe.message');
-                localStorage.removeItem('wagmi.siwe.signature');
-                localStorage.removeItem('wagmi.wallet');
-                localStorage.removeItem('wagmi.connected');
-                localStorage.removeItem('wagmi.injected.connected');
-                localStorage.removeItem('wagmi.store');
-                localStorage.removeItem('wagmi.cache');
-                // Force a page reload
-                window.location.reload();
-            }
-        }
-    }, [status, walletConnected, disconnect]);
-
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
         setShowResults(false);
@@ -181,9 +128,6 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                 localStorage.removeItem('wagmi.injected.connected');
                 localStorage.removeItem('wagmi.store');
                 localStorage.removeItem('wagmi.cache');
-                
-                // Clear any manual disconnect flag
-                sessionStorage.removeItem('manualDisconnect');
                 
                 // Small delay to ensure cleanup is complete
                 setTimeout(() => {
@@ -488,31 +432,31 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
         if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
             console.log("[SearchBar] Search flow needs authentication, initiating connection");
             
-            // Clear CSRF token cookie first
-            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-            
-            // Clear all SIWE-related data
-            sessionStorage.removeItem('siwe-nonce');
-            localStorage.removeItem('siwe.session');
-            localStorage.removeItem('wagmi.siwe.message');
-            localStorage.removeItem('wagmi.siwe.signature');
-            
-            // Clear all wagmi-related data
-            localStorage.removeItem('wagmi.wallet');
-            localStorage.removeItem('wagmi.connected');
-            localStorage.removeItem('wagmi.injected.connected');
-            localStorage.removeItem('wagmi.store');
-            localStorage.removeItem('wagmi.cache');
-            
-            // Clear any manual disconnect flag
-            sessionStorage.removeItem('manualDisconnect');
-            
-            // Small delay to ensure cleanup is complete
-            setTimeout(() => {
-                if (connectModal) {
-                    connectModal();
-                }
-            }, 100);
+            // Only proceed if this wasn't a manual disconnect
+            if (!sessionStorage.getItem('manualDisconnect')) {
+                // Clear CSRF token cookie first
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                
+                // Clear all SIWE-related data
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                
+                // Clear all wagmi-related data
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+                
+                // Small delay to ensure cleanup is complete
+                setTimeout(() => {
+                    if (connectModal) {
+                        connectModal();
+                    }
+                }, 100);
+            }
         }
 
         // If authentication fails, clean up
@@ -656,15 +600,10 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
 
     const handleLogout = async () => {
         try {
-            // Set flag to indicate this was a logout
-            sessionStorage.setItem('logoutTriggered', 'true');
+            console.log("[SearchBar] Signing out");
             
-            // First disconnect the wallet
-            if (disconnect) {
-                disconnect();
-                // Small delay to ensure disconnect completes
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+            // Set flag to indicate this was a manual disconnect
+            sessionStorage.setItem('manualDisconnect', 'true');
             
             // Clear CSRF token cookie first
             document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
@@ -683,27 +622,38 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
             localStorage.removeItem('wagmi.store');
             localStorage.removeItem('wagmi.cache');
             
-            // Restore the logout flag since we cleared session storage
-            sessionStorage.setItem('logoutTriggered', 'true');
+            // First disconnect the wallet
+            if (disconnect) {
+                disconnect();
+                // Small delay to ensure disconnect completes
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
             
-            // Sign out of NextAuth
-            await signOut({ redirect: false });
+            // Then sign out of NextAuth
+            await signOut({ 
+                redirect: false,
+                callbackUrl: window.location.origin
+            });
+            
+            // Wait longer for session cleanup
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Force a page reload to clear any lingering state
             window.location.reload();
             
             toast({
-                title: "Logged out",
-                description: "You have been logged out successfully",
+                title: "Signed out",
+                description: "You have been signed out successfully"
             });
         } catch (error) {
-            console.error("[SearchBar] Error during logout:", error);
+            console.error("[SearchBar] Error during sign out:", error);
             toast({
                 variant: "destructive",
                 title: "Error",
-                description: "Failed to log out"
+                description: "Failed to sign out properly"
             });
-            // If logout fails, force a page reload anyway to ensure clean state
+            
+            // Force a page reload even if there was an error
             window.location.reload();
         }
     };

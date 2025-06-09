@@ -11,24 +11,26 @@ export const authenticationAdapter = createAuthenticationAdapter({
     localStorage.removeItem('wagmi.siwe.message');
     localStorage.removeItem('wagmi.siwe.signature');
 
-    // Clear any manual disconnect flag
-    sessionStorage.removeItem('manualDisconnect');
+    // If this was a manual disconnect, clear all wagmi data
+    if (sessionStorage.getItem('manualDisconnect')) {
+      localStorage.removeItem('wagmi.wallet');
+      localStorage.removeItem('wagmi.connected');
+      localStorage.removeItem('wagmi.injected.connected');
+      localStorage.removeItem('wagmi.store');
+      localStorage.removeItem('wagmi.cache');
+      sessionStorage.removeItem('manualDisconnect');
+      
+      // Force a page reload to ensure clean state
+      window.location.reload();
+      return "";
+    }
 
-    // Clear wagmi connection state to force a fresh connection
-    localStorage.removeItem('wagmi.connected');
-    localStorage.removeItem('wagmi.injected.connected');
-    
     const token = await getCsrfToken() ?? "";
     console.log("[AuthAdapter] Got CSRF token:", token);
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
     console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
-    
-    // Clear any existing SIWE message data
-    localStorage.removeItem('wagmi.siwe.message');
-    localStorage.removeItem('wagmi.siwe.signature');
-    
     const message = new SiweMessage({
       domain: window.location.host,
       address,
@@ -45,9 +47,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
     return message;
   },
   getMessageBody: ({ message }: { message: SiweMessage }) => {
-    // Clear any existing signature
-    localStorage.removeItem('wagmi.siwe.signature');
-    
     const messageBody = message.prepareMessage();
     console.log("[AuthAdapter] Prepared message body:", messageBody);
     return messageBody;
@@ -64,6 +63,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
       localStorage.removeItem('siwe.session');
       localStorage.removeItem('wagmi.siwe.message');
       localStorage.removeItem('wagmi.siwe.signature');
+
+      // Clear any manual disconnect flag
+      sessionStorage.removeItem('manualDisconnect');
 
       // First attempt to sign in
       const response = await signIn("credentials", {
