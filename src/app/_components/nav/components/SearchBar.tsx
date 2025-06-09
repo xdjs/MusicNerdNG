@@ -74,7 +74,7 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
     // Wagmi hooks are safe to use here
     const { openConnectModal } = useConnectModal() ?? {};
     const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
-    const { disconnect: disconnectWallet } = useDisconnect() ?? { disconnect: undefined };
+    const { disconnect } = useDisconnect() ?? { disconnect: undefined };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -350,6 +350,7 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
     // Wagmi hooks are safe to use here
     const { openConnectModal: connectModal } = useConnectModal() ?? {};
     const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
+    const { disconnect } = useDisconnect() ?? { disconnect: undefined };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -409,6 +410,12 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
         if (status === "unauthenticated" && !walletConnected) {
             setIsAddingArtist(false);
             setIsAddingNew(false);
+            
+            // If this was triggered by a logout (not just a check), reload the page
+            if (sessionStorage.getItem('logoutTriggered')) {
+                sessionStorage.removeItem('logoutTriggered');
+                window.location.reload();
+            }
         }
     }, [status, walletConnected, session, connectModal]);
 
@@ -536,6 +543,50 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
             clearTimeout(blurTimeoutRef.current);
         }
         setShowResults(true);
+    };
+
+    const handleLogout = async () => {
+        try {
+            // Set flag to indicate this was a logout
+            sessionStorage.setItem('logoutTriggered', 'true');
+            
+            // Clear CSRF token cookie first
+            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+            
+            // Clear all session data
+            sessionStorage.clear();
+            localStorage.removeItem('siwe.session');
+            localStorage.removeItem('wagmi.siwe.message');
+            localStorage.removeItem('wagmi.siwe.signature');
+            sessionStorage.removeItem('siwe-nonce');
+            
+            // Clear all wagmi-related data
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
+            localStorage.removeItem('wagmi.store');
+            localStorage.removeItem('wagmi.cache');
+            
+            // Restore the logout flag since we cleared session storage
+            sessionStorage.setItem('logoutTriggered', 'true');
+            
+            if (disconnect) {
+                disconnect();
+            }
+            await signOut({ redirect: false });
+            
+            toast({
+                title: "Logged out",
+                description: "You have been logged out successfully",
+            });
+        } catch (error) {
+            console.error("[SearchBar] Error during logout:", error);
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to log out"
+            });
+        }
     };
 
     // Add hidden Login component for search flow
