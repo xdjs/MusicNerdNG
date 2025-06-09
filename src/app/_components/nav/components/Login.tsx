@@ -70,55 +70,48 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
                     description: "You can now add artists to your collection.",
                 });
             }
+            return;
         }
 
-        // Handle login initiation or wallet connection without session
-        if ((!session && status === "unauthenticated" && !isConnected) || (isConnected && !session)) {
+        // Handle wallet connection without session
+        if (isConnected && !session) {
+            console.log("[Login] Connected but no session, forcing SIWE flow");
+            
+            // Clear SIWE data to force a new message
+            sessionStorage.removeItem('siwe-nonce');
+            localStorage.removeItem('siwe.session');
+            localStorage.removeItem('wagmi.siwe.message');
+            localStorage.removeItem('wagmi.siwe.signature');
+            
+            // Clear CSRF token to force new nonce
+            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+            
+            // Disconnect wallet to restart auth flow
+            disconnect?.();
+            return;
+        }
+
+        // Handle initial login or reconnection
+        if (!isConnected && !session && status === "unauthenticated") {
             const loginInitiator = sessionStorage.getItem('loginInitiator');
             const isSearchFlow = sessionStorage.getItem('searchFlow');
-            const needsSignature = sessionStorage.getItem('needsSignature');
             
-            if (isConnected && !session && !needsSignature) {
-                // Set flag to indicate we need signature
-                sessionStorage.setItem('needsSignature', 'true');
-                
-                // Clear SIWE data to force a new message
-                sessionStorage.removeItem('siwe-nonce');
-                localStorage.removeItem('siwe.session');
-                localStorage.removeItem('wagmi.siwe.message');
-                localStorage.removeItem('wagmi.siwe.signature');
-                
-                // Clear CSRF token to force new nonce
-                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                
-                // Trigger disconnect
-                disconnect?.();
-                return;
-            }
-            
-            if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow) || needsSignature) {
-                console.log("[Login] Initiating connection for:", { loginInitiator, needsSignature });
-                
-                if (!isConnected && openConnectModal) {
+            if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) {
+                console.log("[Login] Starting initial connection");
+                if (openConnectModal) {
                     openConnectModal();
                 }
             }
         }
 
+        // Handle status changes
         if (status !== currentStatus) {
             setCurrentStatus(status);
             
             // Clean up flags if authentication fails
             if (status === "unauthenticated" && currentStatus === "loading") {
-                // Don't clear session storage if this was a manual disconnect
                 if (!sessionStorage.getItem('manualDisconnect')) {
-                    // Keep the needsSignature flag if it exists
-                    const needsSignature = sessionStorage.getItem('needsSignature');
                     sessionStorage.clear();
-                    if (needsSignature) {
-                        sessionStorage.setItem('needsSignature', needsSignature);
-                    }
-                    
                     localStorage.removeItem('wagmi.wallet');
                     localStorage.removeItem('wagmi.connected');
                     localStorage.removeItem('wagmi.injected.connected');

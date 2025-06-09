@@ -53,13 +53,21 @@ const WalletProviders = dynamic(
                                 
                                 return {
                                     statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-                                    // Let RainbowKit handle these values
-                                    nonce: undefined,
-                                    chainId: undefined,
+                                    nonce: undefined, // Let RainbowKit handle the nonce
+                                    chainId: undefined, // Let RainbowKit handle the chainId
                                     expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
                                 };
                             }}
                             enabled={true}
+                            onSignIn={() => {
+                                // Clear any pending flags
+                                sessionStorage.removeItem('needsSignature');
+                                sessionStorage.removeItem('manualDisconnect');
+                            }}
+                            onSignOut={() => {
+                                // Set manual disconnect flag
+                                sessionStorage.setItem('manualDisconnect', 'true');
+                            }}
                         >
                             <RainbowKitProvider 
                                 modalSize="compact"
