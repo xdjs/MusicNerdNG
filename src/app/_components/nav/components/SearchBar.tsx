@@ -108,36 +108,36 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
 
             // If not connected or no session, handle login first
             if (!walletConnected || !session) {
-                // Set up search flow flags before initiating login
-                sessionStorage.setItem('searchFlow', 'true');
-                sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                
-                // Clear CSRF token cookie first
-                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                
-                // Clear all SIWE-related data
-                sessionStorage.removeItem('siwe-nonce');
-                localStorage.removeItem('siwe.session');
-                localStorage.removeItem('wagmi.siwe.message');
-                localStorage.removeItem('wagmi.siwe.signature');
-                
-                // Clear all wagmi-related data
-                localStorage.removeItem('wagmi.wallet');
-                localStorage.removeItem('wagmi.connected');
-                localStorage.removeItem('wagmi.injected.connected');
-                localStorage.removeItem('wagmi.store');
-                localStorage.removeItem('wagmi.cache');
-                
-                // Set flag to indicate explicit user action
-                shouldPromptRef.current = true;
-                
-                // Small delay to ensure cleanup is complete
-                setTimeout(() => {
-                    if (openConnectModal) {
-                        openConnectModal();
-                    }
-                }, 100);
+                // Only proceed if this wasn't a manual disconnect
+                if (!sessionStorage.getItem('manualDisconnect')) {
+                    // Set up search flow flags before initiating login
+                    sessionStorage.setItem('searchFlow', 'true');
+                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                    
+                    // Clear CSRF token cookie first
+                    document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                    
+                    // Clear all SIWE-related data
+                    sessionStorage.removeItem('siwe-nonce');
+                    localStorage.removeItem('siwe.session');
+                    localStorage.removeItem('wagmi.siwe.message');
+                    localStorage.removeItem('wagmi.siwe.signature');
+                    
+                    // Clear all wagmi-related data
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    localStorage.removeItem('wagmi.store');
+                    localStorage.removeItem('wagmi.cache');
+                    
+                    // Small delay to ensure cleanup is complete
+                    setTimeout(() => {
+                        if (openConnectModal) {
+                            openConnectModal();
+                        }
+                    }, 100);
+                }
                 return;
             }
 
@@ -189,9 +189,6 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                     localStorage.removeItem('wagmi.injected.connected');
                     localStorage.removeItem('wagmi.store');
                     localStorage.removeItem('wagmi.cache');
-                    
-                    // Set flag to indicate explicit user action
-                    shouldPromptRef.current = true;
                     
                     // Small delay to ensure cleanup is complete
                     setTimeout(() => {
@@ -437,28 +434,32 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
         // If we're in a search flow and not authenticated, try to reconnect
         if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
             console.log("[SearchBar] Search flow needs authentication, initiating connection");
-            // Clear CSRF token cookie first
-            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
             
-            // Clear all SIWE-related data
-            sessionStorage.removeItem('siwe-nonce');
-            localStorage.removeItem('siwe.session');
-            localStorage.removeItem('wagmi.siwe.message');
-            localStorage.removeItem('wagmi.siwe.signature');
-            
-            // Clear all wagmi-related data
-            localStorage.removeItem('wagmi.wallet');
-            localStorage.removeItem('wagmi.connected');
-            localStorage.removeItem('wagmi.injected.connected');
-            localStorage.removeItem('wagmi.store');
-            localStorage.removeItem('wagmi.cache');
-            
-            // Small delay to ensure cleanup is complete
-            setTimeout(() => {
-                if (connectModal) {
-                    connectModal();
-                }
-            }, 100);
+            // Only proceed if this wasn't a manual disconnect
+            if (!sessionStorage.getItem('manualDisconnect')) {
+                // Clear CSRF token cookie first
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+                
+                // Clear all SIWE-related data
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+                
+                // Clear all wagmi-related data
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+                
+                // Small delay to ensure cleanup is complete
+                setTimeout(() => {
+                    if (connectModal) {
+                        connectModal();
+                    }
+                }, 100);
+            }
         }
 
         // If authentication fails, clean up

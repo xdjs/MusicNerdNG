@@ -49,6 +49,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
       localStorage.removeItem('wagmi.siwe.message');
       localStorage.removeItem('wagmi.siwe.signature');
 
+      // Clear any manual disconnect flag
+      sessionStorage.removeItem('manualDisconnect');
+
       // First attempt to sign in
       const response = await signIn("credentials", {
         message: JSON.stringify(message),
@@ -76,6 +79,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
   signOut: async () => {
     try {
       console.log("[AuthAdapter] Signing out");
+      
+      // Set flag to indicate this was a manual disconnect
+      sessionStorage.setItem('manualDisconnect', 'true');
       
       // Clear CSRF token cookie first
       document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';

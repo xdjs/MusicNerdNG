@@ -41,6 +41,19 @@ const WalletProviders = dynamic(
                                     localStorage.removeItem('siwe.session');
                                     localStorage.removeItem('wagmi.siwe.message');
                                     localStorage.removeItem('wagmi.siwe.signature');
+                                    
+                                    // Clear wagmi-related data if this was a manual disconnect
+                                    if (sessionStorage.getItem('manualDisconnect')) {
+                                        localStorage.removeItem('wagmi.wallet');
+                                        localStorage.removeItem('wagmi.connected');
+                                        localStorage.removeItem('wagmi.injected.connected');
+                                        localStorage.removeItem('wagmi.store');
+                                        localStorage.removeItem('wagmi.cache');
+                                        sessionStorage.removeItem('manualDisconnect');
+                                        
+                                        // Force a page reload to clear any lingering state
+                                        window.location.reload();
+                                    }
                                 }
                                 
                                 return {
