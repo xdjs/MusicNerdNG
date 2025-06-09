@@ -44,19 +44,13 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             sessionUser: session?.user,
             isSearchFlow: sessionStorage.getItem('searchFlow'),
             pendingArtist: sessionStorage.getItem('pendingArtistName'),
-            shouldPrompt: shouldPromptRef.current,
-            manualDisconnect: sessionStorage.getItem('manualDisconnect'),
-            loginInitiator: sessionStorage.getItem('loginInitiator'),
-            needsSignature: sessionStorage.getItem('needsSignature')
+            shouldPrompt: shouldPromptRef.current
         });
 
         // Handle successful authentication
         if (isConnected && session) {
-            // Reset all flags
+            // Reset prompt flag
             shouldPromptRef.current = false;
-            sessionStorage.removeItem('manualDisconnect');
-            sessionStorage.removeItem('loginInitiator');
-            sessionStorage.removeItem('needsSignature');
             
             // Clear loading state if it was set
             if (searchBarRef?.current) {
@@ -70,24 +64,6 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
                     description: "You can now add artists to your collection.",
                 });
             }
-            return;
-        }
-
-        // Handle wallet connection without session
-        if (isConnected && !session) {
-            console.log("[Login] Connected but no session, forcing SIWE flow");
-            
-            // Clear SIWE data to force a new message
-            sessionStorage.removeItem('siwe-nonce');
-            localStorage.removeItem('siwe.session');
-            localStorage.removeItem('wagmi.siwe.message');
-            localStorage.removeItem('wagmi.siwe.signature');
-            
-            // Clear CSRF token to force new nonce
-            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-            
-            // Disconnect wallet to restart auth flow
-            disconnect?.();
             return;
         }
 
@@ -110,18 +86,11 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             
             // Clean up flags if authentication fails
             if (status === "unauthenticated" && currentStatus === "loading") {
-                if (!sessionStorage.getItem('manualDisconnect')) {
-                    sessionStorage.clear();
-                    localStorage.removeItem('wagmi.wallet');
-                    localStorage.removeItem('wagmi.connected');
-                    localStorage.removeItem('wagmi.injected.connected');
-                    localStorage.removeItem('wagmi.store');
-                    localStorage.removeItem('wagmi.cache');
-                }
+                sessionStorage.clear();
                 shouldPromptRef.current = false;
             }
         }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef, disconnect]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {

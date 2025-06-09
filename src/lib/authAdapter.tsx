@@ -6,23 +6,11 @@ export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     console.log("[AuthAdapter] Getting CSRF token for nonce");
     
-    // Only clear SIWE data if this was a manual disconnect
-    if (sessionStorage.getItem('manualDisconnect')) {
-      sessionStorage.removeItem('siwe-nonce');
-      localStorage.removeItem('siwe.session');
-      localStorage.removeItem('wagmi.siwe.message');
-      localStorage.removeItem('wagmi.siwe.signature');
-      localStorage.removeItem('wagmi.wallet');
-      localStorage.removeItem('wagmi.connected');
-      localStorage.removeItem('wagmi.injected.connected');
-      localStorage.removeItem('wagmi.store');
-      localStorage.removeItem('wagmi.cache');
-      sessionStorage.removeItem('manualDisconnect');
-      
-      // Force a page reload to ensure clean state
-      window.location.reload();
-      return "";
-    }
+    // Clear any stale SIWE data to ensure a fresh start
+    sessionStorage.removeItem('siwe-nonce');
+    localStorage.removeItem('siwe.session');
+    localStorage.removeItem('wagmi.siwe.message');
+    localStorage.removeItem('wagmi.siwe.signature');
 
     const token = await getCsrfToken() ?? "";
     console.log("[AuthAdapter] Got CSRF token:", token);
@@ -57,7 +45,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
-      // Don't clear SIWE data here, as it might be needed for session persistence
       const response = await signIn("credentials", {
         message: JSON.stringify(message),
         signature,
@@ -84,9 +71,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
   signOut: async () => {
     try {
       console.log("[AuthAdapter] Signing out");
-      
-      // Set flag to indicate this was a manual disconnect
-      sessionStorage.setItem('manualDisconnect', 'true');
       
       // Clear CSRF token cookie first
       document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
