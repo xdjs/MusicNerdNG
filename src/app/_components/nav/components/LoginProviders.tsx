@@ -59,15 +59,6 @@ const WalletProviders = dynamic(
                                 };
                             }}
                             enabled={true}
-                            onSignIn={() => {
-                                // Clear any pending flags
-                                sessionStorage.removeItem('needsSignature');
-                                sessionStorage.removeItem('manualDisconnect');
-                            }}
-                            onSignOut={() => {
-                                // Set manual disconnect flag
-                                sessionStorage.setItem('manualDisconnect', 'true');
-                            }}
                         >
                             <RainbowKitProvider 
                                 modalSize="compact"
