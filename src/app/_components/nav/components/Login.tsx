@@ -130,15 +130,20 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             }
         }
 
-        // Handle login initiation
-        if (!session && status === "unauthenticated" && !isConnected) {
+        // Handle login initiation or wallet connection without session
+        if ((!session && status === "unauthenticated" && !isConnected) || (isConnected && !session)) {
             const loginInitiator = sessionStorage.getItem('loginInitiator');
             const isSearchFlow = sessionStorage.getItem('searchFlow');
+            
+            // Always set shouldPromptRef to true when connected without session
+            if (isConnected && !session) {
+                shouldPromptRef.current = true;
+            }
             
             if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) {
                 console.log("[Login] Initiating connection for:", loginInitiator);
                 
-                // Clear any existing SIWE data to force a new message
+                // Always clear SIWE data to force a new message
                 sessionStorage.removeItem('siwe-nonce');
                 localStorage.removeItem('siwe.session');
                 localStorage.removeItem('wagmi.siwe.message');
@@ -147,7 +152,16 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
                 // Clear CSRF token to force new nonce
                 document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
                 
-                if (openConnectModal) {
+                // If already connected but no session, disconnect first
+                if (isConnected && !session) {
+                    disconnect?.();
+                    // Small delay before reconnecting
+                    setTimeout(() => {
+                        if (openConnectModal) {
+                            openConnectModal();
+                        }
+                    }, 500);
+                } else if (openConnectModal) {
                     openConnectModal();
                 }
             }
@@ -170,7 +184,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
                 shouldPromptRef.current = false;
             }
         }
-    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef, disconnect]);
 
     return (
         <ConnectButton.Custom>

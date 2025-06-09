@@ -5,14 +5,13 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     console.log("[AuthAdapter] Getting CSRF token for nonce");
-    // Clear any existing SIWE data to force a new message
-    sessionStorage.removeItem('siwe-nonce');
-    localStorage.removeItem('siwe.session');
-    localStorage.removeItem('wagmi.siwe.message');
-    localStorage.removeItem('wagmi.siwe.signature');
-
-    // If this was a manual disconnect, clear all wagmi data
+    
+    // Only clear SIWE data if this was a manual disconnect
     if (sessionStorage.getItem('manualDisconnect')) {
+      sessionStorage.removeItem('siwe-nonce');
+      localStorage.removeItem('siwe.session');
+      localStorage.removeItem('wagmi.siwe.message');
+      localStorage.removeItem('wagmi.siwe.signature');
       localStorage.removeItem('wagmi.wallet');
       localStorage.removeItem('wagmi.connected');
       localStorage.removeItem('wagmi.injected.connected');
@@ -58,16 +57,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
         signature
       });
 
-      // Clear any existing SIWE data
-      sessionStorage.removeItem('siwe-nonce');
-      localStorage.removeItem('siwe.session');
-      localStorage.removeItem('wagmi.siwe.message');
-      localStorage.removeItem('wagmi.siwe.signature');
-
-      // Clear any manual disconnect flag
-      sessionStorage.removeItem('manualDisconnect');
-
-      // First attempt to sign in
+      // Don't clear SIWE data here, as it might be needed for session persistence
       const response = await signIn("credentials", {
         message: JSON.stringify(message),
         signature,

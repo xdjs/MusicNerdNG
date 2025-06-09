@@ -31,8 +31,8 @@ const WalletProviders = dynamic(
                     <QueryClientProvider client={queryClient}>
                         <RainbowKitSiweNextAuthProvider
                             getSiweMessageOptions={() => {
-                                // Clear any existing SIWE data to force a new message
-                                if (typeof window !== 'undefined') {
+                                // Only clear SIWE data if this was a manual disconnect
+                                if (typeof window !== 'undefined' && sessionStorage.getItem('manualDisconnect')) {
                                     // Clear CSRF token cookie
                                     document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
                                     
@@ -42,18 +42,13 @@ const WalletProviders = dynamic(
                                     localStorage.removeItem('wagmi.siwe.message');
                                     localStorage.removeItem('wagmi.siwe.signature');
                                     
-                                    // Clear wagmi-related data if this was a manual disconnect
-                                    if (sessionStorage.getItem('manualDisconnect')) {
-                                        localStorage.removeItem('wagmi.wallet');
-                                        localStorage.removeItem('wagmi.connected');
-                                        localStorage.removeItem('wagmi.injected.connected');
-                                        localStorage.removeItem('wagmi.store');
-                                        localStorage.removeItem('wagmi.cache');
-                                        sessionStorage.removeItem('manualDisconnect');
-                                        
-                                        // Force a page reload to clear any lingering state
-                                        window.location.reload();
-                                    }
+                                    // Clear wagmi-related data
+                                    localStorage.removeItem('wagmi.wallet');
+                                    localStorage.removeItem('wagmi.connected');
+                                    localStorage.removeItem('wagmi.injected.connected');
+                                    localStorage.removeItem('wagmi.store');
+                                    localStorage.removeItem('wagmi.cache');
+                                    sessionStorage.removeItem('manualDisconnect');
                                 }
                                 
                                 return {
