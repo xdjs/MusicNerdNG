@@ -72,7 +72,7 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
     const loginRef = useRef<HTMLButtonElement>(null);
 
     // Wagmi hooks are safe to use here
-    const { openConnectModal: connectModal } = useConnectModal() ?? {};
+    const { openConnectModal } = useConnectModal() ?? {};
     const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
     const { disconnect: disconnectWallet } = useDisconnect() ?? { disconnect: undefined };
 
@@ -86,7 +86,6 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
 
     // Add cleanup effect for loading states
     useEffect(() => {
-        // Clear loading states when component unmounts
         return () => {
             setIsAddingArtist(false);
             setIsAddingNew(false);
@@ -95,11 +94,8 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
 
     // Add effect to clear loading states after navigation
     useEffect(() => {
-        // Only clear loading states if we're not in the middle of authentication
-        if (!sessionStorage.getItem('searchFlow')) {
-            setIsAddingArtist(false);
-            setIsAddingNew(false);
-        }
+        setIsAddingArtist(false);
+        setIsAddingNew(false);
     }, [pathname]);
 
     const handleNavigate = async (result: SearchResult) => {
@@ -107,67 +103,23 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
         setShowResults(false);
 
         if (result.isSpotifyOnly) {
-            if (status === "loading") {
-                console.log("[SearchBar] Auth status is loading, waiting...");
-                return;
-            }
+            if (status === "loading") return;
 
             // If not connected or no session, handle login first
             if (!walletConnected || !session) {
-                console.log("[SearchBar] Starting auth flow for artist:", result.name);
-                
-                try {
-                    // Store the artist info for after auth
-                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    sessionStorage.setItem('searchFlow', 'true');
-                    sessionStorage.setItem('directLogin', 'true');
-                    
-                    // Only disconnect if we're connected but don't have a session
-                    if (walletConnected && !session && disconnectWallet) {
-                        console.log("[SearchBar] Connected but no session, disconnecting wallet");
-                        await signOut({ redirect: false });
-                        disconnectWallet();
-                        // Small delay to ensure disconnect completes
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
-                    
-                    // Open connect modal - let RainbowKit handle the state management
-                    if (connectModal) {
-                        connectModal();
-                    }
-                } catch (error) {
-                    console.error("[SearchBar] Error during connection flow:", error);
-                    // Clean up all stored data on error
-                    sessionStorage.removeItem('searchFlow');
-                    sessionStorage.removeItem('pendingArtistSpotifyId');
-                    sessionStorage.removeItem('pendingArtistName');
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to connect wallet - please try again"
-                    });
-                    setIsAddingArtist(false);
-                    setIsAddingNew(false);
+                if (openConnectModal) {
+                    openConnectModal();
                 }
                 return;
             }
 
             // Only try to add the artist if we have a session
             try {
-                console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAddingArtist(true);
                 setIsAddingNew(true);
                 const addResult = await addArtist(result.spotify ?? "");
-                console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    // Clean up stored data before navigation
-                    sessionStorage.removeItem('searchFlow');
-                    sessionStorage.removeItem('pendingArtistSpotifyId');
-                    sessionStorage.removeItem('pendingArtistName');
-                    
-                    // Navigate using push
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         router.prefetch(url);
@@ -189,13 +141,8 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
                 if (error instanceof Error && error.message.includes('Not authenticated')) {
-                    console.log("[SearchBar] Session expired, restarting auth flow");
-                    // Store the artist info before restarting auth
-                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    sessionStorage.setItem('searchFlow', 'true');
-                    if (connectModal) {
-                        connectModal();
+                    if (openConnectModal) {
+                        openConnectModal();
                     }
                 } else {
                     toast({
@@ -709,9 +656,6 @@ export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boole
     return (
         <QueryClientProvider client={queryClient}>
             <SearchBar ref={searchBarRef} isTopSide={isTopSide} />
-            <div className="hidden">
-                <Login buttonStyles="" ref={null} searchBarRef={searchBarRef} />
-            </div>
         </QueryClientProvider>
     );
 }
