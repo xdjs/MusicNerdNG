@@ -53,8 +53,10 @@ const WalletProviders = dynamic(
                                 
                                 return {
                                     statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-                                    nonce: undefined, // Let RainbowKit handle the nonce
-                                    chainId: undefined, // Let RainbowKit handle the chainId
+                                    // Let RainbowKit handle these values
+                                    nonce: undefined,
+                                    chainId: undefined,
+                                    // Add expiration
                                     expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
                                 };
                             }}

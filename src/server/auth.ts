@@ -122,16 +122,35 @@ export const authOptions: NextAuthOptions = {
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0]
           });
 
+          // Get the CSRF token and nonce
+          const csrfToken = cookies().get('next-auth.csrf-token')?.value;
+          const nonce = csrfToken?.split('|')[0];
+
+          if (!nonce) {
+            console.error("[Auth] No CSRF token/nonce found");
+            return null;
+          }
+
           const result = await siwe.verify({
             signature: credentials?.signature || "",
             domain: authUrl.host,
-            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
+            nonce: nonce,
           });
 
           console.log("[Auth] SIWE verification result:", result);
 
           if (!result.success) {
             console.error("[Auth] SIWE verification failed:", result);
+            return null;
+          }
+
+          // Verify the message hasn't expired
+          const messageTime = new Date(siwe.issuedAt || '').getTime();
+          const expirationTime = new Date(siwe.expirationTime || '').getTime();
+          const now = new Date().getTime();
+
+          if (messageTime > now || now > expirationTime) {
+            console.error("[Auth] SIWE message expired or invalid time");
             return null;
           }
 
