@@ -54,7 +54,8 @@ interface SearchBarProps {
 }
 
 // Component for wallet-enabled mode
-const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) => {
+const WalletSearchBar = forwardRef(
+  (props: SearchBarProps, ref: React.Ref<SearchBarRef>) => {
     const { isTopSide = false } = props;
     const router = useRouter();
     const pathname = usePathname();
@@ -362,18 +363,22 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
                                     );
                                 })}
                             </div>
-                        )}
+                        ) : null}
                     </div>
                 )}
             </div>
         </>
     );
-});
+  }
+) as React.ForwardRefExoticComponent<
+  SearchBarProps & React.RefAttributes<SearchBarRef>
+>;
 
 WalletSearchBar.displayName = 'WalletSearchBar';
 
 // Component for non-wallet mode
-const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) => {
+const NoWalletSearchBar = forwardRef(
+  (props: SearchBarProps, ref: React.Ref<SearchBarRef>) => {
     const { isTopSide = false } = props;
     const router = useRouter();
     const pathname = usePathname();
@@ -658,18 +663,22 @@ const NoWalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) 
                                     );
                                 })}
                             </div>
-                        )}
+                        ) : null}
                     </div>
                 )}
             </div>
         </>
     );
-});
+  }
+) as React.ForwardRefExoticComponent<
+  SearchBarProps & React.RefAttributes<SearchBarRef>
+>;
 
 NoWalletSearchBar.displayName = 'NoWalletSearchBar';
 
 // Main SearchBar component that decides which version to render
-const SearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) => {
+const SearchBar = forwardRef(
+  (props: SearchBarProps, ref: React.Ref<SearchBarRef>) => {
     const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
 
     if (!isWalletRequired) {
@@ -677,7 +686,10 @@ const SearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) => {
     }
 
     return <WalletSearchBar {...props} ref={ref} />;
-});
+  }
+) as React.ForwardRefExoticComponent<
+  SearchBarProps & React.RefAttributes<SearchBarRef>
+>;
 
 SearchBar.displayName = 'SearchBar';
 
