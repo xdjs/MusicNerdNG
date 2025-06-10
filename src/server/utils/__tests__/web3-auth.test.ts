@@ -93,7 +93,7 @@ jest.mock('../../auth', () => ({
         callbacks: {
             jwt: jest.fn(),
             session: jest.fn(),
-            redirect: ({ url, baseUrl }) => {
+            redirect: ({ url, baseUrl }: { url: string; baseUrl: string }) => {
                 if (url.startsWith('/')) return `${baseUrl}${url}`;
                 if (new URL(url).origin === baseUrl) return url;
                 return baseUrl;
@@ -135,11 +135,7 @@ describe('Web3 Authentication', () => {
   describe('authorize', () => {
     it('should authenticate with valid SIWE message and signature', async () => {
       // Mock user exists
-      (getUserByWallet as unknown as ReturnType<typeof jest.fn>).mockResolvedValue({
-        id: 'test-id',
-        wallet: '0x1234567890abcdef',
-        username: 'test-user'
-      });
+      (getUserByWallet as jest.Mock).mockResolvedValue({ id: 'test-id', wallet: '0x1234567890abcdef', username: 'test-user' } as any);
 
       const provider = authOptions.providers[0] as unknown as CredentialsConfig<{
         message: { label: string; type: string; placeholder: string };
@@ -163,7 +159,7 @@ describe('Web3 Authentication', () => {
 
     it('should create new user if wallet not found', async () => {
       // Mock user doesn't exist
-      (getUserByWallet as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(null);
+      (getUserByWallet as jest.Mock).mockResolvedValue(null as any);
       
       // Ensure wallet requirement is not disabled
       process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
@@ -182,7 +178,7 @@ describe('Web3 Authentication', () => {
       }>;
       const result = await provider.authorize?.(newCredentials, mockReq);
 
-      expect(createUser).toHaveBeenCalledWith('0x1234567890abcdef');
+      expect(createUser).toHaveBeenCalledWith('0x1234567890abcdef' as any);
       expect(result).toEqual({
         id: 'new-test-id',
         walletAddress: '0x1234567890abcdef',
@@ -254,7 +250,7 @@ describe('Web3 Authentication', () => {
   describe('session security', () => {
     it('should use secure session configuration in production', () => {
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
+      Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true });
 
       const cookieName = authOptions.cookies?.sessionToken?.name;
       expect(cookieName).toBe('__Secure-next-auth.session-token');
@@ -265,12 +261,12 @@ describe('Web3 Authentication', () => {
         secure: true
       });
 
-      process.env.NODE_ENV = originalEnv || 'development';
+      Object.defineProperty(process.env, 'NODE_ENV', { value: originalEnv || 'development', configurable: true });
     });
 
     it('should use development session configuration in non-production', () => {
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'development';
+      Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', configurable: true });
       
       expect(authOptions.cookies?.sessionToken?.name).not.toContain('__Secure-');
       expect(authOptions.cookies?.sessionToken?.options).toEqual({
@@ -280,7 +276,7 @@ describe('Web3 Authentication', () => {
         secure: false
       });
 
-      process.env.NODE_ENV = originalEnv || 'development';
+      Object.defineProperty(process.env, 'NODE_ENV', { value: originalEnv || 'development', configurable: true });
     });
 
     it('should have appropriate session timeout', () => {
