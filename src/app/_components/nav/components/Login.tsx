@@ -155,6 +155,19 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
         }
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
+    // --- Synchronize auth session with wallet connection ---
+    // If the user disconnects their wallet via RainbowKit's account modal, wagmi
+    // will set `isConnected` to false but `next-auth` will still think the user
+    // is authenticated. We explicitly sign the user out in that scenario so the
+    // app's auth state remains consistent and the correct "Signed out" toast is
+    // displayed.
+    useEffect(() => {
+        if (!isConnected && status === "authenticated") {
+            // Perform a silent sign-out (no redirect)
+            signOut({ redirect: false });
+        }
+    }, [isConnected, status]);
+
     return (
         <ConnectButton.Custom>
             {({
