@@ -30,36 +30,14 @@ const WalletProviders = dynamic(
                 <WagmiProvider config={config}>
                     <QueryClientProvider client={queryClient}>
                         <RainbowKitSiweNextAuthProvider
-                            getSiweMessageOptions={() => {
-                                // Only clear SIWE data if this was a manual disconnect
-                                if (typeof window !== 'undefined' && sessionStorage.getItem('manualDisconnect')) {
-                                    // Clear CSRF token cookie
-                                    document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                                    
-                                    // Clear SIWE-related storage
-                                    sessionStorage.removeItem('siwe-nonce');
-                                    localStorage.removeItem('siwe.session');
-                                    localStorage.removeItem('wagmi.siwe.message');
-                                    localStorage.removeItem('wagmi.siwe.signature');
-                                    
-                                    // Clear wagmi-related data
-                                    localStorage.removeItem('wagmi.wallet');
-                                    localStorage.removeItem('wagmi.connected');
-                                    localStorage.removeItem('wagmi.injected.connected');
-                                    localStorage.removeItem('wagmi.store');
-                                    localStorage.removeItem('wagmi.cache');
-                                    sessionStorage.removeItem('manualDisconnect');
-                                }
-                                
-                                return {
-                                    statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-                                    // Let RainbowKit handle these values
-                                    nonce: undefined,
-                                    chainId: undefined,
-                                    // Add expiration
-                                    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
-                                };
-                            }}
+                            getSiweMessageOptions={() => ({
+                                statement: 'Sign in to MusicNerd to add artists and manage your collection.',
+                                nonce: undefined,
+                                chainId: undefined,
+                                domain: window.location.host,
+                                uri: window.location.origin,
+                                expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
+                            })}
                             enabled={true}
                         >
                             <RainbowKitProvider 

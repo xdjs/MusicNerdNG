@@ -33,10 +33,17 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
   createMessage: ({ nonce, address, chainId }) => {
     console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
+    
+    // Clear any existing SIWE data to force a new message
+    sessionStorage.removeItem('siwe-nonce');
+    localStorage.removeItem('siwe.session');
+    localStorage.removeItem('wagmi.siwe.message');
+    localStorage.removeItem('wagmi.siwe.signature');
+    
     const message = new SiweMessage({
       domain: window.location.host,
       address,
-      statement: 'Sign in with Ethereum to MusicNerd.',
+      statement: 'Sign in to MusicNerd to add artists and manage your collection.',
       uri: window.location.origin,
       version: '1',
       chainId,
