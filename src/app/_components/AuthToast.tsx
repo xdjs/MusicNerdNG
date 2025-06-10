@@ -10,13 +10,21 @@ export default function AuthToast() {
   
   // Keep track of the previous auth status so we only fire toasts
   // when the status actually changes.
-  const prevStatusRef = useRef<typeof status>();
+  const prevStatusRef = useRef<typeof status>(status);
+  const isFirstRunRef = useRef(true);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
 
-    // Show a welcome toast only when transitioning from "unauthenticated" (or the
-    // initial undefined state) to "authenticated" with a valid user object.
+    // Skip the very first run to avoid showing a welcome toast on page reload
+    if (isFirstRunRef.current) {
+      isFirstRunRef.current = false;
+      prevStatusRef.current = status;
+      return;
+    }
+
+    // Show a welcome toast only when transitioning into "authenticated" from any
+    // other state (after the initial mount), with a valid user object.
     if (prevStatus !== "authenticated" && status === "authenticated" && session?.user) {
       toast({
         title: "Welcome!",
