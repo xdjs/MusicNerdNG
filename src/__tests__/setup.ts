@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/extend-expect';
+import '@testing-library/jest-dom';
 import { describe, it, expect } from '@jest/globals';
 
 // Mock environment variables
