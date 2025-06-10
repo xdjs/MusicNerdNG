@@ -1,74 +1,89 @@
-import '@testing-library/jest-dom/vitest';
-import { vi, beforeEach } from 'vitest';
+import '@testing-library/jest-dom';
+import { describe, it, expect } from '@jest/globals';
 
 // Mock environment variables
-vi.stubEnv('NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID', 'test_client_id');
-vi.stubEnv('SPOTIFY_WEB_CLIENT_SECRET', 'test_client_secret');
-vi.stubEnv('NEXTAUTH_SECRET', 'test_secret');
-vi.stubEnv('NEXTAUTH_URL', 'http://localhost:3000');
-vi.stubEnv('NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT', 'true');
-vi.stubEnv('NODE_ENV', 'test');
+Object.defineProperty(process, 'env', {
+    value: {
+        ...process.env,
+        NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID: 'test_client_id',
+        SPOTIFY_WEB_CLIENT_SECRET: 'test_client_secret',
+        NEXTAUTH_SECRET: 'test_secret',
+        NEXTAUTH_URL: 'http://localhost:3000',
+        NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT: 'true',
+        NODE_ENV: 'test'
+    }
+});
 
 // Mock next/headers since it's not available in test environment
-vi.mock('next/headers', () => ({
-  cookies: vi.fn(() => ({
-    get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
-  })),
-  headers: vi.fn(),
+jest.mock('next/headers', () => ({
+    cookies: jest.fn(() => ({
+        get: jest.fn(),
+        set: jest.fn(),
+        delete: jest.fn(),
+    })),
+    headers: jest.fn(),
 }));
 
 // Mock next-auth
-vi.mock('next-auth', () => ({
-  getServerSession: vi.fn(),
+jest.mock('next-auth', () => ({
+    getServerSession: jest.fn(),
 }));
 
 // Mock auth options
-vi.mock('@/server/auth', () => ({
-  authOptions: {
-    providers: [
-      {
-        id: 'credentials',
-        name: 'Credentials',
-        credentials: {
-          message: { label: 'Message', type: 'text' },
-          signature: { label: 'Signature', type: 'text' }
+jest.mock('@/server/auth', () => ({
+    authOptions: {
+        providers: [
+            {
+                id: 'credentials',
+                name: 'Credentials',
+                credentials: {
+                    message: { label: 'Message', type: 'text' },
+                    signature: { label: 'Signature', type: 'text' }
+                },
+                authorize: jest.fn()
+            }
+        ],
+        session: {
+            strategy: 'jwt',
+            maxAge: 30 * 24 * 60 * 60,
         },
-        authorize: vi.fn()
-      }
-    ],
-    session: {
-      strategy: 'jwt',
-      maxAge: 30 * 24 * 60 * 60,
-    },
-    cookies: {
-      sessionToken: {
-        name: process.env.NODE_ENV === 'production' ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
-        options: {
-          httpOnly: true,
-          sameSite: 'lax',
-          path: '/',
-          secure: process.env.NODE_ENV === 'production'
+        cookies: {
+            sessionToken: {
+                name: process.env.NODE_ENV === 'production' ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+                options: {
+                    httpOnly: true,
+                    sameSite: 'lax',
+                    path: '/',
+                    secure: process.env.NODE_ENV === 'production'
+                },
+            },
         },
-      },
-    },
-    callbacks: {
-      jwt: vi.fn(),
-      session: vi.fn(),
-      redirect: vi.fn((params) => {
-        const { url, baseUrl } = params;
-        // Allow relative URLs
-        if (url.startsWith('/')) return url;
-        // Allow URLs from same origin
-        if (new URL(url).origin === baseUrl) return url;
-        return baseUrl;
-      }),
-    },
-  }
+        callbacks: {
+            jwt: jest.fn(),
+            session: jest.fn(),
+            redirect: jest.fn((params) => {
+                const { url, baseUrl } = params;
+                if (url.startsWith('/')) return url;
+                if (new URL(url).origin === baseUrl) return url;
+                return baseUrl;
+            }),
+        },
+    }
 }));
 
 // Reset all mocks before each test
 beforeEach(() => {
-  vi.clearAllMocks();
+    jest.clearAllMocks();
+});
+
+describe('Test Environment Setup', () => {
+    it('should have proper environment variables', () => {
+        expect(process.env.NODE_ENV).toBeDefined();
+    });
+
+    it('should have proper global mocks', () => {
+        expect(global.fetch).toBeDefined();
+        expect(global.Request).toBeDefined();
+        expect(global.Response).toBeDefined();
+    });
 }); 

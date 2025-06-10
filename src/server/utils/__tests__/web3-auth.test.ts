@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { SiweMessage } from 'siwe';
 import { authOptions } from '../../auth';
 import { getUserByWallet, createUser } from '../queriesTS';
@@ -6,101 +6,100 @@ import { cookies } from 'next/headers';
 import type { CredentialsConfig } from 'next-auth/providers/credentials';
 
 // Mock dependencies
-vi.mock('next/headers', () => ({
-  cookies: vi.fn()
+jest.mock('next/headers', () => ({
+    cookies: jest.fn(() => ({
+        get: () => ({ value: 'test-nonce|test-csrf' })
+    }))
 }));
 
-vi.mock('../queriesTS', () => ({
-  getUserByWallet: vi.fn(),
-  createUser: vi.fn()
+jest.mock('../queriesTS', () => ({
+    getUserByWallet: jest.fn(),
+    createUser: jest.fn()
 }));
 
 // Mock auth module
-vi.mock('../../auth', () => ({
-  authOptions: {
-    providers: [
-      {
-        id: 'credentials',
-        name: 'Credentials',
-        credentials: {
-          message: { label: 'Message', type: 'text' },
-          signature: { label: 'Signature', type: 'text' }
+jest.mock('../../auth', () => ({
+    authOptions: {
+        providers: [
+            {
+                id: 'credentials',
+                name: 'Credentials',
+                credentials: {
+                    message: { label: 'Message', type: 'text' },
+                    signature: { label: 'Signature', type: 'text' }
+                },
+                authorize: jest.fn().mockImplementation(async (credentials) => {
+                    if (!credentials) return null;
+                    
+                    if (process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true') {
+                        return {
+                            walletAddress: null,
+                            email: null,
+                            name: 'Guest User',
+                            username: 'guest',
+                            isSignupComplete: true
+                        };
+                    }
+
+                    if (!credentials.message || !credentials.signature) return null;
+                    if (credentials.message.includes('invalid') || credentials.signature === 'invalid') return null;
+
+                    const walletAddress = '0x1234567890abcdef';
+                    
+                    if (credentials.message.includes('new')) {
+                        await createUser(walletAddress);
+                        return {
+                            id: 'new-test-id',
+                            walletAddress,
+                            email: undefined,
+                            name: undefined,
+                            username: undefined,
+                            isSignupComplete: true
+                        };
+                    }
+
+                    return {
+                        id: 'test-id',
+                        walletAddress,
+                        email: undefined,
+                        name: 'test-user',
+                        username: 'test-user',
+                        isSignupComplete: true
+                    };
+                })
+            }
+        ],
+        session: {
+            strategy: 'jwt',
+            maxAge: 30 * 24 * 60 * 60,
         },
-        authorize: async (credentials: any) => {
-          if (!credentials) return null;
-          
-          // Check if wallet requirement is disabled
-          if (process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true') {
-            return {
-              walletAddress: null,
-              email: null,
-              name: 'Guest User',
-              username: 'guest',
-              isSignupComplete: true
-            };
-          }
-
-          // Validate SIWE message
-          if (!credentials.message || !credentials.signature) return null;
-          if (credentials.message.includes('invalid') || credentials.signature === 'invalid') return null;
-
-          const walletAddress = '0x1234567890abcdef';
-
-          // Create new user if wallet not found
-          if (credentials.message.includes('new')) {
-            await createUser(walletAddress);
-            return {
-              id: 'new-test-id',
-              walletAddress,
-              email: undefined,
-              name: undefined,
-              username: undefined,
-              isSignupComplete: true
-            };
-          }
-
-          return {
-            id: 'test-id',
-            walletAddress,
-            email: undefined,
-            name: 'test-user',
-            username: 'test-user',
-            isSignupComplete: true
-          };
+        cookies: {
+            sessionToken: {
+                get name() {
+                    return process.env.NODE_ENV === 'production' 
+                        ? '__Secure-next-auth.session-token' 
+                        : 'next-auth.session-token';
+                },
+                options: {
+                    httpOnly: true,
+                    sameSite: 'lax',
+                    path: '/',
+                    get secure() {
+                        return process.env.NODE_ENV === 'production';
+                    }
+                },
+            },
+        },
+        callbacks: {
+            jwt: jest.fn(),
+            session: jest.fn(),
+            redirect: ({ url, baseUrl }) => {
+                if (url.startsWith('/')) return `${baseUrl}${url}`;
+                if (new URL(url).origin === baseUrl) return url;
+                return baseUrl;
+            }
         }
-      }
-    ],
-    session: {
-      strategy: 'jwt',
-      maxAge: 30 * 24 * 60 * 60,
-    },
-    cookies: {
-      sessionToken: {
-        get name() {
-          return process.env.NODE_ENV === 'production' 
-            ? '__Secure-next-auth.session-token' 
-            : 'next-auth.session-token';
-        },
-        options: {
-          httpOnly: true,
-          sameSite: 'lax',
-          path: '/',
-          get secure() {
-            return process.env.NODE_ENV === 'production';
-          }
-        },
-      },
-    },
-    callbacks: {
-      jwt: vi.fn(),
-      session: vi.fn(),
-      redirect: ({ url, baseUrl }: { url: string; baseUrl: string }) => {
-        if (url.startsWith('/')) return `${baseUrl}${url}`;
-        if (new URL(url).origin === baseUrl) return url;
-        return baseUrl;
-      },
-    },
-  }
+    }
 }));
 
 describe('Web3 Authentication', () => {
@@ -125,18 +124,18 @@ describe('Web3 Authentication', () => {
   } as any;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    (cookies as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    jest.clearAllMocks();
+    (cookies as unknown as ReturnType<typeof jest.fn>).mockReturnValue({
       get: () => ({ value: 'test-nonce|test-csrf' })
     });
     // Reset environment variables before each test
-    vi.stubEnv('NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT', 'false');
+    process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
   });
 
   describe('authorize', () => {
     it('should authenticate with valid SIWE message and signature', async () => {
       // Mock user exists
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (getUserByWallet as unknown as ReturnType<typeof jest.fn>).mockResolvedValue({
         id: 'test-id',
         wallet: '0x1234567890abcdef',
         username: 'test-user'
@@ -148,7 +147,7 @@ describe('Web3 Authentication', () => {
       }>;
 
       // Ensure wallet requirement is not disabled
-      vi.stubEnv('NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT', 'false');
+      process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
       
       const result = await provider.authorize?.(mockCredentials, mockReq);
 
@@ -164,10 +163,10 @@ describe('Web3 Authentication', () => {
 
     it('should create new user if wallet not found', async () => {
       // Mock user doesn't exist
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (getUserByWallet as unknown as ReturnType<typeof jest.fn>).mockResolvedValue(null);
       
       // Ensure wallet requirement is not disabled
-      vi.stubEnv('NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT', 'false');
+      process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
 
       const newCredentials = {
         ...mockCredentials,
@@ -196,7 +195,7 @@ describe('Web3 Authentication', () => {
 
     it('should return null for invalid signature', async () => {
       // Ensure wallet requirement is not disabled
-      vi.stubEnv('NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT', 'false');
+      process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
 
       const invalidCredentials = {
         ...mockCredentials,
@@ -235,7 +234,7 @@ describe('Web3 Authentication', () => {
 
     it('should handle malformed SIWE message', async () => {
       // Ensure wallet requirement is not disabled
-      vi.stubEnv('NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT', 'false');
+      process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
 
       const invalidCredentials = {
         message: 'invalid-json',
@@ -255,7 +254,7 @@ describe('Web3 Authentication', () => {
   describe('session security', () => {
     it('should use secure session configuration in production', () => {
       const originalEnv = process.env.NODE_ENV;
-      vi.stubEnv('NODE_ENV', 'production');
+      process.env.NODE_ENV = 'production';
 
       const cookieName = authOptions.cookies?.sessionToken?.name;
       expect(cookieName).toBe('__Secure-next-auth.session-token');
@@ -266,12 +265,12 @@ describe('Web3 Authentication', () => {
         secure: true
       });
 
-      vi.stubEnv('NODE_ENV', originalEnv || 'development');
+      process.env.NODE_ENV = originalEnv || 'development';
     });
 
     it('should use development session configuration in non-production', () => {
       const originalEnv = process.env.NODE_ENV;
-      vi.stubEnv('NODE_ENV', 'development');
+      process.env.NODE_ENV = 'development';
       
       expect(authOptions.cookies?.sessionToken?.name).not.toContain('__Secure-');
       expect(authOptions.cookies?.sessionToken?.options).toEqual({
@@ -281,7 +280,7 @@ describe('Web3 Authentication', () => {
         secure: false
       });
 
-      vi.stubEnv('NODE_ENV', originalEnv || 'development');
+      process.env.NODE_ENV = originalEnv || 'development';
     });
 
     it('should have appropriate session timeout', () => {

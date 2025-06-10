@@ -1,17 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { addUsersToWhitelist, removeFromWhitelist, getWhitelistedUsers, getUserByWallet } from '../queriesTS';
 import { getServerAuthSession } from '../../auth';
 
 // Mock dependencies
-vi.mock('../../auth', () => ({
-  getServerAuthSession: vi.fn()
+jest.mock('../../auth', () => ({
+  getServerAuthSession: jest.fn()
 }));
 
-vi.mock('../queriesTS', () => ({
-  addUsersToWhitelist: vi.fn(),
-  removeFromWhitelist: vi.fn(),
-  getWhitelistedUsers: vi.fn(),
-  getUserByWallet: vi.fn()
+jest.mock('../queriesTS', () => ({
+  addUsersToWhitelist: jest.fn(),
+  removeFromWhitelist: jest.fn(),
+  getWhitelistedUsers: jest.fn(),
+  getUserByWallet: jest.fn()
 }));
 
 describe('Role Management and Whitelist', () => {
@@ -27,8 +27,8 @@ describe('Role Management and Whitelist', () => {
   ];
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    (getServerAuthSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    jest.clearAllMocks();
+    (getServerAuthSession as jest.Mock).mockResolvedValue({
       user: { id: mockUser.id }
     });
   });
@@ -36,7 +36,7 @@ describe('Role Management and Whitelist', () => {
   describe('Whitelist Management', () => {
     it('should add users to whitelist', async () => {
       const walletAddresses = ['0xuser3', '0xuser4'];
-      (addUsersToWhitelist as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (addUsersToWhitelist as jest.Mock).mockResolvedValue({
         status: 'success',
         message: 'Users added to whitelist'
       });
@@ -52,7 +52,7 @@ describe('Role Management and Whitelist', () => {
 
     it('should handle errors when adding to whitelist', async () => {
       const walletAddresses = ['0xuser3', '0xuser4'];
-      (addUsersToWhitelist as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (addUsersToWhitelist as jest.Mock).mockResolvedValue({
         status: 'error',
         message: 'Error adding users to whitelist'
       });
@@ -74,7 +74,7 @@ describe('Role Management and Whitelist', () => {
     });
 
     it('should get whitelisted users', async () => {
-      (getWhitelistedUsers as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mockWhitelistedUsers);
+      (getWhitelistedUsers as jest.Mock).mockResolvedValue(mockWhitelistedUsers);
 
       const result = await getWhitelistedUsers();
 
@@ -83,8 +83,8 @@ describe('Role Management and Whitelist', () => {
 
     it('should require authentication for getting whitelisted users', async () => {
       // Mock no session
-      (getServerAuthSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-      (getWhitelistedUsers as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Unauthorized'));
+      (getServerAuthSession as jest.Mock).mockResolvedValue(null);
+      (getWhitelistedUsers as jest.Mock).mockRejectedValue(new Error('Unauthorized'));
 
       await expect(getWhitelistedUsers())
         .rejects.toThrow('Unauthorized');
@@ -93,7 +93,7 @@ describe('Role Management and Whitelist', () => {
 
   describe('User Role Verification', () => {
     it('should verify admin status', async () => {
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (getUserByWallet as jest.Mock).mockResolvedValue({
         ...mockUser,
         isAdmin: true
       });
@@ -103,7 +103,7 @@ describe('Role Management and Whitelist', () => {
     });
 
     it('should verify non-admin status', async () => {
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (getUserByWallet as jest.Mock).mockResolvedValue({
         ...mockUser,
         isAdmin: false
       });
@@ -113,7 +113,7 @@ describe('Role Management and Whitelist', () => {
     });
 
     it('should verify whitelist status', async () => {
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      (getUserByWallet as jest.Mock).mockResolvedValue({
         ...mockUser,
         isWhiteListed: true
       });
@@ -123,14 +123,14 @@ describe('Role Management and Whitelist', () => {
     });
 
     it('should handle non-existent user', async () => {
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (getUserByWallet as jest.Mock).mockResolvedValue(null);
 
       const user = await getUserByWallet('0xnonexistent');
       expect(user).toBeNull();
     });
 
     it('should handle database errors', async () => {
-      (getUserByWallet as unknown as ReturnType<typeof vi.fn>)
+      (getUserByWallet as jest.Mock)
         .mockRejectedValue(new Error('Error finding user: Database error'));
 
       await expect(getUserByWallet(mockUser.wallet))

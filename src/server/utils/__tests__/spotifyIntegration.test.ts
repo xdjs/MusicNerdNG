@@ -1,18 +1,15 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
 import axios from 'axios';
 import queryString from 'querystring';
 
 // Mock axios
-vi.mock('axios');
-const mockedAxios = axios as unknown as { 
-    post: ReturnType<typeof vi.fn>,
-    get: ReturnType<typeof vi.fn>
-};
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 // Mock queryString
-vi.mock('querystring', () => ({
-    stringify: vi.fn().mockImplementation((obj) => {
+jest.mock('querystring', () => ({
+    stringify: jest.fn().mockImplementation((obj) => {
         return Object.entries(obj)
             .map(([key, value]) => `${key}=${value}`)
             .join('&');
@@ -20,23 +17,23 @@ vi.mock('querystring', () => ({
 }));
 
 // Mock @/env
-vi.mock('@/env', () => ({
+jest.mock('@/env', () => ({
     SPOTIFY_WEB_CLIENT_ID: 'test-client-id',
     SPOTIFY_WEB_CLIENT_SECRET: 'test-client-secret',
     DISCORD_WEBHOOK_URL: 'mock-webhook-url'
 }));
 
 // Mock next/cache
-vi.mock('next/cache', () => ({
+jest.mock('next/cache', () => ({
     unstable_cache: (fn: Function) => fn,
 }));
 
 describe('Spotify API Integration', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        jest.clearAllMocks();
         // Reset environment variables before each test
-        vi.resetModules();
-        vi.mock('@/env', () => ({
+        jest.resetModules();
+        jest.mock('@/env', () => ({
             SPOTIFY_WEB_CLIENT_ID: 'test-client-id',
             SPOTIFY_WEB_CLIENT_SECRET: 'test-client-secret'
         }));
@@ -51,7 +48,7 @@ describe('Spotify API Integration', () => {
                 }
             };
 
-            (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockTokenResponse);
+            (mockedAxios.post as jest.Mock).mockResolvedValueOnce(mockTokenResponse);
 
             const result = await getSpotifyHeaders();
 
@@ -73,7 +70,7 @@ describe('Spotify API Integration', () => {
 
         it('should handle missing credentials', async () => {
             // Mock missing credentials in @/env
-            vi.mock('@/env', () => ({
+            jest.mock('@/env', () => ({
                 SPOTIFY_WEB_CLIENT_ID: '',
                 SPOTIFY_WEB_CLIENT_SECRET: ''
             }));
@@ -88,7 +85,7 @@ describe('Spotify API Integration', () => {
         });
 
         it('should handle Spotify auth API errors', async () => {
-            (mockedAxios.post as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Failed to get Spotify access token'));
+            (mockedAxios.post as jest.Mock).mockRejectedValueOnce(new Error('Failed to get Spotify access token'));
 
             await expect(getSpotifyHeaders()).rejects.toThrow('Failed to get Spotify access token');
         });
@@ -105,7 +102,7 @@ describe('Spotify API Integration', () => {
 
         beforeEach(() => {
             // Mock getSpotifyHeaders to return valid headers
-            (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+            (mockedAxios.post as jest.Mock).mockResolvedValue({
                 data: {
                     access_token: 'mock-token',
                     expires_in: 3600
@@ -135,7 +132,7 @@ describe('Spotify API Integration', () => {
                 }
             };
 
-            (mockedAxios.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockArtistData);
+            (mockedAxios.get as jest.Mock).mockResolvedValueOnce(mockArtistData);
 
             const result = await getSpotifyArtist('test-spotify-id', mockHeaders);
 
@@ -154,7 +151,7 @@ describe('Spotify API Integration', () => {
         });
 
         it('should handle invalid Spotify IDs', async () => {
-            (mockedAxios.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+            (mockedAxios.get as jest.Mock).mockRejectedValueOnce({
                 response: {
                     status: 404,
                     data: { error: { message: 'Artist not found' } }
@@ -168,7 +165,7 @@ describe('Spotify API Integration', () => {
         });
 
         it('should handle expired tokens', async () => {
-            (mockedAxios.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+            (mockedAxios.get as jest.Mock).mockRejectedValueOnce({
                 response: {
                     status: 401,
                     data: { error: { message: 'The access token expired' } }
@@ -182,7 +179,7 @@ describe('Spotify API Integration', () => {
         });
 
         it('should handle rate limiting', async () => {
-            (mockedAxios.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+            (mockedAxios.get as jest.Mock).mockRejectedValueOnce({
                 response: {
                     status: 429,
                     data: { error: { message: 'Too Many Requests' } }
@@ -196,7 +193,7 @@ describe('Spotify API Integration', () => {
         });
 
         it('should handle network errors', async () => {
-            (mockedAxios.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+            (mockedAxios.get as jest.Mock).mockRejectedValueOnce({
                 message: 'Network Error',
                 response: undefined
             });
@@ -234,8 +231,8 @@ describe('Spotify API Integration', () => {
                 }
             };
 
-            (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockTokenResponse);
-            (mockedAxios.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockArtistData);
+            (mockedAxios.post as jest.Mock).mockResolvedValueOnce(mockTokenResponse);
+            (mockedAxios.get as jest.Mock).mockResolvedValueOnce(mockArtistData);
 
             // Get headers first
             const headers = await getSpotifyHeaders();
@@ -249,7 +246,7 @@ describe('Spotify API Integration', () => {
 
         it('should handle auth failure in complete flow', async () => {
             // Mock auth failure
-            (mockedAxios.post as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Failed to get Spotify access token'));
+            (mockedAxios.post as jest.Mock).mockRejectedValueOnce(new Error('Failed to get Spotify access token'));
 
             // Attempt the complete flow
             await expect(async () => {
