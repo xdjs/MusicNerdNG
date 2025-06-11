@@ -58,11 +58,16 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             }
             
             if (sessionStorage.getItem('searchFlow')) {
-                // Show success toast
+                // Show success toast once
                 toast({
                     title: "Connected!",
                     description: "You can now add artists to your collection.",
                 });
+                // Clear flags so it won't fire again on navigation
+                sessionStorage.removeItem('searchFlow');
+                sessionStorage.removeItem('pendingArtistSpotifyId');
+                sessionStorage.removeItem('pendingArtistName');
+                sessionStorage.removeItem('searchFlowPrompted');
             }
             return;
         }
@@ -188,11 +193,14 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             }
             
             if (sessionStorage.getItem('searchFlow')) {
-                // Show success toast
                 toast({
                     title: "Connected!",
                     description: "You can now add artists to your collection.",
                 });
+                sessionStorage.removeItem('searchFlow');
+                sessionStorage.removeItem('pendingArtistSpotifyId');
+                sessionStorage.removeItem('pendingArtistName');
+                sessionStorage.removeItem('searchFlowPrompted');
             }
         }
 
