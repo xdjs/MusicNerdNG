@@ -65,27 +65,52 @@ class MockSiweMessage {
   }
 
   async verify({ signature, domain, nonce }: { signature: string; domain: string; nonce: string }) {
+    console.log('[Debug] Mock SIWE verify called with:', { signature, domain, nonce });
+    console.log('[Debug] Mock SIWE instance:', {
+      address: this.address,
+      domain: this.domain,
+      nonce: this.nonce
+    });
+
     if (!signature) {
+      console.log('[Debug] Missing signature');
       throw new Error('Missing signature');
     }
     if (!domain) {
+      console.log('[Debug] Missing domain');
       throw new Error('Missing domain');
     }
     if (!nonce) {
+      console.log('[Debug] Missing nonce');
       throw new Error('Missing nonce');
     }
     
     // Test specific validation logic
     if (signature === '0xinvalid') {
+      console.log('[Debug] Invalid signature');
       return { success: false, error: 'Invalid signature' };
     }
-    if (domain !== this.domain.split(':')[0]) {
+
+    // Compare domains without port numbers
+    const messageDomain = this.domain.split(':')[0];
+    const verifyDomain = domain.split(':')[0];
+    console.log('[Debug] Comparing domains:', { messageDomain, verifyDomain });
+    
+    if (messageDomain !== verifyDomain) {
+      console.log('[Debug] Domain mismatch');
       return { success: false, error: 'Domain mismatch' };
     }
-    if (nonce !== 'csrf-token') {
+
+    // Extract just the token part from the nonce
+    const nonceToken = nonce.split('|')[0];
+    console.log('[Debug] Comparing nonces:', { nonceToken, expected: 'csrf-token' });
+    
+    if (nonceToken !== 'csrf-token') {
+      console.log('[Debug] Invalid nonce');
       return { success: false, error: 'Invalid nonce' };
     }
     
+    console.log('[Debug] SIWE verification successful');
     return { success: true };
   }
 }
@@ -108,15 +133,26 @@ global.console.log = mockConsoleLog;
 
 // Reset mocks before each test
 beforeEach(() => {
+  // Clear all mocks
+  jest.clearAllMocks();
   mockGetUserByWallet.mockReset();
   mockCreateUser.mockReset();
   mockConsoleError.mockReset();
-  mockCookiesGet.mockReset().mockReturnValue({ value: 'csrf-token|csrf-token-hash' });
-  
-  // Set default environment variables
-  process.env.NEXTAUTH_URL = 'http://localhost:3000';
-  process.env.NEXTAUTH_SECRET = 'test-secret';
-  process.env.NODE_ENV = 'test';
+  mockCookiesGet.mockReset();
+
+  // Reset default mock implementations
+  mockCookiesGet.mockImplementation((name) => {
+    console.log('[Debug] Mock cookies.get called with name:', name);
+    if (name === 'next-auth.csrf-token') {
+      return { value: 'csrf-token|csrf-token-hash' };
+    }
+    return undefined;
+  });
+
+  // Reset environment variables
+  delete process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
+  delete process.env.NODE_ENV;
+  delete process.env.NEXTAUTH_SECRET;
 });
 
 // Create a function to get auth options based on environment
@@ -180,7 +216,10 @@ const getAuthOptions = (env = {}) => {
         },
         async authorize(credentials) {
           try {
+            console.log('[Debug] Starting authorize with credentials:', credentials);
+            
             if (process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true') {
+              console.log('[Debug] Wallet requirement disabled, returning guest user');
               return {
                 id: 'temp-' + Math.random().toString(36).substring(2),
                 walletAddress: null,
@@ -192,27 +231,44 @@ const getAuthOptions = (env = {}) => {
             }
 
             if (!credentials?.message) {
+              console.log('[Debug] No message in credentials, returning null');
               return null;
             }
 
+            console.log('[Debug] Creating SiweMessage with:', credentials.message);
             const siwe = new SiweMessage(credentials.message);
             
-            // Debug log to verify SiweMessage mock is used during tests
-            // Remove or comment this out after debugging
-            if (typeof (siwe as any).verify === 'function') {
-              console.log('[Debug] SiweMessage class in authorize is mock:', (siwe instanceof MockSiweMessage));
-            }
+            console.log('[Debug] SiweMessage created:', {
+              address: siwe.address,
+              domain: siwe.domain,
+              nonce: siwe.nonce
+            });
 
             const normalizedMessageDomain = siwe.domain.split(':')[0];
             const normalizedAuthDomain = 'localhost';
 
+            console.log('[Debug] Domains:', {
+              normalizedMessageDomain,
+              normalizedAuthDomain
+            });
+
             // Safely retrieve CSRF nonce; fallback for environments without Next.js request scope
             let csrfNonce: string;
             try {
-              csrfNonce = cookies().get('next-auth.csrf-token')?.value.split('|')[0] || '';
+              const cookie = cookies().get('next-auth.csrf-token');
+              console.log('[Debug] CSRF cookie:', cookie);
+              csrfNonce = cookie?.value.split('|')[0] || '';
             } catch (err) {
+              console.log('[Debug] Error getting CSRF cookie, using fallback');
               csrfNonce = 'csrf-token';
             }
+            console.log('[Debug] Using CSRF nonce:', csrfNonce);
+
+            console.log('[Debug] Verifying SIWE with:', {
+              signature: credentials?.signature,
+              domain: normalizedAuthDomain,
+              nonce: csrfNonce
+            });
 
             const result = await siwe.verify({
               signature: credentials?.signature || "",
@@ -220,7 +276,7 @@ const getAuthOptions = (env = {}) => {
               nonce: csrfNonce,
             });
 
-            process.stdout.write(`Debug: siwe.verify returned ${JSON.stringify(result)}\n`);
+            console.log('[Debug] SIWE verification result:', result);
 
             if (!result.success) {
               console.error("[Auth] SIWE verification failed:", {
@@ -231,18 +287,28 @@ const getAuthOptions = (env = {}) => {
               return null;
             }
 
+            console.log('[Debug] Getting user by wallet:', siwe.address);
             let user = await getUserByWallet(siwe.address);
-            process.stdout.write(`Debug: After getUserByWallet ${JSON.stringify(user)}\n`);
+            console.log('[Debug] getUserByWallet result:', user);
+
             if (!user) {
+              console.log('[Debug] User not found, creating new user');
               user = await createUser(siwe.address);
-              process.stdout.write(`Debug: After createUser ${JSON.stringify(user)}\n`);
+              console.log('[Debug] createUser result:', user);
             }
 
-            process.stdout.write(`Debug: Returning user ${JSON.stringify(user)}\n`);
+            console.log('[Debug] Returning user:', {
+              id: user.id,
+              walletAddress: user.walletAddress,
+              email: user.email,
+              name: user.username,
+              username: user.username,
+              isSignupComplete: true,
+            });
 
             return {
               id: user.id,
-              walletAddress: user.wallet,
+              walletAddress: user.walletAddress,
               email: user.email,
               name: user.username,
               username: user.username,
@@ -507,6 +573,16 @@ describe('Authentication System', () => {
   });
 
   describe('Guest Mode', () => {
+    let originalEnv: string | undefined;
+
+    beforeEach(() => {
+      originalEnv = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
+    });
+
+    afterEach(() => {
+      process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalEnv;
+    });
+
     it('should allow guest access when wallet requirement is disabled', async () => {
       process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
       const options = getAuthOptions();
@@ -526,6 +602,7 @@ describe('Authentication System', () => {
     });
 
     it('should not allow guest access when wallet requirement is enabled', async () => {
+      process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
       const options = getAuthOptions();
       const provider = options.providers.find(p => p.id === 'credentials');
       
@@ -539,7 +616,7 @@ describe('Authentication System', () => {
   describe('SIWE Authentication', () => {
     const validMessage = {
       address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-      domain: 'localhost:3000',
+      domain: 'localhost',
       uri: 'http://localhost:3000/signin',
       version: '1',
       chainId: 1,
@@ -550,18 +627,22 @@ describe('Authentication System', () => {
 
     const mockUser = {
       id: '1',
-      wallet: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+      walletAddress: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
       email: 'test@example.com',
-      username: 'testuser'
+      username: 'testuser',
+      isSignupComplete: true
     };
 
     beforeEach(() => {
       mockGetUserByWallet.mockResolvedValue(mockUser);
+      mockCreateUser.mockResolvedValue(mockUser);
     });
 
     it('should authenticate with valid SIWE message and signature', async () => {
       const options = getAuthOptions();
       const provider = options.providers.find(p => p.id === 'credentials');
+      
+      console.log('[Debug] Running authentication test with message:', validMessage);
       
       const user = await provider.authorize({
         message: JSON.stringify(validMessage),
@@ -571,7 +652,7 @@ describe('Authentication System', () => {
       expect(user).toBeTruthy();
       expect(user).toMatchObject({
         id: mockUser.id,
-        walletAddress: mockUser.wallet,
+        walletAddress: mockUser.walletAddress,
         email: mockUser.email,
         name: mockUser.username,
         username: mockUser.username,
@@ -581,8 +662,8 @@ describe('Authentication System', () => {
     });
 
     it('should create new user if wallet not found', async () => {
-      mockGetUserByWallet.mockResolvedValue(null);
-      mockCreateUser.mockResolvedValue(mockUser);
+      mockGetUserByWallet.mockResolvedValueOnce(null);
+      mockCreateUser.mockResolvedValueOnce(mockUser);
       
       const options = getAuthOptions();
       const provider = options.providers.find(p => p.id === 'credentials');
@@ -618,7 +699,7 @@ describe('Authentication System', () => {
     it('should fail authentication with domain mismatch', async () => {
       const invalidMessage = {
         ...validMessage,
-        domain: 'wrong.domain:3000'
+        domain: 'wrong.domain'
       };
       
       const options = getAuthOptions();
@@ -714,7 +795,7 @@ describe('Authentication System', () => {
 
   describe('Error Handling Edge Cases', () => {
     it('should handle SIWE verification with network errors', async () => {
-      mockCookiesGet.mockReturnValueOnce({ value: 'csrf-token|csrf-token-hash' });
+      mockCookiesGet.mockReturnValueOnce({ value: 'csrf-token' });  // Remove the hash part
 
       const provider = getAuthOptions().providers[0];
       const result = await provider.authorize({
@@ -742,7 +823,7 @@ describe('Authentication System', () => {
     it('should handle createUser failures', async () => {
       mockGetUserByWallet.mockResolvedValueOnce(null);
       mockCreateUser.mockRejectedValueOnce(new Error('Failed to create user'));
-      mockCookiesGet.mockReturnValueOnce({ value: 'csrf-token|csrf-token-hash' });
+      mockCookiesGet.mockReturnValueOnce({ value: 'csrf-token' });  // Remove the hash part
 
       const provider = getAuthOptions().providers[0];
       const result = await provider.authorize({
