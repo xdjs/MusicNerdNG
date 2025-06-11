@@ -71,8 +71,12 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
         if (!isConnected && !session && status === "unauthenticated") {
             const loginInitiator = sessionStorage.getItem('loginInitiator');
             const isSearchFlow = sessionStorage.getItem('searchFlow');
+            const isSearchFlowPrompted = sessionStorage.getItem('searchFlowPrompted');
             
-            if (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) {
+            if (
+                (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) &&
+                !isSearchFlowPrompted
+            ) {
                 console.log("[Login] Starting initial connection");
                 if (openConnectModal) {
                     openConnectModal();
@@ -124,8 +128,11 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
             localStorage.removeItem('wagmi.siwe.message');
             localStorage.removeItem('wagmi.siwe.signature');
             
-            // Reset prompt flag
+            // Reset prompt flag and manual disconnect flag, also clear flow flags
             shouldPromptRef.current = false;
+            sessionStorage.removeItem('manualDisconnect');
+            sessionStorage.removeItem('searchFlowPrompted');
+            sessionStorage.removeItem('loginInitiator');
             
             // Then disconnect and sign out
             if (disconnect) {
