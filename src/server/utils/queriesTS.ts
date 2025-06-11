@@ -13,18 +13,6 @@ import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
 
-export async function getFeaturedArtistsTS() {
-    const featuredObj = await db.query.featured.findMany({
-        where: isNotNull(featured.featuredArtist),
-        with: { featuredArtist: true }
-    });
-    let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredArtist?.id } });
-    const spotifyHeader = await getSpotifyHeaders();
-    if (!spotifyHeader) return [];
-    const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "", spotifyHeader)));
-    return images;
-}
-
 type getResponse<T> = {
     isError: boolean,
     message: string,
