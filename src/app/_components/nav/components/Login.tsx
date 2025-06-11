@@ -23,7 +23,8 @@ interface LoginProps {
 }
 
 // Component for wallet-enabled mode
-const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref) => {
+const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
+    ({ buttonChildren, buttonStyles = "bg-gray-100", isplaceholder = false, searchBarRef }, ref): JSX.Element => {
     const router = useRouter();
     const { toast } = useToast();
     const { data: session, status } = useSession();
@@ -232,16 +233,29 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
     // --- Synchronize auth session with wallet connection ---
-    // If the user disconnects their wallet via RainbowKit's account modal, wagmi
-    // will set `isConnected` to false but `next-auth` will still think the user
-    // is authenticated. We explicitly sign the user out in that scenario so the
-    // app's auth state remains consistent and the correct "Signed out" toast is
-    // displayed.
+    // When the user disconnects their wallet via RainbowKit's account modal,
+    // wagmi sets `isConnected` to false but `next-auth` may still report them as
+    // authenticated.  We need to clear the session so the UI reflects the real
+    // state.
+    //
+    // Immediately signing the user out can cause issues on page load because
+    // wagmi might briefly report `isConnected === false` while it is still
+    // restoring the connection.  To avoid accidental log-outs we add a small
+    // grace period.  If the wallet is still disconnected after the delay we
+    // sign the user out silently.
     useEffect(() => {
+        let timeoutId: NodeJS.Timeout | null = null;
         if (!isConnected && status === "authenticated") {
-            // Perform a silent sign-out (no redirect)
-            signOut({ redirect: false });
+            timeoutId = setTimeout(() => {
+                // Re-check to ensure we didn't reconnect during the delay
+                if (!isConnected) {
+                    signOut({ redirect: false });
+                }
+            }, 1500);
         }
+        return () => {
+            if (timeoutId) clearTimeout(timeoutId);
+        };
     }, [isConnected, status]);
 
     return (
@@ -313,7 +327,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
 WalletLogin.displayName = 'WalletLogin';
 
 // Component for non-wallet mode
-const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
+const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref): JSX.Element => {
     // Return a placeholder div with the same dimensions as the wallet button
     return (
         <div className="w-12 h-12" />
@@ -323,7 +337,7 @@ const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => 
 NoWalletLogin.displayName = 'NoWalletLogin';
 
 // Main component that decides which version to render
-const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref) => {
+const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref): JSX.Element => {
     const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
     
     if (!isWalletRequired) {
