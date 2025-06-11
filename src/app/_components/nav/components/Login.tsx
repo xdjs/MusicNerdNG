@@ -81,6 +81,10 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
                 if (openConnectModal) {
                     openConnectModal();
                 }
+                // Ensure we don't auto-prompt again during the same logged-out session
+                shouldPromptRef.current = false;
+                sessionStorage.setItem('searchFlowPrompted', 'true');
+                sessionStorage.removeItem('loginInitiator');
             }
         }
 
