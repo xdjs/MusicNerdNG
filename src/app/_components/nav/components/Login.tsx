@@ -237,7 +237,20 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
     // is authenticated. We explicitly sign the user out in that scenario so the
     // app's auth state remains consistent and the correct "Signed out" toast is
     // displayed.
+    //
+    // However, right after a full page navigation wagmi may briefly report
+    // `isConnected === false` while it is still restoring the connection. If we
+    // sign the user out during that short window they appear to be logged out
+    // every time they visit a new page (e.g. /admin). To avoid this, we skip
+    // the automatic sign-out on the first render and only trigger it on
+    // subsequent disconnects.
+    const initialRenderRef = useRef(true);
     useEffect(() => {
+        if (initialRenderRef.current) {
+            initialRenderRef.current = false;
+            return;
+        }
+
         if (!isConnected && status === "authenticated") {
             // Perform a silent sign-out (no redirect)
             signOut({ redirect: false });
