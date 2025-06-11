@@ -13,18 +13,6 @@ import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
 
-export async function getFeaturedArtistsTS() {
-    const featuredObj = await db.query.featured.findMany({
-        where: isNotNull(featured.featuredArtist),
-        with: { featuredArtist: true }
-    });
-    let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredArtist?.id } });
-    const spotifyHeader = await getSpotifyHeaders();
-    if (!spotifyHeader) return [];
-    const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "", spotifyHeader)));
-    return images;
-}
-
 type getResponse<T> = {
     isError: boolean,
     message: string,
@@ -336,6 +324,11 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     }
 
     try {
+        // Get user data to check permissions
+        const user = session?.user?.id ? await getUserById(session.user.id) : null;
+        const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
+
+        // Check if this URL has already been added to either table
         const existingArtistUGC = await db.query.ugcresearch.findFirst({ 
             where: and(eq(ugcresearch.ugcUrl, artistUrl), eq(ugcresearch.artistId, artist.id)) 
         });
@@ -344,6 +337,29 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
             return { status: "error", message: "This artist data has already been added" };
         }
 
+        // For whitelisted/admin users, update artist table directly
+        if (isWhitelistedOrAdmin) {
+            const updateData = {
+                [artistIdFromUrl.siteName.toLowerCase()]: artistIdFromUrl.id
+            };
+            
+            await db.update(artists)
+                .set(updateData)
+                .where(eq(artists.id, artist.id));
+
+            // Send Discord message for the direct update
+            if (user) {
+                await sendDiscordMessage(`${user.wallet || 'Anonymous'} (Whitelisted/Admin) directly added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
+            }
+
+            return { 
+                status: "success", 
+                message: "Artist data has been added successfully", 
+                siteName: artistIdFromUrl.cardPlatformName ?? "" 
+            };
+        }
+
+        // For regular users, create UGC research entry
         const [newUGC] = await db.insert(ugcresearch).values({
             ugcUrl: artistUrl,
             siteName: artistIdFromUrl.siteName,
@@ -353,15 +369,16 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
             userId: session?.user?.id || undefined
         }).returning();
 
-        // Only send Discord message if we have a user
-        if (session?.user?.id) {
-            const user = await getUserById(session.user.id);
-            if (user) {
-                await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
-            }
+        // Send Discord message for UGC submission
+        if (user) {
+            await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
         }
 
-        return { status: "success", message: "Thanks for adding, we'll review this addition before posting", siteName: artistIdFromUrl.cardPlatformName ?? "" };
+        return { 
+            status: "success", 
+            message: "Thanks for adding, we'll review this addition before posting", 
+            siteName: artistIdFromUrl.cardPlatformName ?? "" 
+        };
     } catch (e) {
         console.error("error adding artist data", e);
         return { status: "error", message: "Error adding artist data, please try again" };

@@ -152,6 +152,79 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(({ buttonChildren,
         }
     }, [disconnect, toast]);
 
+    useEffect(() => {
+        console.log("[Login] State changed:", {
+            authFrom: currentStatus,
+            authTo: status,
+            isConnected,
+            address,
+            sessionUser: session?.user,
+            isSearchFlow: sessionStorage.getItem('searchFlow'),
+            pendingArtist: sessionStorage.getItem('pendingArtistName'),
+            shouldPrompt: shouldPromptRef.current,
+            manualDisconnect: sessionStorage.getItem('manualDisconnect')
+        });
+
+        // Handle successful authentication
+        if (isConnected && session) {
+            // Reset prompt flag and manual disconnect flag
+            shouldPromptRef.current = false;
+            sessionStorage.removeItem('manualDisconnect');
+            
+            // Clear loading state if it was set
+            if (searchBarRef?.current) {
+                searchBarRef.current.clearLoading();
+            }
+            
+            if (sessionStorage.getItem('searchFlow')) {
+                // Show success toast
+                toast({
+                    title: "Connected!",
+                    description: "You can now add artists to your collection.",
+                });
+            }
+        }
+
+        // Only handle reconnection if explicitly triggered
+        if (shouldPromptRef.current && !session && status === "unauthenticated" && !isConnected) {
+            console.log("[Login] Detected explicit login action, initiating connection");
+            if (openConnectModal) {
+                openConnectModal();
+            }
+        }
+
+        if (status !== currentStatus) {
+            setCurrentStatus(status);
+            
+            // Clean up flags if authentication fails
+            if (status === "unauthenticated" && currentStatus === "loading") {
+                // Don't clear session storage if this was a manual disconnect
+                if (!sessionStorage.getItem('manualDisconnect')) {
+                    sessionStorage.clear();
+                    localStorage.removeItem('wagmi.wallet');
+                    localStorage.removeItem('wagmi.connected');
+                    localStorage.removeItem('wagmi.injected.connected');
+                    localStorage.removeItem('wagmi.store');
+                    localStorage.removeItem('wagmi.cache');
+                }
+                shouldPromptRef.current = false;
+            }
+        }
+    }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
+
+    // --- Synchronize auth session with wallet connection ---
+    // If the user disconnects their wallet via RainbowKit's account modal, wagmi
+    // will set `isConnected` to false but `next-auth` will still think the user
+    // is authenticated. We explicitly sign the user out in that scenario so the
+    // app's auth state remains consistent and the correct "Signed out" toast is
+    // displayed.
+    useEffect(() => {
+        if (!isConnected && status === "authenticated") {
+            // Perform a silent sign-out (no redirect)
+            signOut({ redirect: false });
+        }
+    }, [isConnected, status]);
+
     return (
         <ConnectButton.Custom>
             {({

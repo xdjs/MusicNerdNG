@@ -2,6 +2,7 @@
 
 import { SessionProvider } from "next-auth/react";
 import { Session } from "next-auth";
+import AuthToast from "./AuthToast";
 
 export default function Providers({
   children,
@@ -16,6 +17,7 @@ export default function Providers({
       refetchInterval={0} 
       refetchOnWindowFocus={false}
     >
+      <AuthToast />
       {children}
     </SessionProvider>
   );

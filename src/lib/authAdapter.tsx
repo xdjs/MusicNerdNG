@@ -39,16 +39,30 @@ export const authenticationAdapter = createAuthenticationAdapter({
     localStorage.removeItem('siwe.session');
     localStorage.removeItem('wagmi.siwe.message');
     localStorage.removeItem('wagmi.siwe.signature');
+    const token = await getCsrfToken() ?? "";
+    console.log("[AuthAdapter] Got CSRF token:", token);
+    return token;
+  },
+  createMessage: ({ nonce, address, chainId }) => {
+    // Get domain without port number
+    const domain = window.location.hostname.split(':')[0];
     
+    console.log("[AuthAdapter] Creating SIWE message:", { 
+      nonce, 
+      address, 
+      chainId,
+      domain,
+      origin: window.location.origin
+    });
+
     const message = new SiweMessage({
-      domain: window.location.host,
+      domain,
       address,
       statement: 'Sign in to MusicNerd to add artists and manage your collection.',
       uri: window.location.origin,
       version: '1',
       chainId,
       nonce,
-      // Add these fields to make the message more secure
       issuedAt: new Date().toISOString(),
       expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
     });
@@ -64,9 +78,18 @@ export const authenticationAdapter = createAuthenticationAdapter({
     try {
       console.log("[AuthAdapter] Starting verification with:", {
         message: JSON.stringify(message),
-        signature
+        signature,
+        domain: message.domain,
+        origin: window.location.origin
       });
 
+      // Clear any existing SIWE data
+      sessionStorage.removeItem('siwe-nonce');
+      localStorage.removeItem('siwe.session');
+      localStorage.removeItem('wagmi.siwe.message');
+      localStorage.removeItem('wagmi.siwe.signature');
+
+      // First attempt to sign in
       const response = await signIn("credentials", {
         message: JSON.stringify(message),
         signature,

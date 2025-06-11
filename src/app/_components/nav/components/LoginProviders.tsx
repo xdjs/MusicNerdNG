@@ -22,7 +22,7 @@ const WalletProviders = dynamic(
             transports: {
                 [mainnet.id]: http()
             },
-            ssr: true,
+            ssr: true
         });
 
         return function Providers({ children }: { children: ReactNode }) {
@@ -40,7 +40,7 @@ const WalletProviders = dynamic(
                             })}
                             enabled={true}
                         >
-                            <RainbowKitProvider 
+                            <RainbowKitProvider
                                 modalSize="compact"
                                 showRecentTransactions={true}
                                 appInfo={{
