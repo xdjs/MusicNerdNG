@@ -32,18 +32,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
-    console.log("[AuthAdapter] Creating SIWE message:", { nonce, address, chainId });
-    
-    // Clear any existing SIWE data to force a new message
-    sessionStorage.removeItem('siwe-nonce');
-    localStorage.removeItem('siwe.session');
-    localStorage.removeItem('wagmi.siwe.message');
-    localStorage.removeItem('wagmi.siwe.signature');
-    const token = await getCsrfToken() ?? "";
-    console.log("[AuthAdapter] Got CSRF token:", token);
-    return token;
-  },
-  createMessage: ({ nonce, address, chainId }) => {
     // Get domain without port number
     const domain = window.location.hostname.split(':')[0];
     
@@ -54,6 +42,12 @@ export const authenticationAdapter = createAuthenticationAdapter({
       domain,
       origin: window.location.origin
     });
+
+    // Clear any existing SIWE data to force a new message
+    sessionStorage.removeItem('siwe-nonce');
+    localStorage.removeItem('siwe.session');
+    localStorage.removeItem('wagmi.siwe.message');
+    localStorage.removeItem('wagmi.siwe.signature');
 
     const message = new SiweMessage({
       domain,
