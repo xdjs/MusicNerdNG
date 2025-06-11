@@ -71,6 +71,8 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
     const { toast } = useToast();
     const loginRef = useRef<HTMLButtonElement>(null);
     const shouldPromptRef = useRef(false);
+    // Used to delay opening RainbowKit until next-auth status is settled
+    const loginRetryRef = useRef<NodeJS.Timeout | null>(null);
 
     // Wagmi hooks are safe to use here
     const { openConnectModal } = useConnectModal() ?? {};
@@ -90,6 +92,9 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
         return () => {
             setIsAddingArtist(false);
             setIsAddingNew(false);
+            if (loginRetryRef.current) {
+                clearTimeout(loginRetryRef.current);
+            }
         };
     }, []);
 
@@ -104,7 +109,15 @@ const WalletSearchBar = forwardRef<SearchBarRef, SearchBarProps>((props, ref) =>
         setShowResults(false);
 
         if (result.isSpotifyOnly) {
-            if (status === "loading") return;
+            if (status === "loading") {
+                if (!loginRetryRef.current) {
+                    loginRetryRef.current = setTimeout(() => {
+                        loginRetryRef.current = null;
+                        handleNavigate(result);
+                    }, 250);
+                }
+                return;
+            }
 
             // If not connected or no session, handle login first
             if (!walletConnected || !session) {
