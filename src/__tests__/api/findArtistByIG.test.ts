@@ -5,7 +5,6 @@ import { artists } from '@/server/db/schema';
 
 // Polyfill Response.json for the test environment
 if (!(Response as any).json) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (Response as any).json = (data: any, init?: ResponseInit) =>
         new Response(JSON.stringify(data), {
             ...init,
