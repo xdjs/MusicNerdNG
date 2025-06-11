@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { User } from "@/server/db/DbTypes";
-import { updateWhitelistedUser } from "@/server/utils/queriesTS";
 import { useRouter } from "next/navigation";
 
 interface WhitelistUserEditDialogProps {
@@ -22,9 +21,17 @@ export default function WhitelistUserEditDialog({ user }: WhitelistUserEditDialo
 
   async function handleSave() {
     setUploadStatus({ status: "success", message: "", isLoading: true });
-    const resp = await updateWhitelistedUser(user.id, { wallet, email, username });
-    setUploadStatus({ status: resp.status, message: resp.message, isLoading: false });
-    if (resp.status === "success") {
+    const resp = await fetch(`/api/admin/whitelist-user/${user.id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ wallet, email, username }),
+      credentials: "same-origin",
+    });
+    const data = await resp.json();
+    setUploadStatus({ status: data.status, message: data.message, isLoading: false });
+    if (data.status === "success") {
       setOpen(false);
       router.refresh();
     }
