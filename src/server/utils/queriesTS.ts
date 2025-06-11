@@ -541,4 +541,30 @@ export async function getAllSpotifyIds(): Promise<string[]> {
     }
 }
 
+export type UpdateWhitelistedUserResp = {
+    status: "success" | "error",
+    message: string
+}
+
+// Updates a whitelisted user's editable fields (wallet, email, username)
+export async function updateWhitelistedUser(userId: string, data: { wallet?: string; email?: string; username?: string }): Promise<UpdateWhitelistedUserResp> {
+    try {
+        if (!userId) throw new Error("Invalid user id");
+        const updateData: Record<string, string> = {};
+        if (data.wallet !== undefined) updateData.wallet = data.wallet;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.username !== undefined) updateData.username = data.username;
+
+        if (Object.keys(updateData).length === 0) {
+            return { status: "error", message: "No fields to update" };
+        }
+
+        await db.update(users).set(updateData).where(eq(users.id, userId));
+        return { status: "success", message: "Whitelist user updated" };
+    } catch (e) {
+        console.error("error updating whitelisted user", e);
+        return { status: "error", message: "Error updating whitelisted user" };
+    }
+}
+
 
