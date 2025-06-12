@@ -33,14 +33,6 @@ Url Structure: `{baseurl}/api/{endpoint}`
  - Auth: N/A
  - Error: Returns 400 if query is missing or invalid, 500 for server errors
 
-**add-artist**
-
- - Type: POST
- - Body: `{spotifyId: "spotifyArtistId"}`
- - Response: `{result: Artist}` (object ref in schema folder)
- - Auth: Required
- - Error: Returns 401 if not authenticated, 400 if spotifyId is missing, 500 for server errors
-
 **Example Usage**
 ```javascript
 // Example for findTwitterHandle
