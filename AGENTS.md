@@ -10,6 +10,7 @@ This repository uses Next.js with TypeScript and Jest. The instructions below ap
 Before committing any changes, run the following commands and ensure they succeed:
 
 ```bash
+npm run build
 npm run lint
 npm run type-check
 npm test
