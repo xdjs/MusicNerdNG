@@ -5,13 +5,30 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
     console.log("[AuthAdapter] Getting CSRF token for nonce");
-    // Clear any existing SIWE data to force a new message
-    sessionStorage.removeItem('siwe-nonce');
-    localStorage.removeItem('siwe.session');
-    localStorage.removeItem('wagmi.siwe.message');
-    localStorage.removeItem('wagmi.siwe.signature');
-    const token = await getCsrfToken() ?? "";
-    console.log("[AuthAdapter] Got CSRF token:", token);
+    
+    // Try to get the CSRF token multiple times with a delay
+    let token = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (!token && attempts < maxAttempts) {
+      token = await getCsrfToken();
+      console.log("[AuthAdapter] Attempt", attempts + 1, "CSRF token:", token);
+      
+      if (!token) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          // Wait before trying again
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+    
+    if (!token) {
+      console.error("[AuthAdapter] Failed to get CSRF token after", maxAttempts, "attempts");
+      throw new Error("Failed to get CSRF token");
+    }
+    
     return token;
   },
   createMessage: ({ nonce, address, chainId }) => {
@@ -25,6 +42,12 @@ export const authenticationAdapter = createAuthenticationAdapter({
       domain,
       origin: window.location.origin
     });
+
+    // Clear any existing SIWE data to force a new message
+    sessionStorage.removeItem('siwe-nonce');
+    localStorage.removeItem('siwe.session');
+    localStorage.removeItem('wagmi.siwe.message');
+    localStorage.removeItem('wagmi.siwe.signature');
 
     const message = new SiweMessage({
       domain,
@@ -88,9 +111,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
     try {
       console.log("[AuthAdapter] Signing out");
       
-      // Clear CSRF token cookie first
-      document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-      
       // Clear all session data
       sessionStorage.clear();
       localStorage.removeItem('siwe.session');
@@ -105,6 +125,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
       localStorage.removeItem('wagmi.store');
       localStorage.removeItem('wagmi.cache');
       
+      // Sign out without clearing CSRF token
       await signOut({ 
         redirect: false,
         callbackUrl: window.location.origin

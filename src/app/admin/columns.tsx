@@ -5,6 +5,7 @@ import { UgcResearch, User } from "@/server/db/DbTypes";
 import { ArrowUpDown } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import WhitelistUserEditDialog from "./WhitelistUserEditDialog";
 
 
 
@@ -138,5 +139,14 @@ export const whitelistedColumns: ColumnDef<User>[] = [
   {
     accessorKey: "updatedAt",
     header: "Updated At",
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    cell: ({ row }) => {
+      const user = row.original as User;
+      return <WhitelistUserEditDialog user={user} />;
+    },
+    enableSorting: false,
   }
 ];

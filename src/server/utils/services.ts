@@ -71,10 +71,17 @@ export async function extractArtistId(artistUrl: string) {
                     id: channelId
                 };
             }
+            let extractedId = match[1] || match[2];
+
+            // For X (formerly Twitter) links, strip query parameters like ?si=...
+            if (siteName === 'x' && extractedId && extractedId.includes('?')) {
+                extractedId = extractedId.split('?')[0];
+            }
+
             return { 
                 siteName, 
                 cardPlatformName, 
-                id: match[1] || match[2] 
+                id: extractedId 
             };
         }
     }

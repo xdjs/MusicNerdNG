@@ -71,11 +71,14 @@ const WalletSearchBar = forwardRef(
     const { data: session, status } = useSession();
     const { toast } = useToast();
     const loginRef = useRef<HTMLButtonElement>(null);
+    const shouldPromptRef = useRef(false);
+    // Used to delay opening RainbowKit until next-auth status is settled
+    const loginRetryRef = useRef<NodeJS.Timeout | null>(null);
 
     // Wagmi hooks are safe to use here
-    const { openConnectModal: connectModal } = useConnectModal() ?? {};
+    const { openConnectModal } = useConnectModal() ?? {};
     const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
-    const { disconnect: disconnectWallet } = useDisconnect() ?? { disconnect: undefined };
+    const { disconnect } = useDisconnect() ?? { disconnect: undefined };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -87,20 +90,19 @@ const WalletSearchBar = forwardRef(
 
     // Add cleanup effect for loading states
     useEffect(() => {
-        // Clear loading states when component unmounts
         return () => {
             setIsAddingArtist(false);
             setIsAddingNew(false);
+            if (loginRetryRef.current) {
+                clearTimeout(loginRetryRef.current);
+            }
         };
     }, []);
 
     // Add effect to clear loading states after navigation
     useEffect(() => {
-        // Only clear loading states if we're not in the middle of authentication
-        if (!sessionStorage.getItem('searchFlow')) {
-            setIsAddingArtist(false);
-            setIsAddingNew(false);
-        }
+        setIsAddingArtist(false);
+        setIsAddingNew(false);
     }, [pathname]);
 
     const handleNavigate = async (result: SearchResult) => {
@@ -109,66 +111,44 @@ const WalletSearchBar = forwardRef(
 
         if (result.isSpotifyOnly) {
             if (status === "loading") {
-                console.log("[SearchBar] Auth status is loading, waiting...");
+                if (!loginRetryRef.current) {
+                    loginRetryRef.current = setTimeout(() => {
+                        loginRetryRef.current = null;
+                        handleNavigate(result);
+                    }, 250);
+                }
                 return;
             }
 
             // If not connected or no session, handle login first
             if (!walletConnected || !session) {
-                console.log("[SearchBar] Starting auth flow for artist:", result.name);
+                // Set up search flow flags before initiating login
+                sessionStorage.setItem('searchFlow', 'true');
+                sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
+                sessionStorage.setItem('pendingArtistName', result.name ?? '');
+                sessionStorage.setItem('loginInitiator', 'searchBar');
                 
-                try {
-                    // Store the artist info for after auth
-                    sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
-                    sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    sessionStorage.setItem('searchFlow', 'true');
-                    sessionStorage.setItem('directLogin', 'true');
-                    
-                    // Only disconnect if we're connected but don't have a session
-                    if (walletConnected && !session && disconnectWallet) {
-                        console.log("[SearchBar] Connected but no session, disconnecting wallet");
-                        await signOut({ redirect: false });
-                        disconnectWallet();
-                        // Small delay to ensure disconnect completes
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
-                    
-                    // Open connect modal - let RainbowKit handle the state management
-                    if (connectModal) {
-                        connectModal();
-                    }
-                } catch (error) {
-                    console.error("[SearchBar] Error during connection flow:", error);
-                    // Clean up all stored data on error
-                    sessionStorage.removeItem('searchFlow');
-                    sessionStorage.removeItem('pendingArtistSpotifyId');
-                    sessionStorage.removeItem('pendingArtistName');
-                    toast({
-                        variant: "destructive",
-                        title: "Error",
-                        description: "Failed to connect wallet - please try again"
-                    });
-                    setIsAddingArtist(false);
-                    setIsAddingNew(false);
+                // Set the shouldPrompt flag in the Login component
+                if (loginRef.current) {
+                    shouldPromptRef.current = true;
                 }
+                
+                // Small delay to ensure state is set
+                setTimeout(() => {
+                    if (openConnectModal) {
+                        openConnectModal();
+                    }
+                }, 100);
                 return;
             }
 
             // Only try to add the artist if we have a session
             try {
-                console.log("[SearchBar] User is logged in, adding Spotify artist:", result.name);
                 setIsAddingArtist(true);
                 setIsAddingNew(true);
                 const addResult = await addArtist(result.spotify ?? "");
-                console.log("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
-                    // Clean up stored data before navigation
-                    sessionStorage.removeItem('searchFlow');
-                    sessionStorage.removeItem('pendingArtistSpotifyId');
-                    sessionStorage.removeItem('pendingArtistName');
-                    
-                    // Navigate using push
                     const url = `/artist/${addResult.artistId}`;
                     try {
                         router.prefetch(url);
@@ -190,14 +170,23 @@ const WalletSearchBar = forwardRef(
             } catch (error) {
                 console.error("[SearchBar] Error adding artist:", error);
                 if (error instanceof Error && error.message.includes('Not authenticated')) {
-                    console.log("[SearchBar] Session expired, restarting auth flow");
-                    // Store the artist info before restarting auth
+                    // Set up search flow flags before initiating login
+                    sessionStorage.setItem('searchFlow', 'true');
                     sessionStorage.setItem('pendingArtistSpotifyId', result.spotify ?? '');
                     sessionStorage.setItem('pendingArtistName', result.name ?? '');
-                    sessionStorage.setItem('searchFlow', 'true');
-                    if (connectModal) {
-                        connectModal();
+                    sessionStorage.setItem('loginInitiator', 'searchBar');
+                    
+                    // Set the shouldPrompt flag in the Login component
+                    if (loginRef.current) {
+                        shouldPromptRef.current = true;
                     }
+                    
+                    // Small delay to ensure state is set
+                    setTimeout(() => {
+                        if (openConnectModal) {
+                            openConnectModal();
+                        }
+                    }, 100);
                 } else {
                     toast({
                         variant: "destructive",
@@ -397,6 +386,7 @@ const NoWalletSearchBar = forwardRef(
     // Wagmi hooks are safe to use here
     const { openConnectModal: connectModal } = useConnectModal() ?? {};
     const { isConnected: walletConnected } = useAccount() ?? { isConnected: false };
+    const { disconnect } = useDisconnect() ?? { disconnect: undefined };
 
     // Expose clearLoading function to parent components
     useImperativeHandle(ref, () => ({
@@ -425,24 +415,48 @@ const NoWalletSearchBar = forwardRef(
             pendingArtist: sessionStorage.getItem('pendingArtistName')
         });
 
-        // If we're in a search flow and not authenticated, try to reconnect
-        if (sessionStorage.getItem('searchFlow') && !session && status === "unauthenticated" && !walletConnected) {
+        if (
+            sessionStorage.getItem('searchFlow') &&
+            !session &&
+            status === "unauthenticated" &&
+            !walletConnected &&
+            !sessionStorage.getItem('searchFlowPrompted')
+        ) {
             console.log("[SearchBar] Search flow needs authentication, initiating connection");
-            // Clear any existing session data
-            sessionStorage.removeItem('siwe-nonce');
-            localStorage.removeItem('siwe.session');
-            localStorage.removeItem('wagmi.siwe.message');
-            localStorage.removeItem('wagmi.siwe.signature');
-            
-            if (connectModal) {
-                connectModal();
+
+            // Mark that we've already prompted once for this flow
+            sessionStorage.setItem('searchFlowPrompted', 'true');
+
+            // Only proceed if this wasn't a manual disconnect
+            if (!sessionStorage.getItem('manualDisconnect')) {
+                // Clear CSRF token cookie first
+                document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+
+                // Clear all SIWE-related data
+                sessionStorage.removeItem('siwe-nonce');
+                localStorage.removeItem('siwe.session');
+                localStorage.removeItem('wagmi.siwe.message');
+                localStorage.removeItem('wagmi.siwe.signature');
+
+                // Clear all wagmi-related data
+                localStorage.removeItem('wagmi.wallet');
+                localStorage.removeItem('wagmi.connected');
+                localStorage.removeItem('wagmi.injected.connected');
+                localStorage.removeItem('wagmi.store');
+                localStorage.removeItem('wagmi.cache');
+
+                // Small delay to ensure cleanup is complete
+                setTimeout(() => {
+                    if (connectModal) {
+                        connectModal();
+                    }
+                }, 100);
             }
         }
 
-        // If authentication fails, clean up
-        if (status === "unauthenticated" && !walletConnected) {
-            setIsAddingArtist(false);
-            setIsAddingNew(false);
+        // Clear the prompt flag once the user becomes authenticated (or the flow is aborted)
+        if (session && sessionStorage.getItem('searchFlowPrompted')) {
+            sessionStorage.removeItem('searchFlowPrompted');
         }
     }, [status, walletConnected, session, connectModal]);
 
@@ -572,6 +586,66 @@ const NoWalletSearchBar = forwardRef(
         setShowResults(true);
     };
 
+    const handleLogout = async () => {
+        try {
+            console.log("[SearchBar] Signing out");
+            
+            // Set flag to indicate this was a manual disconnect
+            sessionStorage.setItem('manualDisconnect', 'true');
+            
+            // Clear CSRF token cookie first
+            document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+            
+            // Clear all session data
+            sessionStorage.clear();
+            localStorage.removeItem('siwe.session');
+            localStorage.removeItem('wagmi.siwe.message');
+            localStorage.removeItem('wagmi.siwe.signature');
+            sessionStorage.removeItem('siwe-nonce');
+            
+            // Clear all wagmi-related data
+            localStorage.removeItem('wagmi.wallet');
+            localStorage.removeItem('wagmi.connected');
+            localStorage.removeItem('wagmi.injected.connected');
+            localStorage.removeItem('wagmi.store');
+            localStorage.removeItem('wagmi.cache');
+            
+            // First disconnect the wallet
+            if (disconnect) {
+                disconnect();
+                // Small delay to ensure disconnect completes
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            // Then sign out of NextAuth
+            await signOut({ 
+                redirect: false,
+                callbackUrl: window.location.origin
+            });
+            
+            // Wait longer for session cleanup
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Force a page reload to clear any lingering state
+            window.location.reload();
+            
+            toast({
+                title: "Signed out",
+                description: "You have been signed out successfully"
+            });
+        } catch (error) {
+            console.error("[SearchBar] Error during sign out:", error);
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Failed to sign out properly"
+            });
+            
+            // Force a page reload even if there was an error
+            window.location.reload();
+        }
+    };
+
     // Add hidden Login component for search flow
     return (
         <>
@@ -699,9 +773,6 @@ export default function SearchBarWrapper({isTopSide = false}: {isTopSide?: boole
     return (
         <QueryClientProvider client={queryClient}>
             <SearchBar ref={searchBarRef} isTopSide={isTopSide} />
-            <div className="hidden">
-                <Login buttonStyles="" ref={null} searchBarRef={searchBarRef} />
-            </div>
         </QueryClientProvider>
     );
 }

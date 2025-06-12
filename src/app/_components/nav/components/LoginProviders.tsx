@@ -30,27 +30,14 @@ const WalletProviders = dynamic(
                 <WagmiProvider config={config}>
                     <QueryClientProvider client={queryClient}>
                         <RainbowKitSiweNextAuthProvider
-                            getSiweMessageOptions={() => {
-                                // Clear any existing SIWE data to force a new message
-                                if (typeof window !== 'undefined') {
-                                    // Clear CSRF token cookie
-                                    document.cookie = 'next-auth.csrf-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-                                    
-                                    // Clear SIWE-related storage
-                                    sessionStorage.removeItem('siwe-nonce');
-                                    localStorage.removeItem('siwe.session');
-                                    localStorage.removeItem('wagmi.siwe.message');
-                                    localStorage.removeItem('wagmi.siwe.signature');
-                                }
-                                
-                                return {
-                                    statement: 'Sign in to MusicNerd to add artists and manage your collection.',
-                                    // Let RainbowKit handle these values
-                                    nonce: undefined,
-                                    chainId: undefined,
-                                    expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
-                                };
-                            }}
+                            getSiweMessageOptions={() => ({
+                                statement: 'Sign in to MusicNerd to add artists and manage your collection.',
+                                nonce: undefined,
+                                chainId: undefined,
+                                domain: window.location.host,
+                                uri: window.location.origin,
+                                expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
+                            })}
                             enabled={true}
                         >
                             <RainbowKitProvider

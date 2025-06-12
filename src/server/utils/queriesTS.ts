@@ -13,18 +13,6 @@ import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
 
-export async function getFeaturedArtistsTS() {
-    const featuredObj = await db.query.featured.findMany({
-        where: isNotNull(featured.featuredArtist),
-        with: { featuredArtist: true }
-    });
-    let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredArtist?.id } });
-    const spotifyHeader = await getSpotifyHeaders();
-    if (!spotifyHeader) return [];
-    const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "", spotifyHeader)));
-    return images;
-}
-
 type getResponse<T> = {
     isError: boolean,
     message: string,
@@ -560,6 +548,32 @@ export async function getAllSpotifyIds(): Promise<string[]> {
     } catch (e) {
         console.error('Error fetching Spotify IDs:', e);
         return [];
+    }
+}
+
+export type UpdateWhitelistedUserResp = {
+    status: "success" | "error",
+    message: string
+}
+
+// Updates a whitelisted user's editable fields (wallet, email, username)
+export async function updateWhitelistedUser(userId: string, data: { wallet?: string; email?: string; username?: string }): Promise<UpdateWhitelistedUserResp> {
+    try {
+        if (!userId) throw new Error("Invalid user id");
+        const updateData: Record<string, string> = {};
+        if (data.wallet !== undefined) updateData.wallet = data.wallet;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.username !== undefined) updateData.username = data.username;
+
+        if (Object.keys(updateData).length === 0) {
+            return { status: "error", message: "No fields to update" };
+        }
+
+        await db.update(users).set(updateData).where(eq(users.id, userId));
+        return { status: "success", message: "Whitelist user updated" };
+    } catch (e) {
+        console.error("error updating whitelisted user", e);
+        return { status: "error", message: "Error updating whitelisted user" };
     }
 }
 
