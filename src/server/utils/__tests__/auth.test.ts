@@ -16,6 +16,12 @@ const mockCreateUser = jest.fn();
 const mockConsoleError = jest.fn();
 
 jest.mock('../queriesTS', () => ({
+  __esModule: true,
+  getUserByWallet: (...args) => mockGetUserByWallet(...args),
+  createUser: (...args) => mockCreateUser(...args),
+}));
+jest.mock('../queriesTS.ts', () => ({
+  __esModule: true,
   getUserByWallet: (...args) => mockGetUserByWallet(...args),
   createUser: (...args) => mockCreateUser(...args),
 }));
@@ -129,7 +135,7 @@ jest.mock('@/env', () => ({
 
 // Mock console methods
 const mockConsoleLog = jest.fn();
-global.console.log = mockConsoleLog;
+// global.console.log = mockConsoleLog;
 
 // Reset mocks before each test
 beforeEach(() => {
@@ -288,12 +294,12 @@ const getAuthOptions = (env = {}) => {
             }
 
             console.log('[Debug] Getting user by wallet:', siwe.address);
-            let user = await getUserByWallet(siwe.address);
+            let user = await mockGetUserByWallet(siwe.address);
             console.log('[Debug] getUserByWallet result:', user);
 
             if (!user) {
               console.log('[Debug] User not found, creating new user');
-              user = await createUser(siwe.address);
+              user = await mockCreateUser(siwe.address);
               console.log('[Debug] createUser result:', user);
             }
 
@@ -645,7 +651,7 @@ describe('Authentication System', () => {
       console.log('[Debug] Running authentication test with message:', validMessage);
       
       const user = await provider.authorize({
-        message: JSON.stringify(validMessage),
+        message: validMessage,
         signature: '0xvalid'
       });
       
@@ -669,7 +675,7 @@ describe('Authentication System', () => {
       const provider = options.providers.find(p => p.id === 'credentials');
       
       const user = await provider.authorize({
-        message: JSON.stringify(validMessage),
+        message: validMessage,
         signature: '0xvalid'
       });
       
@@ -683,7 +689,7 @@ describe('Authentication System', () => {
       const provider = options.providers.find(p => p.id === 'credentials');
       
       const user = await provider.authorize({
-        message: JSON.stringify(validMessage),
+        message: validMessage,
         signature: '0xinvalid'
       });
       

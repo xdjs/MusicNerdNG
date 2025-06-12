@@ -255,7 +255,7 @@ describe('Web3 Authentication', () => {
   describe('session security', () => {
     it('should use secure session configuration in production', () => {
       // Create a test environment where we can directly test the getter logic
-      const testEnv = 'production';
+      const testEnv: string = 'production';
       
       // Test the mock directly to see if it returns the right value
       const mockCookies = {
@@ -282,7 +282,7 @@ describe('Web3 Authentication', () => {
 
     it('should use development session configuration in non-production', () => {
       // Create a test environment where we can directly test the getter logic
-      const testEnv = 'development';
+      const testEnv: string = 'development';
       
       // Test the mock directly to see if it returns the right value
       const mockCookies = {
