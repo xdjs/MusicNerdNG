@@ -74,6 +74,10 @@ const WalletSearchBar = forwardRef(
     const shouldPromptRef = useRef(false);
     // Used to delay opening RainbowKit until next-auth status is settled
     const loginRetryRef = useRef<NodeJS.Timeout | null>(null);
+    // Ref to the wrapper element to calculate available space
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    // Track whether the results dropdown should open up or down
+    const [dropDirection, setDropDirection] = useState<'up' | 'down'>('down');
 
     // Wagmi hooks are safe to use here
     const { openConnectModal } = useConnectModal() ?? {};
@@ -104,6 +108,38 @@ const WalletSearchBar = forwardRef(
         setIsAddingArtist(false);
         setIsAddingNew(false);
     }, [pathname]);
+
+    // Determine the best direction for the dropdown based on viewport space
+    const updateDropDirection = () => {
+        if (!wrapperRef.current) return;
+        const rect = wrapperRef.current.getBoundingClientRect();
+        const spaceAbove = rect.top;
+        const requiredSpace = 260; // approx height for 4 results
+
+        if (isTopSide) {
+            // Prefer opening upwards on the homepage but fall back if not enough space
+            if (spaceAbove >= requiredSpace) {
+                setDropDirection('up');
+            } else {
+                setDropDirection('down');
+            }
+        } else {
+            setDropDirection('down');
+        }
+    };
+
+    // Re-evaluate dropdown direction when the window resizes
+    useEffect(() => {
+        window.addEventListener('resize', updateDropDirection);
+        return () => window.removeEventListener('resize', updateDropDirection);
+    }, [isTopSide]);
+
+    // Enable mouse-wheel scrolling over the whole search bar wrapper
+    const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
+        if (resultsContainer.current) {
+            (resultsContainer.current as HTMLDivElement).scrollTop += e.deltaY;
+        }
+    };
 
     const handleNavigate = async (result: SearchResult) => {
         setQuery(result.name ?? "");
@@ -253,11 +289,12 @@ const WalletSearchBar = forwardRef(
         }, 200);
     };
 
-    // Clear the blur timeout if we focus back
+    // Modify handleFocus to compute direction before showing results
     const handleFocus = () => {
         if (blurTimeoutRef.current) {
             clearTimeout(blurTimeoutRef.current);
         }
+        updateDropDirection();
         setShowResults(true);
     };
 
@@ -265,7 +302,7 @@ const WalletSearchBar = forwardRef(
     return (
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
-            <div className="relative w-full max-w-[400px] z-40 text-black">
+            <div ref={wrapperRef} onWheel={handleWheelScroll} className="relative w-full max-w-[400px] z-40 text-black">
                 <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
                     <Search size={24} strokeWidth={2.5} />
                     <Input
@@ -273,12 +310,14 @@ const WalletSearchBar = forwardRef(
                         placeholder="Search artists..."
                         value={query}
                         onChange={handleInputChange}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
                         className="bg-transparent border-none focus:outline-none w-full"
                     />
                 </div>
                 {/* Search results dropdown */}
                 {showResults && (
-                    <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div ref={resultsContainer} className={`absolute w-full ${dropDirection === 'up' ? 'bottom-full mb-2' : 'mt-2'} bg-white rounded-lg shadow-lg overflow-y-auto max-h-64`}>
                         {isLoading ? (
                             <Spinner />
                         ) : (debouncedQuery && (!data || data.length === 0)) ? (
@@ -578,11 +617,12 @@ const NoWalletSearchBar = forwardRef(
         }, 200);
     };
 
-    // Clear the blur timeout if we focus back
+    // Modify handleFocus to compute direction before showing results
     const handleFocus = () => {
         if (blurTimeoutRef.current) {
             clearTimeout(blurTimeoutRef.current);
         }
+        updateDropDirection();
         setShowResults(true);
     };
 
@@ -646,11 +686,47 @@ const NoWalletSearchBar = forwardRef(
         }
     };
 
+    // Ref to the wrapper element to calculate available space for dropdown
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    // Track dropdown direction (up or down)
+    const [dropDirection, setDropDirection] = useState<'up' | 'down'>('down');
+
+    // Function to compute and set the dropdown direction
+    const updateDropDirection = () => {
+        if (!wrapperRef.current) return;
+        const rect = wrapperRef.current.getBoundingClientRect();
+        const spaceAbove = rect.top;
+        const requiredSpace = 260; // approx height for 4 results
+
+        if (isTopSide) {
+            if (spaceAbove >= requiredSpace) {
+                setDropDirection('up');
+            } else {
+                setDropDirection('down');
+            }
+        } else {
+            setDropDirection('down');
+        }
+    };
+
+    // Re-calculate direction on window resize
+    useEffect(() => {
+        window.addEventListener('resize', updateDropDirection);
+        return () => window.removeEventListener('resize', updateDropDirection);
+    }, [isTopSide]);
+
+    // Scroll handler so users can scroll results while hovering over the search bar
+    const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
+        if (resultsContainer.current) {
+            (resultsContainer.current as HTMLDivElement).scrollTop += e.deltaY;
+        }
+    };
+
     // Add hidden Login component for search flow
     return (
         <>
             {isAddingArtist && <LoadingPage message={isAddingNew ? "Adding artist..." : "Loading..."} />}
-            <div className="relative w-full max-w-[400px] z-40 text-black">
+            <div ref={wrapperRef} onWheel={handleWheelScroll} className="relative w-full max-w-[400px] z-40 text-black">
                 <div className="p-3 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
                     <Search size={24} strokeWidth={2.5} />
                     <Input
@@ -658,12 +734,14 @@ const NoWalletSearchBar = forwardRef(
                         placeholder="Search artists..."
                         value={query}
                         onChange={handleInputChange}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
                         className="bg-transparent border-none focus:outline-none w-full"
                     />
                 </div>
                 {/* Search results dropdown */}
                 {showResults && (
-                    <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div ref={resultsContainer} className={`absolute w-full ${dropDirection === 'up' ? 'bottom-full mb-2' : 'mt-2'} bg-white rounded-lg shadow-lg overflow-y-auto max-h-64`}>
                         {isLoading ? (
                             <Spinner />
                         ) : (debouncedQuery && (!data || data.length === 0)) ? (
