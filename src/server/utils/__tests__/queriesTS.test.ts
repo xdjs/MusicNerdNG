@@ -2,7 +2,17 @@
 import { Artist, UrlMap } from '@/server/db/DbTypes';
 import { platformType } from '@/server/db/schema';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { getArtistLinks, getAllLinks } from '../queriesTS';
+import { 
+    getArtistLinks, 
+    getAllLinks, 
+    getArtistById, 
+    getArtistByProperty,
+    getArtistbyWallet,
+    getArtistByNameApiResp,
+    searchForArtistByName,
+    getUserById,
+    getUserByWallet
+} from '../queriesTS';
 import { hasSpotifyCredentials } from '../setup/testEnv';
 
 // Skip all tests if Spotify credentials are missing
@@ -14,8 +24,19 @@ jest.mock('@/server/db/drizzle', () => ({
         query: {
             urlmap: {
                 findMany: jest.fn()
+            },
+            artists: {
+                findFirst: jest.fn()
+            },
+            users: {
+                findFirst: jest.fn()
             }
-        }
+        },
+        select: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        execute: jest.fn()
     }
 }));
 
@@ -272,5 +293,338 @@ describe('getArtistLinks', () => {
         };
 
         await expect(getArtistLinks(artist)).rejects.toThrow('Error fetching artist links');
+    });
+});
+
+describe('getAllLinks', () => {
+    it('should return all URL mappings from database', async () => {
+        const mockUrlMaps = [
+            { id: '1', siteName: 'spotify', siteUrl: 'https://spotify.com' },
+            { id: '2', siteName: 'youtube', siteUrl: 'https://youtube.com' }
+        ];
+        (db.query.urlmap.findMany as jest.Mock).mockResolvedValue(mockUrlMaps);
+
+        const result = await getAllLinks();
+
+        expect(result).toEqual(mockUrlMaps);
+        expect(db.query.urlmap.findMany).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('getArtistById', () => {
+    const mockArtist = {
+        id: '123',
+        name: 'Test Artist',
+        spotify: 'spotify123'
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should return artist when found', async () => {
+        (db.query.artists.findFirst as jest.Mock).mockResolvedValue(mockArtist);
+
+        const result = await getArtistById('123');
+
+        expect(result).toEqual(mockArtist);
+        expect(db.query.artists.findFirst).toHaveBeenCalledWith({
+            where: expect.any(Object)
+        });
+    });
+
+    it('should return undefined when artist not found', async () => {
+        (db.query.artists.findFirst as jest.Mock).mockResolvedValue(undefined);
+
+        const result = await getArtistById('nonexistent');
+
+        expect(result).toBeUndefined();
+    });
+
+    it('should throw error when database fails', async () => {
+        (db.query.artists.findFirst as jest.Mock).mockRejectedValue(new Error('DB Error'));
+
+        await expect(getArtistById('123')).rejects.toThrow('Error fetching artist by Id');
+    });
+});
+
+describe('getArtistByProperty', () => {
+    const mockArtist = {
+        id: '123',
+        name: 'Test Artist',
+        spotify: 'spotify123'
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should return success response when artist found', async () => {
+        (db.query.artists.findFirst as jest.Mock).mockResolvedValue(mockArtist);
+
+        const result = await getArtistByProperty({} as any, 'test-value');
+
+        expect(result).toEqual({
+            isError: false,
+            message: '',
+            data: mockArtist,
+            status: 200
+        });
+    });
+
+    it('should return 404 error when artist not found', async () => {
+        (db.query.artists.findFirst as jest.Mock).mockResolvedValue(null);
+
+        const result = await getArtistByProperty({} as any, 'nonexistent');
+
+        expect(result).toEqual({
+            isError: true,
+            status: 404,
+            message: "The artist you're searching for is not found",
+            data: null
+        });
+    });
+
+    it('should return 404 error when database throws', async () => {
+        (db.query.artists.findFirst as jest.Mock).mockRejectedValue(new Error('DB Error'));
+
+        const result = await getArtistByProperty({} as any, 'test-value');
+
+        expect(result).toEqual({
+            isError: true,
+            message: "Something went wrong on our end",
+            data: null,
+            status: 404
+        });
+    });
+});
+
+describe('getArtistbyWallet', () => {
+    const mockArtist = {
+        id: '123',
+        name: 'Test Artist',
+        wallets: ['0x1234567890123456789012345678901234567890']
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should return success response when artist found by wallet', async () => {
+        // Mock the query builder chain
+        const mockQueryBuilder = {
+            select: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([mockArtist])
+        };
+        
+        (db.select as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+        const result = await getArtistbyWallet('0x1234567890123456789012345678901234567890');
+
+        expect(result).toEqual({
+            isError: false,
+            message: '',
+            data: mockArtist,
+            status: 200
+        });
+    });
+
+    it('should return 404 error when no artist found', async () => {
+        const mockQueryBuilder = {
+            select: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([])
+        };
+        
+        (db.select as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+        const result = await getArtistbyWallet('0x9999999999999999999999999999999999999999');
+
+        expect(result).toEqual({
+            isError: true,
+            message: "The artist you're searching for is not found",
+            data: null,
+            status: 404
+        });
+    });
+
+    it('should return 500 error when database throws', async () => {
+        const mockQueryBuilder = {
+            select: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockRejectedValue(new Error('DB Error'))
+        };
+        
+        (db.select as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+        const result = await getArtistbyWallet('0x1234567890123456789012345678901234567890');
+
+        expect(result).toEqual({
+            isError: true,
+            message: "Something went wrong on our end",
+            data: null,
+            status: 500
+        });
+    });
+});
+
+describe('searchForArtistByName', () => {
+    const mockArtists = [
+        { id: '1', name: 'Test Artist', spotify: 'spotify1' },
+        { id: '2', name: 'Another Test', spotify: 'spotify2' }
+    ];
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        // Mock console.log to avoid noise in tests
+        jest.spyOn(console, 'log').mockImplementation();
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('should return artists matching the search name', async () => {
+        (db.execute as jest.Mock).mockResolvedValue(mockArtists);
+
+        const result = await searchForArtistByName('Test');
+
+        expect(result).toEqual(mockArtists);
+        expect(db.execute).toHaveBeenCalledWith(expect.any(Object));
+    });
+
+    it('should throw error when database fails', async () => {
+        (db.execute as jest.Mock).mockRejectedValue(new Error('DB Error'));
+
+        await expect(searchForArtistByName('Test')).rejects.toThrow('Error searching for artist by name');
+    });
+});
+
+describe('getArtistByNameApiResp', () => {
+    const mockArtist = { id: '1', name: 'Test Artist', spotify: 'spotify1' };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (db.execute as jest.Mock).mockResolvedValue([mockArtist]);
+        jest.spyOn(console, 'log').mockImplementation();
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('should return success response when artist found', async () => {
+        const result = await getArtistByNameApiResp('Test Artist');
+
+        expect(result).toEqual({
+            isError: false,
+            message: '',
+            data: mockArtist,
+            status: 200
+        });
+    });
+
+    it('should return 404 error when no artists found', async () => {
+        (db.execute as jest.Mock).mockResolvedValue(null);
+
+        const result = await getArtistByNameApiResp('Nonexistent Artist');
+
+        expect(result).toEqual({
+            isError: true,
+            message: "The artist you're searching for is not found",
+            data: null,
+            status: 404
+        });
+    });
+
+    it('should return 500 error when search throws', async () => {
+        (db.execute as jest.Mock).mockRejectedValue(new Error('Search Error'));
+
+        const result = await getArtistByNameApiResp('Test Artist');
+
+        expect(result).toEqual({
+            isError: true,
+            message: "Something went wrong on our end",
+            data: null,
+            status: 500
+        });
+    });
+});
+
+describe('getUserById', () => {
+    const mockUser = {
+        id: '123',
+        wallet: '0x1234567890123456789012345678901234567890',
+        email: 'test@example.com'
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should return user when found', async () => {
+        (db.query.users.findFirst as jest.Mock).mockResolvedValue(mockUser);
+
+        const result = await getUserById('123');
+
+        expect(result).toEqual(mockUser);
+        expect(db.query.users.findFirst).toHaveBeenCalledWith({
+            where: expect.any(Object)
+        });
+    });
+
+    it('should return undefined when user not found', async () => {
+        (db.query.users.findFirst as jest.Mock).mockResolvedValue(undefined);
+
+        const result = await getUserById('nonexistent');
+
+        expect(result).toBeUndefined();
+    });
+
+    it('should throw error when database fails', async () => {
+        (db.query.users.findFirst as jest.Mock).mockRejectedValue(new Error('DB Error'));
+
+        await expect(getUserById('123')).rejects.toThrow('Error finding user: DB Error');
+    });
+});
+
+describe('getUserByWallet', () => {
+    const mockUser = {
+        id: '123',
+        wallet: '0x1234567890123456789012345678901234567890',
+        email: 'test@example.com'
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should return user when found by wallet', async () => {
+        (db.query.users.findFirst as jest.Mock).mockResolvedValue(mockUser);
+
+        const result = await getUserByWallet('0x1234567890123456789012345678901234567890');
+
+        expect(result).toEqual(mockUser);
+        expect(db.query.users.findFirst).toHaveBeenCalledWith({
+            where: expect.any(Object)
+        });
+    });
+
+    it('should return undefined when user not found', async () => {
+        (db.query.users.findFirst as jest.Mock).mockResolvedValue(undefined);
+
+        const result = await getUserByWallet('0x9999999999999999999999999999999999999999');
+
+        expect(result).toBeUndefined();
+    });
+
+    it('should throw error when database fails', async () => {
+        (db.query.users.findFirst as jest.Mock).mockRejectedValue(new Error('DB Error'));
+
+        await expect(getUserByWallet('0x1234567890123456789012345678901234567890')).rejects.toThrow('Error finding user: DB Error');
     });
 }); 
