@@ -28,11 +28,6 @@ jest.mock('react-spotify-embed', () => ({
 }));
 
 // Mock server components
-jest.mock('@/app/artist/[id]/_components/Dashboard2', () => ({
-    __esModule: true,
-    default: () => <div data-testid="dashboard">Dashboard</div>,
-}));
-
 jest.mock('@/app/artist/[id]/_components/AddArtistData', () => ({
     __esModule: true,
     default: ({ isOpenOnLoad }: { isOpenOnLoad: boolean }) => (
@@ -40,11 +35,6 @@ jest.mock('@/app/artist/[id]/_components/AddArtistData', () => ({
             Add Artist Data
         </div>
     ),
-}));
-
-jest.mock('@/app/artist/[id]/_components/LLMChat', () => ({
-    __esModule: true,
-    default: () => <div data-testid="llm-chat">LLM Chat</div>,
 }));
 
 // Mock LoadingPage component

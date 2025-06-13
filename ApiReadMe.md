@@ -3,21 +3,40 @@ Url Structure: `{baseurl}/api/{endpoint}`
 
 **findArtistBySpotifyID**
 
- - Type: Post Body: `{spotifyID : "yourSpotifyId"}` 
- - Resp: `{result:Artist}` (object ref in schema folder)
- -  Auth: N/A
+ - Type: POST
+ - Body: `{spotifyID: "yourSpotifyId"}`
+ - Response: `{result: Artist}` (object ref in schema folder)
+ - Auth: N/A
+ - Error: Returns 400 if spotifyID is missing, 405 for non-POST requests
 
 **findTwitterHandle**
 
- - Type: Post
- - Body: `{name: "artistName"} | {ethAddress:"yourEthAddress"}` (can be .eth or wallet address)
- - Resp: `{result : "artistTwitterHandle"}`
+ - Type: POST
+ - Body: `{name: "artistName"} | {ethAddress: "yourEthAddress"}` (can be .eth or wallet address)
+ - Response: `{result: "artistTwitterHandle"}`
  - Auth: N/A
+ - Error: Returns 400 if both name and ethAddress are missing, 405 for non-POST requests
 
+**findArtistByIG**
 
- **Example Usage**
-```
-axios.post('https://ng-staging.musicnerd.xyz/', {
+ - Type: POST
+ - Body: `{ig: "instagramHandle"}`
+ - Response: `{result: Artist}` (object ref in schema folder)
+ - Auth: N/A
+ - Error: Returns 400 if instagram handle is missing, 405 for non-POST requests
+
+**searchArtists**
+
+ - Type: POST
+ - Body: `{query: "searchTerm"}`
+ - Response: `{results: Array<Artist>}` (combined results from local DB and Spotify)
+ - Auth: N/A
+ - Error: Returns 400 if query is missing or invalid, 500 for server errors
+
+**Example Usage**
+```javascript
+// Example for findTwitterHandle
+axios.post('https://api.musicnerd.xyz/api/findTwitterHandle', {
   ethAddress: '0xc7A0D765C3aF6E2710bA05A56c5E2cA190C2E11e'
 })
   .then(response => {

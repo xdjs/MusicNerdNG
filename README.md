@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# MusicNerdNG
+
+MusicNerdNG is a Next.js application that provides artist discovery and management features, integrating with Spotify and other social media platforms.
+
+## Features
+
+- Artist discovery and search
+- Spotify integration
+- Social media handle lookup
+- Artist management
+- Authentication with NextAuth.js
+- Web3 wallet integration
+
+## Prerequisites
+
+- Node.js 18 or later
+- npm
+- PostgreSQL database (Supabase)
+- Spotify Developer Account
+- Google Cloud Account (for Gemini AI)
+
+## Environment Variables
+
+Create a `.env.local` file in the root directory with the following variables:
+
+```bash
+# Spotify API Credentials
+NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID=your_spotify_client_id
+NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET=your_spotify_client_secret
+
+# Database
+SUPABASE_DB_CONNECTION=your_supabase_connection_string
+
+# Authentication
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your_nextauth_secret
+
+# Discord Integration
+DISCORD_WEBHOOK_URL=your_discord_webhook_url
+
+# Google AI
+GEMINI_API_KEY=your_gemini_api_key
+```
 
 ## Getting Started
 
-First, run the development server:
+1. Clone the repository:
+```bash
+git clone https://github.com/xdjs/MusicNerdNG.git
+cd MusicNerdNG
+```
 
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Run the development server:
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Available Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+- `npm run dev` - Start development server with HTTPS
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run test` - Run tests
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:coverage` - Run tests with coverage
+- `npm run type-check` - Run TypeScript type checking
+- `npm run ci` - Run all checks (types, lint, tests, build)
 
-## Learn More
+## API Documentation
 
-To learn more about Next.js, take a look at the following resources:
+For detailed API documentation, see [ApiReadMe.md](./ApiReadMe.md).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Testing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+The project uses Jest for testing. Run tests with:
 
-## Deploy on Vercel
+```bash
+npm run test
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+For test coverage:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+```bash
+npm run test:coverage
+```
+
+## Tech Stack
+
+- Next.js 14
+- TypeScript
+- Tailwind CSS
+- Drizzle ORM
+- NextAuth.js
+- RainbowKit
+- Jest
+- React Query
+- Radix UI

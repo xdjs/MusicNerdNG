@@ -13,18 +13,6 @@ import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
 
-export async function getFeaturedArtistsTS() {
-    const featuredObj = await db.query.featured.findMany({
-        where: isNotNull(featured.featuredArtist),
-        with: { featuredArtist: true }
-    });
-    let featuredArtists = featuredObj.map(artist => { return { spotifyId: artist.featuredArtist?.spotify ?? null, artistId: artist.featuredArtist?.id } });
-    const spotifyHeader = await getSpotifyHeaders();
-    if (!spotifyHeader) return [];
-    const images = await Promise.all(featuredArtists.map(artist => getSpotifyImage(artist.spotifyId ?? "", artist.artistId ?? "", spotifyHeader)));
-    return images;
-}
-
 type getResponse<T> = {
     isError: boolean,
     message: string,
@@ -399,19 +387,27 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
 export async function getUserByWallet(wallet: string) {
     try {
-        return await db.query.users.findFirst({ where: eq(users.wallet, wallet) });
-    } catch (e) {
-        console.error("error getting user by wallet", e);
-        throw new Error("Error finding user");
+        const result = await db.query.users.findFirst({ where: eq(users.wallet, wallet) });
+        return result;
+    } catch (error) {
+        console.error("error getting user by wallet", error);
+        if (error instanceof Error) {
+            throw new Error(`Error finding user: ${error.message}`);
+        }
+        throw new Error('Error finding user: Unknown error');
     }
 }
 
 export async function getUserById(id: string) {
     try {
-        return await db.query.users.findFirst({ where: eq(users.id, id) });
-    } catch (e) {
-        console.error("error getting user by Id", e);
-        throw new Error("Error finding user");
+        const result = await db.query.users.findFirst({ where: eq(users.id, id) });
+        return result;
+    } catch (error) {
+        console.error("error getting user by Id", error);
+        if (error instanceof Error) {
+            throw new Error(`Error finding user: ${error.message}`);
+        }
+        throw new Error('Error finding user: Unknown error');
     }
 }
 
@@ -487,13 +483,15 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
 }
 
 export async function getWhitelistedUsers() {
-    const user = await getServerAuthSession();
-    if (!user) throw new Error("Not authenticated");
+    const session = await getServerAuthSession();
+    if (!session) throw new Error("Unauthorized");
     try {
         const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
+        if (!result) return [];
         return result;
     } catch(e) {
         console.error("error getting whitelisted users", e);
+        throw new Error("Error getting whitelisted users");
     }
 }
 
@@ -550,6 +548,32 @@ export async function getAllSpotifyIds(): Promise<string[]> {
     } catch (e) {
         console.error('Error fetching Spotify IDs:', e);
         return [];
+    }
+}
+
+export type UpdateWhitelistedUserResp = {
+    status: "success" | "error",
+    message: string
+}
+
+// Updates a whitelisted user's editable fields (wallet, email, username)
+export async function updateWhitelistedUser(userId: string, data: { wallet?: string; email?: string; username?: string }): Promise<UpdateWhitelistedUserResp> {
+    try {
+        if (!userId) throw new Error("Invalid user id");
+        const updateData: Record<string, string> = {};
+        if (data.wallet !== undefined) updateData.wallet = data.wallet;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.username !== undefined) updateData.username = data.username;
+
+        if (Object.keys(updateData).length === 0) {
+            return { status: "error", message: "No fields to update" };
+        }
+
+        await db.update(users).set(updateData).where(eq(users.id, userId));
+        return { status: "success", message: "Whitelist user updated" };
+    } catch (e) {
+        console.error("error updating whitelisted user", e);
+        return { status: "error", message: "Error updating whitelisted user" };
     }
 }
 

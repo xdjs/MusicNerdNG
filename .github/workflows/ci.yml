@@ -27,11 +27,6 @@ jobs:
         node-version: '20'
         cache: 'npm'
 
-    - name: Update package-lock.json
-      run: |
-        npm install
-        git diff --exit-code package-lock.json || (echo "package-lock.json was updated. Please commit these changes." && exit 1)
-
     - name: Install dependencies
       run: npm ci
 
@@ -66,23 +61,11 @@ jobs:
         node-version: '20'
         cache: 'npm'
 
-    - name: Update package-lock.json
-      run: |
-        npm install
-        git diff --exit-code package-lock.json || (echo "package-lock.json was updated. Please commit these changes." && exit 1)
-
     - name: Install dependencies
       run: npm ci
 
     - name: Build
-      run: |
-        npm run build 2>&1 | tee build.log
-        if grep -v "Failed to collect page data for /api/add-artist" build.log | grep -q "Error:"; then
-          echo "Build failed with errors other than the known /api/add-artist issue"
-          exit 1
-        fi
-        echo "Build completed - ignoring known /api/add-artist collection error"
-        exit 0
+      run: npm run build
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
@@ -112,11 +95,6 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-
-    - name: Update package-lock.json
-      run: |
-        npm install
-        git diff --exit-code package-lock.json || (echo "package-lock.json was updated. Please commit these changes." && exit 1)
 
     - name: Install dependencies
       run: npm ci

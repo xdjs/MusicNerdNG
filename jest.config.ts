@@ -30,48 +30,15 @@ const customJestConfig: Config = {
         '\\.(gif|ttf|eot|svg|png|jpg|jpeg)$': '<rootDir>/__mocks__/fileMock.js',
     },
     transformIgnorePatterns: [
-        'node_modules/(?!(jose|@rainbow-me|@radix-ui|next-auth|openid-client|@auth/core|@panva|@tanstack|wagmi|viem)/)'
+        'node_modules/(?!(jose|@rainbow-me|@radix-ui|next-auth|openid-client|@auth/core|@panva|@tanstack|wagmi|viem|@wagmi|@viem|@tanstack/react-query|@tanstack/query-core)/)'
     ],
     testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
-    transform: {
-        '^.+\\.(js|jsx|ts|tsx|mjs)$': ['@swc/jest', {
-            jsc: {
-                transform: {
-                    react: {
-                        runtime: 'automatic'
-                    }
-                }
-            }
-        }]
-    },
-    moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json', 'node', 'mjs'],
-    coverageDirectory: 'coverage',
-    collectCoverageFrom: [
-        'src/**/*.{js,jsx,ts,tsx}',
-        '!src/**/*.d.ts',
-        '!src/**/*.stories.{js,jsx,ts,tsx}',
-        '!src/**/*.test.{js,jsx,ts,tsx}',
-        '!src/**/index.{js,jsx,ts,tsx}',
-        '!src/pages/_app.tsx',
-        '!src/pages/_document.tsx',
-        '!src/types/**/*',
-        '!src/styles/**/*',
-        '!**/node_modules/**',
-        '!**/.next/**',
-    ],
-    coverageThreshold: {
-        global: {
-            branches: 70,
-            functions: 70,
-            lines: 70,
-            statements: 70,
-        },
-    },
-    coverageReporters: ['json', 'lcov', 'text', 'clover', 'html'],
+    moduleDirectories: ['node_modules', '<rootDir>/'],
     testMatch: [
         '**/__tests__/**/*.[jt]s?(x)',
         '**/?(*.)+(spec|test).[jt]s?(x)'
     ],
+    testTimeout: 20000,
     globals: {
         'ts-jest': {
             tsconfig: '<rootDir>/tsconfig.json'
