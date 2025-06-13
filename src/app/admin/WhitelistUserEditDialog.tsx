@@ -3,7 +3,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User } from "@/server/db/DbTypes";
 import { useRouter } from "next/navigation";
 
@@ -18,6 +18,15 @@ export default function WhitelistUserEditDialog({ user }: WhitelistUserEditDialo
   const [username, setUsername] = useState(user.username || "");
   const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error"; message: string; isLoading: boolean }>({ status: "success", message: "", isLoading: false });
   const router = useRouter();
+
+  // Keep local state in sync with the latest user data each time the dialog is opened
+  useEffect(() => {
+    if (open) {
+      setWallet(user.wallet || "");
+      setEmail(user.email || "");
+      setUsername(user.username || "");
+    }
+  }, [user, open]);
 
   async function handleSave() {
     setUploadStatus({ status: "success", message: "", isLoading: true });
