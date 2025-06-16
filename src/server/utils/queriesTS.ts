@@ -276,10 +276,15 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
 }
 
 export async function approveUgcAdmin(ugcIds: string[]) {
-    const user = await getServerAuthSession();
-    if (!user) throw new Error("Not authenticated");
-    const dbUser = await getUserById(user.user.id);
-    if (!dbUser || !dbUser.isAdmin) throw new Error("Not authorized");
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+
+    if (!walletlessEnabled) {
+        const user = await getServerAuthSession();
+        if (!user) throw new Error("Not authenticated");
+        const dbUser = await getUserById(user.user.id);
+        if (!dbUser || !dbUser.isAdmin) throw new Error("Not authorized");
+    }
+
     try {
         const ugcData = await db.query.ugcresearch.findMany({ where: inArray(ugcresearch.id, ugcIds) });
         await Promise.all(ugcData.map(async (ugc) => {
@@ -483,8 +488,9 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
 }
 
 export async function getWhitelistedUsers() {
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
     const session = await getServerAuthSession();
-    if (!session) throw new Error("Unauthorized");
+    if (!session && !walletlessEnabled) throw new Error("Unauthorized");
     try {
         const result = await db.query.users.findMany({ where: eq(users.isWhiteListed, true) });
         if (!result) return [];
