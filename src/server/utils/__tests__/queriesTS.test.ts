@@ -18,27 +18,32 @@ import { hasSpotifyCredentials } from '../setup/testEnv';
 // Skip all tests if Spotify credentials are missing
 const testWithSpotify = hasSpotifyCredentials ? it : it.skip;
 
-// Mock the database
-jest.mock('@/server/db/drizzle', () => ({
-    db: {
-        query: {
-            urlmap: {
-                findMany: jest.fn()
+// Comprehensive DB mock for this suite
+jest.mock('@/server/db/drizzle', () => {
+    const makeTable = () => ({
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+        insert: jest.fn(),
+    });
+    return {
+        db: {
+            query: {
+                urlmap: makeTable(),
+                artists: makeTable(),
+                users: makeTable(),
+                ugcresearch: makeTable(),
             },
-            artists: {
-                findFirst: jest.fn()
-            },
-            users: {
-                findFirst: jest.fn()
-            }
+            select: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            insert: jest.fn(),
+            update: jest.fn(),
+            execute: jest.fn(),
         },
-        select: jest.fn().mockReturnThis(),
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        execute: jest.fn()
-    }
-}));
+    };
+});
 
 // Import the mocked db
 import { db } from '@/server/db/drizzle';
@@ -632,7 +637,7 @@ describe('getUserByWallet', () => {
 // Additional comprehensive tests for uncovered functions
 
 // Mock additional imports needed for new tests
-jest.mock('../auth', () => ({
+jest.mock('src/server/auth.ts', () => ({
     getServerAuthSession: jest.fn()
 }));
 
