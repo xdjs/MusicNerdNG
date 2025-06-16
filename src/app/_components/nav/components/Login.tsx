@@ -332,10 +332,10 @@ const isLocalEnvironment = typeof window === 'undefined'
     ? process.env.NODE_ENV !== 'production'
     : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const NoWalletLogin = forwardRef<HTMLDivElement, LoginProps>(({ buttonStyles }, ref): JSX.Element => {
+const NoWalletLogin: React.FC<LoginProps> = ({ buttonStyles }) => {
     // Keep original footprint (w-12 h-12). When local, render admin link inside.
     return (
-        <div ref={ref as any} className="w-12 h-12 flex items-center justify-center">
+        <div className="w-12 h-12 flex items-center justify-center">
             {isLocalEnvironment && (
                 <Link
                     href="/admin"
@@ -347,9 +347,7 @@ const NoWalletLogin = forwardRef<HTMLDivElement, LoginProps>(({ buttonStyles }, 
             )}
         </div>
     );
-});
-
-NoWalletLogin.displayName = 'NoWalletLogin';
+};
 
 // Main component that decides which version to render
 const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref): JSX.Element => {
@@ -357,7 +355,7 @@ const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref): JSX.Elemen
     const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
 
     if (walletlessEnabled) {
-        return <NoWalletLogin {...props} ref={ref} />;
+        return <NoWalletLogin {...props} />;
     }
 
     return <WalletLogin {...props} ref={ref} />;
