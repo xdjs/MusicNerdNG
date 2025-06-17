@@ -119,4 +119,19 @@ describe("utils/services", () => {
     });
   });
 
+  describe("cn (classNames utility)", () => {
+    it("merges class names and removes duplicates", () => {
+       // Import locally to avoid hoisting issues with jest.mock above
+       const { cn } = require("@/lib/utils");
+
+       const merged = cn("p-2", "m-1", "p-2");
+       expect(merged.split(" ").sort()).toEqual(["m-1", "p-2"].sort());
+
+       const mergedArray = cn(["text-sm", "text-sm", "font-bold"]).trim();
+       expect(mergedArray.split(" ").sort()).toEqual([
+         "text-sm",
+         "font-bold",
+       ].sort());
+     });
+  });
 }); 

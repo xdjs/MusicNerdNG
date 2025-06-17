@@ -65,15 +65,8 @@ jest.mock('@/server/auth', () => ({
 
 // Mock child components
 jest.mock('@/app/_components/ArtistLinks', () => {
-    return function MockArtistLinks({ isMonetized, isOpenOnLoad }: { isMonetized: boolean; isOpenOnLoad?: boolean }) {
-        return (
-            <div data-testid={`artist-links-${isMonetized ? 'monetized' : 'social'}`}>
-                Artist Links
-                {!isMonetized && (
-                    <div data-testid="add-artist-data" data-open={isOpenOnLoad ? 'true' : 'false'}>Add Artist Data</div>
-                )}
-            </div>
-        );
+    return function MockArtistLinks({ isMonetized }: { isMonetized: boolean }) {
+        return <div data-testid={`artist-links-${isMonetized ? 'monetized' : 'social'}`}>Artist Links</div>;
     };
 });
 
@@ -180,7 +173,7 @@ describe('ArtistPage', () => {
         expect(img).toHaveAttribute('src', '/default_pfp_pink.png');
     });
 
-    it('does not auto open AddArtistData anymore', async () => {
+    it('opens AddArtistData when opADM is set to "1"', async () => {
         const propsWithOpADM = {
             ...defaultProps,
             searchParams: { opADM: '1' }
@@ -199,6 +192,6 @@ describe('ArtistPage', () => {
         render(Component);
 
         const addArtistData = screen.getByTestId('add-artist-data');
-        expect(addArtistData).toHaveAttribute('data-open', 'false');
+        expect(addArtistData).toHaveAttribute('data-open', 'true');
     });
 }); 
