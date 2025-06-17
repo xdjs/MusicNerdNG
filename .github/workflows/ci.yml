@@ -114,6 +114,43 @@ jobs:
         path: coverage/
         retention-days: 14
 
+    - name: Send coverage webhook
+      if: always()
+      run: |
+        # Parse coverage summary
+        if [ -f coverage/coverage-summary.json ]; then
+          COVERAGE_DATA=$(cat coverage/coverage-summary.json)
+          
+          # Send to external webhook if configured
+          if [ -n "${{ secrets.COVERAGE_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.COVERAGE_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"repository\": \"${{ github.repository }}\",
+                \"branch\": \"${{ github.ref_name }}\",
+                \"commit\": \"${{ github.sha }}\",
+                \"coverage\": $COVERAGE_DATA,
+                \"workflow_run_id\": \"${{ github.run_id }}\",
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }"
+          fi
+          
+          # Send to internal API (if this is a deployed environment)
+          if [ -n "${{ secrets.DEPLOYMENT_URL }}" ]; then
+            curl -X POST "${{ secrets.DEPLOYMENT_URL }}/api/coverage" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"coverage\": $COVERAGE_DATA,
+                \"metadata\": {
+                  \"repository\": \"${{ github.repository }}\",
+                  \"branch\": \"${{ github.ref_name }}\",
+                  \"commit\": \"${{ github.sha }}\",
+                  \"workflow_run_id\": \"${{ github.run_id }}\"
+                }
+              }"
+          fi
+        fi
+
     # Add a status check summary
     - name: Check Status
       if: always()
