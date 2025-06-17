@@ -122,6 +122,9 @@ describe('getArtistLinks', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (db.query.urlmap.findMany as jest.Mock).mockResolvedValue(mockUrlMaps);
+        // Mock isObjKey to return true for valid platform properties
+        const { isObjKey } = require('../services');
+        (isObjKey as jest.Mock).mockImplementation((key: string, obj: any) => key in obj);
     });
 
     afterEach(() => {
