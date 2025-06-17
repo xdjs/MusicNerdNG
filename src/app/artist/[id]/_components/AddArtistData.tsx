@@ -32,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 
-export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
+export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false, label }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string }) {
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -95,10 +95,11 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
     return (
         <>
             <Button
-                className="text-white bg-pastypink p-2"
+                className="text-white bg-pastypink flex items-center gap-2 px-3 py-2 min-w-[50px]"
                 onClick={handleClick}
             >
                 <Plus />
+                {label && <span className="whitespace-nowrap">{label}</span>}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
