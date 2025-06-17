@@ -5,6 +5,7 @@ import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
 import Link from "next/link";
+import AddArtistData from "./_components/AddArtistData";
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 
@@ -19,6 +20,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     if (!artist) {
         return notFound();
     }
+    const { opADM } = searchParams;
     const headers = await getSpotifyHeaders();
 
     const [spotifyImg, numReleases, wiki, allLinks, topTrackId] = await Promise.all([
@@ -59,10 +61,11 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                         {/* Right Column: Name and Description */}
                         <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
-                            <div className="mb-2 flex items-center">
+                            <div className="mb-2 flex justify-between items-center">
                                 <strong className="text-black text-2xl mr-2">
                                     {artist.name}
                                 </strong>
+                                <AddArtistData availableLinks={allLinks} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} isOpenOnLoad={opADM === "1"} />
                             </div>
                             <div className="text-black pt-0 mb-4">
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
