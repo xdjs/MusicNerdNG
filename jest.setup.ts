@@ -171,5 +171,6 @@ console.error = (...args) => {
     originalError.call(console, ...args);
 };
 
-// Provide dummy Discord webhook URL for tests
-process.env.DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'https://discord.com/webhook/test'; 
+// Ensure no Discord webhook during unit tests unless explicitly set
+// @ts-ignore
+delete (process.env as any).DISCORD_WEBHOOK_URL; 
