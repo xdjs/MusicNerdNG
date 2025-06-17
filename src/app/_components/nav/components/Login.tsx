@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAccount, useDisconnect, useConfig } from 'wagmi';
 import { useConnectModal, useAccountModal, useChainModal } from '@rainbow-me/rainbowkit';
 import { addArtist } from "@/app/actions/addArtist";
+import Link from 'next/link';
 
 // Add type for the SearchBar ref
 interface SearchBarRef {
@@ -327,21 +328,34 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
 WalletLogin.displayName = 'WalletLogin';
 
 // Component for non-wallet mode
-const NoWalletLogin = forwardRef<HTMLButtonElement, LoginProps>((props, ref): JSX.Element => {
-    // Return a placeholder div with the same dimensions as the wallet button
-    return (
-        <div className="w-12 h-12" />
-    );
-});
+const isLocalEnvironment = typeof window === 'undefined'
+    ? process.env.NODE_ENV !== 'production'
+    : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-NoWalletLogin.displayName = 'NoWalletLogin';
+const NoWalletLogin: React.FC<LoginProps> = ({ buttonStyles }) => {
+    // Keep original footprint (w-12 h-12). When local, render admin link inside.
+    return (
+        <div className="w-12 h-12 flex items-center justify-center">
+            {isLocalEnvironment && (
+                <Link
+                    href="/admin"
+                    title="Admin panel"
+                    className={`flex items-center justify-center w-full h-full bg-pastypink hover:bg-gray-200 transition-colors duration-300 text-black ${buttonStyles}`}
+                >
+                    ⚙️
+                </Link>
+            )}
+        </div>
+    );
+};
 
 // Main component that decides which version to render
 const Login = forwardRef<HTMLButtonElement, LoginProps>((props, ref): JSX.Element => {
-    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
-    
-    if (!isWalletRequired) {
-        return <NoWalletLogin {...props} ref={ref} />;
+    // Walletless mode is only permitted when NODE_ENV !== 'production'
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+
+    if (walletlessEnabled) {
+        return <NoWalletLogin {...props} />;
     }
 
     return <WalletLogin {...props} ref={ref} />;
