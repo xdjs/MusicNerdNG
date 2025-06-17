@@ -640,7 +640,7 @@ describe('getUserByWallet', () => {
 // Additional comprehensive tests for uncovered functions
 
 // Mock additional imports needed for new tests
-jest.mock('src/server/auth.ts', () => ({
+jest.mock('@/server/auth', () => ({
     getServerAuthSession: jest.fn()
 }));
 
@@ -652,7 +652,7 @@ jest.mock('../externalApiQueries', () => ({
 
 jest.mock('../services', () => ({
     extractArtistId: jest.fn(),
-    isObjKey: (key: string, obj: Record<string, any>) => Object.prototype.hasOwnProperty.call(obj, key)
+    isObjKey: jest.fn()
 }));
 
 import { getServerAuthSession } from '../../auth';
