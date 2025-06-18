@@ -1,11 +1,14 @@
 import { defineConfig } from "drizzle-kit";
-import {SUPABASE_DB_CONNECTION } from "@/env";
+import { config } from "dotenv";
+
+// Load environment variables from .env.local
+config({ path: ".env.local" });
 
 export default defineConfig({
-  schema: "./src/schema/*",
+  schema: "./src/server/db/schema.ts",
   out: "./drizzle",
   dialect: 'postgresql',
   dbCredentials: {
-    url: SUPABASE_DB_CONNECTION,
+    url: process.env.SUPABASE_DB_CONNECTION!,
   }
 });
