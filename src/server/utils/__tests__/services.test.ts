@@ -64,7 +64,7 @@ describe("utils/services", () => {
 
     it("returns web3 platform text when only one platform", () => {
       const text = getArtistDetailsText({ catalog: "cat" } as unknown as Artist, { releases: 0 });
-      expect(text).toBe("NFT's released on Catalog");
+      expect(text).toBe("NFTs released on Catalog");
     });
 
     it("returns combined text when both releases and multiple platforms", () => {

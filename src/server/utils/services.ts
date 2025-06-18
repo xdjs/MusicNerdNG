@@ -37,7 +37,7 @@ export const getArtistDetailsText = (artist: Artist, spotifyData: SpotifyDataTyp
 
     if (web3Platforms.length <= 0 && numSpotifyReleases > 0) return `${numSpotifyReleases} releases on Spotify`;
 
-    const prefix = numSpotifyReleases > 0 ? `${numSpotifyReleases} releases on Spotify; NFT's released on ` : "NFT's released on "
+    const prefix = numSpotifyReleases > 0 ? `${numSpotifyReleases} releases on Spotify; NFTs released on ` : "NFTs released on "
     if (web3Platforms.length < 2) return prefix + web3Platforms[0]
 
     if (web3Platforms.length > 1)

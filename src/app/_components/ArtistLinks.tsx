@@ -20,19 +20,36 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
 export default async function ArtistLinks({ isMonetized, artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { isMonetized: boolean, artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
     let artistLinks = await getArtistLinks(artist);
     artistLinks = artistLinks.filter(el => el.isMonetized === isMonetized);
-    if (artistLinks.length === 0) {
+    
+    // Render differently depending on monetization flag
+    if (isMonetized) {
+        // SUPPORT SECTION – never render the add button here
+        if (artistLinks.length === 0) {
+            return (
+                <p>This artist has no links in this section yet.</p>
+            );
+        }
         return (
-            <div>
-                <p>This artist has no links in this section, help support them by adding links!</p>
-                <div className="flex justify-start pt-4">
-                    <AddArtistData artist={artist} spotifyImg={spotifyImg} session={session} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
-                </div>
-            </div>
-        )
+            artistLinks.map(el => (
+                <PlatformLink key={el.cardPlatformName} descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""} link={el.artistUrl} image={el.siteImage ?? ""} />
+            ))
+        );
     }
+
+    // GENERAL LINKS SECTION – always show the add button at the top and align with other list items
     return (
-        artistLinks?.map(el => {
-            return (<PlatformLink key={el.cardPlatformName} descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""} link={el.artistUrl} image={el.siteImage ?? ""} />)
-        })
-    )
+        <>
+            <li className="list-none pb-2">
+                <div className="link-item-grid gap-x-4 corners-rounded items-center">
+                    <AddArtistData label="Add data" artist={artist} spotifyImg={spotifyImg} session={session} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
+                </div>
+            </li>
+            {artistLinks.length === 0 ? (
+                <p>This artist has no links in this section yet, help support them by adding links!</p>
+            ) : null}
+            {artistLinks.map(el => (
+                <PlatformLink key={el.cardPlatformName} descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""} link={el.artistUrl} image={el.siteImage ?? ""} />
+            ))}
+        </>
+    );
 }
