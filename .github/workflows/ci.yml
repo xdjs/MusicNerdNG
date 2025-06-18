@@ -118,60 +118,44 @@ jobs:
     - name: Send coverage webhook
       if: always()
       run: |
-        # Parse coverage summary
+        # Parse coverage summary and generate detailed report
         if [ -f coverage/coverage-summary.json ]; then
-          COVERAGE_DATA=$(cat coverage/coverage-summary.json)
-          echo "Coverage data found:"
-          echo "$COVERAGE_DATA" | head -20
+          echo "Coverage data found, analyzing..."
+          
+          # Generate detailed coverage analysis using our custom script
+          WEBHOOK_PAYLOAD=$(node scripts/analyze-coverage.js)
           
           # Send to Discord if configured
           if [ -n "${{ secrets.DISCORD_COVERAGE_URL }}" ]; then
-            # Extract coverage percentages
-            LINES_PCT=$(echo "$COVERAGE_DATA" | jq -r '.total.lines.pct // 0')
-            FUNCTIONS_PCT=$(echo "$COVERAGE_DATA" | jq -r '.total.functions.pct // 0')
-            BRANCHES_PCT=$(echo "$COVERAGE_DATA" | jq -r '.total.branches.pct // 0')
-            
-            echo "Extracted coverage: Lines=$LINES_PCT%, Functions=$FUNCTIONS_PCT%, Branches=$BRANCHES_PCT%"
-            
-            # Determine color based on line coverage
-            if (( $(echo "$LINES_PCT >= 80" | bc -l) )); then
-              COLOR=65280  # Green
-            elif (( $(echo "$LINES_PCT >= 60" | bc -l) )); then
-              COLOR=16776960  # Yellow
-            else
-              COLOR=16711680  # Red
-            fi
-            
-            echo "Sending Discord webhook to: ${{ secrets.DISCORD_COVERAGE_URL }}"
-            WEBHOOK_RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DISCORD_COVERAGE_URL }}" \
+            echo "Sending detailed coverage report to Discord..."
+            WEBHOOK_RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/discord_response.txt -X POST "${{ secrets.DISCORD_COVERAGE_URL }}" \
               -H "Content-Type: application/json" \
-              -d "{
-                \"embeds\": [{
-                  \"title\": \"Coverage Report: ${{ github.repository }}\",
-                  \"description\": \"Branch: ${{ github.ref_name }}\\nCommit: ${GITHUB_SHA:0:7}\",
-                  \"color\": $COLOR,
-                  \"fields\": [
-                    {\"name\": \"Lines\", \"value\": \"${LINES_PCT}%\", \"inline\": true},
-                    {\"name\": \"Functions\", \"value\": \"${FUNCTIONS_PCT}%\", \"inline\": true},
-                    {\"name\": \"Branches\", \"value\": \"${BRANCHES_PCT}%\", \"inline\": true}
-                  ],
-                  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-                }]
-              }")
-            echo "Discord webhook response: $WEBHOOK_RESPONSE"
+              -d "$WEBHOOK_PAYLOAD")
+            
+            echo "Discord webhook response code: $WEBHOOK_RESPONSE"
+            if [ "$WEBHOOK_RESPONSE" != "204" ]; then
+              echo "Discord webhook response body:"
+              cat /tmp/discord_response.txt
+            else
+              echo "✅ Coverage report sent successfully to Discord!"
+            fi
           fi
         else
-          echo "Coverage summary file not found!"
+          echo "❌ Coverage summary file not found!"
           # Send a failure notification to Discord if configured
           if [ -n "${{ secrets.DISCORD_COVERAGE_URL }}" ]; then
-            curl -X POST "${{ secrets.DISCORD_COVERAGE_URL }}" \
+            echo "Sending failure notification to Discord..."
+            curl -s -X POST "${{ secrets.DISCORD_COVERAGE_URL }}" \
               -H "Content-Type: application/json" \
               -d "{
                 \"embeds\": [{
                   \"title\": \"❌ Coverage Report Failed: ${{ github.repository }}\",
-                  \"description\": \"Branch: ${{ github.ref_name }}\\nCommit: ${GITHUB_SHA:0:7}\\n\\nCoverage data not generated!\",
+                  \"description\": \"Branch: ${{ github.ref_name }}\\nCommit: ${GITHUB_SHA:0:7}\\n\\n**Error:** Coverage data not generated!\\n\\nThis could indicate:\\n• Tests failed to run\\n• Coverage collection failed\\n• Jest configuration issue\",
                   \"color\": 16711680,
-                  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+                  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+                  \"footer\": {
+                    \"text\": \"Check GitHub Actions logs for details\"
+                  }
                 }]
               }"
           fi
