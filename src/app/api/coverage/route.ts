@@ -102,12 +102,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Send to Discord if configured  
-    if (process.env.DISCORD_WEBHOOK_URL) {
+    if (process.env.DISCORD_COVERAGE_URL) {
       const totalCoverage = coverage?.total?.lines?.pct || 0;
       const color = totalCoverage >= 80 ? 0x00ff00 : totalCoverage >= 60 ? 0xffff00 : 0xff0000;
       
       webhookPromises.push(
-        fetch(process.env.DISCORD_WEBHOOK_URL, {
+        fetch(process.env.DISCORD_COVERAGE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
