@@ -160,19 +160,19 @@ jobs:
               }")
             echo "Discord webhook response: $WEBHOOK_RESPONSE"
           fi
-          
-          # Send to internal webhook API (if this is a deployed environment)
-          if [ -n "${{ secrets.DEPLOYMENT_URL }}" ]; then
-            curl -X POST "${{ secrets.DEPLOYMENT_URL }}/api/coverage" \
+        else
+          echo "Coverage summary file not found!"
+          # Send a failure notification to Discord if configured
+          if [ -n "${{ secrets.DISCORD_COVERAGE_URL }}" ]; then
+            curl -X POST "${{ secrets.DISCORD_COVERAGE_URL }}" \
               -H "Content-Type: application/json" \
               -d "{
-                \"coverage\": $COVERAGE_DATA,
-                \"metadata\": {
-                  \"repository\": \"${{ github.repository }}\",
-                  \"branch\": \"${{ github.ref_name }}\",
-                  \"commit\": \"${{ github.sha }}\",
-                  \"workflow_run_id\": \"${{ github.run_id }}\"
-                }
+                \"embeds\": [{
+                  \"title\": \"❌ Coverage Report Failed: ${{ github.repository }}\",
+                  \"description\": \"Branch: ${{ github.ref_name }}\\nCommit: ${GITHUB_SHA:0:7}\\n\\nCoverage data not generated!\",
+                  \"color\": 16711680,
+                  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+                }]
               }"
           fi
         fi
