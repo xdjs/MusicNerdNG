@@ -31,7 +31,7 @@ export async function storeCoverageReport(
       commit_sha: metadata.commit,
       workflow_run_id: metadata.workflow_run_id,
       coverage_data: coverageData,
-      total_coverage: total.lines.pct,
+      total_coverage: total.lines.pct.toString(),
       lines_covered: total.lines.covered,
       lines_total: total.lines.total,
       functions_covered: total.functions.covered,
