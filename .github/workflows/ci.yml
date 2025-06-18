@@ -123,8 +123,8 @@ jobs:
           COVERAGE_DATA=$(cat coverage/coverage-summary.json)
           
           # Send to external webhook if configured
-          if [ -n "${{ secrets.COVERAGE_WEBHOOK_URL }}" ]; then
-            curl -X POST "${{ secrets.COVERAGE_WEBHOOK_URL }}" \
+          if [ -n "${{ secrets.DISCORD_COVERAGE_URL }}" ]; then
+            curl -X POST "${{ secrets.DISCORD_COVERAGE_URL }}" \
               -H "Content-Type: application/json" \
               -d "{
                 \"repository\": \"${{ github.repository }}\",
@@ -136,7 +136,7 @@ jobs:
               }"
           fi
           
-          # Send to internal API (if this is a deployed environment)
+          # Send to internal webhook API (if this is a deployed environment)
           if [ -n "${{ secrets.DEPLOYMENT_URL }}" ]; then
             curl -X POST "${{ secrets.DEPLOYMENT_URL }}/api/coverage" \
               -H "Content-Type: application/json" \
