@@ -496,6 +496,7 @@ describe('Artist Management Functions', () => {
         });
 
         it('should work when wallet requirement is disabled', async () => {
+            const originalValue = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             (db.query.artists.findFirst as jest.Mock).mockResolvedValue(null);
@@ -510,6 +511,9 @@ describe('Artist Management Functions', () => {
 
             const result = await addArtist('spotify123');
             expect(result.status).toBe('success');
+            
+            // Restore original environment variable
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalValue;
         });
     });
 
@@ -567,6 +571,8 @@ describe('Artist Management Functions', () => {
         });
 
         it('should handle authentication error', async () => {
+            // Ensure wallet requirement is enabled for this test
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             await expect(addArtistData('https://instagram.com/test', mockArtist))
                 .rejects.toThrow('Not authenticated');
@@ -681,11 +687,15 @@ describe('UGC Functions', () => {
         });
 
         it('should work in walletless mode during development', async () => {
+            const originalValue = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
 
             const result = await approveUgcAdmin(['ugc1']);
             expect(result.status).toBe('success');
+            
+            // Restore original environment variable
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalValue;
         });
 
         it('should handle authentication and authorization errors', async () => {
