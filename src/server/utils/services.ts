@@ -50,27 +50,32 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 }
 
 export async function extractArtistId(artistUrl: string) {
+    // Attempt to decode any percent-encoded characters in the submitted URL so regexes work on human-readable text
+    let decodedUrl = artistUrl;
+    try {
+        decodedUrl = decodeURIComponent(artistUrl);
+    } catch {
+        // Ignore decoding errors and continue with original string
+    }
     const allLinks = await getAllLinks();
 
     // First attempt existing regex-based matching
     for (const { regex, siteName, cardPlatformName } of allLinks) {
-        // Special-case Wikipedia: only allow English (en.wikipedia.org)
+        // Enforce English-only Wikipedia domains
         if (siteName === 'wikipedia') {
             try {
-                // Ensure the URL is valid by prepending protocol if missing
-                const provisionalUrl = artistUrl.startsWith('http') ? artistUrl : `https://${artistUrl}`;
-                const { hostname } = new URL(provisionalUrl);
-                // Accept only en.wikipedia.org and its mobile counterpart en.m.wikipedia.org
+                const provisional = decodedUrl.startsWith('http') ? decodedUrl : `https://${decodedUrl}`;
+                const hostname = new URL(provisional).hostname;
                 if (!(hostname === 'en.wikipedia.org' || hostname === 'en.m.wikipedia.org')) {
                     // Skip non-English Wikipedia links
                     continue;
                 }
             } catch {
-                // If URL parsing fails, treat as non-matching and continue
+                // If URL parsing fails, skip matching for Wikipedia
                 continue;
             }
         }
-        const match = artistUrl.match(regex);
+        const match = decodedUrl.match(regex);
         if (match) {
             // For YouTube channel URLs, keep channel IDs as is and ensure usernames have @ prefix
             if (siteName === 'youtubechannel') {
@@ -90,6 +95,13 @@ export async function extractArtistId(artistUrl: string) {
                 };
             }
             let extractedId = match[1] || match[2];
+
+            // Decode any percent-encoded characters in the captured ID as well
+            try {
+                extractedId = decodeURIComponent(extractedId);
+            } catch {
+                // ignore errors
+            }
 
             // For X (formerly Twitter) links, strip query parameters like ?si=...
             if (siteName === 'x' && extractedId && extractedId.includes('?')) {
