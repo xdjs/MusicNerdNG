@@ -16,31 +16,52 @@ function analyzeCoverage() {
 
   const coverageData = JSON.parse(fs.readFileSync(coverageSummaryPath, 'utf8'));
   
-  // Extract overall totals
-  const total = coverageData.total;
-  const totalLines = total.lines.pct;
-  const totalFunctions = total.functions.pct;
-  const totalBranches = total.branches.pct;
-  const totalStatements = total.statements.pct;
-  
-  // Analyze individual files
+  // Analyze individual files and calculate custom totals
   const filesNeedingCoverage = [];
   const filesWithZeroCoverage = [];
   const wellCoveredFiles = [];
   
+  // Custom totals for files that should be tested
+  let customTotals = {
+    lines: { total: 0, covered: 0 },
+    functions: { total: 0, covered: 0 },
+    branches: { total: 0, covered: 0 },
+    statements: { total: 0, covered: 0 }
+  };
+  
   Object.entries(coverageData).forEach(([filePath, fileData]) => {
     if (filePath === 'total') return;
     
-    // Skip test files and configuration files
+    // Skip test files, configuration files, database schemas, and other non-testable files
     if (filePath.includes('.test.') || 
         filePath.includes('.spec.') || 
         filePath.includes('jest.') ||
         filePath.includes('vitest.') ||
         filePath.includes('.config.') ||
         filePath.includes('__tests__') ||
-        filePath.includes('__mocks__')) {
+        filePath.includes('__mocks__') ||
+        filePath.includes('drizzle/') ||
+        filePath.includes('/schema.') ||
+        filePath.includes('DbTypes.') ||
+        filePath.includes('globals.css') ||
+        filePath.includes('.scss') ||
+        filePath.includes('.d.ts') ||
+        filePath.includes('env.ts') ||
+        filePath.includes('/auth.ts') ||
+        filePath.includes('polyfills.ts') ||
+        filePath.includes('testEnv.ts')) {
       return;
     }
+    
+    // Add to custom totals
+    customTotals.lines.total += fileData.lines.total;
+    customTotals.lines.covered += fileData.lines.covered;
+    customTotals.functions.total += fileData.functions.total;
+    customTotals.functions.covered += fileData.functions.covered;
+    customTotals.branches.total += fileData.branches.total;
+    customTotals.branches.covered += fileData.branches.covered;
+    customTotals.statements.total += fileData.statements.total;
+    customTotals.statements.covered += fileData.statements.covered;
     
     const linesCoverage = fileData.lines.pct;
     const functionsCoverage = fileData.functions.pct;
@@ -70,6 +91,16 @@ function analyzeCoverage() {
       });
     }
   });
+
+  // Calculate custom coverage percentages
+  const totalLines = customTotals.lines.total > 0 ? 
+    Math.round((customTotals.lines.covered / customTotals.lines.total) * 100) : 0;
+  const totalFunctions = customTotals.functions.total > 0 ? 
+    Math.round((customTotals.functions.covered / customTotals.functions.total) * 100) : 0;
+  const totalBranches = customTotals.branches.total > 0 ? 
+    Math.round((customTotals.branches.covered / customTotals.branches.total) * 100) : 0;
+  const totalStatements = customTotals.statements.total > 0 ? 
+    Math.round((customTotals.statements.covered / customTotals.statements.total) * 100) : 0;
 
   // Sort arrays by coverage percentage (worst first)
   filesNeedingCoverage.sort((a, b) => a.lines - b.lines);
@@ -143,10 +174,10 @@ function analyzeCoverage() {
   }
 
   // Generate summary statistics
-  const totalFiles = Object.keys(coverageData).length - 1; // Exclude 'total' key
+  const totalTestableFiles = filesWithZeroCoverage.length + filesNeedingCoverage.length + wellCoveredFiles.length;
   const summary = [
-    `📊 **Coverage Summary**`,
-    `• Total Files: ${totalFiles}`,
+    `📊 **Coverage Summary (Testable Files Only)**`,
+    `• Testable Files: ${totalTestableFiles}`,
     `• Zero Coverage: ${filesWithZeroCoverage.length}`,
     `• Need Improvement: ${filesNeedingCoverage.length}`,
     `• Well Covered: ${wellCoveredFiles.length}`
@@ -170,8 +201,9 @@ function analyzeCoverage() {
   console.log(JSON.stringify(webhookPayload, null, 2));
   
   // Also output some useful info for CI logs
-  console.error(`Coverage Analysis Complete:`);
+  console.error(`Coverage Analysis Complete (Testable Files Only):`);
   console.error(`- Overall Coverage: ${totalLines}%`);
+  console.error(`- Testable Files: ${totalTestableFiles}`);
   console.error(`- Files with Zero Coverage: ${filesWithZeroCoverage.length}`);
   console.error(`- Files Needing Improvement: ${filesNeedingCoverage.length}`);
   console.error(`- Well Covered Files: ${wellCoveredFiles.length}`);
