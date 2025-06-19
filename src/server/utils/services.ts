@@ -97,6 +97,24 @@ export async function extractArtistId(artistUrl: string) {
     if (/soundcloud\.com\/user-\d+/i.test(artistUrl)) {
         return null; // Invalid SoundCloud profile URL for our purposes
     }
+
+    // Fallback for SoundCloud username URLs not caught by DB regex
+    const soundCloudRow = allLinks.find(l => l.siteName === 'soundcloud');
+    if (soundCloudRow && artistUrl.includes('soundcloud.com')) {
+        try {
+            const url = new URL(artistUrl.startsWith('http') ? artistUrl : `https://${artistUrl}`);
+            const pathSegment = url.pathname.split('/').filter(Boolean)[0];
+            if (pathSegment && !/^user-?\d+$/i.test(pathSegment) && !/^\d+$/.test(pathSegment)) {
+                return {
+                    siteName: 'soundcloud',
+                    cardPlatformName: soundCloudRow.cardPlatformName,
+                    id: pathSegment
+                };
+            }
+        } catch {
+            /* invalid URL */
+        }
+    }
     return null;
 }
 
