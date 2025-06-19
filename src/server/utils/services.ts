@@ -51,7 +51,25 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 
 export async function extractArtistId(artistUrl: string) {
     const allLinks = await getAllLinks();
+
+    // First attempt existing regex-based matching
     for (const { regex, siteName, cardPlatformName } of allLinks) {
+        // Special-case Wikipedia: only allow English (en.wikipedia.org)
+        if (siteName === 'wikipedia') {
+            try {
+                // Ensure the URL is valid by prepending protocol if missing
+                const provisionalUrl = artistUrl.startsWith('http') ? artistUrl : `https://${artistUrl}`;
+                const { hostname } = new URL(provisionalUrl);
+                // Accept only en.wikipedia.org and its mobile counterpart en.m.wikipedia.org
+                if (!(hostname === 'en.wikipedia.org' || hostname === 'en.m.wikipedia.org')) {
+                    // Skip non-English Wikipedia links
+                    continue;
+                }
+            } catch {
+                // If URL parsing fails, treat as non-matching and continue
+                continue;
+            }
+        }
         const match = artistUrl.match(regex);
         if (match) {
             // For YouTube channel URLs, keep channel IDs as is and ensure usernames have @ prefix
@@ -78,11 +96,39 @@ export async function extractArtistId(artistUrl: string) {
                 extractedId = extractedId.split('?')[0];
             }
 
+            // Reject numeric-only SoundCloud IDs (we only accept usernames)
+            if (siteName === 'soundcloud' && /^\d+$/.test(extractedId ?? "")) {
+                return null;
+            }
+
             return { 
                 siteName, 
                 cardPlatformName, 
                 id: extractedId 
             };
+        }
+    }
+
+    // Reject SoundCloud numeric user-id links (they cannot be converted to profile URLs)
+    if (/soundcloud\.com\/user-\d+/i.test(artistUrl)) {
+        return null; // Invalid SoundCloud profile URL for our purposes
+    }
+
+    // Fallback for SoundCloud username URLs not caught by DB regex
+    const soundCloudRow = allLinks.find(l => l.siteName === 'soundcloud');
+    if (soundCloudRow && artistUrl.includes('soundcloud.com')) {
+        try {
+            const url = new URL(artistUrl.startsWith('http') ? artistUrl : `https://${artistUrl}`);
+            const pathSegment = url.pathname.split('/').filter(Boolean)[0];
+            if (pathSegment && !/^user-?\d+$/i.test(pathSegment) && !/^\d+$/.test(pathSegment)) {
+                return {
+                    siteName: 'soundcloud',
+                    cardPlatformName: soundCloudRow.cardPlatformName,
+                    id: pathSegment
+                };
+            }
+        } catch {
+            /* invalid URL */
         }
     }
     return null;
