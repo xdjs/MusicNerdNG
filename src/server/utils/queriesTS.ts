@@ -155,6 +155,14 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
                     const value = artist[platform.siteName]?.toString() ?? "";
                     const ethRemoved = value.endsWith('.eth') ? value.slice(0, -4) : value;
                     artistUrl = platform.appStringFormat.replace("%@", ethRemoved);
+                } else if (platform.siteName === 'soundcloud') {
+                    // Only allow username-based SoundCloud profiles (skip numeric user IDs)
+                    const value = artist[platform.siteName]?.toString() ?? "";
+                    if (!value || /^\d+$/.test(value)) {
+                        // Skip if value is empty or purely numeric (user IDs not supported)
+                        continue;
+                    }
+                    artistUrl = platform.appStringFormat.replace("%@", value);
                 } else {
                     artistUrl = platform.appStringFormat.replace("%@", artist[platform.siteName]?.toString() ?? "");
                 }
