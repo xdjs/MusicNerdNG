@@ -2,6 +2,8 @@
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { ReactNode, Suspense } from "react";
 import dynamic from 'next/dynamic';
+import { WagmiProvider as WagmiProviderBase, http, createConfig } from 'wagmi';
+import { mainnet } from 'wagmi/chains';
 
 const queryClient = new QueryClient();
 
@@ -9,25 +11,25 @@ const queryClient = new QueryClient();
 const WalletProviders = dynamic(
     async () => {
         const { getDefaultConfig, RainbowKitProvider } = await import('@rainbow-me/rainbowkit');
-        const { WagmiProvider, http } = await import('wagmi');
+        const { http } = await import('wagmi');
+        const { mainnet: rkMainnet } = await import('wagmi/chains');
         const { RainbowKitSiweNextAuthProvider } = await import('@rainbow-me/rainbowkit-siwe-next-auth');
-        const { mainnet } = await import('wagmi/chains');
 
         const projectId = '929ab7024658ec19d047d5df44fb0f63';
 
         const config = getDefaultConfig({
             appName: 'Music Nerd',
             projectId,
-            chains: [mainnet],
+            chains: [rkMainnet],
             transports: {
-                [mainnet.id]: http()
+                [rkMainnet.id]: http()
             },
             ssr: true
         });
 
         return function Providers({ children }: { children: ReactNode }) {
             return (
-                <WagmiProvider config={config}>
+                <WagmiProviderBase config={config}>
                     <QueryClientProvider client={queryClient}>
                         <RainbowKitSiweNextAuthProvider
                             getSiweMessageOptions={() => ({
@@ -53,7 +55,7 @@ const WalletProviders = dynamic(
                             </RainbowKitProvider>
                         </RainbowKitSiweNextAuthProvider>
                     </QueryClientProvider>
-                </WagmiProvider>
+                </WagmiProviderBase>
             );
         };
     },
@@ -63,17 +65,29 @@ const WalletProviders = dynamic(
     }
 );
 
-// Component that excludes wagmi-dependent components
+// Minimal Wagmi config for walletless mode (no connectors)
+const walletlessConfig = createConfig({
+    chains: [mainnet],
+    transports: {
+        [mainnet.id]: http(),
+    },
+    ssr: true,
+});
+
 function NonWalletContent({ children }: { children: ReactNode }) {
     return (
-        <QueryClientProvider client={queryClient}>
-            {children}
-        </QueryClientProvider>
+        <WagmiProviderBase config={walletlessConfig}>
+            <QueryClientProvider client={queryClient}>
+                {children}
+            </QueryClientProvider>
+        </WagmiProviderBase>
     );
 }
 
 export default function LoginProviders({ children }: { children: ReactNode }) {
-    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+
+    const isWalletRequired = !walletlessEnabled;
 
     if (!isWalletRequired) {
         return <NonWalletContent>{children}</NonWalletContent>;

@@ -11,14 +11,23 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 import { searchArtists } from '../queriesTS';
 
 // Mock database for non-performance tests
+const makeTable = () => ({
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    update: jest.fn(),
+    insert: jest.fn(),
+});
+
 const mockDb = {
     execute: jest.fn(),
+    insert: jest.fn(),
+    update: jest.fn(),
     query: {
-        artists: {
-            findFirst: jest.fn(),
-            findMany: jest.fn()
-        }
-    }
+        urlmap: makeTable(),
+        artists: makeTable(),
+        users: makeTable(),
+        ugcresearch: makeTable(),
+    },
 };
 
 jest.mock('@/server/db/drizzle', () => mockDb);
@@ -157,15 +166,31 @@ describe('Real Database Performance Tests', () => {
 });
 
 // Now set up mocks for the rest of the tests
-jest.mock('@/server/db/drizzle', () => ({
-    execute: jest.fn(),
-    query: {
-        artists: {
-            findFirst: jest.fn(),
-            findMany: jest.fn(),
+jest.mock('@/server/db/drizzle', () => {
+    const makeTable = () => ({
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+        insert: jest.fn(),
+    });
+    return {
+        db: {
+            query: {
+                urlmap: makeTable(),
+                artists: makeTable(),
+                users: makeTable(),
+                ugcresearch: makeTable(),
+            },
+            select: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            insert: jest.fn(),
+            update: jest.fn(),
+            execute: jest.fn(),
         },
-    },
-}));
+    };
+});
 
 // Mock the functions we're testing
 const searchForArtistByName = async (name: string): Promise<Artist[]> => {

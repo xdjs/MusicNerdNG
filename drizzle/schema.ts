@@ -1,9 +1,7 @@
-import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, bigint, pgEnum } from "drizzle-orm/pg-core"
-  import { sql } from "drizzle-orm"
+import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, bigint, pgEnum, serial, varchar, jsonb, decimal } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
 
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
-
-
 
 export const ugcwhitelist = pgTable("ugcwhitelist", {
 	userId: uuid("user_id"),
@@ -187,3 +185,4 @@ export const users = pgTable("users", {
 		usersWalletKey: unique("users_wallet_key").on(table.wallet),
 	}
 });
+
