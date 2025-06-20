@@ -21,7 +21,6 @@ process.env.NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID = (process.env.NEXT_PUBLIC_SPOTIFY
 process.env.NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET = (process.env.NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET || (isTest ? 'test-spotify-client-secret' : '')) as string;
 process.env.SUPABASE_DB_CONNECTION = process.env.SUPABASE_DB_CONNECTION || 'postgresql://postgres:postgres@db.supabase.co:5432/postgres';
 process.env.NEXTAUTH_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-process.env.NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || 'test-nextauth-secret-for-testing';
 process.env.DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'test-discord-webhook';
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-api-key';
 
