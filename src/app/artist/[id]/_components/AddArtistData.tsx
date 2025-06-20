@@ -73,6 +73,10 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         if (!isOpen && addArtistResp && addArtistResp.status === "success") {
             router.refresh();
         }
+        if (!isOpen) {
+            setAddArtistResp(null);
+            setSelectedOption("");
+        }
         setIsModalOpen(isOpen);
         form.reset();
     }

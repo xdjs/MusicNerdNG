@@ -1,4 +1,4 @@
-import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, pgEnum, serial, varchar, jsonb, decimal } from "drizzle-orm/pg-core"
 import { is, relations, sql } from "drizzle-orm"
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
 
@@ -193,3 +193,23 @@ export const ugcRelations = relations(ugcresearch, ({ one }) => ({
 	ugcArtist: one(artists, { fields: [ugcresearch.artistId], references: [artists.id], relationName: "ugcArtistObject" }),
 	ugcUser: one(users, { fields: [ugcresearch.userId], references: [users.id], relationName: "ugcUser" }),
 }));
+
+export const coverageReports = pgTable('coverage_reports', {
+	id: serial('id').primaryKey(),
+	repository: varchar('repository', { length: 255 }).notNull(),
+	branch: varchar('branch', { length: 255 }).notNull(),
+	commit_sha: varchar('commit_sha', { length: 40 }).notNull(),
+	workflow_run_id: varchar('workflow_run_id', { length: 50 }),
+	coverage_data: jsonb('coverage_data').notNull(),
+	total_coverage: decimal('total_coverage', { precision: 5, scale: 2 }),
+	lines_covered: integer('lines_covered'),
+	lines_total: integer('lines_total'),
+	functions_covered: integer('functions_covered'),
+	functions_total: integer('functions_total'),
+	branches_covered: integer('branches_covered'),
+	branches_total: integer('branches_total'),
+	statements_covered: integer('statements_covered'),
+	statements_total: integer('statements_total'),
+	created_at: timestamp('created_at').defaultNow().notNull(),
+	updated_at: timestamp('updated_at').defaultNow().notNull()
+});

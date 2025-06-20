@@ -44,6 +44,34 @@ const customJestConfig: Config = {
             tsconfig: '<rootDir>/tsconfig.json'
         }
     },
+    // Coverage configuration
+    collectCoverage: false, // Enable via CLI flag
+    coverageDirectory: 'coverage',
+    collectCoverageFrom: [
+        'src/**/*.{ts,tsx}',
+        '!src/**/*.d.ts',
+        '!src/**/*.test.{ts,tsx}',
+        '!src/**/*.spec.{ts,tsx}',
+        '!src/types/**/*',
+        '!src/test/**/*',
+        '!src/__tests__/**/*',
+        '!src/__mocks__/**/*',
+    ],
+    coverageReporters: [
+        'text',
+        'lcov',
+        'html',
+        'json',
+        'json-summary'
+    ],
+    coverageThreshold: {
+        global: {
+            branches: 70,
+            functions: 70,
+            lines: 70,
+            statements: 70
+        }
+    },
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

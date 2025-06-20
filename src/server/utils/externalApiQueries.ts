@@ -182,6 +182,13 @@ export const getSpotifyImage = unstable_cache(async (artistSpotifyId: string | n
 }, ["spotify-image"], { tags: ["spotify-image"], revalidate: 60 * 60 * 24 });
 
 export const getArtistWiki = unstable_cache(async (wikiId: string) => {
+    // Decode any percent-encoded characters (e.g. Yun%C3%A8_Pinku → Yunè_Pinku)
+    let decodedId = wikiId;
+    try {
+        decodedId = decodeURIComponent(wikiId);
+    } catch {
+        // ignore malformed sequences – use original string
+    }
     try {
         const wikiUrl = 'https://en.wikipedia.org/w/api.php'
         const params = {
@@ -194,7 +201,7 @@ export const getArtistWiki = unstable_cache(async (wikiId: string) => {
             explaintext: true,
             generator: 'search',
             gsrlimit: 1,
-            gsrsearch: wikiId
+            gsrsearch: decodedId
         }
 
         const { data } = await axios.get(wikiUrl, { params });

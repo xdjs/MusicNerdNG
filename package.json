@@ -12,7 +12,11 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage",
     "type-check": "tsc --noEmit",
-    "ci": "npm run type-check && npm run lint && npm run test:ci && npm run build"
+    "ci": "npm run type-check && npm run lint && npm run test:ci && npm run build",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -37,6 +41,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.0.0",
+    "dotenv": "^16.5.0",
     "drizzle-orm": "^0.33.0",
     "embla-carousel-auto-scroll": "^8.1.8",
     "embla-carousel-autoplay": "^8.1.8",

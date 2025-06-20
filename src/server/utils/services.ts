@@ -37,7 +37,7 @@ export const getArtistDetailsText = (artist: Artist, spotifyData: SpotifyDataTyp
 
     if (web3Platforms.length <= 0 && numSpotifyReleases > 0) return `${numSpotifyReleases} releases on Spotify`;
 
-    const prefix = numSpotifyReleases > 0 ? `${numSpotifyReleases} releases on Spotify; NFT's released on ` : "NFT's released on "
+    const prefix = numSpotifyReleases > 0 ? `${numSpotifyReleases} releases on Spotify; NFTs released on ` : "NFTs released on "
     if (web3Platforms.length < 2) return prefix + web3Platforms[0]
 
     if (web3Platforms.length > 1)
@@ -50,9 +50,32 @@ export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is key
 }
 
 export async function extractArtistId(artistUrl: string) {
+    // Attempt to decode any percent-encoded characters in the submitted URL so regexes work on human-readable text
+    let decodedUrl = artistUrl;
+    try {
+        decodedUrl = decodeURIComponent(artistUrl);
+    } catch {
+        // Ignore decoding errors and continue with original string
+    }
     const allLinks = await getAllLinks();
+
+    // First attempt existing regex-based matching
     for (const { regex, siteName, cardPlatformName } of allLinks) {
-        const match = artistUrl.match(regex);
+        // Enforce English-only Wikipedia domains
+        if (siteName === 'wikipedia') {
+            try {
+                const provisional = decodedUrl.startsWith('http') ? decodedUrl : `https://${decodedUrl}`;
+                const hostname = new URL(provisional).hostname;
+                if (!(hostname === 'en.wikipedia.org' || hostname === 'en.m.wikipedia.org')) {
+                    // Skip non-English Wikipedia links
+                    continue;
+                }
+            } catch {
+                // If URL parsing fails, skip matching for Wikipedia
+                continue;
+            }
+        }
+        const match = decodedUrl.match(regex);
         if (match) {
             // For YouTube channel URLs, keep channel IDs as is and ensure usernames have @ prefix
             if (siteName === 'youtubechannel') {
@@ -73,9 +96,21 @@ export async function extractArtistId(artistUrl: string) {
             }
             let extractedId = match[1] || match[2];
 
+            // Decode any percent-encoded characters in the captured ID as well
+            try {
+                extractedId = decodeURIComponent(extractedId);
+            } catch {
+                // ignore errors
+            }
+
             // For X (formerly Twitter) links, strip query parameters like ?si=...
             if (siteName === 'x' && extractedId && extractedId.includes('?')) {
                 extractedId = extractedId.split('?')[0];
+            }
+
+            // Reject numeric-only SoundCloud IDs (we only accept usernames)
+            if (siteName === 'soundcloud' && /^\d+$/.test(extractedId ?? "")) {
+                return null;
             }
 
             return { 
@@ -83,6 +118,29 @@ export async function extractArtistId(artistUrl: string) {
                 cardPlatformName, 
                 id: extractedId 
             };
+        }
+    }
+
+    // Reject SoundCloud numeric user-id links (they cannot be converted to profile URLs)
+    if (/soundcloud\.com\/user-\d+/i.test(artistUrl)) {
+        return null; // Invalid SoundCloud profile URL for our purposes
+    }
+
+    // Fallback for SoundCloud username URLs not caught by DB regex
+    const soundCloudRow = allLinks.find(l => l.siteName === 'soundcloud');
+    if (soundCloudRow && artistUrl.includes('soundcloud.com')) {
+        try {
+            const url = new URL(artistUrl.startsWith('http') ? artistUrl : `https://${artistUrl}`);
+            const pathSegment = url.pathname.split('/').filter(Boolean)[0];
+            if (pathSegment && !/^user-?\d+$/i.test(pathSegment) && !/^\d+$/.test(pathSegment)) {
+                return {
+                    siteName: 'soundcloud',
+                    cardPlatformName: soundCloudRow.cardPlatformName,
+                    id: pathSegment
+                };
+            }
+        } catch {
+            /* invalid URL */
         }
     }
     return null;
