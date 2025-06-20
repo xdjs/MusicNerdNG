@@ -285,9 +285,15 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
 
 export async function approveUgcAdmin(ugcIds: string[]) {
     const user = await getServerAuthSession();
-    if (!user) throw new Error("Not authenticated");
-    const dbUser = await getUserById(user.user.id);
-    if (!dbUser || !dbUser.isAdmin) throw new Error("Not authorized");
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+    
+    if (isWalletRequired && !user) throw new Error("Not authenticated");
+    
+    // In walletless mode, skip user authorization checks
+    if (isWalletRequired && user?.user?.id) {
+        const dbUser = await getUserById(user.user.id);
+        if (!dbUser || !dbUser.isAdmin) throw new Error("Not authorized");
+    }
     try {
         const ugcData = await db.query.ugcresearch.findMany({ where: inArray(ugcresearch.id, ugcIds) });
         await Promise.all(ugcData.map(async (ugc) => {
