@@ -17,6 +17,7 @@ const customJestConfig: Config = {
         '<rootDir>/jest.setup.ts'
     ],
     testEnvironment: 'jest-environment-jsdom',
+    extensionsToTreatAsEsm: ['.ts', '.tsx'],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
         // Handle module aliases
