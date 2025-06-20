@@ -21,18 +21,24 @@ describe('addArtist Server Action', () => {
     user: {
       id: 'user-123',
       walletAddress: '0x1234567890123456789012345678901234567890'
-    }
+    },
+    expires: '2024-12-31T23:59:59.999Z'
   };
   const mockUser = {
     id: 'user-123',
     wallet: '0x1234567890123456789012345678901234567890',
     isWhiteListed: true,
     email: 'test@example.com',
-    username: 'testuser'
+    username: 'testuser',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    legacyId: null,
+    isAdmin: false
   };
   const mockSpotifyHeaders = {
     headers: {
-      Authorization: 'Bearer spotify-token-123'
+      Authorization: 'Bearer spotify-token-123',
+      'x-token-expiry': '3600'
     }
   };
   const mockSpotifyArtist = {
@@ -116,7 +122,7 @@ describe('addArtist Server Action', () => {
     });
 
     it('should return error when Spotify headers fail', async () => {
-      mockGetSpotifyHeaders.mockResolvedValue({ headers: { Authorization: null } });
+      mockGetSpotifyHeaders.mockResolvedValue({ headers: { Authorization: '', 'x-token-expiry': '0' } });
 
       const result = await addArtist(mockSpotifyId);
 
@@ -146,7 +152,7 @@ describe('addArtist Server Action', () => {
     it('should return error when Spotify artist data is invalid', async () => {
       mockGetSpotifyHeaders.mockResolvedValue(mockSpotifyHeaders);
       mockGetSpotifyArtist.mockResolvedValue({
-        data: { id: mockSpotifyId, name: null }, // Invalid - missing name
+        data: { id: mockSpotifyId, name: null } as any, // Invalid - missing name
         error: null
       });
 
@@ -249,7 +255,7 @@ describe('addArtist Server Action', () => {
     });
 
     it('should handle user not found', async () => {
-      mockGetUserById.mockResolvedValue(null);
+      mockGetUserById.mockResolvedValue(undefined);
       mockSendDiscordMessage.mockResolvedValue();
 
       const result = await addArtist(mockSpotifyId);
@@ -327,7 +333,7 @@ describe('addArtist Server Action', () => {
 
   describe('Session Edge Cases', () => {
     it('should handle session without user ID', async () => {
-      mockGetServerAuthSession.mockResolvedValue({ user: { id: undefined } });
+      mockGetServerAuthSession.mockResolvedValue({ user: { id: '' }, expires: '2024-12-31T23:59:59.999Z' });
       mockGetSpotifyHeaders.mockResolvedValue(mockSpotifyHeaders);
       mockGetSpotifyArtist.mockResolvedValue(mockSpotifyArtist);
       mockDbAddArtist.mockResolvedValue({
