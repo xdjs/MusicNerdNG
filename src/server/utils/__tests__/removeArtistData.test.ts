@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 // mocks will be set before importing module under test
 
