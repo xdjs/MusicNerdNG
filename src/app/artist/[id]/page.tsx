@@ -19,9 +19,11 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     const session = await getServerAuthSession();
     const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
     let canEdit = walletlessEnabled;
-    if (!walletlessEnabled && session?.user?.id) {
+    if (session?.user?.id) {
         const user = await getUserById(session.user.id);
-        canEdit = (user?.isWhiteListed || user?.isAdmin) ?? false;
+        if (user?.isWhiteListed || user?.isAdmin) {
+            canEdit = true;
+        }
     }
     const artist = await getArtistById(params.id);
     if (!artist) {
