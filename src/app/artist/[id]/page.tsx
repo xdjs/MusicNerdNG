@@ -1,5 +1,5 @@
-import { getArtistById, getArtistLinks } from "@/server/utils/queriesTS";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from "@/server/utils/externalApiQueries";
+import { getArtistById, getAllLinks } from "@/server/utils/queriesTS";
+import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
@@ -21,12 +21,11 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     }
     const headers = await getSpotifyHeaders();
 
-    const [spotifyImg, numReleases, wiki, allLinks, topTrackId] = await Promise.all([
+    const [spotifyImg, numReleases, wiki, urlMapList] = await Promise.all([
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
         getArtistWiki(artist.wikipedia ?? ""),
-        getArtistLinks(artist),
-        getArtistTopTrack(artist.spotify ?? "", headers),
+        getAllLinks(),
     ]);
 
 
@@ -85,7 +84,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </strong>
                         <div className="space-y-4">
                             {(artist) &&
-                                <ArtistLinks isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
+                                <ArtistLinks isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
                             }
                         </div>
                     </div>
@@ -100,7 +99,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                         <div className="space-y-4">
                             {(artist) &&
-                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={allLinks} isOpenOnLoad={false} />
+                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
                             }
                         </div>
                     </div>
