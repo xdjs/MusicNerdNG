@@ -338,6 +338,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
     try {
         // Get user data to check permissions
+        const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
         const user = session?.user?.id ? await getUserById(session.user.id) : null;
         const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
 
@@ -572,6 +573,41 @@ export async function updateWhitelistedUser(userId: string, data: { wallet?: str
     } catch (e) {
         console.error("error updating whitelisted user", e);
         return { status: "error", message: "Error updating whitelisted user" };
+    }
+}
+
+export type RemoveArtistDataResp = {
+    status: "success" | "error",
+    message: string
+}
+
+export async function removeArtistData(artistId: string, siteName: string): Promise<RemoveArtistDataResp> {
+    const session = await getServerAuthSession();
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    if (isWalletRequired && !session) {
+        throw new Error("Not authenticated");
+    }
+
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+    const user = session?.user?.id ? await getUserById(session.user.id) : null;
+    const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
+
+    if (!walletlessEnabled && !isWhitelistedOrAdmin) {
+        return { status: "error", message: "Unauthorized" };
+    }
+
+    try {
+        // Remove the value from the specific column in the artists table
+        await db.execute(sql`UPDATE artists SET ${sql.identifier(siteName)} = NULL WHERE id = ${artistId}`);
+
+        // Remove any matching ugcResearch rows
+        await db.delete(ugcresearch).where(and(eq(ugcresearch.artistId, artistId), eq(ugcresearch.siteName, siteName)));
+
+        return { status: "success", message: "Artist data removed" };
+    } catch (e) {
+        console.error("Error removing artist data", e);
+        return { status: "error", message: "Error removing artist data" };
     }
 }
 
