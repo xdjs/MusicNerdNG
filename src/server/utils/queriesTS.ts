@@ -350,46 +350,30 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
             return { status: "error", message: "This artist data has already been added" };
         }
 
-        // For whitelisted/admin users, update artist table directly
-        if (isWhitelistedOrAdmin) {
-            const updateData = {
-                [artistIdFromUrl.siteName.toLowerCase()]: artistIdFromUrl.id
-            };
-            
-            await db.update(artists)
-                .set(updateData)
-                .where(eq(artists.id, artist.id));
-
-            // Send Discord message for the direct update
-            if (user) {
-                await sendDiscordMessage(`${user.wallet || 'Anonymous'} (Whitelisted/Admin) directly added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
-            }
-
-            return { 
-                status: "success", 
-                message: "Artist data has been added successfully", 
-                siteName: artistIdFromUrl.cardPlatformName ?? "" 
-            };
-        }
-
-        // For regular users, create UGC research entry
+        // Create UGC research entry for all users
         const [newUGC] = await db.insert(ugcresearch).values({
             ugcUrl: artistUrl,
             siteName: artistIdFromUrl.siteName,
             siteUsername: artistIdFromUrl.id,
             artistId: artist.id,
             name: artist.name ?? "",
-            userId: session?.user?.id || undefined
+            userId: session?.user?.id || undefined,
+            accepted: false
         }).returning();
 
-        // Send Discord message for UGC submission
+        // If the user is whitelisted/admin, auto-approve and update artist
+        if (isWhitelistedOrAdmin && newUGC?.id) {
+            await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
+        }
+
+        // Send Discord message for the submission
         if (user) {
-            await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
+            await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artist.name}'s ${artistIdFromUrl.cardPlatformName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`);
         }
 
         return { 
             status: "success", 
-            message: "Thanks for adding, we'll review this addition before posting", 
+            message: isWhitelistedOrAdmin ? "We updated the artist with that data" : "Thanks for adding, we'll review this addition before posting", 
             siteName: artistIdFromUrl.cardPlatformName ?? "" 
         };
     } catch (e) {
