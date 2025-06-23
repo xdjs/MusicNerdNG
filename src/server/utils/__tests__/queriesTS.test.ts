@@ -555,7 +555,7 @@ describe('Artist Management Functions', () => {
 
             const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
             expect(result.status).toBe('success');
-            expect(result.message).toBe('Artist data has been added successfully');
+            expect(result.message).toBe('We updated the artist with that data');
         });
 
         it('should handle invalid URL and existing data', async () => {
