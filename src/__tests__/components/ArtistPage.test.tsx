@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import ArtistProfile from '@/app/artist/[id]/page';
-import { getArtistById, getArtistLinks } from '@/server/utils/queriesTS';
+import { getArtistById, getArtistLinks, getAllLinks } from '@/server/utils/queriesTS';
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from '@/server/utils/externalApiQueries';
 import { getServerAuthSession } from '@/server/auth';
 
@@ -47,6 +47,7 @@ jest.mock('@/app/_components/LoadingPage', () => ({
 jest.mock('@/server/utils/queriesTS', () => ({
     getArtistById: jest.fn(),
     getArtistLinks: jest.fn(),
+    getAllLinks: jest.fn(),
 }));
 
 // Mock external API queries
@@ -113,6 +114,7 @@ describe('ArtistPage', () => {
         jest.clearAllMocks();
         (getArtistById as jest.Mock).mockReset();
         (getArtistLinks as jest.Mock).mockReset();
+        (getAllLinks as jest.Mock).mockReset();
         (getSpotifyImage as jest.Mock).mockReset();
         (getArtistWiki as jest.Mock).mockReset();
         (getSpotifyHeaders as jest.Mock).mockReset();
@@ -130,6 +132,7 @@ describe('ArtistPage', () => {
     it('renders artist data when available', async () => {
         // Set up mock responses
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getAllLinks as jest.Mock).mockResolvedValue([]);
         (getArtistLinks as jest.Mock).mockResolvedValue(mockLinks);
         (getSpotifyImage as jest.Mock).mockResolvedValue(mockSpotifyImage);
         (getArtistWiki as jest.Mock).mockResolvedValue(mockWiki);
@@ -163,6 +166,7 @@ describe('ArtistPage', () => {
     it('handles missing spotify data', async () => {
         const artistWithoutSpotify = { ...mockArtist, spotify: null };
         (getArtistById as jest.Mock).mockResolvedValue(artistWithoutSpotify);
+        (getAllLinks as jest.Mock).mockResolvedValue([]);
         (getArtistLinks as jest.Mock).mockResolvedValue(mockLinks);
         (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
         (getArtistWiki as jest.Mock).mockResolvedValue(mockWiki);
@@ -187,6 +191,7 @@ describe('ArtistPage', () => {
         };
 
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getAllLinks as jest.Mock).mockResolvedValue([]);
         (getArtistLinks as jest.Mock).mockResolvedValue(mockLinks);
         (getSpotifyImage as jest.Mock).mockResolvedValue(mockSpotifyImage);
         (getArtistWiki as jest.Mock).mockResolvedValue(mockWiki);
