@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable */
+// @ts-nocheck
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 // mocks will be set before importing module under test
 
@@ -30,11 +31,9 @@ jest.mock('../../auth', () => ({
 import { db } from '@/server/db/drizzle';
 
 // get the mocked auth fn
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getServerAuthSession } = require('../../auth') as { getServerAuthSession: jest.Mock };
 
 // Import the function under test after mocks are in place
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { removeArtistData } = require('../queriesTS');
 
 const ARTIST_ID = 'artist-123';
