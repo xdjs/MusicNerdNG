@@ -1,9 +1,11 @@
 import { Artist } from "../db/DbTypes";
+import { ethers } from "ethers";
+import { ens } from "./ensClient";
 
 import { getAllLinks } from "./queriesTS";
 
-export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'supercollector'];
-export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel', 'supercollector'];
+export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'supercollector', 'wallets', 'ens'];
+export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'wallets', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel', 'supercollector'];
 
 
 export const getArtistSplitPlatforms = (artist: Artist) => {
@@ -75,7 +77,18 @@ export async function extractArtistId(artistUrl: string) {
                 continue;
             }
         }
-        const match = decodedUrl.match(regex);
+        // Ensure regex is a RegExp instance; DB stores it as text
+        let pattern: RegExp;
+        try {
+            pattern = new RegExp(regex as string, 'i');
+            if (siteName === 'ens' || siteName === 'wallets') {
+                console.log('[extractArtistId] Compiled regex for', siteName, ':', pattern.source);
+            }
+        } catch (err) {
+            console.error('[extractArtistId] Invalid regex in urlmap row', siteName, ':', regex, err);
+            continue; // skip malformed pattern
+        }
+        const match = decodedUrl.match(pattern);
         if (match) {
             // For YouTube channel URLs, keep channel IDs as is and ensure usernames have @ prefix
             if (siteName === 'youtubechannel') {
@@ -94,7 +107,7 @@ export async function extractArtistId(artistUrl: string) {
                     id: channelId
                 };
             }
-            let extractedId = match[1] || match[2];
+            let extractedId = match[1] || match[2] || match[0];
 
             // Decode any percent-encoded characters in the captured ID as well
             try {
@@ -111,6 +124,33 @@ export async function extractArtistId(artistUrl: string) {
             // Reject numeric-only SoundCloud IDs (we only accept usernames)
             if (siteName === 'soundcloud' && /^\d+$/.test(extractedId ?? "")) {
                 return null;
+            }
+
+            // Wallet address (EVM) – must be a valid 0x-hex string and will be returned in checksum case
+            if (siteName === 'wallets') {
+                if (!ethers.utils.isAddress(extractedId)) {
+                    console.log('[extractArtistId] Wallet validation failed – not a valid hex address:', extractedId);
+                    continue;
+                }
+                extractedId = ethers.utils.getAddress(extractedId); // checksum
+            }
+
+            // ENS name – verify it resolves via direct provider call (avoids ENSJS call exceptions)
+            if (siteName === 'ens') {
+                try {
+                    const { ensProviderInstance } = await import('./ensClient');
+                    const ensName = extractedId.trim().toLowerCase();
+                    const resolved = await (ensProviderInstance as any).resolveName(ensName);
+                    console.log('[extractArtistId] resolveName result for', ensName, '->', resolved);
+                    if (!resolved || resolved === ethers.constants.AddressZero) {
+                        console.log('[extractArtistId] ENS validation failed – unregistered or empty:', extractedId);
+                        continue;
+                    }
+                    extractedId = ensName;
+                } catch (err) {
+                    console.error('[extractArtistId] ENS lookup threw:', err);
+                    continue;
+                }
             }
 
             return { 
@@ -143,6 +183,8 @@ export async function extractArtistId(artistUrl: string) {
             /* invalid URL */
         }
     }
+    // If we exit the loop with no match we log the failure
+    console.log('[extractArtistId] No matching platform for URL:', artistUrl);
     return null;
 }
 

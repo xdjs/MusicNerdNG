@@ -155,6 +155,16 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
                     const value = artist[platform.siteName]?.toString() ?? "";
                     const ethRemoved = value.endsWith('.eth') ? value.slice(0, -4) : value;
                     artistUrl = platform.appStringFormat.replace("%@", ethRemoved);
+                } else if (platform.siteName === 'wallets') {
+                    // Iterate over wallets array
+                    const walletsArray: string[] = Array.isArray(artist.wallets) ? artist.wallets : [];
+                    for (const addr of walletsArray) {
+                        if (!addr) continue;
+                        const url = platform.appStringFormat.replace("%@", addr);
+                        artistLinksSiteNames.push({ ...platform, artistUrl: url });
+                    }
+                    // Skip default push below since we already handled wallets
+                    continue;
                 } else if (platform.siteName === 'soundcloud') {
                     // Only allow username-based SoundCloud profiles (skip numeric user IDs)
                     const value = artist[platform.siteName]?.toString() ?? "";
@@ -307,16 +317,36 @@ export async function approveUgcAdmin(ugcIds: string[]) {
 
 export async function approveUGC(ugcId: string, artistId: string, siteName: string, artistIdFromUrl: string) {
     try {
-        await db.execute(sql`
-            UPDATE artists
-            SET ${sql.identifier(siteName)} = ${artistIdFromUrl} 
-            WHERE id = ${artistId}`);
+        if (siteName === 'wallets') {
+            console.log('[approveUGC] Appending wallet', artistIdFromUrl, 'to artist', artistId);
+            // Append wallet to wallets[] column, avoiding duplicates
+            await db.execute(sql`
+                UPDATE artists
+                SET wallets = array_append(wallets, ${artistIdFromUrl})
+                WHERE id = ${artistId} AND NOT wallets @> ARRAY[${artistIdFromUrl}]
+            `);
+        } else if (siteName === 'ens') {
+            console.log('[approveUGC] Setting ENS', artistIdFromUrl, 'for artist', artistId);
+            // Set ENS scalar column
+            await db.execute(sql`
+                UPDATE artists
+                SET ens = ${artistIdFromUrl}
+                WHERE id = ${artistId}
+            `);
+        } else {
+            await db.execute(sql`
+                UPDATE artists
+                SET ${sql.identifier(siteName)} = ${artistIdFromUrl}
+                WHERE id = ${artistId}`);
+        }
+
         await db.update(ugcresearch).set({ accepted: true }).where(eq(ugcresearch.id, ugcId));
     } catch (e) {
         console.error(`Error approving ugc`, e);
         throw new Error("Error approving UGC");
     }
 }
+
 export type AddArtistDataResp = {
     status: "success" | "error",
     message: string,
@@ -333,6 +363,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) {
+        console.log('[addArtistData] URL did not match any approved link regex:', artistUrl);
         return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     }
 
@@ -348,6 +379,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         });
 
         if (existingArtistUGC) {
+            console.log('[addArtistData] Duplicate submission – data already exists for artist', artist.id, ':', artistUrl);
             return { status: "error", message: "This artist data has already been added" };
         }
 
