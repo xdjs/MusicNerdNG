@@ -9,6 +9,7 @@ import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 import { EditModeProvider } from "@/app/_components/EditModeContext";
 import EditModeToggle from "@/app/_components/EditModeToggle";
+import BlurbSection from "./_components/BlurbSection";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -78,16 +79,13 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <div className="text-black pt-0 mb-4">
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
                             </div>
-                            {(artist.wikipedia) &&
-                                <>
-                                    <p className="text-black mb-4">
-                                        {wiki?.blurb}
-                                    </p>
-                                    <Link href={`${wiki?.link}`} className="text-black underline mb-4">
-                                        {"WIKIPEDIA"}
-                                    </Link>
-                                </>
-                            }
+                            <BlurbSection 
+                                wikiBlurb={wiki?.blurb}
+                                wikiLink={wiki?.link}
+                                artistName={artist.name ?? ""}
+                                // aiBlurb will be undefined for now, but ready for when you add AI functionality
+                                aiBlurb={undefined}
+                                />
                         </div>
                     </div>
                     <div className="space-y-6 mt-8">
