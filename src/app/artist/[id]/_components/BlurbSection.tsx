@@ -43,7 +43,7 @@ export default function BlurbSection({
             </>
             ) : (
             <p className="text-gray-500 italic">
-                No Wikipedia content available
+                  No Wikipedia content available
             </p>
             )}
         </TabsContent>
@@ -53,7 +53,7 @@ export default function BlurbSection({
             <p className="text-black mb-4">{aiBlurb}</p>
           ) : (
             <p className="text-gray-500 italic">
-              AI-generated description coming soon
+                AI-generated description coming soon
             </p>
           )}
         </TabsContent>
