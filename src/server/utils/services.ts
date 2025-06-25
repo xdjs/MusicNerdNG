@@ -1,6 +1,4 @@
 import { Artist } from "../db/DbTypes";
-import { ethers } from "ethers";
-import { ens } from "./ensClient";
 
 import { getAllLinks } from "./queriesTS";
 
@@ -126,31 +124,15 @@ export async function extractArtistId(artistUrl: string) {
                 return null;
             }
 
-            // Wallet address (EVM) – must be a valid 0x-hex string and will be returned in checksum case
+            // Wallet address (EVM) – rely solely on regex match; no additional validation
             if (siteName === 'wallets') {
-                if (!ethers.utils.isAddress(extractedId)) {
-                    console.log('[extractArtistId] Wallet validation failed – not a valid hex address:', extractedId);
-                    continue;
-                }
-                extractedId = ethers.utils.getAddress(extractedId); // checksum
+                // No API or checksum validation – the regex match above is considered sufficient
             }
 
-            // ENS name – verify it resolves via direct provider call (avoids ENSJS call exceptions)
+            // ENS name – rely solely on regex match; trim and lowercase for consistency
             if (siteName === 'ens') {
-                try {
-                    const { ensProviderInstance } = await import('./ensClient');
-                    const ensName = extractedId.trim().toLowerCase();
-                    const resolved = await (ensProviderInstance as any).resolveName(ensName);
-                    console.log('[extractArtistId] resolveName result for', ensName, '->', resolved);
-                    if (!resolved || resolved === ethers.constants.AddressZero) {
-                        console.log('[extractArtistId] ENS validation failed – unregistered or empty:', extractedId);
-                        continue;
-                    }
-                    extractedId = ensName;
-                } catch (err) {
-                    console.error('[extractArtistId] ENS lookup threw:', err);
-                    continue;
-                }
+                const ensName = extractedId.trim().toLowerCase();
+                extractedId = ensName;
             }
 
             return { 

@@ -1,13 +1,42 @@
 import { providers } from "ethers";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore – ensjs v2 types are not shipped with .d.ts files
-import ENS, { getEnsAddress } from "@ensdomains/ensjs";
+import { Alchemy, Network } from "alchemy-sdk";
+
+function deriveKeyFromUrl(u?: string): string | undefined {
+  if (!u) return undefined;
+  try {
+    const match = u.match(/\/v2\/([a-zA-Z0-9]+)(?:\/?|$)/);
+    if (match && match[1]) return match[1];
+    // fallback to last path segment
+    const last = u.split("/").pop();
+    return last && last.length >= 32 ? last : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let rawKey = process.env.ALCHEMY_API_KEY;
+if (rawKey && rawKey.startsWith("http")) {
+  // Someone put the full URL in the API_KEY var – extract just the key.
+  rawKey = deriveKeyFromUrl(rawKey);
+}
+
+const alchemyApiKey = rawKey || deriveKeyFromUrl(process.env.ALCHEMY_HTTP_URL);
+
+export const alchemy: Alchemy | null = alchemyApiKey
+  ? new Alchemy({ apiKey: alchemyApiKey, network: Network.ETH_MAINNET })
+  : null;
+
+if (alchemy) {
+  console.log("[ensClient] Alchemy SDK initialised with key", alchemyApiKey?.slice(0, 6) + "…");
+} else {
+  console.log("[ensClient] Alchemy SDK disabled – no API key detected (set ALCHEMY_API_KEY or ALCHEMY_HTTP_URL)");
+}
 
 const alchemyUrl = process.env.ALCHEMY_HTTP_URL;
 const infuraUrl = process.env.INFURA_HTTP_URL;
 
 // Build a list of RPC providers in priority order
-const rpcProviders: providers.StaticJsonRpcProvider[] = [];
+export const rpcProviders: providers.StaticJsonRpcProvider[] = [];
 
 function makeProvider(url: string) {
   return new providers.StaticJsonRpcProvider(url, {
@@ -29,13 +58,6 @@ if (infuraUrl) {
 
 // Always include Cloudflare as a free fallback
 rpcProviders.push(makeProvider("https://cloudflare-eth.com"));
+console.log("[ensClient] Added Cloudflare provider");
 
-// Use FallbackProvider so if the first endpoint returns null/error, ethers automatically tries the next one
-export const ensProviderInstance = new providers.FallbackProvider(rpcProviders);
-
-// ensjs v2 exports the constructor as default
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const ens = new (ENS as any)({
-  provider: ensProviderInstance,
-  ensAddress: getEnsAddress("1"),
-}); 
+// We export the raw providers array; calling code handles fallback logic. 
