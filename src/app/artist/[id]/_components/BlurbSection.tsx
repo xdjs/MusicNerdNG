@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 
@@ -8,20 +8,33 @@ interface BlurbSectionProps {
   wikiBlurb?: string;
   wikiLink?: string;
   artistName: string;
-  // AI blurb will be added later when you implement the AI functionality
-  aiBlurb?: string;
+  artistId: string;
 }
 
 export default function BlurbSection({ 
   wikiBlurb, 
   wikiLink, 
   artistName, 
-  aiBlurb 
+  artistId
 }: BlurbSectionProps) {
   // State to track which tab is active (defaults to 'wikipedia')
   const [activeTab, setActiveTab] = useState<string>("wikipedia");
+  const [aiBlurb, setAiBlurb] = useState<string | undefined>();
+  const [loadingAi, setLoadingAi] = useState(false);
 
-
+  useEffect(() => {
+    if (activeTab === "ai-generated" && !aiBlurb && !loadingAi) {
+      setLoadingAi(true);
+      fetch(`/api/artistBio/${artistId}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Failed to load bio");
+          const json = await res.json();
+          setAiBlurb(json.bio as string);
+        })
+        .catch(() => setAiBlurb("Failed to load AI bio."))
+        .finally(() => setLoadingAi(false));
+    }
+  }, [activeTab, aiBlurb, artistId, loadingAi]);
 
   return (
     <div className="mb-4">
@@ -49,12 +62,14 @@ export default function BlurbSection({
         </TabsContent>
         
         <TabsContent value="ai-generated">
-          {aiBlurb ? (
-            <p className="text-black mb-4">{aiBlurb}</p>
-          ) : (
-            <p className="text-gray-500 italic pl-2">
-                AI-generated description coming soon
-            </p>
+          {loadingAi && (
+            <p className="text-gray-500 italic pl-2">Loading AI bio…</p>
+          )}
+          {!loadingAi && aiBlurb && (
+            <p className="text-black mb-4 whitespace-pre-wrap">{aiBlurb}</p>
+          )}
+          {!loadingAi && !aiBlurb && (
+            <p className="text-gray-500 italic pl-2">No AI bio available.</p>
           )}
         </TabsContent>
       </Tabs>

@@ -83,8 +83,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 wikiBlurb={wiki?.blurb}
                                 wikiLink={wiki?.link}
                                 artistName={artist.name ?? ""}
-                                // aiBlurb will be undefined for now, but ready for when you add AI functionality
-                                aiBlurb={undefined}
+                                artistId={artist.id}
                                 />
                         </div>
                     </div>
