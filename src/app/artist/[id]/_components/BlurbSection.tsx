@@ -42,8 +42,8 @@ export default function BlurbSection({
             {wikiLink && <Link href={wikiLink}>WIKIPEDIA</Link>}
             </>
             ) : (
-            <p className="text-gray-500 italic">
-                  No Wikipedia content available
+            <p className="text-gray-500 italic pl-2">
+                No Wikipedia content available
             </p>
             )}
         </TabsContent>
@@ -52,7 +52,7 @@ export default function BlurbSection({
           {aiBlurb ? (
             <p className="text-black mb-4">{aiBlurb}</p>
           ) : (
-            <p className="text-gray-500 italic">
+            <p className="text-gray-500 italic pl-2">
                 AI-generated description coming soon
             </p>
           )}
