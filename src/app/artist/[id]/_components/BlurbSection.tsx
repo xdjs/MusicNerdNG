@@ -4,10 +4,9 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 
-interface ModalProps {
+interface ExpandingContentProps {
     isOpen: boolean;
     onClose: () => void;
-    title: string;
     content?: string;
     link?: string;
 }
@@ -19,16 +18,21 @@ interface BlurbSectionProps {
   aiBlurb?: string;
 }
 
-function Modal({ isOpen, onClose, title, content, link}: ModalProps) {
-    if (!isOpen) return null;
-    
+function ExpandingContent({ isOpen, onClose, content, link }: ExpandingContentProps) {
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z=50">
-            <div className="bg-white p-6 rounded-lg max-w-2x1 max-h-96 overflow-y-auto">
-                <h3 className="text-x1 font-bold mb-4">{title}</h3>
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+        }`}>
+            <div className="bg-white border border-gray-200 rounded-b-lg p-4 shadow-lg">
                 <p className="text-black mb-4">{content}</p>
-                {link && <a href={link} className="text-blue-600 underline block mb-4">View Source</a>}
-                <button onClick={onClose} className="text-blue-600 underline">Close</button>
+                {link && (
+                    <a href={link} className="text-blue-600 underline block mb-4">
+                        View Source
+                    </a>
+                )}
+                <button onClick={onClose} className="text-blue-600 underline text-sm">
+                    Show Less
+                </button>
             </div>
         </div>
     )
@@ -55,65 +59,86 @@ export default function BlurbSection({
         </TabsList>
         
         <TabsContent value="wikipedia">
-            <div className="h-24 relative">
-                {wikiBlurb ? (
-                    <>
-                        <div className="h-full overflow-hidden">
-                            <p className="text-black">{wikiBlurb}</p>
-                        </div>
-                        {wikiBlurb.length > 200 && (
-                            <button
-                                className="absolute bottom-0 right-0 bg-white text-blue-600 text-sm underline"
-                                onClick={() => setOpenModal('wiki')}
-                            >
-                                Read More
-                            </button>
-                        )}
-                    </>
+            <div className="relative">
+                <div className="h-24 relative border border-gray-200 rounded-t-lg bg-white p-4 overflow-hidden">
+                    {wikiBlurb ? (
+                        <>
+                            <p className="text-black line-clamp-3">{wikiBlurb}</p>
+                            {wikiBlurb.length > 200 && (
+                                <button
+                                    className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline z-10"
+                                    onClick={() => setOpenModal(openModal === 'wiki' ? null : 'wiki')}
+                                >
+                                    {openModal === 'wiki' ? 'Show less' : 'Read More'}
+                                </button>
+                            )}
+                        </>
                     ) : (
-                        <p className="text-gray-500 italic pl-2">No Wikipedia content available</p>
+                        <p className="text-gray-500 italic">No Wikipedia content available</p>
                     )}
+                </div>
+                
+                <div className={`absolute top-24 left-0 w-full bg-white border-l border-r border-b border-gray-200 rounded-b-lg shadow-lg z-500 transition-all duration-300 ease-in-out overflow-hidden ${
+                    openModal === 'wiki' ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
+                }`}>
+                    <div className="relative p-4">
+                        <p className="text-black" style={{ marginTop: '-6rem' }}>
+                            {wikiBlurb}
+                        </p>
+                    </div>
+                    {wikiLink && (
+                        <a href={wikiLink} className="text-blue-600 underline block mt-4 mx-4">
+                            View Source
+                        </a>
+                    )}
+                    <button
+                        className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
+                        onClick={() => setOpenModal(null)}
+                    >
+                        Show less
+                    </button>
+                </div>
             </div>
         </TabsContent>
         
         <TabsContent value="ai-generated">
-            <div className="h-24 relative">
-                {aiBlurb ? (
-                    <>
-                        <div className="h-full overflow-hidden">
-                            <p className="text-black">{aiBlurb}</p>
-                        </div>
-                        {aiBlurb.length > 200 && (
-                            <button
-                                className="absolute bottom-0 right-0 bg-white text-blue-600 text-sm underline"
-                                onClick={() => setOpenModal('ai')}
-                            >
-                                Read More
-                            </button>
-                        )}
-                    </>
+            <div className="relative">
+                <div className="h-24 relative border border-gray-200 rounded-t-lg bg-white p-4 overflow-hidden">
+                    {aiBlurb ? (
+                        <>
+                            <p className="text-black line-clamp-3">{aiBlurb}</p>
+                            {aiBlurb.length > 200 && (
+                                <button
+                                    className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline z-10"
+                                    onClick={() => setOpenModal(openModal === 'ai' ? null : 'ai')}
+                                >
+                                    {openModal === 'ai' ? 'Show less' : 'Read More'}
+                                </button>
+                            )}
+                        </>
                     ) : (
-                        <p className="text-gray-500 italic pl-2">No AI summary available</p>
+                        <p className="text-gray-500 italic">No AI Summary available</p>
                     )}
+                </div>
+                
+                <div className={`absolute top-24 left-0 w-full bg-white border-l border-r border-b border-gray-200 rounded-b-lg shadow-lg z-50 transition-all duration-300 ease-in-out overflow-hidden ${
+                    openModal === 'ai' ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
+                }`}>
+                    <div className="relative p-4">
+                        <p className="text-black" style={{ marginTop: '-6rem' }}>
+                            {aiBlurb}
+                        </p>
+                    </div>
+                    <button
+                        className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
+                        onClick={() => setOpenModal(null)}
+                    >
+                        Show less
+                    </button>
+                </div>
             </div>
         </TabsContent>
       </Tabs>
-
-    <Modal
-        isOpen={openModal === 'wiki'}
-        onClose={() => setOpenModal(null)}
-        title="Wikipedia"
-        content={wikiBlurb}
-        link={wikiLink}
-    />
-
-    <Modal
-        isOpen={openModal === 'ai'}
-        onClose={() => setOpenModal(null)}
-        title="AI Summary"
-        content={aiBlurb}
-    />
-
     </div>
   );
 }
