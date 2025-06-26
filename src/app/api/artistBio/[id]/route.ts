@@ -19,7 +19,10 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   // Build prompt
   const promptParts: string[] = [
-    `Write a concise, engaging third-person musician biography (120-150 words).`,
+    
+    `As someone who just discovered {artist_name}, write a 50-word paragraph that reveals the most compelling and hidden aspect of their artistry. 
+Include facts only die-hard fans would know. Also explain why someone should become a fan of them, and what qualities are needed to be a true fan. 
+Channel the emotional tone of their music without saying it directly—express it through style, mood, and metaphor.`,
     `Name: ${artist.name ?? "Unknown"}`,
   ];
   if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
@@ -31,8 +34,9 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: promptParts.join("\n") }],
+      model: "gpt-4o",
+      messages: [{ role: "system", content: 'You are a poetic, emotionally intuitive music writer. You craft 50-word reflections about artists that include deep fan knowledge, symbolic language, and emotional resonance. Avoid clichés and write with vivid, metaphorical flair. Write for fans who crave both insight and feeling.' +promptParts.join("\n") }],
+      temperature:0.8,
     });
     const bio = completion.choices[0]?.message?.content?.trim() ?? "";
 
