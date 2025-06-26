@@ -1,5 +1,6 @@
-import { providers, utils as ethersUtils, getDefaultProvider } from "ethers";
+import { providers, utils as ethersUtils, getDefaultProvider, Contract } from "ethers";
 import { Alchemy, Network } from "alchemy-sdk";
+import ENS from "@ensdomains/ensjs";
 
 function deriveKeyFromUrl(u?: string): string | undefined {
   if (!u) return undefined;
@@ -72,6 +73,23 @@ console.log("[ensClient] Added Ankr provider");
  */
 export async function resolveEns(name: string): Promise<string | null> {
   console.log(`[ensClient] resolveEns called for ${name}`);
+
+  // 0) Try ENS.js helper first for each configured provider
+  // -----------------------------------------------
+  for (const p of rpcProviders) {
+    try {
+      console.log(`[ensClient] Trying ENS.js resolve via provider ${p.connection?.url ?? 'unknown'}`);
+      const ensInstance = new (ENS as any)({ provider: p, ensAddress: "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e" });
+      const ensAddr: string | null = await ensInstance.name(name).getAddress();
+      if (ensAddr && ensAddr !== "0x0000000000000000000000000000000000000000") {
+        console.log(`[ensClient] ENS resolved via ENS.js`);
+        return ethersUtils.getAddress(ensAddr);
+      }
+    } catch (err) {
+      console.warn(`[ensClient] ENS.js lookup threw on provider ${p.connection?.url ?? 'unknown'}:`, err);
+      // continue to next fallback
+    }
+  }
 
   // 1) Try Alchemy directly if configured
   if (alchemy) {

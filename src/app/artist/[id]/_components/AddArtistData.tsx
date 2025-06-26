@@ -61,9 +61,15 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
         if (resp.status === "success") {
+            // Show a more descriptive toast for ENS or wallet additions
+            const lowerSite = (resp.siteName ?? "").toLowerCase();
+            const isWalletOrEns = lowerSite.includes("wallet") || lowerSite.includes("ens");
+            const toastTitle = isWalletOrEns
+                ? `${values.artistDataUrl} ${resp.siteName} added`
+                : `${artist.name}'s ${resp.siteName} added`;
             toast({
-                title: `${artist.name}'s ${resp.siteName} added`,
-            })
+                title: toastTitle,
+            });
         }
         setAddArtistResp(resp);
         setIsLoading(false);
