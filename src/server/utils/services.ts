@@ -1,6 +1,6 @@
 import { Artist } from "../db/DbTypes";
-
 import { getAllLinks } from "./queriesTS";
+import { validateWalletIdentifier } from "./ensClient";
 
 export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'supercollector', 'wallets', 'ens'];
 export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'wallets', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel', 'supercollector'];
@@ -124,15 +124,26 @@ export async function extractArtistId(artistUrl: string) {
                 return null;
             }
 
-            // Wallet address (EVM) – rely solely on regex match; no additional validation
+            // Wallet address (EVM) – use ethers/Alchemy validation helpers
             if (siteName === 'wallets') {
-                // No API or checksum validation – the regex match above is considered sufficient
+                const validated = await validateWalletIdentifier(extractedId);
+                if (!validated) {
+                    console.warn('[extractArtistId] Invalid wallet address – failed checksum/validation:', extractedId);
+                    return null; // abort – treat as invalid submission
+                }
+                // Use the checksummed address returned by the validator so DB stores canonical value
+                extractedId = validated;
             }
 
-            // ENS name – rely solely on regex match; trim and lowercase for consistency
+            // ENS name – verify that it actually resolves on-chain
             if (siteName === 'ens') {
                 const ensName = extractedId.trim().toLowerCase();
-                extractedId = ensName;
+                const resolved = await validateWalletIdentifier(ensName);
+                if (!resolved) {
+                    console.warn('[extractArtistId] ENS name failed to resolve:', ensName);
+                    return null; // invalid ENS – reject submission
+                }
+                extractedId = ensName; // keep ENS (not resolved address) as the stored id
             }
 
             return { 
