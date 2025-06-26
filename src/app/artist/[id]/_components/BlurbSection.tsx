@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 
@@ -15,7 +15,11 @@ interface BlurbSectionProps {
   wikiBlurb?: string;
   wikiLink?: string;
   artistName: string;
+<<<<<<< HEAD
   aiBlurb?: string;
+=======
+  artistId: string;
+>>>>>>> 69fd1b9ca68eef8d25a189b0d55ca327110a29f6
 }
 
 function ExpandingContent({ isOpen, onClose, content, link }: ExpandingContentProps) {
@@ -42,13 +46,30 @@ export default function BlurbSection({
   wikiBlurb, 
   wikiLink, 
   artistName, 
-  aiBlurb 
+  artistId
 }: BlurbSectionProps) {
   // State to track which tab is active (defaults to 'wikipedia')
   const [activeTab, setActiveTab] = useState<string>("wikipedia");
+<<<<<<< HEAD
   const [openModal, setOpenModal] = useState<'wiki' | 'ai' | null>(null);
+=======
+  const [aiBlurb, setAiBlurb] = useState<string | undefined>();
+  const [loadingAi, setLoadingAi] = useState(false);
+>>>>>>> 69fd1b9ca68eef8d25a189b0d55ca327110a29f6
 
-
+  useEffect(() => {
+    if (activeTab === "ai-generated" && !aiBlurb && !loadingAi) {
+      setLoadingAi(true);
+      fetch(`/api/artistBio/${artistId}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Failed to load bio");
+          const json = await res.json();
+          setAiBlurb(json.bio as string);
+        })
+        .catch(() => setAiBlurb("Failed to load AI bio."))
+        .finally(() => setLoadingAi(false));
+    }
+  }, [activeTab, aiBlurb, artistId, loadingAi]);
 
   return (
     <div className="mb-4">
@@ -102,6 +123,7 @@ export default function BlurbSection({
         </TabsContent>
         
         <TabsContent value="ai-generated">
+<<<<<<< HEAD
             <div className="relative">
                 <div className="h-24 relative border border-gray-200 rounded-t-lg bg-white p-4 overflow-hidden">
                     {aiBlurb ? (
@@ -137,6 +159,17 @@ export default function BlurbSection({
                     </button>
                 </div>
             </div>
+=======
+          {loadingAi && (
+            <p className="text-gray-500 italic pl-2">Loading AI bio…</p>
+          )}
+          {!loadingAi && aiBlurb && (
+            <p className="text-black mb-4 whitespace-pre-wrap">{aiBlurb}</p>
+          )}
+          {!loadingAi && !aiBlurb && (
+            <p className="text-gray-500 italic pl-2">No AI bio available.</p>
+          )}
+>>>>>>> 69fd1b9ca68eef8d25a189b0d55ca327110a29f6
         </TabsContent>
       </Tabs>
     </div>
