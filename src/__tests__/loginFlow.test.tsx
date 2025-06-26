@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import { render, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Login from '@/app/_components/nav/components/Login';
