@@ -1,7 +1,6 @@
 import { getArtistById, getAllLinks, getUserById } from "@/server/utils/queriesTS";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
+import { getArtistWiki } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
-import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
 import Link from "next/link";
@@ -30,21 +29,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     if (!artist) {
         return notFound();
     }
-    let spotifyImg: { artistImage?: string } | null = null, numReleases: number | null = null, wiki: any = null, urlMapList: UrlMap[] = [];
-    let headers = null;
-    try {
-        headers = await getSpotifyHeaders();
-    } catch (e) {
-        console.error("[ArtistPage] Failed to fetch Spotify headers:", e);
-    }
-    try {
-        if (headers) {
-            spotifyImg = await getSpotifyImage(artist.spotify ?? "", undefined, headers);
-            numReleases = await getNumberOfSpotifyReleases(artist.spotify ?? "", headers);
-        }
-    } catch (e) {
-        console.error("[ArtistPage] Failed to fetch Spotify artist data:", e);
-    }
+    let wiki: any = null, urlMapList: UrlMap[] = [];
     try {
         wiki = await getArtistWiki(typeof artist.wikipedia === 'string' ? artist.wikipedia : "");
     } catch (e) {
@@ -68,21 +53,10 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         {/* Left Column: Image and Song */}
                         <div className="flex flex-col items-center md:items-end">
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                                <img src={spotifyImg?.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
+                                <img src={"/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
                             </AspectRatio>
                             {artist?.spotify &&
-                                <div className="w-full">
-                                    <div className="justify-center overflow-hidden rounded-xl">
-                                        <div style={{
-                                            height: 'calc(100% + 32px)',
-                                            width: 'calc(100% + 72px)',
-                                            marginLeft: '-72px',
-                                            marginTop: '-32px',
-                                        }}>
-                                            <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
-                                        </div>
-                                    </div>
-                                </div>
+                                null
                             }
                         </div>
                         {/* Right Column: Name and Description */}
@@ -94,7 +68,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 {canEdit && <EditModeToggle className="ml-4" />}
                             </div>
                             <div className="text-black pt-0 mb-4">
-                                {(artist) && getArtistDetailsText(artist, { releases: numReleases ?? 0 })}
+                                {(artist) && getArtistDetailsText(artist, { releases: 0 })}
                             </div>
                             {(artist.wikipedia) &&
                                 <>
@@ -114,7 +88,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </strong>
                         <div className="space-y-4">
                             {(artist) &&
-                                <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg?.artistImage ?? ""} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
+                                <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={""} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
                             }
                         </div>
                     </div>
@@ -129,7 +103,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                         <div className="space-y-4">
                             {(artist) &&
-                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg?.artistImage ?? ""} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
+                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={""} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
                             }
                         </div>
                     </div>
