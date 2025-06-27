@@ -62,7 +62,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         const resp = await addArtistData(values.artistDataUrl, artist);
         if (resp.status === "success") {
             toast({
-                title: `${artist.name}'s ${resp.siteName} added`,
+                title: `${artist.name}'s ${resp.siteName ?? "data"} added`,
             })
         }
         setAddArtistResp(resp);
