@@ -57,6 +57,9 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         },
     })
 
+    // Filter out ENS and wallets from display, but keep them in availableLinks for add options
+    const displayLinks = availableLinks.filter(link => link.siteName !== 'ens' && link.siteName !== 'wallets');
+
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setAddArtistResp(null);
         setIsLoading(true);
@@ -142,7 +145,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                                         />
                                                     </div>
                                                 </FormControl>
-                                                <AddArtistDataOptions availableLinks={availableLinks} setOption={(option) => setSelectedOption(option)} />
+                                                <AddArtistDataOptions availableLinks={displayLinks} setOption={(option) => setSelectedOption(option)} />
                                             </div>
                                             <FormMessage />
                                         </FormItem>
