@@ -80,7 +80,7 @@ export default function BlurbSection({
                     {wikiBlurb ? (
                         <>
                             <p className="text-black">{wikiBlurb}</p>
-                            {wikiBlurb && wikiBlurb.length > 200 && !openModal && (
+                            {wikiBlurb && wikiBlurb.length > 200 &&  (
                                 <>
                                     {/* Gradient overlay */}
                                     <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/100 to-transparent pointer-events-none"></div>
@@ -102,12 +102,12 @@ export default function BlurbSection({
                     <div className="absolute top-0 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
                         <p className="text-black mb-4">{wikiBlurb}</p>
                         {wikiLink && (
-                            <a href={wikiLink} className="text-blue-600 underline block mb-4">
+                            <a href={wikiLink} className="absolute bottom-1 left-2 text-blue-600 text-sm underline">
                                 View Source
                             </a>
                         )}
                         <button
-                            className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
+                            className="absolute bottom-1 right-2 bg-white text-blue-600 text-sm underline"
                             onClick={() => setOpenModal(null)}
                         >
                             Show less
@@ -124,7 +124,7 @@ export default function BlurbSection({
                     {aiBlurb ? (
                         <>  
                             <p className="text-black">{aiBlurb}</p>
-                            {aiBlurb && aiBlurb.length > 200 && !openModal && (
+                            {aiBlurb && aiBlurb.length > 200 && (
                                 <>
                                     {/* Gradient overlay */}
                                     <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/100 to-transparent pointer-events-none"></div>
