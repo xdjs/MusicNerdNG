@@ -12,7 +12,7 @@ import { useState } from "react";
 import { Artist } from "@/server/db/DbTypes";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Label } from "@radix-ui/react-label";
-import { Session } from "next-auth";
+import { useSession } from "next-auth/react";
 import { UrlMap } from "@/server/db/DbTypes";
 import AddArtistDataOptions from "./AddArtistDataOptions";
 import { z } from "zod";
@@ -32,7 +32,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 
-export default function AddArtistData({ artist, spotifyImg, session, availableLinks, isOpenOnLoad = false, label }: { artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string }) {
+export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string }) {
+    const { data: session } = useSession();
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -56,13 +57,16 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
         },
     })
 
+    // Filter out ENS and wallets from display, but keep them in availableLinks for add options
+    const displayLinks = availableLinks.filter(link => link.siteName !== 'ens' && link.siteName !== 'wallets');
+
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setAddArtistResp(null);
         setIsLoading(true);
         const resp = await addArtistData(values.artistDataUrl, artist);
         if (resp.status === "success") {
             toast({
-                title: `${artist.name}'s ${resp.siteName} added`,
+                title: `${artist.name}'s ${resp.siteName ?? "data"} added`,
             })
         }
         setAddArtistResp(resp);
@@ -141,7 +145,7 @@ export default function AddArtistData({ artist, spotifyImg, session, availableLi
                                                         />
                                                     </div>
                                                 </FormControl>
-                                                <AddArtistDataOptions availableLinks={availableLinks} setOption={(option) => setSelectedOption(option)} />
+                                                <AddArtistDataOptions availableLinks={displayLinks} setOption={(option) => setSelectedOption(option)} />
                                             </div>
                                             <FormMessage />
                                         </FormItem>

@@ -142,6 +142,7 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         const artistLinksSiteNames: ArtistLink[] = [];
         for (const platform of allLinkObjects) {
             // Only add a link if the artist has a non-null, non-undefined value for this platform
+            if (platform.siteName === 'ens' || platform.siteName === 'wallets') continue;
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName] !== null && artist[platform.siteName] !== undefined && artist[platform.siteName] !== "") {
                 let artistUrl = platform.appStringFormat;
                 // Special handling for YouTube channel URLs
@@ -155,16 +156,6 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
                     const value = artist[platform.siteName]?.toString() ?? "";
                     const ethRemoved = value.endsWith('.eth') ? value.slice(0, -4) : value;
                     artistUrl = platform.appStringFormat.replace("%@", ethRemoved);
-                } else if (platform.siteName === 'wallets') {
-                    // Iterate over wallets array
-                    const walletsArray: string[] = Array.isArray(artist.wallets) ? artist.wallets : [];
-                    for (const addr of walletsArray) {
-                        if (!addr) continue;
-                        const url = platform.appStringFormat.replace("%@", addr);
-                        artistLinksSiteNames.push({ ...platform, artistUrl: url });
-                    }
-                    // Skip default push below since we already handled wallets
-                    continue;
                 } else if (platform.siteName === 'soundcloud') {
                     // Only allow username-based SoundCloud profiles (skip numeric user IDs)
                     const value = artist[platform.siteName]?.toString() ?? "";

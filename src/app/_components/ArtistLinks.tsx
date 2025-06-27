@@ -47,7 +47,7 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
         <>
             <li className="list-none pb-2">
                 <div className="link-item-grid gap-x-4 corners-rounded items-center">
-                    <AddArtistData label="Add data" artist={artist} spotifyImg={spotifyImg} session={session} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
+                    <AddArtistData label="Add data" artist={artist} spotifyImg={spotifyImg} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
                 </div>
             </li>
             {artistLinks.length === 0 ? (
