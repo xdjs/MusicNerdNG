@@ -23,6 +23,9 @@ export const getArtistSplitPlatforms = (artist: Artist) => {
         }
     });
 
+    // Remove ENS and Wallets from web3Platforms
+    web3Platforms = web3Platforms.filter(p => p !== 'Ens' && p !== 'Wallets');
+
     return { web3Platforms, socialPlatforms };
 }
 
