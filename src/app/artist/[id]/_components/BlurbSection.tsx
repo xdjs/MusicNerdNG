@@ -2,14 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Link from "next/link";
 
-interface ExpandingContentProps {
-    isOpen: boolean;
-    onClose: () => void;
-    content?: string;
-    link?: string;
-}
 
 interface BlurbSectionProps {
   wikiBlurb?: string;
@@ -17,26 +10,6 @@ interface BlurbSectionProps {
   artistName: string;
   aiBlurb?: string;
   artistId: string;
-}
-
-function ExpandingContent({ isOpen, onClose, content, link }: ExpandingContentProps) {
-    return (
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
-            isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
-        }`}>
-            <div className="bg-white border border-gray-200 rounded-b-lg p-4 shadow-lg">
-                <p className="text-black mb-4">{content}</p>
-                {link && (
-                    <a href={link} className="text-blue-600 underline block mb-2">
-                        View Source
-                    </a>
-                )}
-                <button onClick={onClose} className="text-blue-600 underline text-sm">
-                    Show Less
-                </button>
-            </div>
-        </div>
-    )
 }
 
 export default function BlurbSection({ 
