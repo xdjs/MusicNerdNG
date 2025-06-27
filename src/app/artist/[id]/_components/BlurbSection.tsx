@@ -127,7 +127,7 @@ export default function BlurbSection({
                             {aiBlurb && aiBlurb.length > 200 && !openModal && (
                                 <>
                                     {/* Gradient overlay */}
-                                    <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/90 to-transparent pointer-events-none"></div>
+                                    <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/100 to-transparent pointer-events-none"></div>
                                     <button
                                         className="absolute bottom-1 right-2 bg-transparent text-blue-600 text-sm underline z-10"
                                         onClick={() => setOpenModal('ai')}
