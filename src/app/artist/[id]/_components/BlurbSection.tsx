@@ -15,11 +15,8 @@ interface BlurbSectionProps {
   wikiBlurb?: string;
   wikiLink?: string;
   artistName: string;
-<<<<<<< HEAD
   aiBlurb?: string;
-=======
   artistId: string;
->>>>>>> 69fd1b9ca68eef8d25a189b0d55ca327110a29f6
 }
 
 function ExpandingContent({ isOpen, onClose, content, link }: ExpandingContentProps) {
@@ -30,7 +27,7 @@ function ExpandingContent({ isOpen, onClose, content, link }: ExpandingContentPr
             <div className="bg-white border border-gray-200 rounded-b-lg p-4 shadow-lg">
                 <p className="text-black mb-4">{content}</p>
                 {link && (
-                    <a href={link} className="text-blue-600 underline block mb-4">
+                    <a href={link} className="text-blue-600 underline block mb-2">
                         View Source
                     </a>
                 )}
@@ -50,12 +47,9 @@ export default function BlurbSection({
 }: BlurbSectionProps) {
   // State to track which tab is active (defaults to 'wikipedia')
   const [activeTab, setActiveTab] = useState<string>("wikipedia");
-<<<<<<< HEAD
   const [openModal, setOpenModal] = useState<'wiki' | 'ai' | null>(null);
-=======
   const [aiBlurb, setAiBlurb] = useState<string | undefined>();
   const [loadingAi, setLoadingAi] = useState(false);
->>>>>>> 69fd1b9ca68eef8d25a189b0d55ca327110a29f6
 
   useEffect(() => {
     if (activeTab === "ai-generated" && !aiBlurb && !loadingAi) {
@@ -81,95 +75,85 @@ export default function BlurbSection({
         
         <TabsContent value="wikipedia">
             <div className="relative">
-                <div className="h-24 relative border border-gray-200 rounded-t-lg bg-white p-4 overflow-hidden">
+                {/* Initial text box */}
+                <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
                     {wikiBlurb ? (
                         <>
-                            <p className="text-black line-clamp-3">{wikiBlurb}</p>
-                            {wikiBlurb.length > 200 && (
-                                <button
-                                    className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline z-10"
-                                    onClick={() => setOpenModal(openModal === 'wiki' ? null : 'wiki')}
-                                >
-                                    {openModal === 'wiki' ? 'Show less' : 'Read More'}
-                                </button>
+                            <p className="text-black">{wikiBlurb}</p>
+                            {wikiBlurb && wikiBlurb.length > 200 && !openModal && (
+                                <>
+                                    {/* Gradient overlay */}
+                                    <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/100 to-transparent pointer-events-none"></div>
+                                    <button
+                                        className="absolute bottom-1 right-2 bg-transparent text-blue-600 text-sm underline z-10"
+                                        onClick={() => setOpenModal('wiki')}
+                                    >
+                                        Read More
+                                    </button>
+                                </>
                             )}
                         </>
                     ) : (
                         <p className="text-gray-500 italic">No Wikipedia content available</p>
                     )}
                 </div>
-                
-                <div className={`absolute top-24 left-0 w-full bg-white border-l border-r border-b border-gray-200 rounded-b-lg shadow-lg z-500 transition-all duration-300 ease-in-out overflow-hidden ${
-                    openModal === 'wiki' ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
-                }`}>
-                    <div className="relative p-4">
-                        <p className="text-black" style={{ marginTop: '-6rem' }}>
-                            {wikiBlurb}
-                        </p>
+                {/* Expanded box */}
+                {openModal === 'wiki' && (
+                    <div className="absolute top-0 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
+                        <p className="text-black mb-4">{wikiBlurb}</p>
+                        {wikiLink && (
+                            <a href={wikiLink} className="text-blue-600 underline block mb-4">
+                                View Source
+                            </a>
+                        )}
+                        <button
+                            className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
+                            onClick={() => setOpenModal(null)}
+                        >
+                            Show less
+                        </button>
                     </div>
-                    {wikiLink && (
-                        <a href={wikiLink} className="text-blue-600 underline block mt-4 mx-4">
-                            View Source
-                        </a>
-                    )}
-                    <button
-                        className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
-                        onClick={() => setOpenModal(null)}
-                    >
-                        Show less
-                    </button>
-                </div>
+                )}
             </div>
         </TabsContent>
         
         <TabsContent value="ai-generated">
-<<<<<<< HEAD
             <div className="relative">
-                <div className="h-24 relative border border-gray-200 rounded-t-lg bg-white p-4 overflow-hidden">
+                {/* Initial text box */}
+                <div className="h-28 relative border border-gray-200 rounded-t-lg bg-white p-3 overflow-hidden">
                     {aiBlurb ? (
-                        <>
-                            <p className="text-black line-clamp-3">{aiBlurb}</p>
-                            {aiBlurb.length > 200 && (
-                                <button
-                                    className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline z-10"
-                                    onClick={() => setOpenModal(openModal === 'ai' ? null : 'ai')}
-                                >
-                                    {openModal === 'ai' ? 'Show less' : 'Read More'}
-                                </button>
+                        <>  
+                            <p className="text-black">{aiBlurb}</p>
+                            {aiBlurb && aiBlurb.length > 200 && !openModal && (
+                                <>
+                                    {/* Gradient overlay */}
+                                    <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/90 to-transparent pointer-events-none"></div>
+                                    <button
+                                        className="absolute bottom-1 right-2 bg-transparent text-blue-600 text-sm underline z-10"
+                                        onClick={() => setOpenModal('ai')}
+                                    >
+                                        Read More
+                                    </button>
+                                </>
                             )}
                         </>
                     ) : (
                         <p className="text-gray-500 italic">No AI Summary available</p>
                     )}
                 </div>
-                
-                <div className={`absolute top-24 left-0 w-full bg-white border-l border-r border-b border-gray-200 rounded-b-lg shadow-lg z-50 transition-all duration-300 ease-in-out overflow-hidden ${
-                    openModal === 'ai' ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
-                }`}>
-                    <div className="relative p-4">
-                        <p className="text-black" style={{ marginTop: '-6rem' }}>
-                            {aiBlurb}
-                        </p>
+                {/* Expanded box */}
+                {openModal === 'ai' && (
+                    <div className="absolute top-0 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
+                        <p className="text-black mb-4">{aiBlurb}</p>
+                        <button
+                            className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
+                            onClick={() => setOpenModal(null)}
+                        >
+                            Show less
+                        </button>
                     </div>
-                    <button
-                        className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
-                        onClick={() => setOpenModal(null)}
-                    >
-                        Show less
-                    </button>
-                </div>
+                )}
             </div>
-=======
-          {loadingAi && (
-            <p className="text-gray-500 italic pl-2">Loading AI bio…</p>
-          )}
-          {!loadingAi && aiBlurb && (
-            <p className="text-black mb-4 whitespace-pre-wrap">{aiBlurb}</p>
-          )}
-          {!loadingAi && !aiBlurb && (
-            <p className="text-gray-500 italic pl-2">No AI bio available.</p>
-          )}
->>>>>>> 69fd1b9ca68eef8d25a189b0d55ca327110a29f6
         </TabsContent>
       </Tabs>
     </div>
