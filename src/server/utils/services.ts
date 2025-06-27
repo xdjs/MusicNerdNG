@@ -108,11 +108,13 @@ export async function extractArtistId(artistUrl: string) {
                     id: channelId
                 };
             }
-            let extractedId = match[1] || match[2] || match[0];
+            let extractedId = match[1] || match[2] || match[3];
 
             // Decode any percent-encoded characters in the captured ID as well
             try {
-                extractedId = decodeURIComponent(extractedId);
+                if (extractedId) {
+                    extractedId = decodeURIComponent(extractedId);
+                }
             } catch {
                 // ignore errors
             }
@@ -133,10 +135,12 @@ export async function extractArtistId(artistUrl: string) {
             }
 
             // ENS name – rely solely on regex match; trim and lowercase for consistency
-            if (siteName === 'ens') {
+            if (siteName === 'ens' && extractedId) {
                 const ensName = extractedId.trim().toLowerCase();
                 extractedId = ensName;
             }
+
+            if (!extractedId) return null;
 
             return { 
                 siteName, 
