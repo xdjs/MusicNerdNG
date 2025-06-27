@@ -1,6 +1,5 @@
 // Import types first
 import { Artist, UrlMap } from '@/server/db/DbTypes';
-import { describe, it, expect, beforeEach } from '@jest/globals';
 import { 
     getArtistLinks, 
     getAllLinks, 
@@ -29,6 +28,7 @@ import {
     getAllSpotifyIds
 } from '../queriesTS';
 import { hasSpotifyCredentials } from '../setup/testEnv';
+import { ugcresearch } from '@/server/db/schema';
 
 // Skip all tests if Spotify credentials are missing
 const testWithSpotify = hasSpotifyCredentials ? it : it.skip;
@@ -521,6 +521,7 @@ describe('Artist Management Functions', () => {
         const mockSession = { user: { id: 'user123' } };
         const mockUser = { id: 'user123', wallet: '0x123', isWhiteListed: false, isAdmin: false };
         const mockArtist: Artist = { ...baseArtist, id: 'artist123', name: 'Test Artist' };
+        let valuesMock: jest.Mock;
 
         beforeEach(() => {
             (getServerAuthSession as jest.Mock).mockResolvedValue(mockSession);
@@ -531,22 +532,40 @@ describe('Artist Management Functions', () => {
                 cardPlatformName: 'Instagram'
             });
             (db.query.ugcresearch.findFirst as jest.Mock).mockResolvedValue(null);
-            (db.insert as jest.Mock).mockReturnValue({
-                values: jest.fn().mockReturnValue({
-                    returning: jest.fn().mockResolvedValue([{ id: 'ugc123' }])
-                })
+            valuesMock = jest.fn().mockReturnValue({
+                returning: jest.fn().mockResolvedValue([{ id: 'ugc123', createdAt: '2024-01-01' }])
             });
+            (db.insert as jest.Mock).mockReturnValue({ values: valuesMock });
         });
 
         it('should add data via UGC for regular user', async () => {
             const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
             expect(result.status).toBe('success');
             expect(result.message).toBe("Thanks for adding, we'll review this addition before posting");
+            expect(result.siteName).toBe('Instagram');
+            
+            // Verify UGC entry was created
+            expect(db.insert).toHaveBeenCalledWith(ugcresearch);
+            expect(valuesMock).toHaveBeenCalledWith({
+                ugcUrl: 'https://instagram.com/testhandle',
+                siteName: 'instagram',
+                siteUsername: 'testhandle',
+                artistId: 'artist123',
+                name: 'Test Artist',
+                userId: 'user123',
+                accepted: false
+            });
+            
+            // Verify no direct artist table update for regular users
+            expect(db.execute).not.toHaveBeenCalled();
         });
 
-        it('should directly update for whitelisted/admin user', async () => {
+        it('should auto-approve and update artist for whitelisted user', async () => {
             const whitelistedUser = { ...mockUser, isWhiteListed: true };
             (db.query.users.findFirst as jest.Mock).mockResolvedValue(whitelistedUser);
+            
+            // Mock approveUGC function
+            (db.execute as jest.Mock).mockResolvedValue([]);
             (db.update as jest.Mock).mockReturnValue({
                 set: jest.fn().mockReturnValue({
                     where: jest.fn().mockResolvedValue([])
@@ -555,15 +574,45 @@ describe('Artist Management Functions', () => {
 
             const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
             expect(result.status).toBe('success');
-            expect(result.message).toBe('Artist data has been added successfully');
+            expect(result.message).toBe('We updated the artist with that data');
+            expect(result.siteName).toBe('Instagram');
+            
+            // Verify UGC entry was created
+            expect(db.insert).toHaveBeenCalledWith(ugcresearch);
+            
+            // Verify approveUGC was called (which updates both UGC and artist table)
+            expect(db.execute).toHaveBeenCalled();
+            expect(db.update).toHaveBeenCalled();
+        });
+
+        it('should auto-approve and update artist for admin user', async () => {
+            const adminUser = { ...mockUser, isAdmin: true };
+            (db.query.users.findFirst as jest.Mock).mockResolvedValue(adminUser);
+            
+            // Mock approveUGC function
+            (db.execute as jest.Mock).mockResolvedValue([]);
+            (db.update as jest.Mock).mockReturnValue({
+                set: jest.fn().mockReturnValue({
+                    where: jest.fn().mockResolvedValue([])
+                })
+            });
+
+            const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
+            expect(result.status).toBe('success');
+            expect(result.message).toBe('We updated the artist with that data');
+            
+            // Verify approveUGC was called
+            expect(db.execute).toHaveBeenCalled();
+            expect(db.update).toHaveBeenCalled();
         });
 
         it('should handle invalid URL and existing data', async () => {
             (extractArtistId as jest.Mock).mockResolvedValue(null);
             const result = await addArtistData('invalid-url', mockArtist);
             expect(result.status).toBe('error');
+            expect(result.message).toBe("The data you're trying to add isn't in our list of approved links");
 
-            (extractArtistId as jest.Mock).mockResolvedValue({ id: 'test', siteName: 'instagram' });
+            (extractArtistId as jest.Mock).mockResolvedValue({ id: 'test', siteName: 'instagram', cardPlatformName: 'Instagram' });
             (db.query.ugcresearch.findFirst as jest.Mock).mockResolvedValue({ id: 'existing' });
             const result2 = await addArtistData('https://instagram.com/test', mockArtist);
             expect(result2.status).toBe('error');
@@ -571,11 +620,36 @@ describe('Artist Management Functions', () => {
         });
 
         it('should handle authentication error', async () => {
-            // Ensure wallet requirement is enabled for this test
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             await expect(addArtistData('https://instagram.com/test', mockArtist))
                 .rejects.toThrow('Not authenticated');
+        });
+
+        it('should handle walletless mode for development', async () => {
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            // Use Object.defineProperty to set NODE_ENV for testing
+            Object.defineProperty(process.env, 'NODE_ENV', {
+                value: 'development',
+                writable: true
+            });
+            (getServerAuthSession as jest.Mock).mockResolvedValue(null);
+            
+            const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
+            expect(result.status).toBe('success');
+            expect(result.message).toBe("Thanks for adding, we'll review this addition before posting");
+            
+            // Verify UGC entry was created without userId
+            expect(valuesMock).toHaveBeenCalledWith({
+                ugcUrl: 'https://instagram.com/testhandle',
+                siteName: 'instagram',
+                siteUsername: 'testhandle',
+                artistId: 'artist123',
+                name: 'Test Artist',
+                userId: undefined,
+                accepted: false
+            });
         });
     });
 });
@@ -699,6 +773,8 @@ describe('UGC Functions', () => {
         });
 
         it('should handle authentication and authorization errors', async () => {
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             await expect(approveUgcAdmin(['ugc1'])).rejects.toThrow('Not authenticated');
 
@@ -766,6 +842,8 @@ describe('Whitelist Functions', () => {
         });
 
         it('should handle authentication errors', async () => {
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             await expect(getWhitelistedUsers()).rejects.toThrow('Unauthorized');
         });

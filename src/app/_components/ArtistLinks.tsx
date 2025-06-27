@@ -3,10 +3,11 @@ import { Artist, UrlMap } from "@/server/db/DbTypes";
 import { getArtistLinks } from "@/server/utils/queriesTS";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import { Session } from "next-auth";
+import EditablePlatformLink from "./EditablePlatformLink";
 
-function PlatformLink({ link, descriptor, image }: { link: string, descriptor: string, image: string }) {
+function StaticPlatformLink({ link, descriptor, image }: { link: string; descriptor: string; image: string }) {
     return (
-        <li className={`list-none`}>
+        <li className="list-none">
             <Link href={`${link}`} target="blank" className="text-black">
                 <div className="link-item-grid gap-x-4 corners-rounded">
                     <img className="mr-3" src={image} alt="" height={50} width={50} />
@@ -14,12 +15,12 @@ function PlatformLink({ link, descriptor, image }: { link: string, descriptor: s
                 </div>
             </Link>
         </li>
-    )
+    );
 }
 
-export default async function ArtistLinks({ isMonetized, artist, spotifyImg, session, availableLinks, isOpenOnLoad = false }: { isMonetized: boolean, artist: Artist, spotifyImg: string, session: Session | null, availableLinks: UrlMap[], isOpenOnLoad: boolean }) {
+export default async function ArtistLinks({ isMonetized, artist, spotifyImg, session, availableLinks, isOpenOnLoad = false, canEdit = false }: { isMonetized: boolean; artist: Artist; spotifyImg: string; session: Session | null; availableLinks: UrlMap[]; isOpenOnLoad: boolean; canEdit?: boolean }) {
     let artistLinks = await getArtistLinks(artist);
-    artistLinks = artistLinks.filter(el => el.isMonetized === isMonetized);
+    artistLinks = artistLinks.filter((el) => el.isMonetized === isMonetized);
     
     // Render differently depending on monetization flag
     if (isMonetized) {
@@ -30,8 +31,13 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
             );
         }
         return (
-            artistLinks.map(el => (
-                <PlatformLink key={el.cardPlatformName} descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""} link={el.artistUrl} image={el.siteImage ?? ""} />
+            artistLinks.map((el) => (
+                <StaticPlatformLink
+                    key={el.cardPlatformName}
+                    descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
+                    link={el.artistUrl}
+                    image={el.siteImage ?? ""}
+                />
             ))
         );
     }
@@ -41,14 +47,30 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
         <>
             <li className="list-none pb-2">
                 <div className="link-item-grid gap-x-4 corners-rounded items-center">
-                    <AddArtistData label="Add data" artist={artist} spotifyImg={spotifyImg} session={session} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
+                    <AddArtistData label="Add data" artist={artist} spotifyImg={spotifyImg} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
                 </div>
             </li>
             {artistLinks.length === 0 ? (
                 <p>This artist has no links in this section yet, help support them by adding links!</p>
             ) : null}
-            {artistLinks.map(el => (
-                <PlatformLink key={el.cardPlatformName} descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""} link={el.artistUrl} image={el.siteImage ?? ""} />
+            {artistLinks.map((el) => (
+                canEdit ? (
+                    <EditablePlatformLink
+                        key={el.cardPlatformName}
+                        descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
+                        link={el.artistUrl}
+                        image={el.siteImage ?? ""}
+                        siteName={el.siteName}
+                        artistId={artist.id}
+                    />
+                ) : (
+                    <StaticPlatformLink
+                        key={el.cardPlatformName}
+                        descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
+                        link={el.artistUrl}
+                        image={el.siteImage ?? ""}
+                    />
+                )
             ))}
         </>
     );

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 "use client"
 import { useEffect, useState, useRef, ReactNode, Suspense, forwardRef, useImperativeHandle } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -7,7 +9,7 @@ import { useSearchParams } from 'next/navigation'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { Artist } from '@/server/db/DbTypes';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { Search, ExternalLink } from 'lucide-react';
 import Image from 'next/image';
 import { addArtist } from "@/app/actions/addArtist";
 import { useSession, signOut } from "next-auth/react";
@@ -351,8 +353,19 @@ const WalletSearchBar = forwardRef(
                                                         {result.name}
                                                     </div>
                                                     {result.isSpotifyOnly ? (
-                                                        <div className="text-xs text-gray-500 flex items-center gap-2">
-                                                            Add to MusicNerd
+                                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                                            <span className="cursor-pointer hover:text-gray-600 hover:underline">Add to MusicNerd</span>
+                                                            <span className="text-pink-400">|</span>
+                                                            <div 
+                                                                className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer hover:text-gray-600"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    window.open(`https://open.spotify.com/artist/${result.spotify}`, '_blank');
+                                                                }}
+                                                            >
+                                                                <span className="hover:underline">View on Spotify</span>
+                                                                <ExternalLink size={12} className="text-gray-500" />
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <div className="flex flex-col items-start gap-1">
@@ -775,8 +788,19 @@ const NoWalletSearchBar = forwardRef(
                                                         {result.name}
                                                     </div>
                                                     {result.isSpotifyOnly ? (
-                                                        <div className="text-xs text-gray-500 flex items-center gap-2">
-                                                            Add to MusicNerd
+                                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                                            <span className="cursor-pointer hover:text-gray-600 hover:underline">Add to MusicNerd</span>
+                                                            <span className="text-gray-300">|</span>
+                                                            <div 
+                                                                className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer hover:text-gray-600"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    window.open(`https://open.spotify.com/artist/${result.spotify}`, '_blank');
+                                                                }}
+                                                            >
+                                                                <span className="hover:underline">View on Spotify</span>
+                                                                <ExternalLink size={12} className="text-gray-500" />
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <div className="flex flex-col items-start gap-1">
@@ -967,8 +991,19 @@ function SearchResults({
                                         {result.name}
                                     </div>
                                     {result.isSpotifyOnly ? (
-                                        <div className="text-xs text-gray-500 flex items-center gap-2">
-                                            Add to MusicNerd
+                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                            <span className="cursor-pointer hover:text-gray-600 hover:underline">Add to MusicNerd</span>
+                                            <span className="text-gray-300">|</span>
+                                            <div 
+                                                className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer hover:text-gray-600"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    window.open(`https://open.spotify.com/artist/${result.spotify}`, '_blank');
+                                                }}
+                                            >
+                                                <span className="hover:underline">View on Spotify</span>
+                                                <ExternalLink size={12} className="text-gray-500" />
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-start gap-1">

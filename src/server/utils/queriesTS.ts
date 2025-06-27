@@ -142,6 +142,7 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         const artistLinksSiteNames: ArtistLink[] = [];
         for (const platform of allLinkObjects) {
             // Only add a link if the artist has a non-null, non-undefined value for this platform
+            if (platform.siteName === 'ens' || platform.siteName === 'wallets') continue;
             if (isObjKey(platform.siteName, artist) && artist[platform.siteName] !== null && artist[platform.siteName] !== undefined && artist[platform.siteName] !== "") {
                 let artistUrl = platform.appStringFormat;
                 // Special handling for YouTube channel URLs
@@ -307,16 +308,36 @@ export async function approveUgcAdmin(ugcIds: string[]) {
 
 export async function approveUGC(ugcId: string, artistId: string, siteName: string, artistIdFromUrl: string) {
     try {
-        await db.execute(sql`
-            UPDATE artists
-            SET ${sql.identifier(siteName)} = ${artistIdFromUrl} 
-            WHERE id = ${artistId}`);
+        if (siteName === 'wallets') {
+            console.log('[approveUGC] Appending wallet', artistIdFromUrl, 'to artist', artistId);
+            // Append wallet to wallets[] column, avoiding duplicates
+            await db.execute(sql`
+                UPDATE artists
+                SET wallets = array_append(wallets, ${artistIdFromUrl})
+                WHERE id = ${artistId} AND NOT wallets @> ARRAY[${artistIdFromUrl}]
+            `);
+        } else if (siteName === 'ens') {
+            console.log('[approveUGC] Setting ENS', artistIdFromUrl, 'for artist', artistId);
+            // Set ENS scalar column
+            await db.execute(sql`
+                UPDATE artists
+                SET ens = ${artistIdFromUrl}
+                WHERE id = ${artistId}
+            `);
+        } else {
+            await db.execute(sql`
+                UPDATE artists
+                SET ${sql.identifier(siteName)} = ${artistIdFromUrl}
+                WHERE id = ${artistId}`);
+        }
+
         await db.update(ugcresearch).set({ accepted: true }).where(eq(ugcresearch.id, ugcId));
     } catch (e) {
         console.error(`Error approving ugc`, e);
         throw new Error("Error approving UGC");
     }
 }
+
 export type AddArtistDataResp = {
     status: "success" | "error",
     message: string,
@@ -333,11 +354,13 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) {
+        console.log('[addArtistData] URL did not match any approved link regex:', artistUrl);
         return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     }
 
     try {
         // Get user data to check permissions
+        const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
         const user = session?.user?.id ? await getUserById(session.user.id) : null;
         const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
 
@@ -347,49 +370,34 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         });
 
         if (existingArtistUGC) {
+            console.log('[addArtistData] Duplicate submission – data already exists for artist', artist.id, ':', artistUrl);
             return { status: "error", message: "This artist data has already been added" };
         }
 
-        // For whitelisted/admin users, update artist table directly
-        if (isWhitelistedOrAdmin) {
-            const updateData = {
-                [artistIdFromUrl.siteName.toLowerCase()]: artistIdFromUrl.id
-            };
-            
-            await db.update(artists)
-                .set(updateData)
-                .where(eq(artists.id, artist.id));
-
-            // Send Discord message for the direct update
-            if (user) {
-                await sendDiscordMessage(`${user.wallet || 'Anonymous'} (Whitelisted/Admin) directly added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
-            }
-
-            return { 
-                status: "success", 
-                message: "Artist data has been added successfully", 
-                siteName: artistIdFromUrl.cardPlatformName ?? "" 
-            };
-        }
-
-        // For regular users, create UGC research entry
+        // Create UGC research entry for all users
         const [newUGC] = await db.insert(ugcresearch).values({
             ugcUrl: artistUrl,
             siteName: artistIdFromUrl.siteName,
             siteUsername: artistIdFromUrl.id,
             artistId: artist.id,
             name: artist.name ?? "",
-            userId: session?.user?.id || undefined
+            userId: session?.user?.id || undefined,
+            accepted: false
         }).returning();
 
-        // Send Discord message for UGC submission
+        // If the user is whitelisted/admin, auto-approve and update artist
+        if (isWhitelistedOrAdmin && newUGC?.id) {
+            await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
+        }
+
+        // Send Discord message for the submission
         if (user) {
-            await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artistIdFromUrl.cardPlatformName} data for ${artist.name}`);
+            await sendDiscordMessage(`${user.wallet || 'Anonymous'} added ${artist.name}'s ${artistIdFromUrl.cardPlatformName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`);
         }
 
         return { 
             status: "success", 
-            message: "Thanks for adding, we'll review this addition before posting", 
+            message: isWhitelistedOrAdmin ? "We updated the artist with that data" : "Thanks for adding, we'll review this addition before posting", 
             siteName: artistIdFromUrl.cardPlatformName ?? "" 
         };
     } catch (e) {
@@ -588,6 +596,41 @@ export async function updateWhitelistedUser(userId: string, data: { wallet?: str
     } catch (e) {
         console.error("error updating whitelisted user", e);
         return { status: "error", message: "Error updating whitelisted user" };
+    }
+}
+
+export type RemoveArtistDataResp = {
+    status: "success" | "error",
+    message: string
+}
+
+export async function removeArtistData(artistId: string, siteName: string): Promise<RemoveArtistDataResp> {
+    const session = await getServerAuthSession();
+    const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
+
+    if (isWalletRequired && !session) {
+        throw new Error("Not authenticated");
+    }
+
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+    const user = session?.user?.id ? await getUserById(session.user.id) : null;
+    const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
+
+    if (!walletlessEnabled && !isWhitelistedOrAdmin) {
+        return { status: "error", message: "Unauthorized" };
+    }
+
+    try {
+        // Remove the value from the specific column in the artists table
+        await db.execute(sql`UPDATE artists SET ${sql.identifier(siteName)} = NULL WHERE id = ${artistId}`);
+
+        // Remove any matching ugcResearch rows
+        await db.delete(ugcresearch).where(and(eq(ugcresearch.artistId, artistId), eq(ugcresearch.siteName, siteName)));
+
+        return { status: "success", message: "Artist data removed" };
+    } catch (e) {
+        console.error("Error removing artist data", e);
+        return { status: "error", message: "Error removing artist data" };
     }
 }
 
