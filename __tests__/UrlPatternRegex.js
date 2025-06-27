@@ -18,6 +18,9 @@ describe('URL Pattern Tests', () => {
     { regex: /^https:\/\/rainbow\.me\/([^/]+)$/, sitename: "rainbow" },
     { regex: /^https:\/\/wikipedia\.org\/wiki\/([^/]+)$/, sitename: "wikipedia" },
     { regex: /^https:\/\/www\.tiktok\.com\/@([^/]+)$/, sitename: "tiktok" },
+    { regex: /^https:\/\/www\.discogs\.com\/artist\/([^/?#]+)$/, sitename: "discogs" },
+    { regex: /^https:\/\/www\.imdb\.com\/name\/(nm\d+)\/?$/, sitename: "imdb" },
+    { regex: /^https:\/\/warpcast\.com\/([^/]+)$/, sitename: "farcaster" },
   ];
 
   // Test valid URLs
@@ -43,6 +46,12 @@ describe('URL Pattern Tests', () => {
     ['rainbow', 'https://rainbow.me/wallet123'],
     ['wikipedia', 'https://wikipedia.org/wiki/Article_Name'],
     ['tiktok', 'https://www.tiktok.com/@user123'],
+    ['discogs', 'https://www.discogs.com/artist/12345'],
+    ['discogs', 'https://www.discogs.com/artist/Some-Artist-Name'],
+    ['imdb', 'https://www.imdb.com/name/nm1234567'],
+    ['imdb', 'https://www.imdb.com/name/nm7654321/'],
+    ['farcaster', 'https://warpcast.com/username'],
+    ['farcaster', 'https://warpcast.com/another_user'],
   ])('should match valid %s URL', (sitename, url) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
     expect(pattern.regex.test(url)).toBe(true);
@@ -73,6 +82,12 @@ describe('URL Pattern Tests', () => {
     ['rainbow', 'https://rainbow.me/wallet/extra'],
     ['wikipedia', 'https://wikipedia.org/Article_Name'],
     ['tiktok', 'https://tiktok.com/@user123'],
+    ['discogs', 'https://www.discogs.com/artist/'],
+    ['discogs', 'https://www.discogs.com/label/12345'],
+    ['imdb', 'https://www.imdb.com/name/'],
+    ['imdb', 'https://www.imdb.com/title/tt1234567'],
+    ['farcaster', 'https://warpcast.com/'],
+    ['farcaster', 'https://warpcast.com/user/extra'],
   ])('should not match invalid %s URL', (sitename, url) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
     expect(pattern.regex.test(url)).toBe(false);
@@ -87,6 +102,10 @@ describe('URL Pattern Tests', () => {
     ['youtubechannel', 'https://www.youtube.com/channel/UC12345abcdef', 'UC12345abcdef'],
     ['youtubechannel', 'https://www.youtube.com/@Yo-Sea', '@Yo-Sea'],
     ['tiktok', 'https://www.tiktok.com/@user123', 'user123'],
+    ['discogs', 'https://www.discogs.com/artist/12345', '12345'],
+    ['discogs', 'https://www.discogs.com/artist/Some-Artist-Name', 'Some-Artist-Name'],
+    ['imdb', 'https://www.imdb.com/name/nm1234567', 'nm1234567'],
+    ['farcaster', 'https://warpcast.com/username', 'username'],
   ])('should extract correct parameter from %s URL', (sitename, url, expectedParam) => {
     const pattern = urlPatterns.find(p => p.sitename === sitename);
     const match = url.match(pattern.regex);
