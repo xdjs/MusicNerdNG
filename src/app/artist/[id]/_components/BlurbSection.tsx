@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { exists } from "drizzle-orm";
 
 
 interface BlurbSectionProps {
@@ -40,7 +41,13 @@ export default function BlurbSection({
 
   return (
     <div className="mb-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={(value) => {
+            setActiveTab(value);
+            if (openModal) {
+                setOpenModal(value === "wikipedia" ? "wiki" : "ai");
+            }
+        }} 
+            className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="wikipedia">Wikipedia</TabsTrigger>
           <TabsTrigger value="ai-generated">AI Generated</TabsTrigger>
