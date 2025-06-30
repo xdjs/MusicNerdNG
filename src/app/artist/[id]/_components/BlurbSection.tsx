@@ -50,7 +50,7 @@ export default function BlurbSection({
             className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="wikipedia">Wikipedia</TabsTrigger>
-          <TabsTrigger value="ai-generated">AI Generated</TabsTrigger>
+          <TabsTrigger value="ai-generated">Music Nerd</TabsTrigger>
         </TabsList>
         
         <TabsContent value="wikipedia">
