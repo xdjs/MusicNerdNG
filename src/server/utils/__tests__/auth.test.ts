@@ -548,7 +548,7 @@ describe('Authentication System', () => {
 
     afterEach(() => {
       if (originalNodeEnv !== undefined) {
-        process.env.NODE_ENV = originalNodeEnv;
+        Object.defineProperty(process.env, 'NODE_ENV', { value: originalNodeEnv, writable: true });
       } else {
         delete process.env.NODE_ENV;
       }
