@@ -2,6 +2,7 @@
 
 import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
+import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
@@ -34,17 +35,12 @@ function UgcStats({ user }: { user: User }) {
 
     return (
         <section className="px-10 py-5 space-y-6">
-            <h1 className="text-2xl">UGC Stats</h1>
+            <h1 className="text-2xl text-center">UGC Stats</h1>
             
-            {/* Leaderboard Section */}
-            <div className="mb-8">
-                <Leaderboard />
-            </div>
-
             {/* Individual Stats Section */}
-            <div className="space-y-6">
-                <h2 className="text-xl">Individual Stats</h2>
-                <div className="flex flex-col items-start justify-center pb-6">
+            <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
+                <CardTitle>Individual Stats</CardTitle>
+                <div className="flex flex-col items-center justify-center pb-6">
                     <p className="text-sm text-gray-500 pb-3">UGC Stats for: <strong>{ugcStatsUserWallet ?? user?.wallet}</strong> </p>
                     {user?.isAdmin && (
                         <>
@@ -61,11 +57,16 @@ function UgcStats({ user }: { user: User }) {
                 <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
                 {loading && <p>Loading...</p>}
                 {ugcStats && (
-                    <div>
+                    <div className="space-y-1">
                         <p>UGC Count: {ugcStats.ugcCount}</p>
                         <p>Artists Count: {ugcStats.artistsCount}</p>
                     </div>
                 )}
+            </div>
+
+            {/* Leaderboard Section */}
+            <div>
+                <Leaderboard />
             </div>
         </section>
     )
