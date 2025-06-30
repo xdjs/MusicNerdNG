@@ -3,7 +3,6 @@ import { getLeaderboard } from '@/server/utils/queriesTS';
 
 // Polyfill Response.json for test environment (NextResponse relies on it)
 if (!('json' in Response)) {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     Response.json = (data: unknown, init?: ResponseInit) =>
         new Response(JSON.stringify(data), {
