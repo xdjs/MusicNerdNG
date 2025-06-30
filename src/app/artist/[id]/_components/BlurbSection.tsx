@@ -101,7 +101,9 @@ export default function BlurbSection({
             <div className="relative">
                 {/* Initial text box */}
                 <div className="h-28 relative border border-gray-200 rounded-t-lg bg-white p-3 overflow-hidden">
-                    {aiBlurb ? (
+                    {loadingAi ? (
+                        <p className="text-gray-500 italic">Loading AI Summary...</p>
+                    ) : (aiBlurb ? (
                         <>  
                             <p className="text-black">{aiBlurb}</p>
                             {aiBlurb && aiBlurb.length > 200 && (
@@ -119,7 +121,7 @@ export default function BlurbSection({
                         </>
                     ) : (
                         <p className="text-gray-500 italic">No AI Summary available</p>
-                    )}
+                ))}
                 </div>
                 {/* Expanded box */}
                 {openModal === 'ai' && (
