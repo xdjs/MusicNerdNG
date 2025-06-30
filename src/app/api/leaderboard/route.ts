@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
-import { getLeaderboard } from "@/server/utils/queriesTS";
+import { NextResponse, NextRequest } from "next/server";
+import { getLeaderboard, getLeaderboardInRange } from "@/server/utils/queriesTS";
 
 export const revalidate = 60; // cache for 1 minute
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         // Check if walletless mode is enabled
         const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
@@ -11,7 +11,17 @@ export async function GET() {
         // In walletless mode, we allow access without authentication
         // In normal mode, this would typically check for authentication
         
-        const leaderboard = await getLeaderboard();
+        const { searchParams } = new URL(request.url);
+        const from = searchParams.get('from');
+        const to = searchParams.get('to');
+
+        let leaderboard;
+
+        if (from && to) {
+            leaderboard = await getLeaderboardInRange(from, to);
+        } else {
+            leaderboard = await getLeaderboard();
+        }
         return NextResponse.json(leaderboard, { status: 200 });
     } catch (error) {
         console.error("Error fetching leaderboard:", error);
