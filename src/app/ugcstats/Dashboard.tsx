@@ -21,6 +21,7 @@ function UgcStats({ user }: { user: User }) {
     const [loading, setLoading] = useState(false);
     const [ugcStatsUserWallet, setUgcStatsUserWallet] = useState<string | null>(null);
     const [query, setQuery] = useState('');
+    const [allTimeStats, setAllTimeStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
 
     async function checkUgcStats() {
         if (date?.from && date?.to) {
@@ -33,40 +34,61 @@ function UgcStats({ user }: { user: User }) {
         }
     }
 
+    // Fetch all-time stats on mount and whenever the target wallet changes
+    useEffect(() => {
+        async function fetchAllTimeStats() {
+            try {
+                const result = await getUgcStatsInRange({ from: new Date(0), to: new Date() } as DateRange, ugcStatsUserWallet);
+                if (result) setAllTimeStats(result);
+            } catch (e) {
+                console.error('Error fetching all-time UGC stats', e);
+            }
+        }
+
+        fetchAllTimeStats();
+    }, [ugcStatsUserWallet]);
+
     return (
         <section className="px-10 py-5 space-y-6">
-            <h1 className="text-2xl text-center">UGC Stats</h1>
+            <h1 className="text-2xl font-bold text-center">UGC Stats</h1>
             
             {/* Individual Stats Section */}
             <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
-                <CardTitle>Individual Stats</CardTitle>
-                <div className="flex flex-col items-center justify-center pb-6">
-                    <p className="text-sm text-gray-500 pb-3">UGC Stats for: <strong>{ugcStatsUserWallet ?? user?.wallet}</strong> </p>
-                    {user?.isAdmin && (
-                        <>
-                            <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
-                            <div className="mt-2">
-                                <Button disabled={!ugcStatsUserWallet} onClick={() => {setUgcStatsUserWallet(null); setQuery('')}}>
-                                    Clear User
-                                </Button>
-                            </div>
-                        </>
-                    )}
-                </div>
-                <DatePicker date={date} setDate={setDate} />
-                <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
-                {loading && <p>Loading...</p>}
-                {ugcStats && (
+                {/* User info */}
+                <p className="text-sm text-gray-500 pb-1">UGC Stats for: <strong>{
+                    ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                }</strong></p>
+
+                {user?.isAdmin && (
+                    <>
+                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
+                        <div className="mt-2">
+                            <Button disabled={!ugcStatsUserWallet} onClick={() => {setUgcStatsUserWallet(null); setQuery('')}}>
+                                Clear User
+                            </Button>
+                        </div>
+                    </>
+                )}
+
+                {/* Dynamic stats block (shows date-range stats if available, otherwise all-time) */}
+                {(ugcStats ?? allTimeStats) && (
                     <div className="space-y-1">
-                        <p>UGC Count: {ugcStats.ugcCount}</p>
-                        <p>Artists Count: {ugcStats.artistsCount}</p>
+                        <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
+                        <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
                     </div>
                 )}
+
+                {/* Date range picker and action button inline */}
+                <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+                    <DatePicker date={date} setDate={setDate} />
+                    <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
+                </div>
+                {loading && <p>Loading...</p>}
             </div>
 
             {/* Leaderboard Section */}
             <div>
-                <Leaderboard highlightIdentifier={user.wallet} />
+                <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
             </div>
         </section>
     )

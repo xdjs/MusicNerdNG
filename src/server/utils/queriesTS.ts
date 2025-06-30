@@ -678,4 +678,34 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
     }
 }
 
+// Get leaderboard stats within a date range (inclusive)
+export async function getLeaderboardInRange(fromIso: string, toIso: string): Promise<LeaderboardEntry[]> {
+    try {
+        const result = await db.execute<LeaderboardEntry>(sql`
+            SELECT 
+                u.id   AS "userId",
+                u.wallet,
+                u.username,
+                u.email,
+                (
+                    SELECT COUNT(*)::int FROM artists a 
+                    WHERE a.added_by = u.id 
+                      AND a.created_at BETWEEN ${fromIso} AND ${toIso}
+                ) AS "artistsCount",
+                (
+                    SELECT COUNT(*)::int FROM ugcresearch ug 
+                    WHERE ug.user_id = u.id 
+                      AND ug.created_at BETWEEN ${fromIso} AND ${toIso}
+                ) AS "ugcCount"
+            FROM users u
+            ORDER BY "ugcCount" DESC, "artistsCount" DESC
+            LIMIT 50;
+        `);
+        return result;
+    } catch (e) {
+        console.error("error getting leaderboard in range", e);
+        throw new Error("Error getting leaderboard in range");
+    }
+}
+
 

@@ -5,17 +5,32 @@ import { LeaderboardEntry } from "@/server/utils/queriesTS";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { DateRange } from "react-day-picker";
 
-export default function Leaderboard({ highlightIdentifier }: { highlightIdentifier?: string }) {
+export default function Leaderboard({ highlightIdentifier, dateRange }: { highlightIdentifier?: string; dateRange?: DateRange }) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    function buildUrl() {
+        if (dateRange?.from && dateRange?.to) {
+            const from = dateRange.from.toISOString();
+            const to = dateRange.to.toISOString();
+            return `/api/leaderboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+        }
+        return "/api/leaderboard";
+    }
+
     useEffect(() => {
         async function fetchLeaderboard() {
+            if ((dateRange?.from && !dateRange?.to) || (!dateRange?.from && dateRange?.to)) {
+                setLeaderboard([]);
+                return;
+            }
             try {
                 setLoading(true);
-                const response = await fetch('/api/leaderboard');
+                setError(null);
+                const response = await fetch(buildUrl());
                 if (!response.ok) {
                     throw new Error('Failed to fetch leaderboard');
                 }
@@ -30,13 +45,23 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         }
 
         fetchLeaderboard();
-    }, []);
+    }, [dateRange]);
+
+    const isDateRangeActive = !!(dateRange?.from && dateRange?.to);
+
+    function formatShort(date: Date) {
+        return date.toLocaleDateString(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
+    }
+
+    const headingSuffix = isDateRangeActive && dateRange?.from && dateRange?.to
+        ? `${formatShort(dateRange.from)} - ${formatShort(dateRange.to)}`
+        : "All Time";
 
     if (loading) {
         return (
             <Card>
-                <CardHeader>
-                    <CardTitle>Leaderboard</CardTitle>
+                <CardHeader className="text-center">
+                    <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
                 </CardHeader>
                 <CardContent>
                     <p>Loading leaderboard...</p>
@@ -48,8 +73,8 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
     if (error) {
         return (
             <Card>
-                <CardHeader>
-                    <CardTitle>Leaderboard</CardTitle>
+                <CardHeader className="text-center">
+                    <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
                 </CardHeader>
                 <CardContent>
                     <p className="text-red-500">{error}</p>
@@ -61,11 +86,11 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
     return (
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
-                <CardTitle>Leaderboard</CardTitle>
+                <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
             </CardHeader>
             <CardContent>
                 {/* column headings */}
-                <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground sticky top-0 z-20 bg-card py-2">
+                <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground sticky top-0 z-20 bg-card py-2 mb-2">
                     <span className="justify-self-start">User</span>
                     <span className="justify-self-center">UGC Added</span>
                     <span className="justify-self-end">Artists Added</span>
