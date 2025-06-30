@@ -480,7 +480,7 @@ export async function getUgcStatsInRange(date: DateRange, wallet: string | null 
     if (walletlessEnabled && !session) {
         userId = '00000000-0000-0000-0000-000000000000'; // Default user ID for walletless mode
     } else {
-        if (!session) throw new Error("Not authenticated");
+    if (!session) throw new Error("Not authenticated");
         userId = session.user.id;
     }
     

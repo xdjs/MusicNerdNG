@@ -66,7 +66,7 @@ function UgcStats({ user }: { user: User }) {
 
             {/* Leaderboard Section */}
             <div>
-                <Leaderboard />
+                <Leaderboard highlightIdentifier={user.wallet} />
             </div>
         </section>
     )
