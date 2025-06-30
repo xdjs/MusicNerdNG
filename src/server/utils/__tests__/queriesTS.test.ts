@@ -25,7 +25,8 @@ import {
     updateWhitelistedUser,
     searchForUsersByWallet,
     sendDiscordMessage,
-    getAllSpotifyIds
+    getAllSpotifyIds,
+    getLeaderboard
 } from '../queriesTS';
 import { hasSpotifyCredentials } from '../setup/testEnv';
 import { ugcresearch } from '@/server/db/schema';
@@ -437,6 +438,7 @@ describe('Artist Management Functions', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+        Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
     });
 
     describe('addArtist', () => {
@@ -498,6 +500,7 @@ describe('Artist Management Functions', () => {
         it('should work when wallet requirement is disabled', async () => {
             const originalValue = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             (db.query.artists.findFirst as jest.Mock).mockResolvedValue(null);
             (db.insert as jest.Mock).mockReturnValue({
@@ -512,8 +515,8 @@ describe('Artist Management Functions', () => {
             const result = await addArtist('spotify123');
             expect(result.status).toBe('success');
             
-            // Restore original environment variable
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalValue;
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
         });
     });
 
@@ -629,11 +632,8 @@ describe('Artist Management Functions', () => {
 
         it('should handle walletless mode for development', async () => {
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
-            // Use Object.defineProperty to set NODE_ENV for testing
-            Object.defineProperty(process.env, 'NODE_ENV', {
-                value: 'development',
-                writable: true
-            });
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             
             const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
@@ -727,12 +727,30 @@ describe('UGC Functions', () => {
         });
 
         it('should handle authentication and user lookup errors', async () => {
+            // Test normal mode (wallet required)
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
+            
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             await expect(getUgcStatsInRange(dateRange)).rejects.toThrow('Not authenticated');
 
             (getServerAuthSession as jest.Mock).mockResolvedValue(mockSession);
             (db.query.users.findFirst as jest.Mock).mockResolvedValue(null);
             await expect(getUgcStatsInRange(dateRange, '0x999')).rejects.toThrow('User not found');
+        });
+
+        it('should work in walletless mode during development', async () => {
+            // Enable walletless mode
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
+            
+            (getServerAuthSession as jest.Mock).mockResolvedValue(null);
+            (db.query.ugcresearch.findMany as jest.Mock).mockResolvedValue([]);
+            (db.query.artists.findMany as jest.Mock).mockResolvedValue([]);
+
+            const result = await getUgcStatsInRange(dateRange);
+            expect(result).toEqual({ ugcCount: 0, artistsCount: 0 });
         });
     });
 
@@ -763,13 +781,15 @@ describe('UGC Functions', () => {
         it('should work in walletless mode during development', async () => {
             const originalValue = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
 
             const result = await approveUgcAdmin(['ugc1']);
             expect(result.status).toBe('success');
             
-            // Restore original environment variable
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalValue;
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
         });
 
         it('should handle authentication and authorization errors', async () => {
@@ -989,5 +1009,45 @@ describe('Utility Functions', () => {
             const result = await searchForUsersByWallet('0x11');
             expect(result).toBeUndefined();
         });
+    });
+});
+
+describe('getLeaderboard', () => {
+    it('should return leaderboard data sorted by artists count', async () => {
+        // Mock the database query
+        const mockResult = [
+            {
+                userId: 'user1',
+                wallet: '0x123...',
+                username: 'user1',
+                email: 'user1@test.com',
+                artistsCount: 10,
+                ugcCount: 5
+            },
+            {
+                userId: 'user2',
+                wallet: '0x456...',
+                username: 'user2',
+                email: 'user2@test.com',
+                artistsCount: 8,
+                ugcCount: 3
+            }
+        ];
+
+        // Mock the db.execute function
+        const mockExecute = jest.fn().mockResolvedValue(mockResult);
+        jest.spyOn(db, 'execute').mockImplementation(mockExecute);
+
+        const result = await getLeaderboard();
+
+        expect(result).toEqual(mockResult);
+        expect(mockExecute).toHaveBeenCalledWith(expect.any(Object));
+    });
+
+    it('should throw error when database query fails', async () => {
+        // Mock the database query to throw an error
+        jest.spyOn(db, 'execute').mockRejectedValue(new Error('Database error'));
+
+        await expect(getLeaderboard()).rejects.toThrow('Error getting leaderboard');
     });
 }); 
