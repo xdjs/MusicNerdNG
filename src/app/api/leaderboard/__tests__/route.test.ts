@@ -1,5 +1,6 @@
 import { GET } from '../route';
 import { getLeaderboard } from '@/server/utils/queriesTS';
+import { NextRequest } from 'next/server';
 
 // Polyfill Response.json for test environment (NextResponse relies on it)
 if (!('json' in Response)) {
@@ -18,6 +19,21 @@ jest.mock('@/server/utils/queriesTS', () => ({
 }));
 
 const mockGetLeaderboard = getLeaderboard as jest.MockedFunction<typeof getLeaderboard>;
+
+// Helper function to create a mock NextRequest
+function createMockRequest(url: string = 'http://localhost:3000/api/leaderboard'): NextRequest {
+    return {
+        url,
+        nextUrl: new URL(url),
+        headers: new Headers(),
+        method: 'GET',
+        body: null,
+        json: jest.fn(),
+        text: jest.fn(),
+        formData: jest.fn(),
+        clone: jest.fn(),
+    } as unknown as NextRequest;
+}
 
 describe('Leaderboard API', () => {
     beforeEach(() => {
@@ -38,7 +54,8 @@ describe('Leaderboard API', () => {
 
         mockGetLeaderboard.mockResolvedValue(mockLeaderboard);
 
-        const response = await GET();
+        const request = createMockRequest();
+        const response = await GET(request);
         
         // Check if response is a Response object
         expect(response).toBeInstanceOf(Response);
@@ -49,15 +66,17 @@ describe('Leaderboard API', () => {
     });
 
     it('should handle errors gracefully', async () => {
-        mockGetLeaderboard.mockRejectedValue(new Error('Database error'));
+        const errorMessage = 'Database error';
+        mockGetLeaderboard.mockRejectedValue(new Error(errorMessage));
 
-        const response = await GET();
+        const request = createMockRequest();
+        const response = await GET(request);
         
         expect(response).toBeInstanceOf(Response);
         expect(response.status).toBe(500);
         
         const data = await response.json();
         expect(data.error).toBe('Failed to fetch leaderboard');
-        expect(data.details).toBe('Database error');
+        expect(data.details).toBe(errorMessage);
     });
 }); 
