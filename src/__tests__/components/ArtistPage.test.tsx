@@ -151,7 +151,7 @@ describe('ArtistPage', () => {
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
         expect(screen.getByText('Test wiki blurb')).toBeInTheDocument();
-        expect(screen.getByText('WIKIPEDIA')).toBeInTheDocument();
+        expect(screen.getByText('Wikipedia')).toBeInTheDocument();
         expect(screen.getByTestId('spotify-embed')).toBeInTheDocument();
     });
 

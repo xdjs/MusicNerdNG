@@ -30,7 +30,7 @@ export default function BlurbSection({
       setLoadingAi(true);
       fetch(`/api/artistBio/${artistId}`)
         .then(async (res) => {
-          if (!res.ok) throw new Error("Failed to load bio");
+          if (!res.ok) throw new Error("Failed to load AI bio");
           const json = await res.json();
           setAiBlurb(json.bio as string);
         })
@@ -120,7 +120,7 @@ export default function BlurbSection({
                             )}
                         </>
                     ) : (
-                        <p className="text-gray-500 italic">No AI Summary available</p>
+                        <p className="text-gray-500 italic">No AI summary is available</p>
                 ))}
                 </div>
                 {/* Expanded box */}
