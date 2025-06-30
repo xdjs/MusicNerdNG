@@ -19,23 +19,34 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   // Build prompt
   const promptParts: string[] = [
-    
-    `As someone who just discovered {artist_name}, write a 50-word paragraph that reveals the most compelling and hidden aspect of their artistry. 
-Include facts only die-hard fans would know. Also explain why someone should become a fan of them, and what qualities are needed to be a true fan. 
-Channel the emotional tone of their music without saying it directly—express it through style, mood, and metaphor.`,
-    `Name: ${artist.name ?? "Unknown"}`,
+  `
+    As someone who just discovered ${artist.name}, write a brief 100-word-maximum biography paragraph. 
+    Describe the genre(s) that their music falls into. 
+    If known, describe how they entered music and where they are now. 
+    Include interesting general trivia that a moderate fan might know, such as if they have a unique lyrical/writing style or production process. 
+    Also explain why someone might relate to their music or find it enjoyable. 
+    Avoid sentences that contain excessive descriptions and adjective use that lack actual descriptive substance.  
+
+    Here are a few requirements that you MUST adhere to:
+    - Treat this prompt as an outline, not a bullet list. Respond in a natural way, as if you were a human writing a brief biography paragraph.
+    - Ensure that you do not write any redundant descriptions or topic points.
+    - Do not use metaphors.
+    - The trivia that you include should ideally be something applicable to a majority of their music.
+    - While you should aim to get as close as possible to 100 words, if you cannot find information on the artist, do not attempt to supplicate your response with fabricated information. It is okay to state that they do not have much information available. 
+  `
   ];
   if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
   if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
   if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
   if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
   if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
-  promptParts.push(`Focus on genre, key achievements, and unique traits; avoid speculation.`);
+  {/*promptParts.push(`Focus on genre, key achievements, and unique traits; avoid speculation.`);*/}
 
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [{ role: "system", content: 'You are a poetic, emotionally intuitive music writer. You craft 50-word reflections about artists that include deep fan knowledge, symbolic language, and emotional resonance. Avoid clichés and write with vivid, metaphorical flair. Write for fans who crave both insight and feeling.' +promptParts.join("\n") }],
+      messages: [{ role: "system", 
+      content: 'You are an artifical intelligence whose sole purpose is to follow the provided prompt.' +promptParts.join("\n") }],
       temperature:0.8,
     });
     const bio = completion.choices[0]?.message?.content?.trim() ?? "";
