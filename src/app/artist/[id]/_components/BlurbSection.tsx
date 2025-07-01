@@ -20,7 +20,7 @@ export default function BlurbSection({
   artistId
 }: BlurbSectionProps) {
   // State to track which tab is active (defaults to 'wikipedia')
-  const [activeTab, setActiveTab] = useState<string>("wikipedia");
+  const [activeTab, setActiveTab] = useState<string>("ai-generated");
   const [openModal, setOpenModal] = useState<'wiki' | 'ai' | null>(null);
   const [aiBlurb, setAiBlurb] = useState<string | undefined>();
   const [loadingAi, setLoadingAi] = useState(false);
@@ -44,13 +44,13 @@ export default function BlurbSection({
       <Tabs value={activeTab} onValueChange={(value) => {
             setActiveTab(value);
             if (openModal) {
-                setOpenModal(value === "wikipedia" ? "wiki" : "ai");
+                setOpenModal(value === "ai-generated" ? "ai" : "wiki");
             }
         }} 
             className="w-full">
         <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="ai-generated">AI-Generated</TabsTrigger>
           <TabsTrigger value="wikipedia">Wikipedia</TabsTrigger>
-          <TabsTrigger value="ai-generated">AI Generated</TabsTrigger>
         </TabsList>
         
         <TabsContent value="wikipedia">
@@ -128,7 +128,7 @@ export default function BlurbSection({
                     <div className="absolute top-0 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
                         <p className="text-black mb-4">{aiBlurb}</p>
                         <button
-                            className="absolute bottom-2 right-2 bg-white text-blue-600 text-sm underline"
+                            className="absolute right-2 bg-white text-blue-600 text-sm underline"
                             onClick={() => setOpenModal(null)}
                         >
                             Show less
