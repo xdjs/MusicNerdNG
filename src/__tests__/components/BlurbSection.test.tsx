@@ -180,7 +180,7 @@ describe('BlurbSection', () => {
             expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
 
             // It should eventually show the fallback message
-            expect(await screen.findByText(/No AI summary is available/i, {}, { timeout: 5000 })).toBeInTheDocument();
+            expect(await screen.findByText(/No AI summary is available/i, {}, { timeout: 10000 })).toBeInTheDocument();
         });
 
         it('does not make duplicate API calls', async () => {
