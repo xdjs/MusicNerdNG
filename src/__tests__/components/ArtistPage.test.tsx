@@ -152,7 +152,6 @@ describe('ArtistPage', () => {
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
         expect(screen.getByText('Test wiki blurb')).toBeInTheDocument();
         expect(screen.getByText('Wikipedia')).toBeInTheDocument();
-        expect(screen.getByTestId('spotify-embed')).toBeInTheDocument();
     });
 
     it('calls notFound when artist is not found', async () => {
@@ -180,6 +179,7 @@ describe('ArtistPage', () => {
         render(Component);
 
         expect(screen.getByText('Test Artist')).toBeInTheDocument();
+        // Spotify widget removed; ensure no embed is rendered
         expect(screen.queryByTestId('spotify-embed')).not.toBeInTheDocument();
         const img = screen.getByAltText('Artist Image');
         expect(img).toHaveAttribute('src', '/default_pfp_pink.png');
