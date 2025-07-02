@@ -3,7 +3,7 @@
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains } from "drizzle-orm";
-import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
+import { featured, artists, users, ugcresearch, urlmap, aiPrompts } from '@/server/db/schema';
 import { Artist, UrlMap } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
@@ -707,5 +707,25 @@ export async function getLeaderboardInRange(fromIso: string, toIso: string): Pro
         throw new Error("Error getting leaderboard in range");
     }
 }
+
+export async function getActivePrompt() {
+    return await db.query.aiPrompts.findFirst({
+        where: eq(aiPrompts.isActive, true)
+    })
+}
+
+export async function setActivePrompt() {
+}
+
+export async function getAllPrompts() {
+    try {
+        const result = await db.query.aiPrompts.findMany()
+        return result
+    } catch (e) {
+        console.error("no work", e)
+        throw new Error("cant get table data")
+    }
+}
+
 
 

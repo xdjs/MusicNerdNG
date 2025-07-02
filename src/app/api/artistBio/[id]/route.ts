@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { openai } from "@/server/lib/openai";
-import { getArtistById } from "@/server/utils/queriesTS";
+import { getActivePrompt, getArtistById } from "@/server/utils/queriesTS";
 import { db } from "@/server/db/drizzle";
 import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: { id: string, prompt: string } }) {
   // Fetch artist row
   const artist = await getArtistById(params.id);
   if (!artist) {
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
+  }
+  const prompt = await getActivePrompt();
+  if (!prompt) {
+    return NextResponse.json({ error: "No prompt found"})
   }
 
   // If bio already exists, return cached
@@ -18,23 +22,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 
   // Build prompt
-  const promptParts: string[] = [
-  `
-    As someone who just discovered ${artist.name}, write a brief 100-word-maximum biography paragraph. 
-    Describe the genre(s) that their music falls into. 
-    If known, describe how they entered music and where they are now. 
-    Include interesting general trivia that a moderate fan might know, such as if they have a unique lyrical/writing style or production process. 
-    Also explain why someone might relate to their music or find it enjoyable. 
-    Avoid sentences that contain excessive descriptions and adjective use that lack actual descriptive substance.  
-
-    Here are a few requirements that you MUST adhere to:
-    - Treat this prompt as an outline, not a bullet list. Respond in a natural way, as if you were a human writing a brief biography paragraph.
-    - Ensure that you do not write any redundant descriptions or topic points.
-    - Do not use metaphors.
-    - The trivia that you include should ideally be something applicable to a majority of their music.
-    - While you should aim to get as close as possible to 100 words, if you cannot find information on the artist, do not attempt to supplicate your response with fabricated information. It is okay to state that they do not have much information available. 
-  `
-  ];
+  const promptParts: string[] = [`${prompt.prompt}`];
+  
   if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
   if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
   if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
