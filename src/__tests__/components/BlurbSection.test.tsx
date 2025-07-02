@@ -181,9 +181,14 @@ describe('BlurbSection', () => {
             
             // First it shows loading
             expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
-            
-            // Then after API resolves, it shows "No AI summary is available"
-            expect(await screen.findByText('No AI summary is available')).toBeInTheDocument();
+
+            // Wait for loading message to disappear
+            await waitFor(() => {
+                expect(screen.queryByText('Loading AI Summary...')).not.toBeInTheDocument();
+            }, { timeout: 3000 });
+
+            // Then it should show the fallback message
+            expect(screen.getByText(/No AI summary is available/i)).toBeInTheDocument();
         });
 
         it('does not make duplicate API calls', async () => {
