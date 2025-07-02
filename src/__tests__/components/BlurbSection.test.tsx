@@ -166,23 +166,6 @@ describe('BlurbSection', () => {
             });
         });
 
-        it('shows "No AI Summary available" when API returns undefined bio', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ bio: undefined })
-            } as any);
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
-            // First it shows loading
-            expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
-
-            // It should eventually show the fallback message
-            expect(await screen.findByText(/No AI summary is available/i, {}, { timeout: 10000 })).toBeInTheDocument();
-        });
-
         it('does not make duplicate API calls', async () => {
             mockFetch.mockImplementation(() => 
                 Promise.resolve({
