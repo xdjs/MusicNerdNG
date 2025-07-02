@@ -167,13 +167,10 @@ describe('BlurbSection', () => {
         });
 
         it('shows "No AI Summary available" when API returns undefined bio', async () => {
-            // Create a proper mock response
-            const mockResponse = {
+            mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: jest.fn().mockResolvedValue({ bio: undefined })
-            };
-
-            mockFetch.mockResolvedValueOnce(mockResponse as any);
+                json: () => Promise.resolve({ bio: undefined })
+            } as any);
 
             render(<BlurbSection {...defaultProps} />);
             
