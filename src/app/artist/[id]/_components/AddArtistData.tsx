@@ -8,7 +8,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input"
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Artist } from "@/server/db/DbTypes";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Label } from "@radix-ui/react-label";
@@ -45,6 +45,17 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     // Always call hooks, conditionally use their results
     const { openConnectModal } = useConnectModal();
 
+    // State to hold platform regexes from the backend
+    const [platformRegexes, setPlatformRegexes] = useState<{ siteName: string, regex: string }[]>([]);
+
+    // Fetch regexes from the backend on mount
+    useEffect(() => {
+        fetch('/api/platformRegexes')
+            .then(res => res.json())
+            .then(data => setPlatformRegexes(data))
+            .catch(e => console.error('Failed to fetch platform regexes:', e));
+    }, []);
+
     const formSchema = useMemo(() => z.object({
         artistDataUrl: z.string()
     }), [availableLinks])
@@ -60,9 +71,72 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     // Filter out ENS and wallets from display, but keep them in availableLinks for add options
     const displayLinks = availableLinks.filter(link => link.siteName !== 'ens' && link.siteName !== 'wallets');
 
+    async function validateTwitterLink(url: string): Promise<boolean> {
+        try {
+            const twitterRegex = /^https?:\/\/(www\.)?(twitter|x)\.com\/[A-Za-z0-9_]{1,15}$/;
+            if (!twitterRegex.test(url)) return true; // Not a Twitter/X link, skip validation
+
+            const response = await fetch(url, { method: "GET" });
+            // Only fail if status is 404 (profile does not exist)
+            if (response.status === 404) return false;
+            return true; // Any other status (including redirects, 403, 429, etc.) is considered valid
+        } catch (e) {
+            return true; // Network/CORS errors are considered valid
+        }
+    }
+
+    // Add a function to call the backend validator
+    async function validatePlatformLinkBackend(url: string): Promise<boolean> {
+        if (platformRegexes.length === 0) return true; // If not loaded yet, skip backend validation
+        // Check if the URL matches any platform regex, with logging
+        const shouldValidate = platformRegexes.some(({ siteName, regex }) => {
+            try {
+                const trimmedRegex = regex.trim();
+                const result = new RegExp(trimmedRegex).test(url);
+                console.log(`[${siteName}] Regex from DB:`, trimmedRegex);
+                console.log(`[${siteName}] Testing URL:`, url);
+                console.log(`[${siteName}] Regex test result:`, result);
+                return result;
+            } catch (e) {
+                console.log(`[${siteName}] Regex error:`, e);
+                return false;
+            }
+        });
+        if (!shouldValidate) {
+            console.log('No platform regex matched for URL:', url);
+            return false; // Treat as invalid if no regex matches
+        }
+        try {
+            const response = await fetch('/api/validateLink', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url }),
+            });
+            const data = await response.json();
+            console.log('Backend validation response:', data); // Frontend log
+            return data.valid;
+        } catch (e) {
+            console.log('Backend validation error:', e); // Frontend log
+            return true; // If the backend fails, don't block the user
+        }
+    }
+
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setAddArtistResp(null);
         setIsLoading(true);
+        const isTwitterValid = await validateTwitterLink(values.artistDataUrl);
+        if (!isTwitterValid) {
+            setAddArtistResp({ status: "error", message: "This link is invalid. Please enter a valid Twitter/X profile URL." });
+            setIsLoading(false);
+            return;
+        }
+        // Only use regex and backend for YouTube validation
+        const isPlatformValid = await validatePlatformLinkBackend(values.artistDataUrl);
+        if (!isPlatformValid) {
+            setAddArtistResp({ status: "error", message: "This link is invalid or not supported." });
+            setIsLoading(false);
+            return;
+        }
         const resp = await addArtistData(values.artistDataUrl, artist);
         if (resp.status === "success") {
             toast({

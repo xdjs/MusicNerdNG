@@ -59,9 +59,9 @@ describe('BlurbSection', () => {
         it('renders with Wikipedia tab active by default', () => {
             render(<BlurbSection {...defaultProps} />);
             
-            expect(screen.getByTestId('tabs')).toHaveAttribute('data-value', 'wikipedia');
-            expect(screen.getByTestId('wikipedia-tab')).toHaveAttribute('data-active', 'true');
-            expect(screen.getByTestId('ai-tab')).toHaveAttribute('data-active', 'false');
+            expect(screen.getByTestId('tabs')).toHaveAttribute('data-value', 'ai-generated');
+            expect(screen.getByTestId('ai-tab')).toHaveAttribute('data-active', 'true');
+            expect(screen.getByTestId('wikipedia-tab')).toHaveAttribute('data-active', 'false');
         });
 
         it('displays Wikipedia content when provided', () => {
