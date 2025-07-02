@@ -183,9 +183,7 @@ describe('BlurbSection', () => {
             expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
             
             // Then after API resolves, it shows "No AI summary is available"
-            await waitFor(() => {
-                expect(screen.getByText('No AI summary is available')).toBeInTheDocument();
-            });
+            expect(await screen.findByText('No AI summary is available')).toBeInTheDocument();
         });
 
         it('does not make duplicate API calls', async () => {
