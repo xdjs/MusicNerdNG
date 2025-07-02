@@ -17,6 +17,7 @@ jobs:
       SUPABASE_DB_CONNECTION: ${{ secrets.SUPABASE_DB_CONNECTION }}
       DISCORD_COVERAGE_URL: ${{ secrets.DISCORD_COVERAGE_URL }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
     - uses: actions/checkout@v4
@@ -51,6 +52,7 @@ jobs:
       SUPABASE_DB_CONNECTION: ${{ secrets.SUPABASE_DB_CONNECTION }}
       DISCORD_COVERAGE_URL: ${{ secrets.DISCORD_COVERAGE_URL }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
     - uses: actions/checkout@v4
@@ -87,6 +89,7 @@ jobs:
       SUPABASE_DB_CONNECTION: ${{ secrets.SUPABASE_DB_CONNECTION }}
       DISCORD_COVERAGE_URL: ${{ secrets.DISCORD_COVERAGE_URL }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
     - uses: actions/checkout@v4
