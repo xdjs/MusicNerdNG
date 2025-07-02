@@ -11,13 +11,14 @@ import {
 import { UrlMap } from "@/server/db/DbTypes";
 
 export default function AddArtistDataOptions({availableLinks, setOption}: {availableLinks: UrlMap[], setOption: (option: string) => void}) {
-    const dataOptions = availableLinks.map(link => (
+    const sortedLinks = [...availableLinks].sort((a, b) => (a.example || "").localeCompare(b.example || ""));
+    const dataOptions = sortedLinks.map(link => (
         <DropdownMenuItem
             key={link.id}
             className="cursor-pointer"
             onClick={() => setOption(link.example)}
         >
-            {link.example}
+            {link.example.replace(/^https?:\/\//, '')}
         </DropdownMenuItem>
     ));
     return (
@@ -27,7 +28,7 @@ export default function AddArtistDataOptions({availableLinks, setOption}: {avail
                     Tips
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-48 overflow-auto scrollbar-hide" align="end">
+            <DropdownMenuContent className="max-h-48 overflow-auto" align="end">
                 {dataOptions}
             </DropdownMenuContent>
         </DropdownMenu>
