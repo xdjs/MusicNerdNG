@@ -169,7 +169,7 @@ describe('Navigation History', () => {
             (usePathname as jest.Mock).mockReturnValue('/test-path');
 
             // Mock a navigation error
-            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
             mockRouter.back.mockImplementationOnce(() => {
                 throw new Error('Navigation failed');
             });
