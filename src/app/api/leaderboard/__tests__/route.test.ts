@@ -41,7 +41,7 @@ describe('Leaderboard API', () => {
 
         const { GET } = await import('../route');
 
-        const response = await GET();
+        const response = await GET(new Request('http://localhost/api/leaderboard'));
 
         expect(response).toBeInstanceOf(Response);
         expect(response.status).toBe(200);
@@ -56,7 +56,7 @@ describe('Leaderboard API', () => {
 
         const { GET } = await import('../route');
 
-        const response = await GET();
+        const response = await GET(new Request('http://localhost/api/leaderboard'));
 
         expect(response).toBeInstanceOf(Response);
         expect(response.status).toBe(500);
