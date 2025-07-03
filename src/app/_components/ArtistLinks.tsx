@@ -52,6 +52,14 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
                     </div>
                 </li>
             )}
+            {artist.spotify && artist.spotify.trim() !== "" && (
+                <StaticPlatformLink
+                    key="spotify"
+                    descriptor="Listen on Spotify"
+                    link={`https://open.spotify.com/artist/${artist.spotify}`}
+                    image="/siteIcons/spotify_icon.svg"
+                />
+            )}
             {artistLinks.length === 0 ? (
                 <p>This artist has no links in this section yet, help support them by adding links!</p>
             ) : null}
