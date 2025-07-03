@@ -70,10 +70,10 @@ describe('BlurbSection', () => {
             expect(screen.getByText('Short wiki content')).toBeInTheDocument();
         });
 
-        it('displays "No Wikipedia content available" when no wiki content', () => {
+        it('displays "No Wikipedia content has been added for this artist" when no wiki content', () => {
             render(<BlurbSection {...defaultProps} wikiBlurb={undefined} />);
             
-            expect(screen.getByText('No Wikipedia content available')).toBeInTheDocument();
+            expect(screen.getByText('No Wikipedia content has been added for this artist')).toBeInTheDocument();
         });
 
         it('shows Wikipedia link when provided', () => {
