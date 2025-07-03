@@ -58,7 +58,7 @@ const MockAddArtist: ComponentType<AddArtistProps> = jest.fn(({ session }) => {
                 const links = document.createElement('div');
                 links.innerHTML = `
                     <a href="/artist/${response.artistId}">Check out ${response.artistName}</a>
-                    <a href="/artist/${response.artistId}?opADM=1">Add data for ${response.artistName}</a>
+                    <a href="/artist/${response.artistId}?opADM=1">Add links for ${response.artistName}</a>
                 `;
                 dialog.appendChild(links);
             }
@@ -167,7 +167,7 @@ describe('AddArtist', () => {
         await waitFor(() => {
             expect(screen.getByText(/Artist added successfully/i)).toBeInTheDocument();
             expect(screen.getByText(/Check out Test Artist/i)).toBeInTheDocument();
-            expect(screen.getByText(/Add data for Test Artist/i)).toBeInTheDocument();
+            expect(screen.getByText(/Add links for Test Artist/i)).toBeInTheDocument();
         });
     });
 
@@ -192,7 +192,7 @@ describe('AddArtist', () => {
         await waitFor(() => {
             expect(screen.getByText(/Artist already exists/i)).toBeInTheDocument();
             expect(screen.getByText(/Check out Test Artist/i)).toBeInTheDocument();
-            expect(screen.getByText(/Add data for Test Artist/i)).toBeInTheDocument();
+            expect(screen.getByText(/Add links for Test Artist/i)).toBeInTheDocument();
         });
     });
 
