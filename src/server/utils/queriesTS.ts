@@ -3,7 +3,7 @@
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
 import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains } from "drizzle-orm";
-import { featured, artists, users, ugcresearch, urlmap } from '@/server/db/schema';
+import { featured, artists, users, ugcresearch, urlmap, aiPrompts } from '@/server/db/schema';
 import { Artist, UrlMap } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
 import { getServerAuthSession } from '../auth';
@@ -471,16 +471,26 @@ export async function getUgcStats() {
 
 // Get UGC stats for a user in a date range default to current user if no wallet is provided
 export async function getUgcStatsInRange(date: DateRange, wallet: string | null = null) {
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+    
     let session = await getServerAuthSession();
+    let userId: string;
+    
+    // If walletless mode is enabled and no session, use a default user ID
+    if (walletlessEnabled && !session) {
+        userId = '00000000-0000-0000-0000-000000000000'; // Default user ID for walletless mode
+    } else {
     if (!session) throw new Error("Not authenticated");
-    let userId = session.user.id;
+        userId = session.user.id;
+    }
+    
     if(wallet) {
         const searchedUser = await getUserByWallet(wallet);
         if (!searchedUser) throw new Error("User not found");
         userId = searchedUser.id;
     }
+    
     try {
-
         const ugcList = await db.query.ugcresearch.findMany(
             { 
                 where: and(
@@ -633,5 +643,87 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
         return { status: "error", message: "Error removing artist data" };
     }
 }
+
+export type LeaderboardEntry = {
+    userId: string;
+    wallet: string;
+    username: string | null;
+    email: string | null;
+    artistsCount: number;
+    ugcCount: number;
+}
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+    try {
+        const result = await db.execute<LeaderboardEntry>(sql`
+            SELECT 
+                u.id   AS "userId",
+                u.wallet,
+                u.username,
+                u.email,
+                (
+                    SELECT COUNT(*)::int FROM artists a WHERE a.added_by = u.id
+                ) AS "artistsCount",
+                (
+                    SELECT COUNT(*)::int FROM ugcresearch ug WHERE ug.user_id = u.id
+                ) AS "ugcCount"
+            FROM users u
+            ORDER BY "ugcCount" DESC, "artistsCount" DESC
+        `);
+        return result;
+    } catch (e) {
+        console.error("error getting leaderboard", e);
+        throw new Error("Error getting leaderboard");
+    }
+}
+
+// Get leaderboard stats within a date range (inclusive)
+export async function getLeaderboardInRange(fromIso: string, toIso: string): Promise<LeaderboardEntry[]> {
+    try {
+        const result = await db.execute<LeaderboardEntry>(sql`
+            SELECT 
+                u.id   AS "userId",
+                u.wallet,
+                u.username,
+                u.email,
+                (
+                    SELECT COUNT(*)::int FROM artists a 
+                    WHERE a.added_by = u.id 
+                      AND a.created_at BETWEEN ${fromIso} AND ${toIso}
+                ) AS "artistsCount",
+                (
+                    SELECT COUNT(*)::int FROM ugcresearch ug 
+                    WHERE ug.user_id = u.id 
+                      AND ug.created_at BETWEEN ${fromIso} AND ${toIso}
+                ) AS "ugcCount"
+            FROM users u
+            ORDER BY "ugcCount" DESC, "artistsCount" DESC
+        `);
+        return result;
+    } catch (e) {
+        console.error("error getting leaderboard in range", e);
+        throw new Error("Error getting leaderboard in range");
+    }
+}
+
+export async function getActivePrompt() {
+    return await db.query.aiPrompts.findFirst({
+        where: eq(aiPrompts.isActive, true)
+    })
+}
+
+export async function setActivePrompt() {
+}
+
+export async function getAllPrompts() {
+    try {
+        const result = await db.query.aiPrompts.findMany()
+        return result
+    } catch (e) {
+        console.error("no work", e)
+        throw new Error("cant get table data")
+    }
+}
+
 
 

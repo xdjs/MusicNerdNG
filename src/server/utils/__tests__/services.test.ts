@@ -49,7 +49,8 @@ describe("utils/services", () => {
   describe("getArtistDetailsText", () => {
     const baseArtist = {
       catalog: "catalog-handle",
-      supercollector: "scUser",
+      supercollector: null,
+      bio: null
     } as unknown as Artist;
 
     it("returns empty string when no data", () => {

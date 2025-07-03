@@ -106,6 +106,7 @@ export const artists = pgTable("artists", {
 	instagram: text("instagram"),
 	youtube: text("youtube"),
 	youtubechannel: text("youtubechannel"),
+	bio: text("bio"),
 	lcname: text("lcname"),
 	soundcloudId: integer("soundcloudID"),
 	spotify: text("spotify"),
@@ -213,3 +214,11 @@ export const coverageReports = pgTable('coverage_reports', {
 	created_at: timestamp('created_at').defaultNow().notNull(),
 	updated_at: timestamp('updated_at').defaultNow().notNull()
 });
+
+export const aiPrompts = pgTable("aiprompts", {
+	id: uuid("prompt_id").primaryKey().defaultRandom(),
+	prompt: text("prompt").notNull(),
+	isActive: boolean("isactive").default(false),
+	createdAt: timestamp("created_at").defaultNow(),
+  }
+)

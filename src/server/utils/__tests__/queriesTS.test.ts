@@ -25,7 +25,8 @@ import {
     updateWhitelistedUser,
     searchForUsersByWallet,
     sendDiscordMessage,
-    getAllSpotifyIds
+    getAllSpotifyIds,
+    getLeaderboard
 } from '../queriesTS';
 import { hasSpotifyCredentials } from '../setup/testEnv';
 import { ugcresearch } from '@/server/db/schema';
@@ -152,7 +153,8 @@ const baseArtist: Artist = {
     farcaster: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    supercollector: null
+    supercollector: null,
+    bio: null
 };
 
 const mockUrlMaps: UrlMap[] = [
@@ -217,7 +219,8 @@ describe('Artist Links Functions', () => {
                 id: '123',
                 name: 'Test Artist',
                 spotify: 'spotify123',
-                youtubechannel: '@testartist'
+                youtubechannel: '@testartist',
+                bio: null
             };
 
             const result = await getArtistLinks(artist);
@@ -228,14 +231,14 @@ describe('Artist Links Functions', () => {
         });
 
         it('should handle empty values', async () => {
-            const artist: Artist = { ...baseArtist, id: '123', name: 'Test Artist' };
+            const artist: Artist = { ...baseArtist, id: '123', name: 'Test Artist', bio: null };
             const result = await getArtistLinks(artist);
             expect(result).toHaveLength(0);
         });
 
         it('should handle database errors', async () => {
             (db.query.urlmap.findMany as jest.Mock).mockRejectedValue(new Error('DB Error'));
-            const artist: Artist = { ...baseArtist, id: '123', name: 'Test Artist' };
+            const artist: Artist = { ...baseArtist, id: '123', name: 'Test Artist', bio: null };
             
             await expect(getArtistLinks(artist)).rejects.toThrow('Error fetching artist links');
         });
@@ -256,7 +259,7 @@ describe('Artist Data Functions', () => {
 
     describe('getArtistById', () => {
         it('should return artist when found', async () => {
-            const mockArtist = { id: '123', name: 'Test Artist' };
+            const mockArtist = { id: '123', name: 'Test Artist', bio: null };
             (db.query.artists.findFirst as jest.Mock).mockResolvedValue(mockArtist);
 
             const result = await getArtistById('123');
@@ -275,7 +278,7 @@ describe('Artist Data Functions', () => {
 
     describe('getArtistByProperty', () => {
         it('should return success response when found', async () => {
-            const mockArtist = { id: '123', name: 'Test Artist' };
+            const mockArtist = { id: '123', name: 'Test Artist', bio: null };
             (db.query.artists.findFirst as jest.Mock).mockResolvedValue(mockArtist);
 
             const result = await getArtistByProperty({} as any, 'test-value');
@@ -293,7 +296,7 @@ describe('Artist Data Functions', () => {
 
     describe('getArtistbyWallet', () => {
         it('should find artist by wallet', async () => {
-            const mockArtist = { id: '123', wallets: ['0x123'] };
+            const mockArtist = { id: '123', wallets: ['0x123'], bio: null };
             const mockQueryBuilder = {
                 select: jest.fn().mockReturnThis(),
                 from: jest.fn().mockReturnThis(),
@@ -310,7 +313,7 @@ describe('Artist Data Functions', () => {
 
     describe('searchForArtistByName', () => {
         it('should return matching artists', async () => {
-            const mockArtists = [{ id: '1', name: 'Test Artist' }];
+            const mockArtists = [{ id: '1', name: 'Test Artist', bio: null }];
             (db.execute as jest.Mock).mockResolvedValue(mockArtists);
             jest.spyOn(console, 'log').mockImplementation();
 
@@ -330,7 +333,7 @@ describe('Artist Data Functions', () => {
         });
 
         it('should return success response when found', async () => {
-            const mockArtist = { id: '1', name: 'Test Artist' };
+            const mockArtist = { id: '1', name: 'Test Artist', bio: null };
             (db.execute as jest.Mock).mockResolvedValue([mockArtist]);
 
             const result = await getArtistByNameApiResp('Test Artist');
@@ -354,7 +357,7 @@ describe('User Functions', () => {
 
     describe('getUserById', () => {
         it('should return user when found', async () => {
-            const mockUser = { id: '123', wallet: '0x123' };
+            const mockUser = { id: '123', wallet: '0x123', bio: null };
             (db.query.users.findFirst as jest.Mock).mockResolvedValue(mockUser);
 
             const result = await getUserById('123');
@@ -373,7 +376,7 @@ describe('User Functions', () => {
 
     describe('getUserByWallet', () => {
         it('should return user when found by wallet', async () => {
-            const mockUser = { id: '123', wallet: '0x123' };
+            const mockUser = { id: '123', wallet: '0x123', bio: null };
             (db.query.users.findFirst as jest.Mock).mockResolvedValue(mockUser);
 
             const result = await getUserByWallet('0x123');
@@ -392,7 +395,7 @@ describe('User Functions', () => {
 
     describe('getArtistByWalletOrEns', () => {
         it('should search by wallet and fallback to ENS', async () => {
-            const mockArtist = { id: '123', ens: 'test.eth' };
+            const mockArtist = { id: '123', ens: 'test.eth', bio: null };
             const mockQueryBuilder = {
                 select: jest.fn().mockReturnThis(),
                 from: jest.fn().mockReturnThis(),
@@ -410,7 +413,7 @@ describe('User Functions', () => {
 
     describe('createUser', () => {
         it('should create user successfully', async () => {
-            const mockUser = { id: 'user123', wallet: '0x123' };
+            const mockUser = { id: 'user123', wallet: '0x123', bio: null };
             (db.insert as jest.Mock).mockReturnValue({
                 values: jest.fn().mockReturnValue({
                     returning: jest.fn().mockResolvedValue([mockUser])
@@ -437,11 +440,12 @@ describe('Artist Management Functions', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+        Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
     });
 
     describe('addArtist', () => {
         const mockSession = { user: { id: 'user123' } };
-        const mockUser = { id: 'user123', wallet: '0x123' };
+        const mockUser = { id: 'user123', wallet: '0x123', bio: null };
         const mockSpotifyArtist = {
             data: { name: 'Test Artist', id: 'spotify123' },
             error: null
@@ -475,7 +479,7 @@ describe('Artist Management Functions', () => {
         });
 
         it('should return exists status for existing artist', async () => {
-            const existingArtist = { id: 'existing123', name: 'Existing Artist' };
+            const existingArtist = { id: 'existing123', name: 'Existing Artist', bio: null };
             (db.query.artists.findFirst as jest.Mock).mockResolvedValue(existingArtist);
 
             const result = await addArtist('spotify123');
@@ -498,6 +502,7 @@ describe('Artist Management Functions', () => {
         it('should work when wallet requirement is disabled', async () => {
             const originalValue = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             (db.query.artists.findFirst as jest.Mock).mockResolvedValue(null);
             (db.insert as jest.Mock).mockReturnValue({
@@ -512,15 +517,15 @@ describe('Artist Management Functions', () => {
             const result = await addArtist('spotify123');
             expect(result.status).toBe('success');
             
-            // Restore original environment variable
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalValue;
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
         });
     });
 
     describe('addArtistData', () => {
         const mockSession = { user: { id: 'user123' } };
-        const mockUser = { id: 'user123', wallet: '0x123', isWhiteListed: false, isAdmin: false };
-        const mockArtist: Artist = { ...baseArtist, id: 'artist123', name: 'Test Artist' };
+        const mockUser = { id: 'user123', wallet: '0x123', isWhiteListed: false, isAdmin: false, bio: null };
+        const mockArtist: Artist = { ...baseArtist, id: 'artist123', name: 'Test Artist', bio: null };
         let valuesMock: jest.Mock;
 
         beforeEach(() => {
@@ -629,11 +634,8 @@ describe('Artist Management Functions', () => {
 
         it('should handle walletless mode for development', async () => {
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
-            // Use Object.defineProperty to set NODE_ENV for testing
-            Object.defineProperty(process.env, 'NODE_ENV', {
-                value: 'development',
-                writable: true
-            });
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             
             const result = await addArtistData('https://instagram.com/testhandle', mockArtist);
@@ -727,12 +729,30 @@ describe('UGC Functions', () => {
         });
 
         it('should handle authentication and user lookup errors', async () => {
+            // Test normal mode (wallet required)
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
+            
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
             await expect(getUgcStatsInRange(dateRange)).rejects.toThrow('Not authenticated');
 
             (getServerAuthSession as jest.Mock).mockResolvedValue(mockSession);
             (db.query.users.findFirst as jest.Mock).mockResolvedValue(null);
             await expect(getUgcStatsInRange(dateRange, '0x999')).rejects.toThrow('User not found');
+        });
+
+        it('should work in walletless mode during development', async () => {
+            // Enable walletless mode
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
+            
+            (getServerAuthSession as jest.Mock).mockResolvedValue(null);
+            (db.query.ugcresearch.findMany as jest.Mock).mockResolvedValue([]);
+            (db.query.artists.findMany as jest.Mock).mockResolvedValue([]);
+
+            const result = await getUgcStatsInRange(dateRange);
+            expect(result).toEqual({ ugcCount: 0, artistsCount: 0 });
         });
     });
 
@@ -763,13 +783,15 @@ describe('UGC Functions', () => {
         it('should work in walletless mode during development', async () => {
             const originalValue = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT;
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'true';
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'development', writable: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(null);
 
             const result = await approveUgcAdmin(['ugc1']);
             expect(result.status).toBe('success');
             
-            // Restore original environment variable
             process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = originalValue;
+            Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
         });
 
         it('should handle authentication and authorization errors', async () => {
@@ -989,5 +1011,45 @@ describe('Utility Functions', () => {
             const result = await searchForUsersByWallet('0x11');
             expect(result).toBeUndefined();
         });
+    });
+});
+
+describe('getLeaderboard', () => {
+    it('should return leaderboard data sorted by artists count', async () => {
+        // Mock the database query
+        const mockResult = [
+            {
+                userId: 'user1',
+                wallet: '0x123...',
+                username: 'user1',
+                email: 'user1@test.com',
+                artistsCount: 10,
+                ugcCount: 5
+            },
+            {
+                userId: 'user2',
+                wallet: '0x456...',
+                username: 'user2',
+                email: 'user2@test.com',
+                artistsCount: 8,
+                ugcCount: 3
+            }
+        ];
+
+        // Mock the db.execute function
+        const mockExecute = jest.fn().mockResolvedValue(mockResult);
+        jest.spyOn(db, 'execute').mockImplementation(mockExecute);
+
+        const result = await getLeaderboard();
+
+        expect(result).toEqual(mockResult);
+        expect(mockExecute).toHaveBeenCalledWith(expect.any(Object));
+    });
+
+    it('should throw error when database query fails', async () => {
+        // Mock the database query to throw an error
+        jest.spyOn(db, 'execute').mockRejectedValue(new Error('Database error'));
+
+        await expect(getLeaderboard()).rejects.toThrow('Error getting leaderboard');
     });
 }); 
