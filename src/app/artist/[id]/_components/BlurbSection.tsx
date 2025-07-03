@@ -74,7 +74,7 @@ export default function BlurbSection({
                             )}
                         </>
                     ) : (
-                        <p className="text-gray-500 italic">No Wikipedia content available</p>
+                        <p className="text-gray-500 italic">No Wikipedia content has been added for this artist</p>
                     )}
                 </div>
                 {/* Expanded box */}
