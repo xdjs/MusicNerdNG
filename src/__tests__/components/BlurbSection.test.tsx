@@ -19,7 +19,7 @@ jest.mock('@/components/ui/tabs', () => ({
                 onClick={() => onValueChange('ai-generated')}
                 data-active={value === 'ai-generated'}
             >
-                AI Generated
+                Music Nerd
             </button>
             {children}
         </div>
