@@ -1,7 +1,6 @@
 import { getArtistById, getAllLinks, getUserById } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
-import { Spotify } from 'react-spotify-embed';
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
 import Link from "next/link";
@@ -10,6 +9,7 @@ import { notFound } from "next/navigation";
 import { EditModeProvider } from "@/app/_components/EditModeContext";
 import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
+import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -53,20 +53,15 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                 <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
                             </AspectRatio>
-                            {artist?.spotify &&
-                                <div className="w-full">
-                                    <div className="justify-center overflow-hidden rounded-xl">
-                                        <div style={{
-                                            height: 'calc(100% + 32px)',
-                                            width: 'calc(100% + 72px)',
-                                            marginLeft: '-72px',
-                                            marginTop: '-32px',
-                                        }}>
-                                            <Spotify wide link={`https://open.spotify.com/artist/${artist.spotify}`} />
-                                        </div>
-                                    </div>
-                                </div>
-                            }
+                            <div className="w-full flex justify-center">
+                                <AddArtistData 
+                                    label="Add data" 
+                                    artist={artist} 
+                                    spotifyImg={spotifyImg.artistImage ?? ""} 
+                                    availableLinks={urlMapList} 
+                                    isOpenOnLoad={false} 
+                                />
+                            </div>
                         </div>
                         {/* Right Column: Name and Description */}
                         <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
@@ -93,7 +88,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </strong>
                         <div className="space-y-4">
                             {(artist) &&
-                                <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
+                                <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} showAddButton={false} />
                             }
                         </div>
                     </div>
