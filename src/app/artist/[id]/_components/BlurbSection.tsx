@@ -78,7 +78,7 @@ export default function BlurbSection({
                     )}
                 </div>
                 {/* Expanded box */}
-                {openModal === 'wiki' && (
+                {openModal === 'wiki' && wikiBlurb && (
                     <div className="absolute top-0 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
                         <p className="text-black mb-4">{wikiBlurb}</p>
                         {wikiLink && (
