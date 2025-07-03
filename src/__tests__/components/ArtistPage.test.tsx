@@ -151,7 +151,7 @@ describe('ArtistPage', () => {
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
         expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
-        expect(screen.getByText('AI-Generated')).toBeInTheDocument();
+        expect(screen.getByText('Music Nerd')).toBeInTheDocument();
     });
 
     it('calls notFound when artist is not found', async () => {
@@ -204,7 +204,10 @@ describe('ArtistPage', () => {
         const Component = await ArtistProfile(propsWithOpADM);
         render(Component);
 
-        const addArtistData = screen.getByTestId('add-artist-data');
-        expect(addArtistData).toHaveAttribute('data-open', 'false');
+        const addArtistDataElements = screen.getAllByTestId('add-artist-data');
+        // Check that all AddArtistData components are closed
+        addArtistDataElements.forEach(element => {
+            expect(element).toHaveAttribute('data-open', 'false');
+        });
     });
 }); 
