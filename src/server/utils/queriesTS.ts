@@ -669,7 +669,6 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
                 ) AS "ugcCount"
             FROM users u
             ORDER BY "ugcCount" DESC, "artistsCount" DESC
-            LIMIT 50;
         `);
         return result;
     } catch (e) {
@@ -699,7 +698,6 @@ export async function getLeaderboardInRange(fromIso: string, toIso: string): Pro
                 ) AS "ugcCount"
             FROM users u
             ORDER BY "ugcCount" DESC, "artistsCount" DESC
-            LIMIT 50;
         `);
         return result;
     } catch (e) {
