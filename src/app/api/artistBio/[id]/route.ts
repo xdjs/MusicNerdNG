@@ -22,7 +22,7 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
   }
 
   // Build prompt
-  const promptParts: string[] = [`${prompt.prompt}`];
+  const promptParts: string[] = [prompt.promptBeforeName, artist.name!, prompt.promptAfterName];
   
   if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
   if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
