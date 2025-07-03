@@ -87,25 +87,43 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
     // Add a function to call the backend validator
     async function validatePlatformLinkBackend(url: string): Promise<boolean> {
-        if (platformRegexes.length === 0) return true; // If not loaded yet, skip backend validation
-        // Check if the URL matches any platform regex, with logging
-        const shouldValidate = platformRegexes.some(({ siteName, regex }) => {
+        // Determine which platform regex matches this URL
+        let matchedPlatform: string | null = null;
+        for (const { siteName, regex } of platformRegexes) {
             try {
-                const trimmedRegex = regex.trim();
-                const result = new RegExp(trimmedRegex).test(url);
-                console.log(`[${siteName}] Regex from DB:`, trimmedRegex);
-                console.log(`[${siteName}] Testing URL:`, url);
-                console.log(`[${siteName}] Regex test result:`, result);
-                return result;
+                if (new RegExp(regex.trim()).test(url)) {
+                    matchedPlatform = siteName;
+                    break;
+                }
             } catch (e) {
                 console.log(`[${siteName}] Regex error:`, e);
-                return false;
             }
-        });
-        if (!shouldValidate) {
-            console.log('No platform regex matched for URL:', url);
-            return false; // Treat as invalid if no regex matches
         }
+
+        if (!matchedPlatform) {
+            console.log('No platform regex matched for URL:', url);
+            return false; // Reject invalid URLs
+        }
+
+        // Platforms that have backend validation implemented
+        const backendPlatforms = [
+            'youtube',
+            'soundcloud',
+            'bandcamp',
+            'audius',
+            'lastfm',
+            'opensea',
+            'zora',
+            'catalog',
+            'supercollector',
+            'mintsongs'
+        ];
+
+        // If the matched platform is not backend-validated, accept it based on regex
+        if (!backendPlatforms.includes(matchedPlatform)) {
+            return true;
+        }
+
         try {
             const response = await fetch('/api/validateLink', {
                 method: 'POST',
