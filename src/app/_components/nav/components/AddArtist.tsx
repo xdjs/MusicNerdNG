@@ -155,7 +155,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                                     <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                                 </Link>
                                                 <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
-                                                    <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                                    <Button variant="outline">Add links for {addedArtist.artistName}</Button>
                                                 </Link>
                                             </>
                                         }
@@ -224,7 +224,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                                 <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                             </Link>
                                             <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
-                                                <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                                <Button variant="outline">Add links for {addedArtist.artistName}</Button>
                                             </Link>
                                         </>
                                     }
