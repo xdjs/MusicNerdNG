@@ -13,7 +13,7 @@ if (typeof clearImmediate === 'undefined') {
 
 // Polyfill for setImmediate in Node.js test environment
 if (typeof setImmediate === 'undefined') {
-    (global as any).setImmediate = function(callback: Function) {
+    (global as any).setImmediate = function(callback: (...args: unknown[]) => unknown) {
         return setTimeout(callback, 0);
     };
 } 

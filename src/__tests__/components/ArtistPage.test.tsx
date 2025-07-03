@@ -150,9 +150,8 @@ describe('ArtistPage', () => {
         expect(screen.getByText('Test Artist')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
-        expect(screen.getByText('Test wiki blurb')).toBeInTheDocument();
-        expect(screen.getByText('Wikipedia')).toBeInTheDocument();
-        expect(screen.getByTestId('spotify-embed')).toBeInTheDocument();
+        expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
+        expect(screen.getByText('Music Nerd')).toBeInTheDocument();
     });
 
     it('calls notFound when artist is not found', async () => {
@@ -180,6 +179,7 @@ describe('ArtistPage', () => {
         render(Component);
 
         expect(screen.getByText('Test Artist')).toBeInTheDocument();
+        // Spotify widget removed; ensure no embed is rendered
         expect(screen.queryByTestId('spotify-embed')).not.toBeInTheDocument();
         const img = screen.getByAltText('Artist Image');
         expect(img).toHaveAttribute('src', '/default_pfp_pink.png');
@@ -204,7 +204,10 @@ describe('ArtistPage', () => {
         const Component = await ArtistProfile(propsWithOpADM);
         render(Component);
 
-        const addArtistData = screen.getByTestId('add-artist-data');
-        expect(addArtistData).toHaveAttribute('data-open', 'false');
+        const addArtistDataElements = screen.getAllByTestId('add-artist-data');
+        // Check that all AddArtistData components are closed
+        addArtistDataElements.forEach(element => {
+            expect(element).toHaveAttribute('data-open', 'false');
+        });
     });
 }); 

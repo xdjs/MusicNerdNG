@@ -46,6 +46,7 @@ export default async function Admin() {
                 <h2 className="text-xl pb-3">Whitelisted Users</h2>
                 <WhitelistedDataTable columns={whitelistedColumns} data={whitelistedUsers || []} />
             </div>
+                <h3 className="text-xl pb-3">Artist Blurb Prompt Editing</h3>
         </section>
     );
 }

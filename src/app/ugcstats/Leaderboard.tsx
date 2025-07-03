@@ -6,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
+import { Button } from "@/components/ui/button";
 
 export default function Leaderboard({ highlightIdentifier, dateRange }: { highlightIdentifier?: string; dateRange?: DateRange }) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [showTopBtn, setShowTopBtn] = useState(false);
 
     function buildUrl() {
         if (dateRange?.from && dateRange?.to) {
@@ -46,6 +48,15 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
 
         fetchLeaderboard();
     }, [dateRange]);
+
+    // Show/hide "back to top" button based on scroll position
+    useEffect(() => {
+        function handleScroll() {
+            setShowTopBtn(window.scrollY > 400);
+        }
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
     const isDateRangeActive = !!(dateRange?.from && dateRange?.to);
 
@@ -84,6 +95,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
     }
 
     return (
+        <>
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
                 <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
@@ -146,5 +158,17 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                 </div>
             </CardContent>
         </Card>
+        {showTopBtn && (
+            <Button
+                size="icon"
+                variant="secondary"
+                className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50"
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                aria-label="Back to top"
+            >
+                ↑
+            </Button>
+        )}
+        </>
     );
 } 

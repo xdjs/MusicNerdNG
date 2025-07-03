@@ -49,7 +49,7 @@ export default function BlurbSection({
         }} 
             className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="ai-generated">AI-Generated</TabsTrigger>
+          <TabsTrigger value="ai-generated">Music Nerd</TabsTrigger>
           <TabsTrigger value="wikipedia">Wikipedia</TabsTrigger>
         </TabsList>
         
@@ -74,11 +74,11 @@ export default function BlurbSection({
                             )}
                         </>
                     ) : (
-                        <p className="text-gray-500 italic">No Wikipedia content available</p>
+                        <p className="text-gray-500 italic">No Wikipedia content has been added for this artist</p>
                     )}
                 </div>
                 {/* Expanded box */}
-                {openModal === 'wiki' && (
+                {openModal === 'wiki' && wikiBlurb && (
                     <div className="absolute top-0 left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
                         <p className="text-black mb-4">{wikiBlurb}</p>
                         {wikiLink && (

@@ -34,6 +34,9 @@ export default function ArtistLinks({ links }: { links: ArtistLink[] }) {
     link.platformTypeList?.includes(platformType.enumValues[2])
   );
 
+  // Extract Spotify link (siteName === 'spotify') if present
+  const spotifyLink = links.find(link => link.siteName === 'spotify');
+
   const renderSection = (title: string, linkList: ArtistLink[]) => (
     <section>
       <h2 className="text-lg font-bold mb-2">{title}</h2>
@@ -47,6 +50,11 @@ export default function ArtistLinks({ links }: { links: ArtistLink[] }) {
 
   return (
     <section className="flex flex-col gap-4">
+      {spotifyLink && (
+        <div className="mb-4">
+          <ArtistLinkButton link={{ ...spotifyLink, cardPlatformName: 'View on Spotify' }} />
+        </div>
+      )}
       {renderSection("Socials", socials)}
       {renderSection("Web3", web3)}
       {renderSection("Listen", listen)}

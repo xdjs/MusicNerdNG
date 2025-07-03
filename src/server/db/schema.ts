@@ -214,3 +214,12 @@ export const coverageReports = pgTable('coverage_reports', {
 	created_at: timestamp('created_at').defaultNow().notNull(),
 	updated_at: timestamp('updated_at').defaultNow().notNull()
 });
+
+export const aiPrompts = pgTable("aiprompts", {
+	id: uuid("prompt_id").primaryKey().defaultRandom(),
+	promptBeforeName: text("prompt_before_name").notNull(),
+	promptAfterName: text("prompt_after_name").notNull(),
+	isActive: boolean("is_active").default(false),
+	createdAt: timestamp("created_at").defaultNow(),
+  }
+)
