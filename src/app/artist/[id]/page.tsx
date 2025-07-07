@@ -75,6 +75,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
                             </div>
                             <BlurbSection 
+                                key={artist.bio ?? ""}
                                 wikiBlurb={wiki?.blurb}
                                 wikiLink={wiki?.link}
                                 artistName={artist.name ?? ""}
