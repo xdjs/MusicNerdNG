@@ -29,7 +29,7 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
   if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
   if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
   if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
-  {/*promptParts.push(`Focus on genre, key achievements, and unique traits; avoid speculation.`);*/}
+  promptParts.push(`Focus on genre, key achievements, and unique traits; avoid speculation.`);
 
   try {
     const completion = await openai.chat.completions.create({
