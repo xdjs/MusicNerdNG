@@ -12,6 +12,7 @@ import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
+import { openai } from "@/server/lib/openai";
 
 type getResponse<T> = {
     isError: boolean,
@@ -331,6 +332,19 @@ export async function approveUGC(ugcId: string, artistId: string, siteName: stri
                 WHERE id = ${artistId}`);
         }
 
+        // If the updated siteName affects the prompt, invalidate cached bio so it will regenerate
+        const promptRelevantColumns = ['spotify', 'instagram', 'x', 'soundcloud', 'youtubechannel'];
+        if (promptRelevantColumns.includes(siteName)) {
+            // Invalidate cached bio first so we don't return stale text if generation fails
+            await db.execute(sql`
+                UPDATE artists
+                SET bio = NULL
+                WHERE id = ${artistId}
+            `);
+            // Regenerate immediately so the client sees the change without reload
+            await generateArtistBio(artistId);
+        }
+
         await db.update(ugcresearch).set({ accepted: true }).where(eq(ugcresearch.id, ugcId));
     } catch (e) {
         console.error(`Error approving ugc`, e);
@@ -634,6 +648,13 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
         // Remove the value from the specific column in the artists table
         await db.execute(sql`UPDATE artists SET ${sql.identifier(siteName)} = NULL WHERE id = ${artistId}`);
 
+        // If the removed column affects the AI prompt, regenerate the bio immediately
+        const promptRelevantColumns = ['spotify', 'instagram', 'x', 'soundcloud', 'youtubechannel'];
+        if (promptRelevantColumns.includes(siteName)) {
+            await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
+            await generateArtistBio(artistId);
+        }
+
         // Remove any matching ugcResearch rows
         await db.delete(ugcresearch).where(and(eq(ugcresearch.artistId, artistId), eq(ugcresearch.siteName, siteName)));
 
@@ -722,6 +743,39 @@ export async function getAllPrompts() {
     } catch (e) {
         console.error("no work", e)
         throw new Error("cant get table data")
+    }
+}
+
+// Helper to (re)generate an artist bio immediately using OpenAI and store it
+export async function generateArtistBio(artistId: string): Promise<string | null> {
+    try {
+        const artist = await getArtistById(artistId);
+        if (!artist) return null;
+        const promptRow = await getActivePrompt();
+        if (!promptRow) return null;
+
+        // Build the prompt parts exactly the same way the /api/artistBio route does
+        const promptParts: string[] = [promptRow.promptBeforeName, artist.name ?? "", promptRow.promptAfterName];
+        if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
+        if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
+        if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
+        if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
+        if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
+        promptParts.push("Focus on genre, key achievements, and unique traits; avoid speculation.");
+
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "system", content: 'You are an artifical intelligence whose sole purpose is to follow the provided prompt.' + promptParts.join("\n") }],
+            temperature: 0.8,
+        });
+        const bio = completion.choices[0]?.message?.content?.trim() ?? "";
+        if (bio) {
+            await db.update(artists).set({ bio }).where(eq(artists.id, artistId));
+        }
+        return bio;
+    } catch (e) {
+        console.error("[generateArtistBio] Error generating bio", e);
+        return null;
     }
 }
 
