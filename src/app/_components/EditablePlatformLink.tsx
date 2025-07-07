@@ -23,7 +23,7 @@ export default function EditablePlatformLink({ link, descriptor, image, siteName
 
     async function handleDelete(e: React.MouseEvent) {
         e.preventDefault();
-        if (!window.confirm(`Remove ${descriptor}?`)) return;
+        if (!window.confirm(`Remove ${link}?`)) return;
         setIsDeleting(true);
         try {
             const response = await fetch("/api/removeArtistData", {
