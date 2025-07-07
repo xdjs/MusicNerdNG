@@ -10,6 +10,8 @@ import { User } from "@/server/db/DbTypes";
 import UgcStatsWrapper from "./Wrapper";
 import SearchBar from "@/app/admin/UserSearch";
 import Leaderboard from "./Leaderboard";
+import { Pencil } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 export default function Dashboard({ user }: { user: User }) {
     return <UgcStatsWrapper><UgcStats user={user} /></UgcStatsWrapper>;
@@ -22,6 +24,9 @@ function UgcStats({ user }: { user: User }) {
     const [ugcStatsUserWallet, setUgcStatsUserWallet] = useState<string | null>(null);
     const [query, setQuery] = useState('');
     const [allTimeStats, setAllTimeStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
+    const [isEditingUsername, setIsEditingUsername] = useState(false);
+    const [usernameInput, setUsernameInput] = useState(user.username ?? "");
+    const [savingUsername, setSavingUsername] = useState(false);
 
     async function checkUgcStats() {
         if (date?.from && date?.to) {
@@ -32,6 +37,28 @@ function UgcStats({ user }: { user: User }) {
             }
             setLoading(false);
         }
+    }
+
+    async function saveUsername() {
+        if (!usernameInput || usernameInput === user.username) { setIsEditingUsername(false); return; }
+        setSavingUsername(true);
+        try {
+            const resp = await fetch(`/api/admin/whitelist-user/${user.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: usernameInput })
+            });
+            const data = await resp.json();
+            if (data.status === "success") {
+                window.location.reload();
+            } else {
+                alert(data.message || "Failed to update username");
+            }
+        } catch(e) {
+            alert("Server error updating username");
+        }
+        setSavingUsername(false);
+        setIsEditingUsername(false);
     }
 
     // Fetch all-time stats on mount and whenever the target wallet changes
@@ -54,10 +81,39 @@ function UgcStats({ user }: { user: User }) {
             
             {/* Individual Stats Section */}
             <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
-                {/* User info */}
-                <p className="text-sm text-gray-500 pb-1">UGC Stats for: <strong>{
-                    ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
-                }</strong></p>
+                {/* Row with username info and edit controls */}
+                <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
+                    {!isEditingUsername && (
+                        <p className="text-sm text-gray-500">UGC Stats for: <strong>{
+                            ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                        }</strong></p>
+                    )}
+
+                    {isEditingUsername ? (
+                        <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                            <Input
+                                value={usernameInput}
+                                onChange={(e) => setUsernameInput(e.target.value)}
+                                className="h-8 w-40 text-sm"
+                            />
+                            <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                {savingUsername ? 'Saving...' : 'Save'}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                        </div>
+                    ) : (
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            className="bg-gray-200 text-black hover:bg-gray-300"
+                            onClick={() => setIsEditingUsername(true)}
+                        >
+                            <div className="flex items-center gap-1">
+                                <Pencil size={14} /> Edit Username
+                            </div>
+                        </Button>
+                    )}
+                </div>
 
                 {user?.isAdmin && (
                     <>
