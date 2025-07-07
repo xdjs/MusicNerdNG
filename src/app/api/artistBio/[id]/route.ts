@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { openai } from "@/server/lib/openai";
 import { getActivePrompt, getArtistById } from "@/server/utils/queriesTS";
 import { db } from "@/server/db/drizzle";
-import { artists } from "@/server/db/schema";
+import { aiPrompts, artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(_: Request, { params }: { params: { id: string, prompt: string } }) {
@@ -16,6 +16,11 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
     return NextResponse.json({ error: "No prompt found"})
   }
 
+  if (!artist.bio && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
+    const testBio = "MusicNerd needs artist data to generate a summary. Try adding some to get started!";
+    return NextResponse.json({ bio: testBio });
+  }
+
   // If bio already exists, return cached
   if (artist.bio && artist.bio.trim().length > 0) {
     return NextResponse.json({ bio: artist.bio });
@@ -23,13 +28,11 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
 
   // Build prompt
   const promptParts: string[] = [prompt.promptBeforeName, artist.name!, prompt.promptAfterName];
-  
-  if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
-  if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
-  if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
-  if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
-  if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
-  promptParts.push(`Focus on genre, key achievements, and unique traits; avoid speculation.`);
+    if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
+    if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
+    if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
+    if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
+    if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
 
   try {
     const completion = await openai.chat.completions.create({
