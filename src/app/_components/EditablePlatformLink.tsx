@@ -34,8 +34,9 @@ export default function EditablePlatformLink({ link, descriptor, image, siteName
                 body: JSON.stringify({ artistId, siteName }),
             });
             if (response.ok) {
+                const formattedSite = siteName.charAt(0).toUpperCase() + siteName.slice(1);
                 toast({
-                    title: `${descriptor} removed`,
+                    title: `${formattedSite} link has been removed`,
                 });
             } else {
                 const data = await response.json().catch(() => ({}));
