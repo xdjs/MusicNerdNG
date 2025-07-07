@@ -17,7 +17,8 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
   }
 
   if (!artist.bio && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
-    return NextResponse.json({ bio: "No social media links found" });
+    const testBio = "MusicNerd needs artist data to generate a summary. Try adding some to get started!";
+    return NextResponse.json({ bio: testBio });
   }
 
   // If bio already exists, return cached
