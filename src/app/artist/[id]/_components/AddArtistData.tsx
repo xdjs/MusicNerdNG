@@ -198,7 +198,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                 className="text-white bg-pastypink flex items-center gap-2 px-3 py-2 min-w-[50px]"
                 onClick={handleClick}
             >
-                <Plus className="w-6 h-6" />
+                <Plus className="w-[45px] h-[45px] text-white" />
                 {label && <span className="whitespace-nowrap">{label}</span>}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>

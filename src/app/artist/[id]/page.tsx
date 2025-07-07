@@ -77,9 +77,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     </div>
                     <div className="space-y-6 mt-8">
                         <div className="flex items-center justify-between">
-                            <strong className="text-black text-2xl">
-                                Check out {artist?.name} on other media platforms!
-                            </strong>
+                        <strong className="text-black text-2xl">
+                            Check out {artist?.name} on other media platforms!
+                        </strong>
                             <AddArtistData 
                                 label="Add links" 
                                 artist={artist} 
