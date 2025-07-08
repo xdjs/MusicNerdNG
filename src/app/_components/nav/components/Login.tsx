@@ -282,34 +282,24 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 }
 
                 if (!isConnected || status !== "authenticated") {
-                    // User is not logged in – show dropdown with Log In option.
+                    // User is not logged in – show original login button that directly opens RainbowKit.
                     return (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    ref={ref}
-                                    id="login-btn"
-                                    size="lg"
-                                    type="button"
-                                    className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
-                                >
-                                    {buttonChildren ?? <Wallet color="white" />}
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                    onSelect={() => {
-                                        if (openConnectModal) {
-                                            shouldPromptRef.current = true;
-                                            sessionStorage.setItem('directLogin', 'true');
-                                            openConnectModal();
-                                        }
-                                    }}
-                                >
-                                    Log In
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <Button
+                            ref={ref}
+                            className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
+                            id="login-btn"
+                            size="lg"
+                            onClick={() => {
+                                if (openConnectModal) {
+                                    shouldPromptRef.current = true;
+                                    sessionStorage.setItem('directLogin', 'true');
+                                    openConnectModal();
+                                }
+                            }}
+                            type="button"
+                        >
+                            {buttonChildren ?? <Wallet color="white" />}
+                        </Button>
                     );
                 }
 
