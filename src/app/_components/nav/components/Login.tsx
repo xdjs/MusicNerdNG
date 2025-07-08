@@ -150,13 +150,11 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
             // Then disconnect and sign out
             if (disconnect) {
                 disconnect();
-                // Small delay to ensure disconnect completes
-                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-            await signOut({ redirect: false });
-            
-            // Force a page reload to clear any lingering state
-            window.location.reload();
+            // Trigger signOut and then reload immediately without extra delay
+            signOut({ redirect: false }).finally(() => {
+                window.location.reload();
+            });
             
             toast({
                 title: "Disconnected",
