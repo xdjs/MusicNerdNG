@@ -37,14 +37,7 @@ function UgcStats({ user }: { user: User }) {
 
     // Reload page once guest user logs in successfully
     useEffect(() => {
-        const shouldReload = (
-            // Guest user just logged in
-            (isGuestUser && status === 'authenticated') ||
-            // Authenticated user just logged out
-            (!isGuestUser && status === 'unauthenticated')
-        );
-
-        if (shouldReload && !hasReloadedRef.current) {
+        if (isGuestUser && status === 'authenticated' && !hasReloadedRef.current) {
             hasReloadedRef.current = true;
             window.location.reload();
         }
