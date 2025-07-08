@@ -3,7 +3,8 @@
 import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
 import { User } from "@/server/db/DbTypes";
@@ -31,6 +32,16 @@ function UgcStats({ user }: { user: User }) {
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
 
     const { openConnectModal } = useConnectModal();
+    const { status } = useSession();
+    const hasReloadedRef = useRef(false);
+
+    // Reload page once guest user logs in successfully
+    useEffect(() => {
+        if (isGuestUser && status === 'authenticated' && !hasReloadedRef.current) {
+            hasReloadedRef.current = true;
+            window.location.reload();
+        }
+    }, [isGuestUser, status]);
 
     function handleLogin() {
         if (openConnectModal) {
