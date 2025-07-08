@@ -1,4 +1,4 @@
-import { ArtistLink } from "@/server/utils/queriesTS";
+import { ArtistLink } from "@/server/utils/queries/artistQueries";
 import { platformType } from "@/server/db/schema";
 import { Button } from "@/components/ui/button";
 

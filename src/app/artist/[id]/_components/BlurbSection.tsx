@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { aiPrompts, artists } from "@/server/db/schema";
-import { getActivePrompt, getArtistById } from "@/server/utils/queriesTS";
 import { exists } from "drizzle-orm";
 
 

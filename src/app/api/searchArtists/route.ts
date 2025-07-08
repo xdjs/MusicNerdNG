@@ -1,4 +1,4 @@
-import { searchForArtistByName, getAllSpotifyIds } from "@/server/utils/queriesTS";
+import { searchForArtistByName, getAllSpotifyIds } from "@/server/utils/queries/artistQueries";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
 import axios from "axios";
 
