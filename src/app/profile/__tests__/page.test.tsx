@@ -29,13 +29,14 @@ describe('UGC Stats Page', () => {
         mockGetLeaderboard.mockResolvedValue([]);
     });
 
-    it('should show login page when not authenticated and wallet required', async () => {
+    it('should show dashboard when not authenticated', async () => {
         mockGetServerAuthSession.mockResolvedValue(null);
 
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('Log in to view User Profile')).toBeInTheDocument();
+        expect(screen.getByText('Leaderboard')).toBeInTheDocument();
+        expect(screen.getByText('User Profile')).toBeInTheDocument();
     });
 
     it('should show dashboard when walletless mode is enabled', async () => {
