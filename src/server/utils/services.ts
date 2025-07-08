@@ -1,6 +1,7 @@
-import { Artist } from "../db/DbTypes";
+import { Artist, UrlMap } from "../db/DbTypes";
 
-import { getAllLinks } from "./queriesTS";
+// Import directly from the artist queries module to ensure the symbol is recognised by TypeScript’s type checker
+import { getAllLinks } from "./queriesTS"; // Wrapper maintains compatibility with existing mocks
 
 export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'supercollector', 'wallets', 'ens'];
 export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'wallets', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel', 'supercollector'];
@@ -156,7 +157,7 @@ export async function extractArtistId(artistUrl: string) {
     }
 
     // Fallback for SoundCloud username URLs not caught by DB regex
-    const soundCloudRow = allLinks.find(l => l.siteName === 'soundcloud');
+    const soundCloudRow = allLinks.find((l: UrlMap) => l.siteName === 'soundcloud');
     if (soundCloudRow && artistUrl.includes('soundcloud.com')) {
         try {
             const url = new URL(artistUrl.startsWith('http') ? artistUrl : `https://${artistUrl}`);
