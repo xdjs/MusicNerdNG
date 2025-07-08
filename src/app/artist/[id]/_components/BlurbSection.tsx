@@ -34,11 +34,11 @@ export default function BlurbSection({
       setLoadingAi(true);
       fetch(`/api/artistBio/${artistId}`)
         .then(async (res) => {
-          if (!res.ok) throw new Error("Failed to load AI bio");
+          if (!res.ok) throw new Error("Failed to load summary");
           const json = await res.json();
           setAiBlurb(json.bio as string);
         })
-        .catch(() => setAiBlurb("Failed to load AI bio."))
+        .catch(() => setAiBlurb("Failed to load summary."))
         .finally(() => setLoadingAi(false));
     }
   }, [activeTab, aiBlurb, artistId, loadingAi]);
@@ -106,7 +106,7 @@ export default function BlurbSection({
                 {/* Initial text box */}
                 <div className="h-28 relative border border-gray-200 rounded-t-lg bg-white p-3 overflow-hidden">
                     {loadingAi ? (
-                        <p className="text-gray-500 italic">Loading AI Summary...</p>
+                        <p className="text-gray-500 italic">Loading summary...</p>
                     ) : (aiBlurb ? (
                         <>  
                             <p className="text-black">{aiBlurb}</p>
@@ -124,7 +124,7 @@ export default function BlurbSection({
                             )}
                         </>
                     ) : (
-                        <p className="text-gray-500 italic">No AI summary is available</p>
+                        <p className="text-gray-500 italic">No summary is available</p>
                 ))}
                 </div>
                 {/* Expanded box */}
