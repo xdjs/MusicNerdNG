@@ -11,6 +11,7 @@ import UgcStatsWrapper from "./Wrapper";
 import SearchBar from "@/app/admin/UserSearch";
 import Leaderboard from "./Leaderboard";
 import { Pencil } from "lucide-react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
 export default function Dashboard({ user }: { user: User }) {
@@ -29,14 +30,11 @@ function UgcStats({ user }: { user: User }) {
     const [savingUsername, setSavingUsername] = useState(false);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
 
+    const { openConnectModal } = useConnectModal();
+
     function handleLogin() {
-        const loginBtn = document.getElementById("login-btn");
-        if (loginBtn) {
-            // Click the nav login button to trigger login flow
-            (loginBtn as HTMLButtonElement).click();
-        } else {
-            // Fallback: navigate to top of page where login might exist
-            window.location.href = '/';
+        if (openConnectModal) {
+            openConnectModal();
         }
     }
 
@@ -121,7 +119,7 @@ function UgcStats({ user }: { user: User }) {
                             onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                         >
                             <div className="flex items-center gap-1">
-                                {isGuestUser ? 'Login' : (<><Pencil size={14} /> Edit Username</>)}
+                                {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
                             </div>
                         </Button>
                     )}
