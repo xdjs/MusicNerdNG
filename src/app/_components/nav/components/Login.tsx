@@ -150,11 +150,13 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
             // Then disconnect and sign out
             if (disconnect) {
                 disconnect();
+                // Small delay to ensure disconnect completes
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-            // Trigger signOut and then reload immediately without extra delay
-            signOut({ redirect: false }).finally(() => {
-                window.location.reload();
-            });
+            await signOut({ redirect: false });
+            
+            // Force a page reload to clear any lingering state
+            window.location.reload();
             
             toast({
                 title: "Disconnected",
@@ -331,12 +333,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
-                            <DropdownMenuItem
-                                onSelect={(e) => {
-                                    e.preventDefault();
-                                    handleDisconnect();
-                                }}
-                            >
+                            <DropdownMenuItem onSelect={handleDisconnect}>
                                 Log Out
                             </DropdownMenuItem>
                         </DropdownMenuContent>

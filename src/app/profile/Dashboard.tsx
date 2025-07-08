@@ -4,6 +4,7 @@ import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
 import { User } from "@/server/db/DbTypes";
@@ -31,19 +32,20 @@ function UgcStats({ user }: { user: User }) {
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
 
     const { openConnectModal } = useConnectModal();
+    const { status } = useSession();
 
     // Refresh once when auth state changes (login/logout), with sessionStorage flag to avoid loops
     useEffect(() => {
         const skipReload = sessionStorage.getItem('skipReload') === 'true';
 
-        const loggedIn = !isGuestUser && user.username !== 'Guest User';
-        const loggedOut = isGuestUser && user.username === 'Guest User';
+        const loggedIn = !isGuestUser && status === 'authenticated';
+        const loggedOut = isGuestUser && status === 'unauthenticated';
 
         const shouldReload = !skipReload && (
             // Guest just logged in (was guest, now authenticated)
-            (isGuestUser && user.username !== 'Guest User') ||
+            (isGuestUser && status === 'authenticated') ||
             // Authenticated user just logged out (was authenticated, now unauthenticated)
-            (!isGuestUser && user.username === 'Guest User')
+            (!isGuestUser && status === 'unauthenticated')
         );
 
         if (shouldReload) {
@@ -55,7 +57,7 @@ function UgcStats({ user }: { user: User }) {
         if (skipReload && (loggedIn || loggedOut)) {
             sessionStorage.removeItem('skipReload');
         }
-    }, [isGuestUser, user.username]);
+    }, [isGuestUser, status]);
 
     function handleLogin() {
         if (openConnectModal) {
