@@ -27,7 +27,22 @@ export default async function Page() {
     }
     
     // Normal authentication flow
-    if (!session) return <PleaseLoginPage text="Log in to view User Profile" />;
+    if (!session) {
+        // Show dashboard in read-only mode for unauthenticated visitors
+        const guestUser = {
+            id: '00000000-0000-0000-0000-000000000000',
+            wallet: '0x0000000000000000000000000000000000000000',
+            email: null,
+            username: 'Guest User',
+            isAdmin: false,
+            isWhiteListed: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            legacyId: null
+        } as const;
+        return <Dashboard user={guestUser} />;
+    }
+
     const user = await getUserById(session.user.id);
     if (!user) return notFound();
     return <Dashboard user={user} />;

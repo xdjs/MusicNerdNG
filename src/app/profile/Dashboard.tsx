@@ -4,6 +4,7 @@ import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRangeAction as getUgcStatsInRange } from "@/app/actions/serverActions";
 import { User } from "@/server/db/DbTypes";
@@ -11,6 +12,7 @@ import UgcStatsWrapper from "./Wrapper";
 import SearchBar from "@/app/admin/UserSearch";
 import Leaderboard from "./Leaderboard";
 import { Pencil } from "lucide-react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
 export default function Dashboard({ user }: { user: User }) {
@@ -27,6 +29,46 @@ function UgcStats({ user }: { user: User }) {
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
+    const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
+
+    const { openConnectModal } = useConnectModal();
+    const { status } = useSession();
+
+    // Refresh once when auth state changes (login/logout), with sessionStorage flag to avoid loops
+    useEffect(() => {
+        const skipReload = sessionStorage.getItem('skipReload') === 'true';
+
+        const loggedIn = !isGuestUser && status === 'authenticated';
+        const loggedOut = isGuestUser && status === 'unauthenticated';
+
+        const shouldReload = !skipReload && (
+            // Guest just logged in (was guest, now authenticated)
+            (isGuestUser && status === 'authenticated') ||
+            // Authenticated user just logged out (was authenticated, now unauthenticated)
+            (!isGuestUser && status === 'unauthenticated')
+        );
+
+        if (shouldReload) {
+            sessionStorage.setItem('skipReload', 'true');
+            window.location.reload();
+        }
+
+        // After page stabilizes, clear skipReload so future auth changes trigger refresh again
+        if (skipReload && (loggedIn || loggedOut)) {
+            sessionStorage.removeItem('skipReload');
+        }
+    }, [isGuestUser, status]);
+
+    function handleLogin() {
+        if (openConnectModal) {
+            openConnectModal();
+        } else {
+            const navLoginBtn = document.getElementById("login-btn");
+            if (navLoginBtn) {
+                (navLoginBtn as HTMLButtonElement).click();
+            }
+        }
+    }
 
     async function checkUgcStats() {
         if (date?.from && date?.to) {
@@ -89,7 +131,7 @@ function UgcStats({ user }: { user: User }) {
                         }</strong></p>
                     )}
 
-                    {isEditingUsername ? (
+                    {!isGuestUser && isEditingUsername ? (
                         <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
                             <Input
                                 value={usernameInput}
@@ -106,10 +148,10 @@ function UgcStats({ user }: { user: User }) {
                             size="sm"
                             variant="secondary"
                             className="bg-gray-200 text-black hover:bg-gray-300"
-                            onClick={() => setIsEditingUsername(true)}
+                            onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                         >
                             <div className="flex items-center gap-1">
-                                <Pencil size={14} /> Edit Username
+                                {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
                             </div>
                         </Button>
                     )}

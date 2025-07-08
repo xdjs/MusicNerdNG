@@ -282,24 +282,35 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 }
 
                 if (!isConnected || status !== "authenticated") {
-                    // User is not logged in – show original login button that directly opens RainbowKit.
+                    // User is not logged in – show dropdown with Log In option.
                     return (
-                        <Button
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                        <Button 
                             ref={ref}
-                            className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
-                            id="login-btn"
-                            size="lg"
-                            onClick={() => {
+                            id="login-btn" 
+                            size="lg" 
+                                    type="button"
+                                    className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
+                                >
+                                    {buttonChildren ?? <Wallet color="white" />}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onSelect={() => {
                                 if (openConnectModal) {
                                     shouldPromptRef.current = true;
                                     sessionStorage.setItem('directLogin', 'true');
                                     openConnectModal();
                                 }
                             }}
-                            type="button"
-                        >
-                            {buttonChildren ?? <Wallet color="white" />}
-                        </Button>
+                                >
+                                    Log In
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     );
                 }
 
@@ -307,26 +318,25 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 return (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button
-                                ref={ref}
-                                type="button"
+                        <Button 
+                            ref={ref}
+                            type="button" 
                                 size="lg"
-                                className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center"
-                            >
-                                {isplaceholder ? (
-                                    <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
-                                ) : (
-                                    <span className="text-xl">🥳</span>
-                                )}
-                            </Button>
+                            className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
+                        >
+                            {isplaceholder ? (
+                                <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
+                            ) : (
+                                <span className="text-xl">🥳</span>
+                            )}
+                        </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push('/ugcstats')}>User Profile</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                             <DropdownMenuItem
-                                onSelect={() => {
-                                    if (openAccountModal) {
-                                        openAccountModal();
-                                    }
+                                onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleDisconnect();
                                 }}
                             >
                                 Log Out
