@@ -4,7 +4,6 @@ import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
 import { User } from "@/server/db/DbTypes";
@@ -32,20 +31,19 @@ function UgcStats({ user }: { user: User }) {
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
 
     const { openConnectModal } = useConnectModal();
-    const { status } = useSession();
 
     // Refresh once when auth state changes (login/logout), with sessionStorage flag to avoid loops
     useEffect(() => {
         const skipReload = sessionStorage.getItem('skipReload') === 'true';
 
-        const loggedIn = !isGuestUser && status === 'authenticated';
-        const loggedOut = isGuestUser && status === 'unauthenticated';
+        const loggedIn = !isGuestUser && user.username !== 'Guest User';
+        const loggedOut = isGuestUser && user.username === 'Guest User';
 
         const shouldReload = !skipReload && (
             // Guest just logged in (was guest, now authenticated)
-            (isGuestUser && status === 'authenticated') ||
+            (isGuestUser && user.username !== 'Guest User') ||
             // Authenticated user just logged out (was authenticated, now unauthenticated)
-            (!isGuestUser && status === 'unauthenticated')
+            (!isGuestUser && user.username === 'Guest User')
         );
 
         if (shouldReload) {
@@ -57,7 +55,7 @@ function UgcStats({ user }: { user: User }) {
         if (skipReload && (loggedIn || loggedOut)) {
             sessionStorage.removeItem('skipReload');
         }
-    }, [isGuestUser, status]);
+    }, [isGuestUser, user.username]);
 
     function handleLogin() {
         if (openConnectModal) {
@@ -127,15 +125,7 @@ function UgcStats({ user }: { user: User }) {
                 <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
                     {!isEditingUsername && (
                         <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                            status === 'unauthenticated'
-                                ? 'Guest User'
-                                : (
-                                    ugcStatsUserWallet ?? (
-                                        user?.username && user.username !== 'Guest User'
-                                            ? user.username
-                                            : user?.wallet
-                                    )
-                                )
+                            ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
                         }</strong></p>
                     )}
 
@@ -194,10 +184,7 @@ function UgcStats({ user }: { user: User }) {
 
             {/* Leaderboard Section */}
             <div>
-                <Leaderboard 
-                    highlightIdentifier={status === 'authenticated' ? user.wallet : undefined} 
-                    dateRange={date} 
-                />
+                <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
             </div>
         </section>
     )
