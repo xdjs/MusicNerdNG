@@ -77,7 +77,7 @@ function UgcStats({ user }: { user: User }) {
 
     return (
         <section className="px-10 py-5 space-y-6">
-            <h1 className="text-2xl font-bold text-center">UGC Stats</h1>
+            <h1 className="text-2xl font-bold text-center">User Profile</h1>
             
             {/* Individual Stats Section */}
             <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">

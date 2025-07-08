@@ -48,7 +48,7 @@ describe('UGC Stats Page', () => {
         render(page);
 
         // Should show the dashboard with leaderboard
-        expect(screen.getByText('UGC Stats')).toBeInTheDocument();
+        expect(screen.getByText('User Profile')).toBeInTheDocument();
         expect(screen.getByText('Leaderboard')).toBeInTheDocument();
     });
 
@@ -80,6 +80,6 @@ describe('UGC Stats Page', () => {
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('UGC Stats')).toBeInTheDocument();
+        expect(screen.getByText('User Profile')).toBeInTheDocument();
     });
 }); 
