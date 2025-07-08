@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "@/server/lib/openai";
-import { getDefaultPrompt, getArtistById, getYTStats } from "@/server/utils/queriesTS";
+import { getDefaultPrompt, getArtistById} from "@/server/utils/queriesTS";
 import { db } from "@/server/db/drizzle";
 import { aiPrompts, artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
@@ -52,20 +52,6 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
     }
   }  
 
-  //Compile YouTube Data
-  let youtubeBioData = "";
-  if (artist.youtubechannel) {
-    const {data} = await getYTStats(artist.youtubechannel);
-    if (data) {
-      youtubeBioData = [
-        `Youtube Subscribers: ${data.subCount.toLocaleString()}`,
-        `Youtube Bio: ${data.description}`,
-        `Youtube Name: ${data.title}`
-      ]
-      .filter(Boolean)
-      .join(",");
-    }
-  }
   // Build prompt
   const promptParts: string[] = [prompt.promptBeforeName, artist.name!, prompt.promptAfterName];
     if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
