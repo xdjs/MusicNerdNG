@@ -539,7 +539,7 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
 // ----------------------------------
 
 export async function getActivePrompt() {
-    return await db.query.aiPrompts.findFirst({ where: eq(aiPrompts.isActive, true) });
+    return await db.query.aiPrompts.findFirst({ where: eq(aiPrompts.isDefault, true) });
 }
 
 export async function setActivePrompt() {
