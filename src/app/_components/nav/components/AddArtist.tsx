@@ -26,7 +26,7 @@ import {
     FormDescription,
 } from "@/components/ui/form";
 import { addArtist } from "@/app/actions/addArtist";
-import type { AddArtistResp } from "@/server/utils/queriesTS";
+import type { AddArtistResp } from "@/app/actions/serverActions";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
