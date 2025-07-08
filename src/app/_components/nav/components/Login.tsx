@@ -286,10 +286,10 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                     return (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button
-                                    ref={ref}
-                                    id="login-btn"
-                                    size="lg"
+                        <Button 
+                            ref={ref}
+                            id="login-btn" 
+                            size="lg" 
                                     type="button"
                                     className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
                                 >
@@ -300,12 +300,12 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                                 <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
                                 <DropdownMenuItem
                                     onSelect={() => {
-                                        if (openConnectModal) {
-                                            shouldPromptRef.current = true;
-                                            sessionStorage.setItem('directLogin', 'true');
-                                            openConnectModal();
-                                        }
-                                    }}
+                                if (openConnectModal) {
+                                    shouldPromptRef.current = true;
+                                    sessionStorage.setItem('directLogin', 'true');
+                                    openConnectModal();
+                                }
+                            }}
                                 >
                                     Log In
                                 </DropdownMenuItem>
@@ -318,26 +318,25 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 return (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button
-                                ref={ref}
-                                type="button"
+                        <Button 
+                            ref={ref}
+                            type="button" 
                                 size="lg"
-                                className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center"
-                            >
-                                {isplaceholder ? (
-                                    <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
-                                ) : (
-                                    <span className="text-xl">🥳</span>
-                                )}
-                            </Button>
+                            className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
+                        >
+                            {isplaceholder ? (
+                                <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
+                            ) : (
+                                <span className="text-xl">🥳</span>
+                            )}
+                        </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                             <DropdownMenuItem
-                                onSelect={() => {
-                                    if (openAccountModal) {
-                                        openAccountModal();
-                                    }
+                                onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleDisconnect();
                                 }}
                             >
                                 Log Out
