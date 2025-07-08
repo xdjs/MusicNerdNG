@@ -297,7 +297,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => router.push('/ugcstats')}>Leaderboard</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
                                 <DropdownMenuItem
                                     onSelect={() => {
                                         if (openConnectModal) {
@@ -332,7 +332,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push('/ugcstats')}>User Profile</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                             <DropdownMenuItem
                                 onSelect={() => {
                                     if (openAccountModal) {
