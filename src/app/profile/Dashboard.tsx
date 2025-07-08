@@ -29,10 +29,10 @@ function UgcStats({ user }: { user: User }) {
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
-    const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
+    const { status } = useSession();
+    const isGuestUser = status !== 'authenticated';
 
     const { openConnectModal } = useConnectModal();
-    const { status } = useSession();
     const hasReloadedRef = useRef(false);
 
     // Reload page once guest user logs in successfully
@@ -111,7 +111,7 @@ function UgcStats({ user }: { user: User }) {
                 <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
                     {!isEditingUsername && (
                         <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                            ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                            ugcStatsUserWallet ?? (isGuestUser ? 'Guest User' : (user?.username ? user.username : user?.wallet))
                         }</strong></p>
                     )}
 
@@ -141,7 +141,7 @@ function UgcStats({ user }: { user: User }) {
                     )}
                 </div>
 
-                {user?.isAdmin && (
+                {!isGuestUser && user?.isAdmin && (
                     <>
                         <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
                         <div className="mt-2">
@@ -170,7 +170,7 @@ function UgcStats({ user }: { user: User }) {
 
             {/* Leaderboard Section */}
             <div>
-                <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
+                <Leaderboard highlightIdentifier={!isGuestUser ? user.wallet : undefined} dateRange={date} />
             </div>
         </section>
     )
