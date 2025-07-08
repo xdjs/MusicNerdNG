@@ -35,7 +35,7 @@ describe('UGC Stats Page', () => {
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('Login to view UGC Stats')).toBeInTheDocument();
+        expect(screen.getByText('Log in to view User Profile')).toBeInTheDocument();
     });
 
     it('should show dashboard when walletless mode is enabled', async () => {
