@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { openai } from "@/server/lib/openai";
 import { getActivePrompt, getArtistById } from "@/server/utils/queries/artistQueries";
+import { getOpenAIBio } from "@/server/utils/openAIQuery";
 import { db } from "@/server/db/drizzle";
 import { aiPrompts, artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
