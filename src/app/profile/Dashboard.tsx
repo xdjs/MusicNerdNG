@@ -6,7 +6,7 @@ import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
-import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
+import { getUgcStatsInRangeAction as getUgcStatsInRange } from "@/app/actions/serverActions";
 import { User } from "@/server/db/DbTypes";
 import UgcStatsWrapper from "./Wrapper";
 import SearchBar from "@/app/admin/UserSearch";

@@ -25,7 +25,7 @@ import {
     FormItem,
     FormMessage,
 } from "@/components/ui/form";
-import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
+import { addArtistDataAction as addArtistData, type AddArtistDataResp } from "@/app/actions/serverActions";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";

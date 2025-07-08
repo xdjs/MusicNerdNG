@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 import { NEXTAUTH_URL } from "@/env";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { SiweMessage } from "siwe";
-import { getUserByWallet, createUser } from "@/server/utils/queriesTS";
+import { getUserByWallet, createUser } from "@/server/utils/queries/userQueries";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`

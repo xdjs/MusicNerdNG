@@ -10,7 +10,7 @@ import {
     useReactTable,
 } from "@tanstack/react-table";
 
-import { approveUgcAdmin } from "@/server/utils/queriesTS";
+import { approveUgcAdminAction as approveUgcAdmin } from "@/app/actions/serverActions";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
