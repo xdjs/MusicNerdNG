@@ -3,7 +3,7 @@
 import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
@@ -33,20 +33,29 @@ function UgcStats({ user }: { user: User }) {
 
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
-    const hasReloadedRef = useRef(false);
 
-    // Reload page once guest user logs in successfully
+    // Refresh once when auth state changes (login/logout), with sessionStorage flag to avoid loops
     useEffect(() => {
-        const shouldReload = (
-            // Guest user just logged in
+        const skipReload = sessionStorage.getItem('skipReload') === 'true';
+
+        const loggedIn = !isGuestUser && status === 'authenticated';
+        const loggedOut = isGuestUser && status === 'unauthenticated';
+
+        const shouldReload = !skipReload && (
+            // Guest just logged in (was guest, now authenticated)
             (isGuestUser && status === 'authenticated') ||
-            // Authenticated user just logged out
+            // Authenticated user just logged out (was authenticated, now unauthenticated)
             (!isGuestUser && status === 'unauthenticated')
         );
 
-        if (shouldReload && !hasReloadedRef.current) {
-            hasReloadedRef.current = true;
+        if (shouldReload) {
+            sessionStorage.setItem('skipReload', 'true');
             window.location.reload();
+        }
+
+        // After page stabilizes, clear skipReload so future auth changes trigger refresh again
+        if (skipReload && (loggedIn || loggedOut)) {
+            sessionStorage.removeItem('skipReload');
         }
     }, [isGuestUser, status]);
 
