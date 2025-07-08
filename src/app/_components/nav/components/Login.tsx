@@ -334,10 +334,9 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                             <DropdownMenuItem
-                                onSelect={() => {
-                                    if (openAccountModal) {
-                                        openAccountModal();
-                                    }
+                                onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleDisconnect();
                                 }}
                             >
                                 Log Out
