@@ -3,7 +3,8 @@
 import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
 import { getUgcStatsInRange, getUserById } from "@/server/utils/queriesTS";
 import { User } from "@/server/db/DbTypes";
@@ -11,6 +12,7 @@ import UgcStatsWrapper from "./Wrapper";
 import SearchBar from "@/app/admin/UserSearch";
 import Leaderboard from "./Leaderboard";
 import { Pencil } from "lucide-react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
 export default function Dashboard({ user }: { user: User }) {
@@ -27,6 +29,25 @@ function UgcStats({ user }: { user: User }) {
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
+    const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
+
+    const { openConnectModal } = useConnectModal();
+    const { status } = useSession();
+    const hasReloadedRef = useRef(false);
+
+    // Reload page once guest user logs in successfully
+    useEffect(() => {
+        if (isGuestUser && status === 'authenticated' && !hasReloadedRef.current) {
+            hasReloadedRef.current = true;
+            window.location.reload();
+        }
+    }, [isGuestUser, status]);
+
+    function handleLogin() {
+        if (openConnectModal) {
+            openConnectModal();
+        }
+    }
 
     async function checkUgcStats() {
         if (date?.from && date?.to) {
@@ -89,7 +110,7 @@ function UgcStats({ user }: { user: User }) {
                         }</strong></p>
                     )}
 
-                    {isEditingUsername ? (
+                    {!isGuestUser && isEditingUsername ? (
                         <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
                             <Input
                                 value={usernameInput}
@@ -106,10 +127,10 @@ function UgcStats({ user }: { user: User }) {
                             size="sm"
                             variant="secondary"
                             className="bg-gray-200 text-black hover:bg-gray-300"
-                            onClick={() => setIsEditingUsername(true)}
+                            onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                         >
                             <div className="flex items-center gap-1">
-                                <Pencil size={14} /> Edit Username
+                                {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
                             </div>
                         </Button>
                     )}
