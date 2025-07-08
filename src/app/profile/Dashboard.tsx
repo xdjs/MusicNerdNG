@@ -35,13 +35,13 @@ function UgcStats({ user }: { user: User }) {
     const { openConnectModal } = useConnectModal();
     const hasReloadedRef = useRef(false);
 
-    // Reload page once guest user logs in successfully
+    // Reload page once user transitions from guest to authenticated
     useEffect(() => {
-        if (isGuestUser && status === 'authenticated' && !hasReloadedRef.current) {
+        if (status === 'authenticated' && !hasReloadedRef.current) {
             hasReloadedRef.current = true;
             window.location.reload();
         }
-    }, [isGuestUser, status]);
+    }, [status]);
 
     function handleLogin() {
         if (openConnectModal) {
