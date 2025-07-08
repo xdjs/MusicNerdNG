@@ -25,7 +25,7 @@ import {
     FormItem,
     FormMessage,
 } from "@/components/ui/form";
-import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
+import type { AddArtistDataResp } from "@/server/utils/queries/artistQueries";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -155,7 +155,11 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
             setIsLoading(false);
             return;
         }
-        const resp = await addArtistData(values.artistDataUrl, artist);
+        const resp: AddArtistDataResp = await fetch('/api/addArtistData', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ artistId: artist.id, artistUrl: values.artistDataUrl })
+        }).then(res => res.json());
         if (resp.status === "success") {
             toast({
                 title: `${artist.name}'s ${resp.siteName ?? "data"} added`,
