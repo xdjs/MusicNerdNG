@@ -142,6 +142,19 @@ export default function BlurbSection({
             </div>
         </TabsContent>
       </Tabs>
+      
+      {/* Add your button here */}
+      <div className="flex justify-center">
+        <button 
+          className="w-full py-1 bg-pink-500 text-white rounded-b-lg hover:bg-pink-700 transition-colors"
+          onClick={() => {
+            // Add your button logic here
+            console.log("Button clicked!");
+          }}
+        >
+          <p className="text-left ml-2">Your Button Text</p>
+        </button>
+      </div>
     </div>
   );
 }
