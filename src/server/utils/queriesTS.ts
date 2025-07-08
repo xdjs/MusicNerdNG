@@ -13,6 +13,7 @@ import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
 import { openai } from "@/server/lib/openai";
+import { error } from 'console';
 
 type getResponse<T> = {
     isError: boolean,
@@ -778,6 +779,56 @@ export async function generateArtistBio(artistId: string): Promise<string | null
         return null;
     }
 }
+
+const {youtube_api_key} = process.env;
+
+export type YTStats = {
+    id: string;
+    title: string;
+    subCount: number;
+    viewCount: number;
+    videoCount: number;
+    description: string;
+    
+};
+
+export async function getYTStats(channelId: string): Promise<{error: string | null; data: YTStats | null}>{
+    if (!youtube_api_key) {return {error: "Youtube API key not found", data: null};}
+
+    try {
+        const {data} = await axios.get("https://www.googleapis.com/youtube/v3/channels",
+        {
+            params: {
+                part: 
+                "snippet, statistics, contentDetails",
+                id: channelId,
+                key: youtube_api_key,
+            },
+        },
+    );
+
+    if (!data.items?.length) {
+        return {error: "Channel not found", data: null};
+    }
+
+    const channel = data.items[0];
+    const stats: YTStats = {
+        id: channel.id,
+        title: channel.snippet.title,
+        subCount: Number(channel.statistics.subscriberCount),
+        viewCount: Number(channel.statistics.viewCount),
+        videoCount: Number(channel.statistics.videoCount),
+        description: channel.snippet.description,    
+    };
+    return { error: null, data: stats };
+    } catch (e: any) {
+        return {error: e?.response?.data?.error?.message ?? "YouTube fetch failed", data: null};
+    }
+}
+ 
+
+
+
 
 
 

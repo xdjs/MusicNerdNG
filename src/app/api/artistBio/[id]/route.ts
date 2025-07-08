@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "@/server/lib/openai";
-import { getActivePrompt, getArtistById } from "@/server/utils/queriesTS";
+import { getActivePrompt, getArtistById, getYTStats } from "@/server/utils/queriesTS";
 import { db } from "@/server/db/drizzle";
 import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
@@ -24,6 +24,8 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
 
   let spotifyBioData = ""; //empty string for spotify data
 
+
+  //Compile Spotify Data
   if (artist.spotify) {
     //grab headers, get artist
     const headers = await getSpotifyHeaders();
@@ -32,7 +34,7 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
     //if artist exists, get releases and top track
     if (data) {
       const releases = await getNumberOfSpotifyReleases(artist.spotify, headers);
-      const topTrack = await getArtistTopTrackName(artist.spotify, headers);
+      const topTrack = await getArtistTopTrackName(artist.spotify, headers); 
 
       //build spotify bio data
       spotifyBioData = [
@@ -41,9 +43,24 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
         data.genres.length > 0 ? `Genres: ${data.genres.join(", ")}` : "No genres found",
         releases > 0 ? `Number of releases: ${releases}` : "No releases found",
         topTrack ? `Top track: ${topTrack}` : "No top track found",
-      ].filter(Boolean).join(".");
+      ].filter(Boolean).join(",");
     }
   }  
+
+  //Compile YouTube Data
+  let youtubeBioData = "";
+  if (artist.youtubechannel) {
+    const {data} = await getYTStats(artist.youtubechannel);
+    if (data) {
+      youtubeBioData = [
+        `Youtube Subscribers: ${data.subCount.toLocaleString()}`,
+        `Youtube Bio: ${data.description}`,
+        `Youtube Name: ${data.title}`
+      ]
+      .filter(Boolean)
+      .join(",");
+    }
+  }
   // Build prompt
   const promptParts: string[] = [prompt.promptBeforeName, artist.name!, prompt.promptAfterName];
   
@@ -53,6 +70,7 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
   if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
   if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
   if (spotifyBioData) promptParts.push(`Spotify Bio: ${spotifyBioData}`);
+  if (youtubeBioData) promptParts.push(`Youtube Data: ${youtubeBioData}`);
   promptParts.push(`Focus on genre, key achievements, and unique traits; avoid speculation.`);
 
   try {
