@@ -27,7 +27,7 @@ export default async function Page() {
     }
     
     // Normal authentication flow
-    if (!session) return <PleaseLoginPage text="Login to view UGC Stats" />;
+    if (!session) return <PleaseLoginPage text="Log in to view User Profile" />;
     const user = await getUserById(session.user.id);
     if (!user) return notFound();
     return <Dashboard user={user} />;
