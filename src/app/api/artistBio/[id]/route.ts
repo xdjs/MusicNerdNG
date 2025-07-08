@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "@/server/lib/openai";
-import { getActivePrompt, getArtistById } from "@/server/utils/queriesTS";
+import { getDefaultPrompt, getArtistById } from "@/server/utils/queriesTS";
 import { db } from "@/server/db/drizzle";
 import { aiPrompts, artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
@@ -11,7 +11,7 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
   if (!artist) {
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
   }
-  const prompt = await getActivePrompt();
+  const prompt = await getDefaultPrompt();
   if (!prompt) {
     return NextResponse.json({ error: "No prompt found"})
   }
