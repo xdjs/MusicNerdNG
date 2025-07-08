@@ -282,24 +282,35 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 }
 
                 if (!isConnected || status !== "authenticated") {
-                    // User is not logged in – show original login button that directly opens RainbowKit.
+                    // User is not logged in – show dropdown with Log In option.
                     return (
-                        <Button
-                            ref={ref}
-                            className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
-                            id="login-btn"
-                            size="lg"
-                            onClick={() => {
-                                if (openConnectModal) {
-                                    shouldPromptRef.current = true;
-                                    sessionStorage.setItem('directLogin', 'true');
-                                    openConnectModal();
-                                }
-                            }}
-                            type="button"
-                        >
-                            {buttonChildren ?? <Wallet color="white" />}
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    ref={ref}
+                                    id="login-btn"
+                                    size="lg"
+                                    type="button"
+                                    className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
+                                >
+                                    {buttonChildren ?? <Wallet color="white" />}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onSelect={() => {
+                                        if (openConnectModal) {
+                                            shouldPromptRef.current = true;
+                                            sessionStorage.setItem('directLogin', 'true');
+                                            openConnectModal();
+                                        }
+                                    }}
+                                >
+                                    Log In
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     );
                 }
 
@@ -321,7 +332,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push('/ugcstats')}>User Profile</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                             <DropdownMenuItem
                                 onSelect={() => {
                                     if (openAccountModal) {
