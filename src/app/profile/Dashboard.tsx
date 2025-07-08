@@ -51,7 +51,10 @@ function UgcStats({ user }: { user: User }) {
     }, [isGuestUser, status]);
 
     function handleLogin() {
-        if (openConnectModal) {
+        const navLoginBtn = document.getElementById("login-btn");
+        if (navLoginBtn) {
+            (navLoginBtn as HTMLButtonElement).click();
+        } else if (openConnectModal) {
             openConnectModal();
         }
     }
