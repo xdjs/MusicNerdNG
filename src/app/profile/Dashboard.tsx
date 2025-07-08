@@ -127,7 +127,9 @@ function UgcStats({ user }: { user: User }) {
                 <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
                     {!isEditingUsername && (
                         <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                            ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                            status === 'unauthenticated'
+                                ? 'Guest User'
+                                : (ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet))
                         }</strong></p>
                     )}
 
@@ -186,7 +188,10 @@ function UgcStats({ user }: { user: User }) {
 
             {/* Leaderboard Section */}
             <div>
-                <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
+                <Leaderboard 
+                    highlightIdentifier={status === 'authenticated' ? user.wallet : undefined} 
+                    dateRange={date} 
+                />
             </div>
         </section>
     )
