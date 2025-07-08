@@ -27,6 +27,18 @@ function UgcStats({ user }: { user: User }) {
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
+    const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
+
+    function handleLogin() {
+        const loginBtn = document.getElementById("login-btn");
+        if (loginBtn) {
+            // Click the nav login button to trigger login flow
+            (loginBtn as HTMLButtonElement).click();
+        } else {
+            // Fallback: navigate to top of page where login might exist
+            window.location.href = '/';
+        }
+    }
 
     async function checkUgcStats() {
         if (date?.from && date?.to) {
@@ -89,7 +101,7 @@ function UgcStats({ user }: { user: User }) {
                         }</strong></p>
                     )}
 
-                    {isEditingUsername ? (
+                    {!isGuestUser && isEditingUsername ? (
                         <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
                             <Input
                                 value={usernameInput}
@@ -106,10 +118,10 @@ function UgcStats({ user }: { user: User }) {
                             size="sm"
                             variant="secondary"
                             className="bg-gray-200 text-black hover:bg-gray-300"
-                            onClick={() => setIsEditingUsername(true)}
+                            onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                         >
                             <div className="flex items-center gap-1">
-                                <Pencil size={14} /> Edit Username
+                                {isGuestUser ? 'Login' : (<><Pencil size={14} /> Edit Username</>)}
                             </div>
                         </Button>
                     )}
