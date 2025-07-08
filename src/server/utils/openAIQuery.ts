@@ -11,7 +11,7 @@ import { getArtistTopTrackName, getNumberOfSpotifyReleases, getSpotifyArtist, ge
 //Params:
     //artistID: The ID of the artist the bio should be generated for. 
             // Spotify data is pulled from the row associated with this ID.
-export async function getOpenAIBio(artistId: string): Promise<NextResponse | null> {
+export async function getOpenAIBio(artistId: string): Promise<NextResponse> {
   // Fetch artist row from database
   const artist = await getArtistById(artistId);
   if (!artist) {
