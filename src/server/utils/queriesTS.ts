@@ -12,8 +12,9 @@ import { DISCORD_WEBHOOK_URL } from '@/env';
 import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
-import { openai } from "@/server/lib/openai";
+import { getOpenAIBio } from './openAIQuery';
 import { error } from 'console';
+import { NextResponse } from 'next/server';
 
 type getResponse<T> = {
     isError: boolean,
@@ -748,33 +749,14 @@ export async function getOtherEnabledPrompts() {
 }
 
 // Helper to (re)generate an artist bio immediately using OpenAI and store it
-export async function generateArtistBio(artistId: string): Promise<string | null> {
+// This Function is called in:
+    //approveUGC function
+    //removeArtistData function
+export async function generateArtistBio(artistId: string): Promise<NextResponse | null> {
     try {
-        const artist = await getArtistById(artistId);
-        if (!artist) return null;
-        const promptRow = await getDefaultPrompt();
-        if (!promptRow) return null;
-
-        // Build the prompt parts exactly the same way the /api/artistBio route does
-        const promptParts: string[] = [promptRow.promptBeforeName, artist.name ?? "", promptRow.promptAfterName];
-        if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
-        if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
-        if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
-        if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
-        if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
-        promptParts.push("Focus on genre, key achievements, and unique traits; avoid speculation.");
-
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [{ role: "system", content: 'You are an artifical intelligence whose sole purpose is to follow the provided prompt.' + promptParts.join("\n") }],
-            temperature: 0.8,
-        });
-        const bio = completion.choices[0]?.message?.content?.trim() ?? "";
-        if (bio) {
-            await db.update(artists).set({ bio }).where(eq(artists.id, artistId));
-        }
-        return bio;
-    } catch (e) {
+        return await getOpenAIBio(artistId);
+      //Error Handling
+      }catch (e) {
         console.error("[generateArtistBio] Error generating bio", e);
         return null;
     }
@@ -789,42 +771,9 @@ export type YTStats = {
     viewCount: number;
     videoCount: number;
     description: string;
-    
+
 };
 
-export async function getYTStats(channelId: string): Promise<{error: string | null; data: YTStats | null}>{
-    if (!youtube_api_key) {return {error: "Youtube API key not found", data: null};}
-
-    try {
-        const {data} = await axios.get("https://www.googleapis.com/youtube/v3/channels",
-        {
-            params: {
-                part: 
-                "snippet, statistics, contentDetails",
-                id: channelId,
-                key: youtube_api_key,
-            },
-        },
-    );
-
-    if (!data.items?.length) {
-        return {error: "Channel not found", data: null};
-    }
-
-    const channel = data.items[0];
-    const stats: YTStats = {
-        id: channel.id,
-        title: channel.snippet.title,
-        subCount: Number(channel.statistics.subscriberCount),
-        viewCount: Number(channel.statistics.viewCount),
-        videoCount: Number(channel.statistics.videoCount),
-        description: channel.snippet.description,    
-    };
-    return { error: null, data: stats };
-    } catch (e: any) {
-        return {error: e?.response?.data?.error?.message ?? "YouTube fetch failed", data: null};
-    }
-}
  
 
 
