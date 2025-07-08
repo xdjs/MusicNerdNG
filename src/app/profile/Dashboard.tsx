@@ -129,7 +129,13 @@ function UgcStats({ user }: { user: User }) {
                         <p className="text-sm text-gray-500">UGC Stats for: <strong>{
                             status === 'unauthenticated'
                                 ? 'Guest User'
-                                : (ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet))
+                                : (
+                                    ugcStatsUserWallet ?? (
+                                        user?.username && user.username !== 'Guest User'
+                                            ? user.username
+                                            : user?.wallet
+                                    )
+                                )
                         }</strong></p>
                     )}
 
