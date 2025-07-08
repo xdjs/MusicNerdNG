@@ -2,7 +2,7 @@
 
 import { db } from '@/server/db/drizzle'
 import { getSpotifyHeaders, getSpotifyImage, getSpotifyArtist } from './externalApiQueries';
-import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains } from "drizzle-orm";
+import { isNotNull, ilike, desc, eq, sql, inArray, and, gte, lte, arrayContains, ne } from "drizzle-orm";
 import { featured, artists, users, ugcresearch, urlmap, aiPrompts } from '@/server/db/schema';
 import { Artist, UrlMap } from '../db/DbTypes';
 import { isObjKey, extractArtistId } from './services';
@@ -13,6 +13,7 @@ import axios from 'axios';
 import { PgColumn } from 'drizzle-orm/pg-core';
 import { headers } from 'next/headers';
 import { openai } from "@/server/lib/openai";
+import { error } from 'console';
 
 type getResponse<T> = {
     isError: boolean,
@@ -727,18 +728,18 @@ export async function getLeaderboardInRange(fromIso: string, toIso: string): Pro
     }
 }
 
-export async function getActivePrompt() {
+export async function getDefaultPrompt() {
     return await db.query.aiPrompts.findFirst({
-        where: eq(aiPrompts.isActive, true)
+        where: eq(aiPrompts.isDefault, true)
     })
 }
 
-export async function setActivePrompt() {
-}
 
-export async function getAllPrompts() {
+export async function getOtherEnabledPrompts() {
     try {
-        const result = await db.query.aiPrompts.findMany()
+        const result = await db.query.aiPrompts.findMany({
+            where: and(eq(aiPrompts.isEnabled, true), ne(aiPrompts.isDefault, true))
+        })
         return result
     } catch (e) {
         console.error("no work", e)
@@ -751,7 +752,7 @@ export async function generateArtistBio(artistId: string): Promise<string | null
     try {
         const artist = await getArtistById(artistId);
         if (!artist) return null;
-        const promptRow = await getActivePrompt();
+        const promptRow = await getDefaultPrompt();
         if (!promptRow) return null;
 
         // Build the prompt parts exactly the same way the /api/artistBio route does
@@ -778,6 +779,56 @@ export async function generateArtistBio(artistId: string): Promise<string | null
         return null;
     }
 }
+
+const {youtube_api_key} = process.env;
+
+export type YTStats = {
+    id: string;
+    title: string;
+    subCount: number;
+    viewCount: number;
+    videoCount: number;
+    description: string;
+    
+};
+
+export async function getYTStats(channelId: string): Promise<{error: string | null; data: YTStats | null}>{
+    if (!youtube_api_key) {return {error: "Youtube API key not found", data: null};}
+
+    try {
+        const {data} = await axios.get("https://www.googleapis.com/youtube/v3/channels",
+        {
+            params: {
+                part: 
+                "snippet, statistics, contentDetails",
+                id: channelId,
+                key: youtube_api_key,
+            },
+        },
+    );
+
+    if (!data.items?.length) {
+        return {error: "Channel not found", data: null};
+    }
+
+    const channel = data.items[0];
+    const stats: YTStats = {
+        id: channel.id,
+        title: channel.snippet.title,
+        subCount: Number(channel.statistics.subscriberCount),
+        viewCount: Number(channel.statistics.viewCount),
+        videoCount: Number(channel.statistics.videoCount),
+        description: channel.snippet.description,    
+    };
+    return { error: null, data: stats };
+    } catch (e: any) {
+        return {error: e?.response?.data?.error?.message ?? "YouTube fetch failed", data: null};
+    }
+}
+ 
+
+
+
 
 
 
