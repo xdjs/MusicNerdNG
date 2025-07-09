@@ -58,7 +58,11 @@ export default function UGCDataTable<TData, TValue>({
         setUploadStatus({ status: "success", message: "", isLoading: true });
         const resp = await approveUgcAdmin(selectedUGC);
         setUploadStatus({ status: resp.status as "success" | "error", message: resp.message, isLoading: false });
-        if (resp.status === "success") router.refresh();
+        if (resp.status === "success") {
+            // Notify other components (e.g., Navbar) that pending UGC count may have changed
+            window.dispatchEvent(new Event("pendingUGCUpdated"));
+            router.refresh();
+        }
         
     }
 
