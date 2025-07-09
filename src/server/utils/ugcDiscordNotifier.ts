@@ -51,6 +51,7 @@ export async function maybePingDiscordForPendingUGC() {
         await db.insert(ugcresearch).values({
             siteName: SENTINEL_SITE_NAME,
             createdAt: now.toISOString(),
+            accepted: true,
         });
     }
 } 

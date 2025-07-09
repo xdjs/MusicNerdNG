@@ -11,6 +11,7 @@ import { openai } from "@/server/lib/openai";
 
 import { getUserById, getUserByWallet } from "@/server/utils/queries/userQueries";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
+import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 
 // ----------------------------------
 // Types
@@ -447,6 +448,9 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
         if (isWhitelistedOrAdmin && newUGC?.id) {
             await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
+        } else {
+            // Pending submission by regular user – trigger (throttled) Discord ping
+            await maybePingDiscordForPendingUGC();
         }
 
         if (user) {
