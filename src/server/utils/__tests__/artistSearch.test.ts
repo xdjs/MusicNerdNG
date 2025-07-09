@@ -8,7 +8,7 @@ import { sql } from 'drizzle-orm';
 import { artists } from '@/server/db/schema';
 import { eq, and, or, like } from 'drizzle-orm';
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { searchArtists } from '../queriesTS';
+import { searchArtists } from '../queries';
 
 // Mock database for non-performance tests
 const makeTable = () => ({
@@ -239,7 +239,7 @@ const searchForArtistByName = async (name: string): Promise<Artist[]> => {
 const searchArtist = searchForArtistByName;
 
 // Add jest.mock for queriesTS to provide searchArtists function
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
     searchArtists: jest.fn(),
 }));
 

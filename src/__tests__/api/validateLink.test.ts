@@ -3,7 +3,7 @@
 import { jest } from "@jest/globals";
 
 // Mock the DB query util for ESM before dynamic import of modules
-jest.mock("@/server/utils/queriesTS", () => ({
+jest.mock("@/server/utils/queries/artistQueries", () => ({
   __esModule: true,
   getAllLinks: jest.fn()
 }));
@@ -28,7 +28,7 @@ describe("/api/validateLink backend validation", () => {
   });
 
   test("accepts a valid YouTube link", async () => {
-    const { getAllLinks } = await import("@/server/utils/queriesTS");
+    const { getAllLinks } = await import("@/server/utils/queries/artistQueries");
     (getAllLinks as jest.Mock).mockResolvedValue([
       { siteName: "youtube", regex: youtubeRegex }
     ]);
@@ -51,7 +51,7 @@ describe("/api/validateLink backend validation", () => {
   });
 
   test("rejects when regex does not match", async () => {
-    const { getAllLinks } = await import("@/server/utils/queriesTS");
+    const { getAllLinks } = await import("@/server/utils/queries/artistQueries");
     (getAllLinks as jest.Mock).mockResolvedValue([
       { siteName: "youtube", regex: youtubeRegex }
     ]);
@@ -72,7 +72,7 @@ describe("/api/validateLink backend validation", () => {
   });
 
   test("rejects invalid SoundCloud link (404)", async () => {
-    const { getAllLinks } = await import("@/server/utils/queriesTS");
+    const { getAllLinks } = await import("@/server/utils/queries/artistQueries");
     (getAllLinks as jest.Mock).mockResolvedValue([
       { siteName: "soundcloud", regex: soundcloudRegex }
     ]);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { addUsersToWhitelist, removeFromWhitelist, getWhitelistedUsers, getUserByWallet } from '../queriesTS';
+import { addUsersToWhitelist, removeFromWhitelist, getWhitelistedUsers, getUserByWallet } from '../queries';
 import { getServerAuthSession } from '../../auth';
 
 // Mock dependencies
@@ -7,7 +7,7 @@ jest.mock('../../auth', () => ({
   getServerAuthSession: jest.fn()
 }));
 
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
   addUsersToWhitelist: jest.fn(),
   removeFromWhitelist: jest.fn(),
   getWhitelistedUsers: jest.fn(),

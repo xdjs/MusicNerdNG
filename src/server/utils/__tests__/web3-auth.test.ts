@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { SiweMessage } from 'siwe';
 import { authOptions } from '../../auth';
-import { getUserByWallet, createUser } from '../queriesTS';
+import { getUserByWallet, createUser } from '../queries';
 import { cookies } from 'next/headers';
 import type { CredentialsConfig } from 'next-auth/providers/credentials';
 
@@ -12,7 +12,7 @@ jest.mock('next/headers', () => ({
     }))
 }));
 
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
     getUserByWallet: jest.fn(),
     createUser: jest.fn()
 }));

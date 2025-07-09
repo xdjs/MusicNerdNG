@@ -314,6 +314,13 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                             size="lg" 
                                     type="button"
                                     className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
+                                    onClick={() => {
+                                        if (openConnectModal) {
+                                            shouldPromptRef.current = true;
+                                            sessionStorage.setItem('directLogin', 'true');
+                                            openConnectModal();
+                                        }
+                                    }}
                                 >
                                     {buttonChildren ?? <Wallet color="white" />}
                                 </Button>
