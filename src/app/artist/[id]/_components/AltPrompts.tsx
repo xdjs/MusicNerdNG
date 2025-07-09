@@ -41,21 +41,29 @@ export default function funFacts({ artistName, artistId, availableFactQueries = 
             <Tabs value={activeFact} onValueChange={(value: string) => {
                 setActiveFact(value);
                 if(openFactTab) {
-                    setOpenFactTab(value === "topleft" ? "topl" : null);
+                    setOpenFactTab(value === "topl" ? "topl" : null);
                 }
             }} className="w-full">
-                {/* Add your Tabs content here */}
-                <TabsList>
-                    <TabsTrigger value="topl">Top Left</TabsTrigger>
-                    <TabsTrigger value="topr">Top Right</TabsTrigger>
-                    <TabsTrigger value="botl">Bottom Left</TabsTrigger>
-                    <TabsTrigger value="botr">Bottom Right</TabsTrigger>
-                </TabsList>
+                
+            <TabsList>
+                <TabsTrigger value="topl">Lore Drop</TabsTrigger>
+                <TabsTrigger value="topr">Behind the Scenes</TabsTrigger>
+                <TabsTrigger value="botl">Recent Activity</TabsTrigger>
+                <TabsTrigger value="botr">Surprise Me</TabsTrigger>
+            </TabsList>
                 
                 <TabsContent value="topl">
-                    {factContent || "Loading..."}
+                    
                 </TabsContent>
-                {/* Add other TabsContent components as needed */}
+                <TabsContent value="topr">
+
+                </TabsContent>
+                <TabsContent value="botl">
+
+                </TabsContent>
+                <TabsContent value="botr">
+
+                </TabsContent>
             </Tabs>
         </div>
     );
