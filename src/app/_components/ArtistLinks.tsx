@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
-import { getArtistLinks } from "@/server/utils/queriesTS";
+import { getArtistLinks } from "@/server/utils/queries/artistQueries";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import { Session } from "next-auth";
 import EditablePlatformLink from "./EditablePlatformLink";
@@ -45,12 +45,13 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
     // GENERAL LINKS SECTION – always show the add button at the top and align with other list items
     return (
         <>
+
             {showAddButton && (
-                <li className="list-none pb-2">
-                    <div className="link-item-grid gap-x-4 corners-rounded items-center">
-                        <AddArtistData label="Add data" artist={artist} spotifyImg={spotifyImg} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
-                    </div>
-                </li>
+                         <li className="list-none pb-2">
+                <div className="link-item-grid gap-x-4 corners-rounded items-center">
+                    <AddArtistData label="Add links" artist={artist} spotifyImg={spotifyImg} availableLinks={availableLinks} isOpenOnLoad={isOpenOnLoad} />
+                </div>
+            </li>
             )}
             {artist.spotify && artist.spotify.trim() !== "" && (
                 <StaticPlatformLink
@@ -60,6 +61,7 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
                     image="/siteIcons/spotify_icon.svg"
                 />
             )}
+
             {artistLinks.length === 0 ? (
                 <p>This artist has no links in this section yet, help support them by adding links!</p>
             ) : null}

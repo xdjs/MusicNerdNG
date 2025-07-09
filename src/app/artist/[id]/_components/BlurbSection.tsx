@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { aiPrompts, artists } from "@/server/db/schema";
 import { exists } from "drizzle-orm";
 
 
@@ -24,6 +25,8 @@ export default function BlurbSection({
   const [openModal, setOpenModal] = useState<'wiki' | 'ai' | null>(null);
   const [aiBlurb, setAiBlurb] = useState<string | undefined>();
   const [loadingAi, setLoadingAi] = useState(false);
+
+
 
   useEffect(() => {
     if (activeTab === "ai-generated" && !aiBlurb && !loadingAi) {

@@ -1,4 +1,4 @@
-import { getArtistByProperty } from '@/server/utils/queriesTS';
+import { getArtistByProperty } from '@/server/utils/queries/artistQueries';
 import { artists } from '@/server/db/schema';
 
 async function handler(req: Request) {

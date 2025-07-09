@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
 import { useDebounce } from 'use-debounce';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
-import { searchForUsersByWallet } from '@/server/utils/queriesTS';
+import { searchForUsersByWalletAction as searchForUsersByWallet } from '@/app/actions/serverActions';
 
 const queryClient = new QueryClient()
 

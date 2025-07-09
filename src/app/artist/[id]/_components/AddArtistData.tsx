@@ -25,7 +25,7 @@ import {
     FormItem,
     FormMessage,
 } from "@/components/ui/form";
-import { addArtistData, AddArtistDataResp } from "@/server/utils/queriesTS";;
+import { addArtistDataAction as addArtistData, type AddArtistDataResp } from "@/app/actions/serverActions";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -198,7 +198,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                 className="text-white bg-pastypink flex items-center gap-2 px-3 py-2 min-w-[50px]"
                 onClick={handleClick}
             >
-                <Plus />
+                <Plus className="w-[45px] h-[45px] text-white" />
                 {label && <span className="whitespace-nowrap">{label}</span>}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>

@@ -26,7 +26,7 @@ import {
     FormDescription,
 } from "@/components/ui/form";
 import { addArtist } from "@/app/actions/addArtist";
-import type { AddArtistResp } from "@/server/utils/queriesTS";
+import type { AddArtistResp } from "@/app/actions/serverActions";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
@@ -155,7 +155,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                                     <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                                 </Link>
                                                 <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
-                                                    <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                                    <Button variant="outline">Add links for {addedArtist.artistName}</Button>
                                                 </Link>
                                             </>
                                         }
@@ -224,7 +224,7 @@ export default function AddArtist({ session }: { session: Session | null }) {
                                                 <Button variant="outline">Check out {addedArtist.artistName}</Button>
                                             </Link>
                                             <Link onMouseDown={() => setIsModalOpen(false)} href={`/artist/${addedArtist.artistId}?opADM=1`} key="add-data">
-                                                <Button variant="outline">Add data for {addedArtist.artistName}</Button>
+                                                <Button variant="outline">Add links for {addedArtist.artistName}</Button>
                                             </Link>
                                         </>
                                     }
