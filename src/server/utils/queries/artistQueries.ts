@@ -367,8 +367,10 @@ export async function approveUGC(
     siteName: string,
     artistIdFromUrl: string
 ) {
+    // Sanitize siteName to match column naming convention (remove dots and other non-alphanumerics)
+    const columnName = siteName.replace(/[^a-zA-Z0-9_]/g, "");
     try {
-        if (siteName === "wallets") {
+        if (siteName === "wallets" || siteName === "wallet") {
             await db.execute(sql`
                 UPDATE artists
                 SET wallets = array_append(wallets, ${artistIdFromUrl})
@@ -383,12 +385,12 @@ export async function approveUGC(
         } else {
             await db.execute(sql`
                 UPDATE artists
-                SET ${sql.identifier(siteName)} = ${artistIdFromUrl}
+                SET ${sql.identifier(columnName)} = ${artistIdFromUrl}
                 WHERE id = ${artistId}`);
         }
 
         const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
-        if (promptRelevantColumns.includes(siteName)) {
+        if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
         }
@@ -521,10 +523,18 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
     }
 
     try {
-        await db.execute(sql`UPDATE artists SET ${sql.identifier(siteName)} = NULL WHERE id = ${artistId}`);
+        const columnName = siteName.replace(/[^a-zA-Z0-9_]/g, "");
+        if (columnName === "wallets" || columnName === "wallet") {
+            await db.execute(sql`
+                UPDATE artists
+                SET wallets = array_remove(wallets, ${artistId})
+                WHERE id = ${artistId}`);
+        } else {
+            await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
+        }
 
         const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
-        if (promptRelevantColumns.includes(siteName)) {
+        if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
         }
