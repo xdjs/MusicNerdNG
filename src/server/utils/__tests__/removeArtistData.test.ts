@@ -34,7 +34,7 @@ import { db } from '@/server/db/drizzle';
 const { getServerAuthSession } = require('../../auth') as { getServerAuthSession: jest.Mock };
 
 // Import the function under test after mocks are in place
-const { removeArtistData } = require('../queriesTS');
+const { removeArtistData } = require('../queries');
 
 const ARTIST_ID = 'artist-123';
 const SITE_NAME = 'spotify';

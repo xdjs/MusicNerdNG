@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { getUserById, getUserByWallet, createUser } from '../queriesTS';
+import { getUserById, getUserByWallet, createUser } from '../queries';
 import { getServerAuthSession } from '../../auth';
 import type { Session } from 'next-auth';
 
@@ -8,7 +8,7 @@ jest.mock('../../auth', () => ({
   getServerAuthSession: jest.fn()
 }));
 
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
   getUserById: jest.fn(),
   getUserByWallet: jest.fn(),
   createUser: jest.fn()

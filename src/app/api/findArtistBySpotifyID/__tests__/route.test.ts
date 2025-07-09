@@ -1,9 +1,9 @@
 import '@/test/setup/testEnv';
 import { POST } from '../route';
-import { getArtistByProperty } from '@/server/utils/queriesTS';
+import { getArtistByProperty } from '@/server/utils/queries/artistQueries';
 import { artists } from '@/server/db/schema';
 
-jest.mock('@/server/utils/queriesTS');
+jest.mock('@/server/utils/queries/artistQueries');
 
 if (typeof (Response as any).json !== 'function') {
   (Response as any).json = (data: any, init?: ResponseInit) =>

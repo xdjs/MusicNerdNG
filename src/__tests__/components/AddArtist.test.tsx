@@ -5,7 +5,7 @@ import { addArtist } from '@/app/actions/addArtist';
 import { useToast } from '@/hooks/use-toast';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Session } from 'next-auth';
-import type { AddArtistResp } from '@/server/utils/queriesTS';
+import type { AddArtistResp } from '@/server/utils/queries';
 import type { ComponentType } from 'react';
 
 // Define the AddArtist component type

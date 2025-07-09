@@ -32,6 +32,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
     const { toast } = useToast();
     const { data: session, status } = useSession();
     const [currentStatus, setCurrentStatus] = useState(status);
+    const [hasPendingUGC, setHasPendingUGC] = useState(false);
     const shouldPromptRef = useRef(false);
 
     const { isConnected, address } = useAccount();
@@ -108,6 +109,27 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
             }
         }
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
+
+    // Fetch pending UGC count for admin users
+    useEffect(() => {
+        const fetchPending = async () => {
+            if (session?.user?.isAdmin) {
+                try {
+                    const res = await fetch('/api/pendingUGCCount');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setHasPendingUGC(data.count > 0);
+                    }
+                } catch (e) {
+                    console.error('[Login] Error fetching pending UGC count', e);
+                }
+            } else {
+                setHasPendingUGC(false);
+            }
+        };
+
+        fetchPending();
+    }, [session]);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
@@ -292,6 +314,13 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                             size="lg" 
                                     type="button"
                                     className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
+                                    onClick={() => {
+                                        if (openConnectModal) {
+                                            shouldPromptRef.current = true;
+                                            sessionStorage.setItem('directLogin', 'true');
+                                            openConnectModal();
+                                        }
+                                    }}
                                 >
                                     {buttonChildren ?? <Wallet color="white" />}
                                 </Button>
@@ -322,17 +351,23 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                             ref={ref}
                             type="button" 
                                 size="lg"
-                            className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
+                            className="relative bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
                         >
                             {isplaceholder ? (
                                 <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
                             ) : (
                                 <span className="text-xl">🥳</span>
                             )}
+                            {hasPendingUGC && (
+                                <span className="absolute top-0 right-0 h-3 w-3 rounded-full bg-red-600 border-2 border-white" />
+                            )}
                         </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
+                            {session?.user?.isAdmin && (
+                                <DropdownMenuItem onSelect={() => router.push('/admin')}>Admin Panel</DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                                 onSelect={(e) => {
                                     e.preventDefault();

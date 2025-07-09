@@ -1,9 +1,9 @@
 import { POST } from '@/app/api/searchArtists/route';
-import { searchForArtistByName, getAllSpotifyIds } from '@/server/utils/queriesTS';
+import { searchForArtistByName, getAllSpotifyIds } from '@/server/utils/queries/artistQueries';
 import { getSpotifyHeaders } from '@/server/utils/externalApiQueries';
 import axios from 'axios';
 
-jest.mock('@/server/utils/queriesTS');
+jest.mock('@/server/utils/queries/artistQueries');
 jest.mock('@/server/utils/externalApiQueries');
 jest.mock('axios');
 

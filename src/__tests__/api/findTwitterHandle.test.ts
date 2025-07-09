@@ -1,6 +1,6 @@
 import '../../test/setup/testEnv';
 import { POST } from '@/app/api/findTwitterHandle/route';
-import { getArtistByNameApiResp, getArtistByWalletOrEns } from '@/server/utils/queriesTS';
+import { getArtistByNameApiResp, getArtistByWalletOrEns } from '@/server/utils/queries/artistQueries';
 
 // Polyfill Response.json for the test environment
 if (typeof (Response as any).json !== 'function') {
@@ -11,7 +11,7 @@ if (typeof (Response as any).json !== 'function') {
     });
 }
 
-jest.mock('@/server/utils/queriesTS', () => ({
+jest.mock('@/server/utils/queries/artistQueries', () => ({
   getArtistByNameApiResp: jest.fn(),
   getArtistByWalletOrEns: jest.fn(),
 }));

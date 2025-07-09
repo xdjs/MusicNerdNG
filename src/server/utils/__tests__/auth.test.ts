@@ -18,7 +18,7 @@ const mockConsoleError = jest.fn();
 const mockConsoleLog = jest.fn();
 
 // Mock database functions
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
   __esModule: true,
   getUserByWallet: (...args) => mockGetUserByWallet(...args),
   createUser: (...args) => mockCreateUser(...args),

@@ -1,12 +1,16 @@
 import { addArtist } from '../addArtist';
 import { getServerAuthSession } from '@/server/auth';
 import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
-import { getUserById, sendDiscordMessage, addArtist as dbAddArtist } from '@/server/utils/queriesTS';
+import { addArtist as dbAddArtist } from '@/server/utils/queries/artistQueries';
+import { getUserById } from '@/server/utils/queries/userQueries';
+import { sendDiscordMessage } from '@/server/utils/queries/discord';
 
 // Mock all dependencies
 jest.mock('@/server/auth');
 jest.mock('@/server/utils/externalApiQueries');
-jest.mock('@/server/utils/queriesTS');
+jest.mock('@/server/utils/queries/artistQueries');
+jest.mock('@/server/utils/queries/userQueries');
+jest.mock('@/server/utils/queries/discord');
 
 const mockGetServerAuthSession = getServerAuthSession as jest.MockedFunction<typeof getServerAuthSession>;
 const mockGetSpotifyHeaders = getSpotifyHeaders as jest.MockedFunction<typeof getSpotifyHeaders>;
