@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateWhitelistedUser } from "@/server/utils/queries/userQueries";
+import { updateWhitelistedUser } from "@/server/utils/queriesTS";
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {

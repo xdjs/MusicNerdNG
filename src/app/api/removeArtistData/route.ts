@@ -1,7 +1,7 @@
 "use server"
 
 import { NextResponse } from "next/server";
-import { removeArtistData } from "@/server/utils/queries/artistQueries";
+import { removeArtistData } from "@/server/utils/queriesTS";
 import { getServerAuthSession } from "@/server/auth";
 
 const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';

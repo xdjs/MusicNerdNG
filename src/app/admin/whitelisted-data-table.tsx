@@ -7,10 +7,10 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table";
-import { addUsersToWhitelistAction as addUsersToWhitelist } from "@/app/actions/serverActions";
+import { addUsersToWhitelist } from "@/server/utils/queriesTS";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { removeFromWhitelistAction as removeFromWhitelist } from "@/app/actions/serverActions";
+import { removeFromWhitelist } from "@/server/utils/queriesTS";
 import {
     Table,
     TableBody,

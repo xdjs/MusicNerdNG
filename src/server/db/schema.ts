@@ -1,6 +1,5 @@
 import { pgTable, foreignKey, uuid, timestamp, unique, text, integer, boolean, pgEnum, serial, varchar, jsonb, decimal } from "drizzle-orm/pg-core"
 import { is, relations, sql } from "drizzle-orm"
-import { json } from "stream/consumers";
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
 
 
@@ -218,11 +217,9 @@ export const coverageReports = pgTable('coverage_reports', {
 
 export const aiPrompts = pgTable("aiprompts", {
 	id: uuid("prompt_id").primaryKey().defaultRandom(),
-	promptName: text("prompt_name").default("unnamed_prompt"),
 	promptBeforeName: text("prompt_before_name").notNull(),
 	promptAfterName: text("prompt_after_name").notNull(),
-	isDefault: boolean("is_default").default(false),
-	isEnabled: boolean("is_enabled").default(false),
+	isActive: boolean("is_active").default(false),
 	createdAt: timestamp("created_at").defaultNow(),
   }
 )

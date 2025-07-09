@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getAllLinks } from '@/server/utils/queries/artistQueries';
+import { getAllLinks } from '@/server/utils/queriesTS';
 
 // Platform regexes and error phrases
 const platforms = [

@@ -29,14 +29,13 @@ describe('UGC Stats Page', () => {
         mockGetLeaderboard.mockResolvedValue([]);
     });
 
-    it('should show dashboard when not authenticated', async () => {
+    it('should show login page when not authenticated and wallet required', async () => {
         mockGetServerAuthSession.mockResolvedValue(null);
 
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('Leaderboard')).toBeInTheDocument();
-        expect(screen.getByText('User Profile')).toBeInTheDocument();
+        expect(screen.getByText('Login to view UGC Stats')).toBeInTheDocument();
     });
 
     it('should show dashboard when walletless mode is enabled', async () => {
@@ -49,7 +48,7 @@ describe('UGC Stats Page', () => {
         render(page);
 
         // Should show the dashboard with leaderboard
-        expect(screen.getByText('User Profile')).toBeInTheDocument();
+        expect(screen.getByText('UGC Stats')).toBeInTheDocument();
         expect(screen.getByText('Leaderboard')).toBeInTheDocument();
     });
 
@@ -81,6 +80,6 @@ describe('UGC Stats Page', () => {
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('User Profile')).toBeInTheDocument();
+        expect(screen.getByText('UGC Stats')).toBeInTheDocument();
     });
 }); 

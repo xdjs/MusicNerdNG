@@ -2,7 +2,6 @@
 "use client"
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useEffect, useState, useCallback, forwardRef, useRef } from 'react';
 import { useSession, signOut } from "next-auth/react";
 import { Wallet } from 'lucide-react';
@@ -282,47 +281,37 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 }
 
                 if (!isConnected || status !== "authenticated") {
-                    // User is not logged in – show dropdown with Log In option.
+                    console.log("[Login] User not connected or not authenticated, showing connect button");
                     return (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
                         <Button 
                             ref={ref}
+                            className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`} 
                             id="login-btn" 
                             size="lg" 
-                                    type="button"
-                                    className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
-                                >
-                                    {buttonChildren ?? <Wallet color="white" />}
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
-                                <DropdownMenuItem
-                                    onSelect={() => {
+                            onClick={() => {
                                 if (openConnectModal) {
+                                    // Set flag to indicate explicit user action
                                     shouldPromptRef.current = true;
                                     sessionStorage.setItem('directLogin', 'true');
                                     openConnectModal();
                                 }
                             }}
-                                >
-                                    Log In
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                            type="button"
+                        >
+                            {buttonChildren ?? <Wallet color="white" />}
+                        </Button>
                     );
                 }
 
-                // User is authenticated – show dropdown with profile and logout options.
+                console.log("[Login] User connected and authenticated, showing account button");
                 return (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                    <div style={{ display: 'flex', gap: 12 }}>
                         <Button 
                             ref={ref}
+                            onClick={openAccountModal}
                             type="button" 
-                                size="lg"
                             className="bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 
+                            size="lg"
                         >
                             {isplaceholder ? (
                                 <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
@@ -330,19 +319,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                                 <span className="text-xl">🥳</span>
                             )}
                         </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
-                            <DropdownMenuItem
-                                onSelect={(e) => {
-                                    e.preventDefault();
-                                    handleDisconnect();
-                                }}
-                            >
-                                Log Out
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                    </div>
                 );
             }}
         </ConnectButton.Custom>

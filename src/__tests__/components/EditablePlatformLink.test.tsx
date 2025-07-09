@@ -4,10 +4,6 @@ import '@testing-library/jest-dom';
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: jest.fn() }),
 }));
-
-jest.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({ toast: jest.fn() }),
-}));
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import EditablePlatformLink from '@/app/_components/EditablePlatformLink';

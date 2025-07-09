@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getAllLinks } from '@/server/utils/queries/artistQueries';
+import { getAllLinks } from '@/server/utils/queriesTS';
 
 export async function GET(req: NextRequest) {
   const allLinks = await getAllLinks();
