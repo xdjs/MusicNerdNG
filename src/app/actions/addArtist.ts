@@ -2,9 +2,9 @@
 
 import { getServerAuthSession } from "@/server/auth";
 import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
-import { getUserById } from '@/server/utils/queries/userQueries';
-import { sendDiscordMessage } from '@/server/utils/queries/discord';
-import { addArtist as dbAddArtist, type AddArtistResp } from "@/server/utils/queries/artistQueries";
+import { getUserById, sendDiscordMessage } from '@/server/utils/queriesTS';
+import { addArtist as dbAddArtist } from "@/server/utils/queriesTS";
+import type { AddArtistResp } from "@/server/utils/queriesTS";
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     console.log("[Server Action] Starting addArtist for spotifyId:", spotifyId);

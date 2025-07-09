@@ -1,5 +1,4 @@
-import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
-import { getUserById } from "@/server/utils/queries/userQueries";
+import { getArtistById, getAllLinks, getUserById } from "@/server/utils/queriesTS";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import ArtistLinks from "@/app/_components/ArtistLinks";
@@ -54,7 +53,15 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                 <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
                             </AspectRatio>
-                            {/* Add links button moved below to the "Check out" section */}
+                            <div className="w-full flex justify-center">
+                                <AddArtistData 
+                                    label="Add data" 
+                                    artist={artist} 
+                                    spotifyImg={spotifyImg.artistImage ?? ""} 
+                                    availableLinks={urlMapList} 
+                                    isOpenOnLoad={false} 
+                                />
+                            </div>
                         </div>
                         {/* Right Column: Name and Description */}
                         <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
@@ -68,7 +75,6 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
                             </div>
                             <BlurbSection 
-                                key={artist.bio ?? ""}
                                 wikiBlurb={wiki?.blurb}
                                 wikiLink={wiki?.link}
                                 artistName={artist.name ?? ""}
@@ -77,18 +83,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                     </div>
                     <div className="space-y-6 mt-8">
-                        <div className="flex items-center justify-between">
                         <strong className="text-black text-2xl">
-                            Check out {artist?.name} on other <span className="whitespace-nowrap">media platforms</span>!
+                            Check out {artist?.name} on other media platforms!
                         </strong>
-                            <AddArtistData 
-                                label="Add links" 
-                                artist={artist} 
-                                spotifyImg={spotifyImg.artistImage ?? ""} 
-                                availableLinks={urlMapList} 
-                                isOpenOnLoad={false} 
-                            />
-                        </div>
                         <div className="space-y-4">
                             {(artist) &&
                                 <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} showAddButton={false} />

@@ -5,7 +5,6 @@ import { useContext, useState } from "react";
 import { EditModeContext } from "./EditModeContext";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/hooks/use-toast";
 
 interface Props {
     link: string;
@@ -19,32 +18,19 @@ export default function EditablePlatformLink({ link, descriptor, image, siteName
     const { isEditing } = useContext(EditModeContext);
     const router = useRouter();
     const [isDeleting, setIsDeleting] = useState(false);
-    const { toast } = useToast();
 
     async function handleDelete(e: React.MouseEvent) {
         e.preventDefault();
-        if (!window.confirm(`Remove ${link}?`)) return;
+        if (!window.confirm(`Remove ${descriptor}?`)) return;
         setIsDeleting(true);
         try {
-            const response = await fetch("/api/removeArtistData", {
+            await fetch("/api/removeArtistData", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({ artistId, siteName }),
             });
-            if (response.ok) {
-                const formattedSite = siteName.charAt(0).toUpperCase() + siteName.slice(1);
-                toast({
-                    title: `${formattedSite} link has been removed`,
-                });
-            } else {
-                const data = await response.json().catch(() => ({}));
-                toast({
-                    title: "Error removing metadata",
-                    description: data?.message ?? "Please try again.",
-                });
-            }
         } catch (err) {
             console.error(err);
         } finally {

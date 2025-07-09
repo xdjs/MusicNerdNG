@@ -174,21 +174,4 @@ console.error = (...args) => {
 
 // Ensure no Discord webhook during unit tests unless explicitly set
 // @ts-ignore
-delete (process.env as any).DISCORD_WEBHOOK_URL;
-
-// Mock the OpenAI SDK to avoid real API calls and environment errors in JSDOM
-jest.mock('openai', () => {
-    class MockChatCompletion {
-        completions = {
-            create: jest.fn().mockResolvedValue({ choices: [{ message: { content: 'mocked response' } }] })
-        };
-    }
-    return {
-        __esModule: true,
-        default: class MockOpenAI {
-            constructor() {
-                this.chat = new MockChatCompletion();
-            }
-        }
-    };
-}); 
+delete (process.env as any).DISCORD_WEBHOOK_URL; 

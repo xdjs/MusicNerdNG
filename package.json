@@ -19,7 +19,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ensdomains/ensjs": "^4.0.2",
+    "@ensdomains/ensjs": "^2.0.1",
     "@google/generative-ai": "^0.21.0",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
@@ -115,10 +115,6 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.5"
     },
-    "esbuild": "^0.25.5",
-
-    "drizzle-kit": {
-      "esbuild": "^0.25.5"
-    }
+    "esbuild": "^0.25.5"
   }
 }
