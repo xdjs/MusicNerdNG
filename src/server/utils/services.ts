@@ -35,18 +35,11 @@ type SpotifyDataType = {
 }
 
 export const getArtistDetailsText = (artist: Artist, spotifyData: SpotifyDataType) => {
-    let web3Platforms = getArtistSplitPlatforms(artist).web3Platforms
     const numSpotifyReleases = (spotifyData != null && spotifyData.releases != null) ? spotifyData.releases : 0;
-    if (web3Platforms.length <= 0 && numSpotifyReleases <= 0) return "";
+    if (numSpotifyReleases <= 0) return "";
 
-    if (web3Platforms.length <= 0 && numSpotifyReleases > 0) return `${numSpotifyReleases} releases on Spotify`;
-
-    const prefix = numSpotifyReleases > 0 ? `${numSpotifyReleases} releases on Spotify; NFTs released on ` : "NFTs released on "
-    if (web3Platforms.length < 2) return prefix + web3Platforms[0]
-
-    if (web3Platforms.length > 1)
-        web3Platforms[-1] = `and ${web3Platforms[-1]}`
-    return prefix + web3Platforms.join(", ")
+    if (numSpotifyReleases > 0) return `${numSpotifyReleases} releases on Spotify`;
+    return `${numSpotifyReleases} releases on Spotify`;
 }
 
 export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is keyof T {
