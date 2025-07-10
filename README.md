@@ -103,3 +103,8 @@ npm run test:coverage
 - Jest
 - React Query
 - Radix UI
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
+
