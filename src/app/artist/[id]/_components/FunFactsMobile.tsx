@@ -44,33 +44,39 @@ export default function FunFactsMobile({ artistId }: FunFactsMobileProps) {
             <Button
               key={type}
               variant="outline"
-              className="w-full flex items-center justify-center gap-4 text-base font-semibold border-2"
+              className="w-full flex items-center justify-center text-base font-semibold border-2"
               onClick={() => fetchFact(type)}
             >
-              <span className="text-2xl">{icon}</span>
-              <span>{label}</span>
+              <span className="flex items-baseline gap-4">
+                <span
+                  className={`text-2xl ${type === "lore" || type === "bts" ? "relative -top-0.5" : ""}`}
+                >
+                  {icon}
+                </span>
+                <span className="leading-none">{label}</span>
+              </span>
             </Button>
           ))}
         </div>
 
         {/* Overlay Fact Box */}
         {(loading || fact !== null) && (
-          <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 overflow-y-auto p-4">
+          <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 overflow-y-auto pt-0.5 pb-0.5 pr-0.5 pl-4">
             {/* Close button */}
             <button
-              className="ml-auto text-lg font-bold text-gray-700 hover:text-black"
+              className="sticky top-0.5 ml-auto mr-0.5 flex h-6 w-6 items-center justify-center text-xl font-bold text-white border-2 border-gray-300 rounded-md bg-gray-300 hover:bg-gray-400 focus:outline-none leading-none z-10"
               aria-label="Close fun fact"
               onClick={() => {
                 setFact(null);
                 setLoading(false);
               }}
             >
-              ×
+              <span className="relative -top-0.5">×</span>
             </button>
             {loading ? (
               <p className="text-center text-sm">Loading...</p>
             ) : (
-              <p className="text-sm text-black whitespace-pre-line mt-2">{fact}</p>
+              <p className="text-sm text-black whitespace-pre-line mt-0 pr-7">{fact}</p>
             )}
           </div>
         )}
