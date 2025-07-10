@@ -78,17 +78,19 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                     </div>
                     <div className="space-y-6 mt-8">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
                             <strong className="text-black text-2xl">
-                                Check out {artist?.name} on other <span className="whitespace-nowrap">media platforms</span>!
+                                Check out {artist?.name} on <span className="whitespace-nowrap">other media platforms</span>!
                             </strong>
-                            <AddArtistData 
-                                label="Add links" 
-                                artist={artist} 
-                                spotifyImg={spotifyImg.artistImage ?? ""} 
-                                availableLinks={urlMapList} 
-                                isOpenOnLoad={false} 
-                            />
+                            <div className="mt-4 md:mt-0 md:ml-4">
+                                <AddArtistData 
+                                    label="Add links" 
+                                    artist={artist} 
+                                    spotifyImg={spotifyImg.artistImage ?? ""} 
+                                    availableLinks={urlMapList} 
+                                    isOpenOnLoad={false} 
+                                />
+                            </div>
                         </div>
                         <div className="space-y-4">
                             {(artist) &&
