@@ -54,13 +54,16 @@ export default function FunFactsMobile({ artistId }: FunFactsMobileProps) {
         </div>
 
         {/* Overlay Fact Box */}
-        {fact && (
+        {(loading || fact !== null) && (
           <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 overflow-y-auto p-4">
             {/* Close button */}
             <button
               className="ml-auto text-lg font-bold text-gray-700 hover:text-black"
               aria-label="Close fun fact"
-              onClick={() => setFact(null)}
+              onClick={() => {
+                setFact(null);
+                setLoading(false);
+              }}
             >
               ×
             </button>
