@@ -11,6 +11,7 @@ import { EditModeProvider } from "@/app/_components/EditModeContext";
 import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
+import FunFacts from "./_components/AltPrompts";
 
 type ArtistProfileProps = {
     params: { id: string };
