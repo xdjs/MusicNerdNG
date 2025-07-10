@@ -45,7 +45,7 @@ export default function funFacts({ artistName, artistId, availableFactQueries = 
                 }
             }} className="w-full">
                 
-            <TabsList>
+            <TabsList className="grid w-full grid-cols-2 grid-rows-2">
                 <TabsTrigger value="topl">Lore Drop</TabsTrigger>
                 <TabsTrigger value="topr">Behind the Scenes</TabsTrigger>
                 <TabsTrigger value="botl">Recent Activity</TabsTrigger>
@@ -53,16 +53,35 @@ export default function funFacts({ artistName, artistId, availableFactQueries = 
             </TabsList>
                 
                 <TabsContent value="topl">
-                    
+                    <div className="relative">
+                        <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
+                            <p className="text-black">{factContent}</p>
+                        </div>
+                    </div>
                 </TabsContent>
+
                 <TabsContent value="topr">
-
+                <div className="relative">
+                        <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
+                            <p className="text-black">{factContent}</p>
+                        </div>
+                    </div>
                 </TabsContent>
+
                 <TabsContent value="botl">
-
+                    <div className="relative">
+                        <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
+                            <p className="text-black">{factContent}</p>
+                        </div>
+                    </div>
                 </TabsContent>
-                <TabsContent value="botr">
 
+                <TabsContent value="botr">
+                <div className="relative">
+                        <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
+                            <p className="text-black">{factContent}</p>
+                        </div>
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>
