@@ -35,7 +35,7 @@ export default function FunFactsMobile({ artistId }: FunFactsMobileProps) {
   ];
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 space-y-4 md:hidden">
+    <div className="bg-white rounded-lg shadow-2xl p-4 space-y-4 overflow-x-hidden md:hidden">
       <h2 className="text-2xl font-bold text-black">Fun Facts</h2>
       <div className="relative">
         {/* Buttons List */}
@@ -61,7 +61,7 @@ export default function FunFactsMobile({ artistId }: FunFactsMobileProps) {
 
         {/* Overlay Fact Box */}
         {(loading || fact !== null) && (
-          <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 overflow-y-auto pt-0.5 pb-0.5 pr-0.5 pl-4">
+          <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 shadow-lg overflow-y-auto overflow-x-hidden pt-0.5 pb-0.5 pr-0.5 pl-4">
             {/* Close button */}
             <button
               className="sticky top-0.5 ml-auto mr-0.5 flex h-6 w-6 items-center justify-center text-xl font-bold text-white border-2 border-gray-300 rounded-md bg-gray-300 hover:bg-gray-400 focus:outline-none leading-none z-10"

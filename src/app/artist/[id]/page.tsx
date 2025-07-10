@@ -79,9 +79,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     </div>
                     <div className="space-y-6 mt-8">
                         <div className="flex items-center justify-between">
-                        <strong className="text-black text-2xl">
-                            Check out {artist?.name} on other <span className="whitespace-nowrap">media platforms</span>!
-                        </strong>
+                            <strong className="text-black text-2xl">
+                                Check out {artist?.name} on other <span className="whitespace-nowrap">media platforms</span>!
+                            </strong>
                             <AddArtistData 
                                 label="Add links" 
                                 artist={artist} 
@@ -98,7 +98,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     </div>
                 </div>
                 {/* Support Artist Box - Fixed Sidebar */}
-                <div className="space-y-4 bg-white p-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
+                <div className="space-y-4 bg-white p-6 rounded-lg shadow-2xl flex flex-col md:w-1/3">
                     <div className="top-0 sticky space-y-6">
                         <div className="text-black text-2xl">
                             <strong>
