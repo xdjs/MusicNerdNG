@@ -3,7 +3,7 @@
 import { jest } from '@jest/globals';
 
 // Mock QueriesTS module before dynamic import
-jest.mock('@/server/utils/queriesTS', () => ({
+jest.mock('@/server/utils/queries/leaderboardQueries', () => ({
     __esModule: true,
     getLeaderboard: jest.fn(),
 }));
@@ -36,7 +36,7 @@ describe('Leaderboard API', () => {
             },
         ];
 
-        const { getLeaderboard } = await import('@/server/utils/queriesTS');
+        const { getLeaderboard } = await import('@/server/utils/queries/leaderboardQueries');
         (getLeaderboard as jest.Mock).mockResolvedValue(mockLeaderboard);
 
         const { GET } = await import('../route');
@@ -51,7 +51,7 @@ describe('Leaderboard API', () => {
     });
 
     it('should handle errors gracefully', async () => {
-        const { getLeaderboard } = await import('@/server/utils/queriesTS');
+        const { getLeaderboard } = await import('@/server/utils/queries/leaderboardQueries');
         (getLeaderboard as jest.Mock).mockRejectedValue(new Error('Database error'));
 
         const { GET } = await import('../route');

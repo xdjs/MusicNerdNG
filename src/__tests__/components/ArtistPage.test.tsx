@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import ArtistProfile from '@/app/artist/[id]/page';
-import { getArtistById, getArtistLinks, getAllLinks } from '@/server/utils/queriesTS';
+import { getArtistById, getArtistLinks, getAllLinks } from '@/server/utils/queries/artistQueries';
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from '@/server/utils/externalApiQueries';
 import { getServerAuthSession } from '@/server/auth';
 
@@ -44,7 +44,7 @@ jest.mock('@/app/_components/LoadingPage', () => ({
 }));
 
 // Mock server actions
-jest.mock('@/server/utils/queriesTS', () => ({
+jest.mock('@/server/utils/queries/artistQueries', () => ({
     getArtistById: jest.fn(),
     getArtistLinks: jest.fn(),
     getAllLinks: jest.fn(),
@@ -150,7 +150,7 @@ describe('ArtistPage', () => {
         expect(screen.getByText('Test Artist')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
-        expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
+        expect(screen.getByText('Loading summary...')).toBeInTheDocument();
         expect(screen.getByText('Music Nerd')).toBeInTheDocument();
     });
 

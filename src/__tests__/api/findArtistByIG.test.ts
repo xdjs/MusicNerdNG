@@ -1,6 +1,6 @@
 import '../../test/setup/testEnv';
 import { POST } from '@/app/api/findArtistByIG/route';
-import { getArtistByProperty } from '@/server/utils/queriesTS';
+import { getArtistByProperty } from '@/server/utils/queries/artistQueries';
 import { artists } from '@/server/db/schema';
 
 // Polyfill Response.json for the test environment
@@ -15,7 +15,7 @@ if (!(Response as any).json) {
         });
 }
 
-jest.mock('@/server/utils/queriesTS', () => ({
+jest.mock('@/server/utils/queries/artistQueries', () => ({
     getArtistByProperty: jest.fn(),
 }));
 

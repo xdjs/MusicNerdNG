@@ -1,4 +1,5 @@
-import { getArtistById, getAllLinks, getUserById } from "@/server/utils/queriesTS";
+import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
+import { getUserById } from "@/server/utils/queries/userQueries";
 import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import ArtistLinks from "@/app/_components/ArtistLinks";

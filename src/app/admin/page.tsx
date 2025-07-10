@@ -1,8 +1,8 @@
 import { getServerAuthSession } from "@/server/auth";
-import { getUserById, getPendingUGC } from "@/server/utils/queriesTS";
+import { getUserById, getWhitelistedUsers } from "@/server/utils/queries/userQueries";
+import { getPendingUGC } from "@/server/utils/queries/artistQueries";
 import UGCDataTable from "./ugc-data-table";        
 import { ugcColumns } from "./columns";
-import { getWhitelistedUsers } from "@/server/utils/queriesTS";
 import { whitelistedColumns } from "./columns";
 import WhitelistedDataTable from "./whitelisted-data-table";
 import PleaseLoginPage from "@/app/_components/PleaseLoginPage";

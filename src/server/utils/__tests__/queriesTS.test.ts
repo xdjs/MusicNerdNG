@@ -27,7 +27,7 @@ import {
     sendDiscordMessage,
     getAllSpotifyIds,
     getLeaderboard
-} from '../queriesTS';
+} from '../queries';
 import { hasSpotifyCredentials } from '../setup/testEnv';
 import { ugcresearch } from '@/server/db/schema';
 

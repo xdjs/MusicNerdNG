@@ -8,7 +8,7 @@ import {
 import type { Artist } from "../../db/DbTypes";
 
 // Mock the getAllLinks function used inside extractArtistId
-jest.mock("../queriesTS", () => ({
+jest.mock("../queries", () => ({
   // Provide deterministic regex patterns for a few platforms
   getAllLinks: jest.fn().mockResolvedValue([
     {
@@ -63,16 +63,14 @@ describe("utils/services", () => {
       expect(text).toBe("3 releases on Spotify");
     });
 
-    it("returns web3 platform text when only one platform", () => {
+    it("returns empty string when only web3 platform and zero releases", () => {
       const text = getArtistDetailsText({ catalog: "cat" } as unknown as Artist, { releases: 0 });
-      expect(text).toBe("NFTs released on Catalog");
+      expect(text).toBe("");
     });
 
-    it("returns combined text when both releases and multiple platforms", () => {
+    it("returns spotify release text when releases present and platforms available", () => {
       const text = getArtistDetailsText(baseArtist, { releases: 5 });
-      // Because of the implementation bug with negative index, just assert that prefix exists and catalog is included
-      expect(text).toContain("5 releases on Spotify");
-      expect(text).toContain("Catalog");
+      expect(text).toBe("5 releases on Spotify");
     });
   });
 

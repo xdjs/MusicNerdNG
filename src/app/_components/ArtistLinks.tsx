@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
-import { getArtistLinks } from "@/server/utils/queriesTS";
+import { getArtistLinks } from "@/server/utils/queries/artistQueries";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import { Session } from "next-auth";
 import EditablePlatformLink from "./EditablePlatformLink";

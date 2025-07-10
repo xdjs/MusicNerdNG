@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
-import { getLeaderboard, getLeaderboardInRange } from "@/server/utils/queriesTS";
+import { getLeaderboard, getLeaderboardInRange } from "@/server/utils/queries/leaderboardQueries";
 
 export const revalidate = 60; // cache for 1 minute
 

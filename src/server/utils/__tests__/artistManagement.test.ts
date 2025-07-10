@@ -37,7 +37,7 @@ jest.mock('next/headers', () => ({
 }));
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { addArtist } from '../queriesTS';
+import { addArtist } from '../queries';
 import { setupMocks } from './__utils__/testUtils';
 import { artists } from '@/server/db/schema';
 

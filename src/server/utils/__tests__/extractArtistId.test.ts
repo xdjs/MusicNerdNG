@@ -1,7 +1,7 @@
 import { extractArtistId } from '../services';
 
 // Mock getAllLinks to supply a minimal mapping for X (Twitter) links
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
   getAllLinks: jest.fn().mockResolvedValue([
     {
       // Regex captures the username portion of an x.com URL, ignoring any query params

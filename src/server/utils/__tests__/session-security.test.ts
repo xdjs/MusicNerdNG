@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { authOptions } from '@/server/auth';
 import { getServerAuthSession } from '@/server/auth';
-import { getUserById } from '../queriesTS';
+import { getUserById } from '../queries';
 import type { User, Account, Profile, Session } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import type { AdapterUser } from 'next-auth/adapters';
@@ -67,7 +67,7 @@ jest.mock('@/server/auth', () => {
 });
 
 // Mock database queries
-jest.mock('../queriesTS', () => ({
+jest.mock('../queries', () => ({
     getUserById: jest.fn()
 }));
 

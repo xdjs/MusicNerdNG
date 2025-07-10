@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 import { NEXTAUTH_URL } from "@/env";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { SiweMessage } from "siwe";
-import { getUserByWallet, createUser } from "@/server/utils/queriesTS";
+import { getUserByWallet, createUser } from "@/server/utils/queries/userQueries";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -21,6 +21,7 @@ declare module "next-auth" {
       id: string;
       walletAddress?: string;
       isWhiteListed?: boolean;
+      isAdmin?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -35,6 +36,7 @@ declare module "next-auth" {
     name?: string;
     isSignupComplete: boolean;
     isWhiteListed?: boolean;
+    isAdmin?: boolean;
   }
 }
 
@@ -42,6 +44,7 @@ declare module "next-auth/jwt" {
   interface JWT {
     walletAddress?: string;
     isWhiteListed?: boolean;
+    isAdmin?: boolean;
   }
 }
 
@@ -59,6 +62,7 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.name = user.name || user.username;
         token.isWhiteListed = user.isWhiteListed;
+        token.isAdmin = user.isAdmin;
       }
       return token;
     },
@@ -72,6 +76,7 @@ export const authOptions: NextAuthOptions = {
           email: token.email,
           name: token.name,
           isWhiteListed: token.isWhiteListed,
+          isAdmin: token.isAdmin,
         },
       }
     },
@@ -122,6 +127,7 @@ export const authOptions: NextAuthOptions = {
               username: 'guest',
               isSignupComplete: true,
               isWhiteListed: true, // Make temporary user whitelisted
+              isAdmin: false,
             };
           }
 
@@ -180,6 +186,7 @@ export const authOptions: NextAuthOptions = {
             username: user.username,
             isSignupComplete: true,
             isWhiteListed: user.isWhiteListed, // Include whitelist status from database
+            isAdmin: user.isAdmin,
           };
         } catch (e) {
           console.error("[Auth] Error during authorization:", e);

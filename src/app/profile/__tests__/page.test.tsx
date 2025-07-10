@@ -3,17 +3,33 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Page from '../page';
 import { getServerAuthSession } from '@/server/auth';
-import { getUserById, getLeaderboard } from '@/server/utils/queriesTS';
+import { getUserById } from '@/server/utils/queries/userQueries';
+import { getLeaderboard } from '@/server/utils/queries/leaderboardQueries';
 
 // Mock the dependencies
 jest.mock('@/server/auth', () => ({
     getServerAuthSession: jest.fn(),
 }));
 
-jest.mock('@/server/utils/queriesTS', () => ({
+jest.mock('@/server/utils/queries/userQueries', () => ({
     getUserById: jest.fn(),
+}));
+
+jest.mock('@/server/utils/queries/leaderboardQueries', () => ({
     getLeaderboard: jest.fn(),
 }));
+
+// Mock RainbowKit to avoid ESM issues in this test file
+jest.mock('@rainbow-me/rainbowkit', () => {
+    const openConnectModal = jest.fn();
+    return {
+        __esModule: true,
+        useConnectModal: () => ({ openConnectModal }),
+        ConnectButton: {
+            Custom: ({ children }: { children: (props: any) => React.ReactNode }) => children({ mounted: true, openConnectModal }),
+        },
+    };
+});
 
 const mockGetServerAuthSession = getServerAuthSession as jest.MockedFunction<typeof getServerAuthSession>;
 const mockGetUserById = getUserById as jest.MockedFunction<typeof getUserById>;
