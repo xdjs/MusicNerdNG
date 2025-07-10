@@ -39,25 +39,23 @@ export default function FunFactsMobile({ artistId }: FunFactsMobileProps) {
       <h2 className="text-2xl font-bold text-black">Fun Facts</h2>
       <div className="relative">
         {/* Buttons List */}
-        {!fact && (
-          <div className="flex flex-col space-y-2">
-            {buttons.map(({ type, label, icon }) => (
-              <Button
-                key={type}
-                variant="outline"
-                className="w-full flex items-center justify-center gap-4 text-base font-semibold border-2"
-                onClick={() => fetchFact(type)}
-              >
-                <span className="text-2xl">{icon}</span>
-                <span className="">{label}</span>
-              </Button>
-            ))}
-          </div>
-        )}
+        <div className={fact ? "invisible pointer-events-none" : "flex flex-col space-y-2"}>
+          {buttons.map(({ type, label, icon }) => (
+            <Button
+              key={type}
+              variant="outline"
+              className="w-full flex items-center justify-center gap-4 text-base font-semibold border-2"
+              onClick={() => fetchFact(type)}
+            >
+              <span className="text-2xl">{icon}</span>
+              <span>{label}</span>
+            </Button>
+          ))}
+        </div>
 
         {/* Overlay Fact Box */}
         {fact && (
-          <div className="absolute inset-0 flex flex-col bg-white rounded-lg p-4 border-2 border-gray-300 overflow-y-auto">
+          <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 overflow-y-auto p-4">
             {/* Close button */}
             <button
               className="ml-auto text-lg font-bold text-gray-700 hover:text-black"
