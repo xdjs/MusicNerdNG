@@ -41,7 +41,7 @@ export default function funFacts({ artistName, artistId, availableFactQueries = 
             <Tabs value={activeFact} onValueChange={(value: string) => {
                 setActiveFact(value);
                 if(openFactTab) {
-                    setOpenFactTab(value === "topl" ? "topl" : null);
+                    setOpenFactTab(value as 'topl' | 'topr' | 'botl' | 'botr');
                 }
             }} className="w-full">
                 
@@ -55,7 +55,14 @@ export default function funFacts({ artistName, artistId, availableFactQueries = 
                 <TabsContent value="topl">
                     <div className="relative">
                         <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
-                            <p className="text-black">{factContent}</p>
+                            {loadingFact === true ? (
+                                <p className="text-gray-500 italic">Loading fact...</p>
+                            ) : (activeFact ? (
+                                <>
+                                    <p className="text-black">${activeFact}</p>
+                                </>
+                                ) : <p className="text-black">Error finding fact</p>
+                            )}
                         </div>
                     </div>
                 </TabsContent>
@@ -63,23 +70,44 @@ export default function funFacts({ artistName, artistId, availableFactQueries = 
                 <TabsContent value="topr">
                 <div className="relative">
                         <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
-                            <p className="text-black">{factContent}</p>
+                            {loadingFact === true ? (
+                                <p className="text-gray-500 italic">Loading fact...</p>
+                            ) : (activeFact ? (
+                                <>
+                                    <p className="text-black">${activeFact}</p>
+                                </>
+                                ) : <p className="text-black">Error finding fact</p>
+                            )}
                         </div>
                     </div>
                 </TabsContent>
 
                 <TabsContent value="botl">
-                    <div className="relative">
+                <div className="relative">
                         <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
-                            <p className="text-black">{factContent}</p>
+                            {loadingFact === true ? (
+                                <p className="text-gray-500 italic">Loading fact...</p>
+                            ) : (activeFact ? (
+                                <>
+                                    <p className="text-black">${activeFact}</p>
+                                </>
+                                ) : <p className="text-black">Error finding fact</p>
+                            )}
                         </div>
                     </div>
                 </TabsContent>
 
                 <TabsContent value="botr">
-                <div className="relative">
+                    <div className="relative">
                         <div className="h-28 relative border border-gray-200 rounded-lg bg-white p-3 overflow-hidden">
-                            <p className="text-black">{factContent}</p>
+                            {loadingFact === true ? (
+                                <p className="text-gray-500 italic">Loading fact...</p>
+                            ) : (activeFact ? (
+                                <>
+                                    <p className="text-black">${activeFact}</p>
+                                </>
+                                ) : <p className="text-black">Error finding fact</p>
+                            )}
                         </div>
                     </div>
                 </TabsContent>
