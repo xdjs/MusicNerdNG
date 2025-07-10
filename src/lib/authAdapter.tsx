@@ -4,7 +4,7 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
-    console.log("[AuthAdapter] Getting CSRF token for nonce");
+    console.debug("[AuthAdapter] Getting CSRF token for nonce");
     
     // Try to get the CSRF token multiple times with a delay
     let token = null;
@@ -13,7 +13,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
     
     while (!token && attempts < maxAttempts) {
       token = await getCsrfToken();
-      console.log("[AuthAdapter] Attempt", attempts + 1, "CSRF token:", token);
+      console.debug("[AuthAdapter] Attempt", attempts + 1);
       
       if (!token) {
         attempts++;
@@ -35,9 +35,8 @@ export const authenticationAdapter = createAuthenticationAdapter({
     // Get domain without port number
     const domain = window.location.hostname.split(':')[0];
     
-    console.log("[AuthAdapter] Creating SIWE message:", { 
-      nonce, 
-      address, 
+    console.debug("[AuthAdapter] Creating SIWE message", {
+      address,
       chainId,
       domain,
       origin: window.location.origin
@@ -60,19 +59,17 @@ export const authenticationAdapter = createAuthenticationAdapter({
       issuedAt: new Date().toISOString(),
       expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
     });
-    console.log("[AuthAdapter] Created message:", message);
+    console.debug("[AuthAdapter] Created SIWE message");
     return message;
   },
   getMessageBody: ({ message }: { message: SiweMessage }) => {
     const messageBody = message.prepareMessage();
-    console.log("[AuthAdapter] Prepared message body:", messageBody);
+    console.debug("[AuthAdapter] Prepared message body");
     return messageBody;
   },
   verify: async ({ message, signature }) => {
     try {
-      console.log("[AuthAdapter] Starting verification with:", {
-        message: JSON.stringify(message),
-        signature,
+      console.debug("[AuthAdapter] Starting verification", {
         domain: message.domain,
         origin: window.location.origin
       });
@@ -91,7 +88,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
         callbackUrl: window.location.origin,
       });
 
-      console.log("[AuthAdapter] Sign in response:", response);
+      console.debug("[AuthAdapter] Sign in response received");
 
       if (response?.error) {
         console.error("[AuthAdapter] Sign in failed:", response.error);
@@ -109,7 +106,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
   },
   signOut: async () => {
     try {
-      console.log("[AuthAdapter] Signing out");
+      console.debug("[AuthAdapter] Signing out");
       
       // Clear all session data
       sessionStorage.clear();
@@ -137,7 +134,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
       // Force a page reload to clear any lingering state
       window.location.reload();
       
-      console.log("[AuthAdapter] Sign out completed");
+      console.debug("[AuthAdapter] Sign out completed");
     } catch (error) {
       console.error("[AuthAdapter] Error during sign out:", error);
     }

@@ -113,7 +113,7 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials): Promise<any> {
         try {
-          console.log("[Auth] Starting authorization with credentials:", credentials);
+          console.debug("[Auth] Starting authorization");
           
           // Check if wallet requirement is disabled
           if (process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true') {
@@ -134,13 +134,10 @@ export const authOptions: NextAuthOptions = {
           const siwe = new SiweMessage(JSON.parse(credentials?.message || "{}"));
           const authUrl = new URL(NEXTAUTH_URL);
           
-          console.log("[Auth] Verifying SIWE message:", {
+          console.debug("[Auth] Verifying SIWE message", {
             address: siwe.address,
             domain: siwe.domain,
-            expectedDomain: authUrl.hostname,
-            nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
-            message: credentials?.message,
-            signature: credentials?.signature
+            expectedDomain: authUrl.hostname
           });
 
           // Normalize domains by removing port numbers if present
@@ -153,7 +150,7 @@ export const authOptions: NextAuthOptions = {
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           });
 
-          console.log("[Auth] SIWE verification result:", {
+          console.debug("[Auth] SIWE verification result", {
             success: result.success,
             error: result.error,
             normalizedMessageDomain,
@@ -171,11 +168,11 @@ export const authOptions: NextAuthOptions = {
 
           let user = await getUserByWallet(siwe.address);
           if (!user) {
-            console.log("[Auth] Creating new user for wallet:", siwe.address);
+            console.debug("[Auth] Creating new user for wallet");
             user = await createUser(siwe.address);
           }
 
-          console.log("[Auth] Returning user:", user);
+          console.debug("[Auth] Returning user", { id: user.id });
           
           // Map the database user to the NextAuth user format
           return {
