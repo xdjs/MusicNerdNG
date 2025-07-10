@@ -11,6 +11,7 @@ import { EditModeProvider } from "@/app/_components/EditModeContext";
 import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
+import FunFactsMobile from "./_components/FunFactsMobile";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -111,6 +112,8 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                     </div>
                 </div>
+                {/* Insert Fun Facts section for mobile only */}
+                <FunFactsMobile artistId={artist.id} />
             </div>
             </EditModeProvider>
         </>
