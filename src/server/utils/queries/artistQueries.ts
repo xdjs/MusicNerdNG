@@ -134,6 +134,10 @@ export async function getArtistByNameApiResp(name: string) {
 export async function searchForArtistByName(name: string) {
     try {
         const startTime = performance.now();
+
+        // Normalise the incoming query (lower-case, accents & punctuation removed)
+        const normalisedQuery = normaliseText(name);
+
         const result = await db.execute<Artist>(sql`
             SELECT 
                 id, 
@@ -146,25 +150,26 @@ export async function searchForArtistByName(name: string) {
                 facebook,
                 tiktok,
                 CASE 
-                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') THEN 0  -- Contains match (0 ranks first)
+                    WHEN lcname LIKE '%' || ${normalisedQuery || ''} || '%' THEN 0  -- Contains match (0 ranks first)
                     ELSE 1  -- Similarity match
                 END as match_type
             FROM artists
             WHERE 
-                (LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') OR similarity(name, ${name}) > 0.3)
+                (lcname LIKE '%' || ${normalisedQuery || ''} || '%' OR similarity(lcname, ${normalisedQuery}) > 0.3)
                 AND spotify IS NOT NULL
             ORDER BY 
                 match_type ASC,  -- Contains matches first (0 before 1)
                 CASE 
-                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') 
-                    THEN -POSITION(LOWER(${name}) IN LOWER(name))  -- Negative position to reverse order
+                    WHEN lcname LIKE '%' || ${normalisedQuery || ''} || '%' 
+                    THEN -POSITION(${normalisedQuery} IN lcname)  -- Negative position to reverse order
                     ELSE -999999  -- Keep non-contains matches at the end
                 END DESC,  -- DESC on negative numbers puts smallest positions first
-                similarity(name, ${name}) DESC  -- Higher similarity first
+                similarity(lcname, ${normalisedQuery}) DESC  -- Higher similarity first
             LIMIT 10
         `);
+
         const endTime = performance.now();
-        console.log(`Search for "${name}" took ${endTime - startTime}ms`);
+        console.log(`Search for "${name}" (normalised: "${normalisedQuery}") took ${endTime - startTime}ms`);
         return result;
     } catch (e) {
         console.error(`Error fetching artist by name`, e);
@@ -296,7 +301,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         console.log("[Server] Inserting new artist into database...");
         const artistData = {
             spotify: spotifyId,
-            lcname: spotifyArtist.data.name.toLowerCase(),
+            lcname: normaliseText(spotifyArtist.data.name),
             name: spotifyArtist.data.name,
             addedBy: session?.user?.id || undefined,
         };
@@ -606,4 +611,13 @@ export async function generateArtistBio(artistId: string): Promise<string | null
         console.error("[generateArtistBio] Error generating bio", e);
         return null;
     }
+} 
+
+// Helper to remove accents/diacritics and optionally lowercase the result
+function normaliseText(input: string): string {
+    return input
+        .normalize("NFD") // decompose accented chars into base + mark
+        .replace(/[\u0300-\u036f]/g, "") // strip the marks
+        .replace(/[^\p{L}\p{N}\s]+/gu, '') // strip punctuation; keep letters, numbers, spaces
+        .toLowerCase();
 } 

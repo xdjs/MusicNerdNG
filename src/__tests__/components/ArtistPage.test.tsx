@@ -150,7 +150,7 @@ describe('ArtistPage', () => {
         expect(screen.getByText('Test Artist')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
-        expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
+        expect(screen.getByText('Loading summary...')).toBeInTheDocument();
         expect(screen.getByText('Music Nerd')).toBeInTheDocument();
     });
 

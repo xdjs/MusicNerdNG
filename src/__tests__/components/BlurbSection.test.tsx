@@ -113,7 +113,7 @@ describe('BlurbSection', () => {
             
             fireEvent.click(screen.getByTestId('ai-tab'));
             
-            expect(screen.getByText('Loading AI Summary...')).toBeInTheDocument();
+            expect(screen.getByText('Loading summary...')).toBeInTheDocument();
             
             await waitFor(() => {
                 expect(screen.getByText('AI content')).toBeInTheDocument();
@@ -145,7 +145,7 @@ describe('BlurbSection', () => {
             fireEvent.click(screen.getByTestId('ai-tab'));
             
             await waitFor(() => {
-                expect(screen.getByText('Failed to load AI bio.')).toBeInTheDocument();
+                expect(screen.getByText('Failed to load summary.')).toBeInTheDocument();
             });
         });
 
@@ -162,7 +162,7 @@ describe('BlurbSection', () => {
             fireEvent.click(screen.getByTestId('ai-tab'));
             
             await waitFor(() => {
-                expect(screen.getByText('Failed to load AI bio.')).toBeInTheDocument();
+                expect(screen.getByText('Failed to load summary.')).toBeInTheDocument();
             });
         });
 
