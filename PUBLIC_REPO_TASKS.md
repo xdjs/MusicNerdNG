@@ -3,11 +3,11 @@
 ## 🚨 Security & Privacy Tasks
 
 ### 1. **Environment Variables & Secrets**
-- [ ] **Remove hardcoded secrets**: Check for any hardcoded API keys, passwords, or tokens in the codebase
-- [ ] **Update `.env.example`**: Create a comprehensive example file showing all required environment variables
-- [ ] **Verify `.gitignore`**: Ensure all sensitive files are properly ignored (`.env.local`, `.env.*`, etc.)
-- [ ] **Review environment validation**: Check `src/env.ts` for proper validation of required variables
-- [ ] **Remove unused GEMINI_API_KEY**: Remove from `src/env.ts`, `src/types/env.d.ts`, `src/server/utils/setup/testEnv.ts`, README.md, and CI workflow
+- [x] **Remove hardcoded secrets**: Check for any hardcoded API keys, passwords, or tokens in the codebase
+- [x] **Update `.env.example`**: Create a comprehensive example file showing all required environment variables
+- [x] **Verify `.gitignore`**: Ensure all sensitive files are properly ignored (`.env.local`, `.env.*`, etc.)
+- [x] **Review environment validation**: Check `src/env.ts` for proper validation of required variables
+- [x] **Remove unused GEMINI_API_KEY**: Remove from `src/env.ts`, `src/types/env.d.ts`, `src/server/utils/setup/testEnv.ts`, README.md, and CI workflow
 
 ### 2. **Database & API Security**
 - [ ] **Remove database connection strings**: Ensure no actual database URLs are in the code
