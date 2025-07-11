@@ -56,7 +56,15 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
                                 <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
                             </AspectRatio>
-                            {/* Add links button moved below to the "Check out" section */}
+                            <div className="w-full flex justify-center">
+                                <AddArtistData 
+                                    label="Add data" 
+                                    artist={artist} 
+                                    spotifyImg={spotifyImg.artistImage ?? ""} 
+                                    availableLinks={urlMapList} 
+                                    isOpenOnLoad={false} 
+                                />
+                            </div>
                         </div>
                         {/* Right Column: Name and Description */}
                         <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
@@ -70,7 +78,6 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 {(artist) && getArtistDetailsText(artist, numReleases)}
                             </div>
                             <BlurbSection 
-                                key={artist.bio ?? ""}
                                 wikiBlurb={wiki?.blurb}
                                 wikiLink={wiki?.link}
                                 artistName={artist.name ?? ""}
@@ -93,6 +100,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 />
                             </div>
                         </div>
+
                         <div className="space-y-4">
                             {(artist) &&
                                 <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} showAddButton={false} />

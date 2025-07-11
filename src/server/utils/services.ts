@@ -1,7 +1,7 @@
 import { Artist, UrlMap } from "../db/DbTypes";
 
 // Import directly from the artist queries module to ensure the symbol is recognised by TypeScript’s type checker
-import { getAllLinks } from "./queriesTS"; // Wrapper maintains compatibility with existing mocks
+import { getAllLinks } from "./queries/artistQueries"; // Updated path to new queries module
 
 export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'supercollector', 'wallets', 'ens'];
 export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'wallets', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel', 'supercollector'];
