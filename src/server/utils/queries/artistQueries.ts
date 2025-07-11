@@ -11,6 +11,7 @@ import { openai } from "@/server/lib/openai";
 
 import { getUserById, getUserByWallet } from "@/server/utils/queries/userQueries";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
+import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 
 // ----------------------------------
 // Types
@@ -133,6 +134,10 @@ export async function getArtistByNameApiResp(name: string) {
 export async function searchForArtistByName(name: string) {
     try {
         const startTime = performance.now();
+
+        // Normalise the incoming query (lower-case, accents & punctuation removed)
+        const normalisedQuery = normaliseText(name);
+
         const result = await db.execute<Artist>(sql`
             SELECT 
                 id, 
@@ -145,25 +150,26 @@ export async function searchForArtistByName(name: string) {
                 facebook,
                 tiktok,
                 CASE 
-                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') THEN 0  -- Contains match (0 ranks first)
+                    WHEN lcname LIKE '%' || ${normalisedQuery || ''} || '%' THEN 0  -- Contains match (0 ranks first)
                     ELSE 1  -- Similarity match
                 END as match_type
             FROM artists
             WHERE 
-                (LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') OR similarity(name, ${name}) > 0.3)
+                (lcname LIKE '%' || ${normalisedQuery || ''} || '%' OR similarity(lcname, ${normalisedQuery}) > 0.3)
                 AND spotify IS NOT NULL
             ORDER BY 
                 match_type ASC,  -- Contains matches first (0 before 1)
                 CASE 
-                    WHEN LOWER(name) LIKE LOWER('%' || ${name || ''} || '%') 
-                    THEN -POSITION(LOWER(${name}) IN LOWER(name))  -- Negative position to reverse order
+                    WHEN lcname LIKE '%' || ${normalisedQuery || ''} || '%' 
+                    THEN -POSITION(${normalisedQuery} IN lcname)  -- Negative position to reverse order
                     ELSE -999999  -- Keep non-contains matches at the end
                 END DESC,  -- DESC on negative numbers puts smallest positions first
-                similarity(name, ${name}) DESC  -- Higher similarity first
+                similarity(lcname, ${normalisedQuery}) DESC  -- Higher similarity first
             LIMIT 10
         `);
+
         const endTime = performance.now();
-        console.log(`Search for "${name}" took ${endTime - startTime}ms`);
+        console.log(`Search for "${name}" (normalised: "${normalisedQuery}") took ${endTime - startTime}ms`);
         return result;
     } catch (e) {
         console.error(`Error fetching artist by name`, e);
@@ -295,7 +301,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         console.log("[Server] Inserting new artist into database...");
         const artistData = {
             spotify: spotifyId,
-            lcname: spotifyArtist.data.name.toLowerCase(),
+            lcname: normaliseText(spotifyArtist.data.name),
             name: spotifyArtist.data.name,
             addedBy: session?.user?.id || undefined,
         };
@@ -366,8 +372,10 @@ export async function approveUGC(
     siteName: string,
     artistIdFromUrl: string
 ) {
+    // Sanitize siteName to match column naming convention (remove dots and other non-alphanumerics)
+    const columnName = siteName.replace(/[^a-zA-Z0-9_]/g, "");
     try {
-        if (siteName === "wallets") {
+        if (siteName === "wallets" || siteName === "wallet") {
             await db.execute(sql`
                 UPDATE artists
                 SET wallets = array_append(wallets, ${artistIdFromUrl})
@@ -382,12 +390,12 @@ export async function approveUGC(
         } else {
             await db.execute(sql`
                 UPDATE artists
-                SET ${sql.identifier(siteName)} = ${artistIdFromUrl}
+                SET ${sql.identifier(columnName)} = ${artistIdFromUrl}
                 WHERE id = ${artistId}`);
         }
 
         const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
-        if (promptRelevantColumns.includes(siteName)) {
+        if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
         }
@@ -447,6 +455,9 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
         if (isWhitelistedOrAdmin && newUGC?.id) {
             await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
+        } else {
+            // Pending submission by regular user – trigger (throttled) Discord ping
+            await maybePingDiscordForPendingUGC();
         }
 
         if (user) {
@@ -517,10 +528,18 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
     }
 
     try {
-        await db.execute(sql`UPDATE artists SET ${sql.identifier(siteName)} = NULL WHERE id = ${artistId}`);
+        const columnName = siteName.replace(/[^a-zA-Z0-9_]/g, "");
+        if (columnName === "wallets" || columnName === "wallet") {
+            await db.execute(sql`
+                UPDATE artists
+                SET wallets = array_remove(wallets, ${artistId})
+                WHERE id = ${artistId}`);
+        } else {
+            await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
+        }
 
         const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
-        if (promptRelevantColumns.includes(siteName)) {
+        if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
         }
@@ -592,4 +611,13 @@ export async function generateArtistBio(artistId: string): Promise<string | null
         console.error("[generateArtistBio] Error generating bio", e);
         return null;
     }
+} 
+
+// Helper to remove accents/diacritics and optionally lowercase the result
+function normaliseText(input: string): string {
+    return input
+        .normalize("NFD") // decompose accented chars into base + mark
+        .replace(/[\u0300-\u036f]/g, "") // strip the marks
+        .replace(/[^\p{L}\p{N}\s]+/gu, '') // strip punctuation; keep letters, numbers, spaces
+        .toLowerCase();
 } 

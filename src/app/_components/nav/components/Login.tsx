@@ -110,26 +110,33 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
         }
     }, [status, currentStatus, isConnected, address, session, openConnectModal, router, toast, searchBarRef]);
 
+    // Reusable fetcher for pending UGC count
+    const fetchPendingUGC = useCallback(async () => {
+        if (session?.user?.isAdmin) {
+            try {
+                const res = await fetch('/api/pendingUGCCount');
+                if (res.ok) {
+                    const data = await res.json();
+                    setHasPendingUGC(data.count > 0);
+                }
+            } catch (e) {
+                console.error('[Login] Error fetching pending UGC count', e);
+            }
+        } else {
+            setHasPendingUGC(false);
+        }
+    }, [session]);
+
     // Fetch pending UGC count for admin users
     useEffect(() => {
-        const fetchPending = async () => {
-            if (session?.user?.isAdmin) {
-                try {
-                    const res = await fetch('/api/pendingUGCCount');
-                    if (res.ok) {
-                        const data = await res.json();
-                        setHasPendingUGC(data.count > 0);
-                    }
-                } catch (e) {
-                    console.error('[Login] Error fetching pending UGC count', e);
-                }
-            } else {
-                setHasPendingUGC(false);
-            }
-        };
+        fetchPendingUGC();
+    }, [fetchPendingUGC]);
 
-        fetchPending();
-    }, [session]);
+    // Listen for "pendingUGCUpdated" events to update the red dot immediately
+    useEffect(() => {
+        window.addEventListener('pendingUGCUpdated', fetchPendingUGC);
+        return () => window.removeEventListener('pendingUGCUpdated', fetchPendingUGC);
+    }, [fetchPendingUGC]);
 
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {

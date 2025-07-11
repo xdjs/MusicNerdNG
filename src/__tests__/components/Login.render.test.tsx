@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Login from '@/app/_components/nav/components/Login';
 
@@ -67,13 +67,22 @@ describe('Login component – basic rendering', () => {
     expect(gearLink).toHaveAttribute('href', '/admin');
   });
 
-  it('shows connect button and opens RainbowKit modal in normal mode', () => {
+  it('shows connect button and opens RainbowKit modal in normal mode', async () => {
     process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT = 'false';
 
     renderWithProviders(<Login buttonStyles="" />);
 
+    // Wait for the component to be fully rendered
+    await waitFor(() => {
+      expect(screen.getByRole('button')).toBeInTheDocument();
+    });
+
     const connectBtn = screen.getByRole('button');
     fireEvent.click(connectBtn);
-    expect(openConnectModalMock).toHaveBeenCalled();
+    
+    // Wait for the mock to be called
+    await waitFor(() => {
+      expect(openConnectModalMock).toHaveBeenCalled();
+    });
   });
 }); 
