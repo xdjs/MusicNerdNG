@@ -11,6 +11,8 @@ import { EditModeProvider } from "@/app/_components/EditModeContext";
 import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
+import FunFactsMobile from "./_components/FunFactsMobile";
+import FunFactsDesktop from "./_components/FunFactsDesktop";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -77,17 +79,19 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                     </div>
                     <div className="space-y-6 mt-8">
-                        <div className="flex items-center justify-between">
-                        <strong className="text-black text-2xl">
-                            Check out {artist?.name} on other <span className="whitespace-nowrap">media platforms</span>!
-                        </strong>
-                            <AddArtistData 
-                                label="Add links" 
-                                artist={artist} 
-                                spotifyImg={spotifyImg.artistImage ?? ""} 
-                                availableLinks={urlMapList} 
-                                isOpenOnLoad={false} 
-                            />
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                            <strong className="text-black text-2xl">
+                                Check out {artist?.name} on <span className="whitespace-nowrap">other media platforms</span>!
+                            </strong>
+                            <div className="mt-4 md:mt-0 md:ml-4">
+                                <AddArtistData 
+                                    label="Add links" 
+                                    artist={artist} 
+                                    spotifyImg={spotifyImg.artistImage ?? ""} 
+                                    availableLinks={urlMapList} 
+                                    isOpenOnLoad={false} 
+                                />
+                            </div>
                         </div>
                         <div className="space-y-4">
                             {(artist) &&
@@ -96,21 +100,29 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         </div>
                     </div>
                 </div>
-                {/* Support Artist Box - Fixed Sidebar */}
-                <div className="space-y-4 bg-white p-6 rounded-lg shadow-lg flex flex-col md:w-1/3">
-                    <div className="top-0 sticky space-y-6">
-                        <div className="text-black text-2xl">
-                            <strong>
-                                Support {artist?.name}
-                            </strong>
-                        </div>
-                        <div className="space-y-4">
-                            {(artist) &&
-                                <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
-                            }
+                {/* Sidebar: Fun Facts (desktop) and Support section */}
+                <div className="flex flex-col md:w-1/3 space-y-4">
+                    {/* Fun Facts section - visible on md and up */}
+                    <FunFactsDesktop artistId={artist.id} />
+
+                    {/* Support Artist Box */}
+                    <div className="bg-white p-6 rounded-lg shadow-2xl flex flex-col">
+                        <div className="space-y-6">
+                            <div className="text-black text-2xl">
+                                <strong>
+                                    Support {artist?.name}
+                                </strong>
+                            </div>
+                            <div className="space-y-4">
+                                {(artist) &&
+                                    <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
+                                }
+                            </div>
                         </div>
                     </div>
                 </div>
+                {/* Insert Fun Facts section for mobile only */}
+                <FunFactsMobile artistId={artist.id} />
             </div>
             </EditModeProvider>
         </>
