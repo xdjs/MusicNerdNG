@@ -10,9 +10,9 @@
 - [x] **Remove unused GEMINI_API_KEY**: Remove from `src/env.ts`, `src/types/env.d.ts`, `src/server/utils/setup/testEnv.ts`, README.md, and CI workflow
 
 ### 2. **Database & API Security**
-- [ ] **Remove database connection strings**: Ensure no actual database URLs are in the code
-- [ ] **Sanitize API endpoints**: Remove any hardcoded API keys or tokens
-- [ ] **Review authentication flows**: Ensure no sensitive auth data is exposed
+- [x] **Remove database connection strings**: Ensure no actual database URLs are in the code
+- [x] **Sanitize API endpoints**: Remove any hardcoded API keys or tokens
+- [x] **Review authentication flows**: Ensure no sensitive auth data is exposed
 
 ## 🧹 Code Cleanup Tasks
 

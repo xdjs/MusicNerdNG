@@ -8,7 +8,7 @@ const wrappedHandler = async (req: Request, context: any) => {
   try {
     console.log("[NextAuth] Processing request:", {
       method: req.method,
-      url: req.url
+      // Removed URL logging to prevent potential data exposure
     });
     
     const response = await handler(req, context);
