@@ -4,8 +4,6 @@ import { getCsrfToken, signIn, signOut } from "next-auth/react"
 
 export const authenticationAdapter = createAuthenticationAdapter({
   getNonce: async () => {
-    console.debug("[AuthAdapter] Getting CSRF token for nonce");
-    
     // Try to get the CSRF token multiple times with a delay
     let token = null;
     let attempts = 0;
@@ -13,7 +11,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
     
     while (!token && attempts < maxAttempts) {
       token = await getCsrfToken();
-      console.debug("[AuthAdapter] Attempt", attempts + 1);
       
       if (!token) {
         attempts++;
@@ -25,7 +22,6 @@ export const authenticationAdapter = createAuthenticationAdapter({
     }
     
     if (!token) {
-      console.error("[AuthAdapter] Failed to get CSRF token after", maxAttempts, "attempts");
       throw new Error("Failed to get CSRF token");
     }
     
@@ -35,12 +31,7 @@ export const authenticationAdapter = createAuthenticationAdapter({
     // Get domain without port number
     const domain = window.location.hostname.split(':')[0];
     
-    console.debug("[AuthAdapter] Creating SIWE message", {
-      address,
-      chainId,
-      domain,
-      origin: window.location.origin
-    });
+
 
     // Clear any existing SIWE data to force a new message
     sessionStorage.removeItem('siwe-nonce');
@@ -59,20 +50,17 @@ export const authenticationAdapter = createAuthenticationAdapter({
       issuedAt: new Date().toISOString(),
       expirationTime: new Date(Date.now() + 1000 * 60 * 5).toISOString(), // 5 minutes from now
     });
-    console.debug("[AuthAdapter] Created SIWE message");
+
     return message;
   },
   getMessageBody: ({ message }: { message: SiweMessage }) => {
     const messageBody = message.prepareMessage();
-    console.debug("[AuthAdapter] Prepared message body");
+
     return messageBody;
   },
   verify: async ({ message, signature }) => {
     try {
-      console.debug("[AuthAdapter] Starting verification", {
-        domain: message.domain,
-        origin: window.location.origin
-      });
+
 
       // Clear any existing SIWE data
       sessionStorage.removeItem('siwe-nonce');
@@ -88,10 +76,10 @@ export const authenticationAdapter = createAuthenticationAdapter({
         callbackUrl: window.location.origin,
       });
 
-      console.debug("[AuthAdapter] Sign in response received");
+
 
       if (response?.error) {
-        console.error("[AuthAdapter] Sign in failed:", response.error);
+
         return false;
       }
 
@@ -100,13 +88,13 @@ export const authenticationAdapter = createAuthenticationAdapter({
 
       return true;
     } catch (error) {
-      console.error("[AuthAdapter] Error during verification:", error);
+
       return false;
     }
   },
   signOut: async () => {
     try {
-      console.debug("[AuthAdapter] Signing out");
+
       
       // Clear all session data
       sessionStorage.clear();
@@ -134,9 +122,9 @@ export const authenticationAdapter = createAuthenticationAdapter({
       // Force a page reload to clear any lingering state
       window.location.reload();
       
-      console.debug("[AuthAdapter] Sign out completed");
+
     } catch (error) {
-      console.error("[AuthAdapter] Error during sign out:", error);
+
     }
   },
 });

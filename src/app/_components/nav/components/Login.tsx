@@ -41,16 +41,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
     const { openConnectModal } = useConnectModal();
 
     useEffect(() => {
-        console.log("[Login] State changed:", {
-            authFrom: currentStatus,
-            authTo: status,
-            isConnected,
-            address,
-            sessionUser: session?.user,
-            isSearchFlow: sessionStorage.getItem('searchFlow'),
-            pendingArtist: sessionStorage.getItem('pendingArtistName'),
-            shouldPrompt: shouldPromptRef.current
-        });
+
 
         // Handle successful authentication
         if (isConnected && session) {
@@ -87,7 +78,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) &&
                 !isSearchFlowPrompted
             ) {
-                console.log("[Login] Starting initial connection");
+
                 if (openConnectModal) {
                     openConnectModal();
                 }
@@ -120,7 +111,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                     setHasPendingUGC(data.count > 0);
                 }
             } catch (e) {
-                console.error('[Login] Error fetching pending UGC count', e);
+                // Error fetching pending UGC count
             }
         } else {
             setHasPendingUGC(false);
@@ -141,7 +132,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
         try {
-            console.log("[Login] Disconnecting wallet and cleaning up session");
+
             
             // Save any existing search flow data
             const searchSpotifyId = sessionStorage.getItem('pendingArtistSpotifyId');
@@ -192,7 +183,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 description: "Your wallet has been disconnected",
             });
         } catch (error) {
-            console.error("[Login] Error during disconnect:", error);
+            // Error during disconnect
             toast({
                 variant: "destructive",
                 title: "Error",

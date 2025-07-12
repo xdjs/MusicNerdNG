@@ -192,7 +192,6 @@ const WalletSearchBar = forwardRef(
                         router.prefetch(url);
                         await router.push(url);
                     } catch (error) {
-                        console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
                         setIsAddingNew(false);
                     }
@@ -206,7 +205,6 @@ const WalletSearchBar = forwardRef(
                     setIsAddingNew(false);
                 }
             } catch (error) {
-                console.error("[SearchBar] Error adding artist:", error);
                 if (error instanceof Error && error.message.includes('Not authenticated')) {
                     // Set up search flow flags before initiating login
                     sessionStorage.setItem('searchFlow', 'true');
@@ -244,7 +242,6 @@ const WalletSearchBar = forwardRef(
                 router.prefetch(url);
                 await router.push(url);
             } catch (error) {
-                console.error("[SearchBar] Error navigating to artist:", error);
                 setIsAddingArtist(false);
                 setIsAddingNew(false);
                 toast({
@@ -459,13 +456,7 @@ const NoWalletSearchBar = forwardRef(
 
     // Add effect to handle authentication state changes
     useEffect(() => {
-        console.log("[SearchBar] Auth state changed:", {
-            status,
-            walletConnected,
-            session: !!session,
-            searchFlow: sessionStorage.getItem('searchFlow'),
-            pendingArtist: sessionStorage.getItem('pendingArtistName')
-        });
+
 
         if (
             sessionStorage.getItem('searchFlow') &&
@@ -474,7 +465,7 @@ const NoWalletSearchBar = forwardRef(
             !walletConnected &&
             !sessionStorage.getItem('searchFlowPrompted')
         ) {
-            console.log("[SearchBar] Search flow needs authentication, initiating connection");
+
 
             // Mark that we've already prompted once for this flow
             sessionStorage.setItem('searchFlowPrompted', 'true');
@@ -527,17 +518,16 @@ const NoWalletSearchBar = forwardRef(
 
         if (result.isSpotifyOnly) {
             if (status === "loading") {
-                console.log("[SearchBar] Auth status is loading, waiting...");
                 return;
             }
 
             // In non-wallet mode, we can directly try to add the artist
             try {
-                console.log("[SearchBar] Adding Spotify artist:", result.name);
+
                 setIsAddingArtist(true);
                 setIsAddingNew(true);
                 const addResult = await addArtist(result.spotify ?? "");
-                console.log("[SearchBar] Add artist result:", addResult);
+
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                     // Navigate using push
@@ -546,7 +536,6 @@ const NoWalletSearchBar = forwardRef(
                         router.prefetch(url);
                         await router.push(url);
                     } catch (error) {
-                        console.error("[SearchBar] Navigation error:", error);
                         setIsAddingArtist(false);
                         setIsAddingNew(false);
                         toast({
@@ -565,7 +554,6 @@ const NoWalletSearchBar = forwardRef(
                     setIsAddingNew(false);
                 }
             } catch (error) {
-                console.error("[SearchBar] Error adding artist:", error);
                 toast({
                     variant: "destructive",
                     title: "Error",
@@ -583,7 +571,6 @@ const NoWalletSearchBar = forwardRef(
                 router.prefetch(url);
                 await router.push(url);
             } catch (error) {
-                console.error("[SearchBar] Error navigating to artist:", error);
                 setIsAddingArtist(false);
                 setIsAddingNew(false);
                 toast({
@@ -641,7 +628,7 @@ const NoWalletSearchBar = forwardRef(
 
     const handleLogout = async () => {
         try {
-            console.log("[SearchBar] Signing out");
+
             
             // Set flag to indicate this was a manual disconnect
             sessionStorage.setItem('manualDisconnect', 'true');
@@ -687,7 +674,7 @@ const NoWalletSearchBar = forwardRef(
                 description: "You have been signed out successfully"
             });
         } catch (error) {
-            console.error("[SearchBar] Error during sign out:", error);
+            // Error during sign out
             toast({
                 variant: "destructive",
                 title: "Error",

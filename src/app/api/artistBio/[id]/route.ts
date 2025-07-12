@@ -28,7 +28,6 @@ export async function GET(_: Request, { params }: { params: { id: string, prompt
     return await getOpenAIBio(params.id);
   //Error Handling
   }catch (err) {
-    console.error("Error generating bio", err);
     return NextResponse.json({error: "failed to generate artist bio"}, {status: 500});
   }
 }

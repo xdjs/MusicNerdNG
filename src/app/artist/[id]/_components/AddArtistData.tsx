@@ -53,7 +53,9 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         fetch('/api/platformRegexes')
             .then(res => res.json())
             .then(data => setPlatformRegexes(data))
-            .catch(e => console.error('Failed to fetch platform regexes:', e));
+            .catch(e => {
+                // Failed to fetch platform regexes
+            });
     }, []);
 
     const formSchema = useMemo(() => z.object({
@@ -96,12 +98,11 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                     break;
                 }
             } catch (e) {
-                console.log(`[${siteName}] Regex error:`, e);
+                // Regex error for platform
             }
         }
 
         if (!matchedPlatform) {
-            console.log('No platform regex matched for URL:', url);
             return false; // Reject invalid URLs
         }
 
@@ -131,10 +132,10 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                 body: JSON.stringify({ url }),
             });
             const data = await response.json();
-            console.log('Backend validation response:', data); // Frontend log
+            // Backend validation response
             return data.valid;
         } catch (e) {
-            console.log('Backend validation error:', e); // Frontend log
+            // Backend validation error
             return true; // If the backend fails, don't block the user
         }
     }

@@ -77,10 +77,10 @@ export async function extractArtistId(artistUrl: string) {
         try {
             pattern = new RegExp(regex as string, 'i');
             if (siteName === 'ens' || siteName === 'wallets') {
-                console.log('[extractArtistId] Compiled regex for', siteName, ':', pattern.source);
+                // Debug logging removed for production
             }
         } catch (err) {
-            console.error('[extractArtistId] Invalid regex in urlmap row', siteName, ':', regex, err);
+            // Invalid regex pattern - skipping
             continue; // skip malformed pattern
         }
         const match = decodedUrl.match(pattern);
@@ -166,8 +166,7 @@ export async function extractArtistId(artistUrl: string) {
             /* invalid URL */
         }
     }
-    // If we exit the loop with no match we log the failure
-    console.log('[extractArtistId] No matching platform for URL:', artistUrl);
+    // If we exit the loop with no match
     return null;
 }
 

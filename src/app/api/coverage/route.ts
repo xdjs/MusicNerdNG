@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Unsupported format' }, { status: 400 });
     }
   } catch (error) {
-    console.error('Coverage API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -155,7 +154,6 @@ export async function POST(request: NextRequest) {
       webhooks_sent: webhookPromises.length
     });
   } catch (error) {
-    console.error('Coverage POST error:', error);
     return NextResponse.json({ error: 'Failed to process coverage data' }, { status: 500 });
   }
 } 
