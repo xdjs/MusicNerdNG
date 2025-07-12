@@ -30,7 +30,7 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
   const buttons = [
     { type: "lore" as FactType, label: "Lore Drop", icon: "📖" },
     { type: "bts" as FactType, label: "Behind the Scenes", icon: "🎬" },
-    { type: "activity" as FactType, label: "Activity", icon: "👀" },
+    { type: "activity" as FactType, label: "Recent Activity", icon: "👀" },
     { type: "surprise" as FactType, label: "Surprise Me!", icon: "🎲" },
   ];
 

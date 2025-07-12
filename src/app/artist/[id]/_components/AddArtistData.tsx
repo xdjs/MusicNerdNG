@@ -195,11 +195,11 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     return (
         <>
             <Button
-                size="sm"
-                className="text-white bg-pastypink flex items-center justify-center px-4 min-w-[60px]"
+                size={label === "+" ? "icon" : "sm"}
+                className={label === "+" ? "w-8 h-8 bg-pastypink text-white flex items-center justify-center p-0 rounded-md" : "text-white bg-pastypink flex items-center justify-center px-4 min-w-[60px]"}
                 onClick={handleClick}
             >
-                {label && <span className="whitespace-nowrap">{label}</span>}
+                {label === "+" ? <Plus size={20} /> : (label && <span className="whitespace-nowrap">{label}</span>)}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
