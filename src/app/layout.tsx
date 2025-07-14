@@ -19,10 +19,10 @@ export const metadata: Metadata = {
     description: "A crowd-sourced directory of music artists",
     images: [
       {
-        url: "https://www.musicnerd.xyz/musicNerdLogo.png",
-        width: 800, // Standard Open Graph image size
+        url: "https://www.musicnerd.xyz/icon.ico",
+        width: 800,
         height: 800,
-        alt: "Music Nerd Logo",
+        alt: "Music Nerd Icon",
       },
     ],
   },
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     site: "@musicnerd.xyz",
     title: "Music Nerd",
     description: "A crowd-sourced directory of music artists",
-    images: ["https://www.musicnerd.xyz/musicNerdLogo.png"],
+    images: ["https://www.musicnerd.xyz/icon.ico"],
   },
   icons: {
     icon: "/icon.ico",
