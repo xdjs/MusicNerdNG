@@ -73,4 +73,4 @@ export async function GET(req: Request, { params }: { params: { type: string } }
     console.error("OpenAI error generating fun fact", err);
     return NextResponse.json({ error: "Failed to generate fun fact" }, { status: 500 });
   }
-} 
+}
