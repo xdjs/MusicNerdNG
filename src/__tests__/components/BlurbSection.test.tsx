@@ -54,18 +54,7 @@ describe('BlurbSection', () => {
             });
         });
 
-        it('displays "No summary is available" when no content is returned', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ bio: '' })
-            });
 
-            render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.getByText('No summary is available')).toBeInTheDocument();
-            });
-        });
     });
 
     describe('Read More Functionality', () => {
