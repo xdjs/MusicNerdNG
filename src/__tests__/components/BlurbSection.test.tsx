@@ -3,47 +3,11 @@ import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import BlurbSection from '@/app/artist/[id]/_components/BlurbSection';
 
-// Mock the UI components
-jest.mock('@/components/ui/tabs', () => ({
-    Tabs: ({ children, value, onValueChange, className }: any) => (
-        <div data-testid="tabs" data-value={value} className={className}>
-            <button 
-                data-testid="wikipedia-tab" 
-                onClick={() => onValueChange('wikipedia')}
-                data-active={value === 'wikipedia'}
-            >
-                Wikipedia
-            </button>
-            <button 
-                data-testid="ai-tab" 
-                onClick={() => onValueChange('ai-generated')}
-                data-active={value === 'ai-generated'}
-            >
-                Music Nerd
-            </button>
-            {children}
-        </div>
-    ),
-    TabsList: ({ children, className }: any) => (
-        <div data-testid="tabs-list" className={className}>
-            {children}
-        </div>
-    ),
-    TabsTrigger: ({ children }: any) => <span>{children}</span>,
-    TabsContent: ({ children, value }: any) => (
-        <div data-testid={`tab-content-${value}`}>
-            {children}
-        </div>
-    ),
-}));
-
 // Use the global fetch mock that's already set up in jest.setup.ts
 const mockFetch = global.fetch as jest.Mock;
 
 describe('BlurbSection', () => {
     const defaultProps = {
-        wikiBlurb: 'Short wiki content',
-        wikiLink: 'https://wikipedia.org/test',
         artistName: 'Test Artist',
         artistId: 'test-artist-id'
     };
@@ -56,254 +20,143 @@ describe('BlurbSection', () => {
     });
 
     describe('Basic Rendering', () => {
-        it('renders with Wikipedia tab active by default', () => {
-            render(<BlurbSection {...defaultProps} />);
-            
-            expect(screen.getByTestId('tabs')).toHaveAttribute('data-value', 'ai-generated');
-            expect(screen.getByTestId('ai-tab')).toHaveAttribute('data-active', 'true');
-            expect(screen.getByTestId('wikipedia-tab')).toHaveAttribute('data-active', 'false');
-        });
-
-        it('displays Wikipedia content when provided', () => {
-            render(<BlurbSection {...defaultProps} />);
-            
-            expect(screen.getByText('Short wiki content')).toBeInTheDocument();
-        });
-
-        it('displays "No Wikipedia content has been added for this artist" when no wiki content', () => {
-            render(<BlurbSection {...defaultProps} wikiBlurb={undefined} />);
-            
-            expect(screen.getByText('No Wikipedia content has been added for this artist')).toBeInTheDocument();
-        });
-
-        it('shows Wikipedia link when provided', () => {
-            render(<BlurbSection {...defaultProps} wikiBlurb={longContent} />);
-            
-            // Expand to see the link
-            fireEvent.click(screen.getByText('Read More'));
-            expect(screen.getByText('View Source')).toBeInTheDocument();
-        });
-    });
-
-    describe('AI Tab Functionality', () => {
-        it('makes API call when switching to AI tab', async () => {
-            mockFetch.mockImplementationOnce(() => 
-                Promise.resolve({
-                    ok: true,
-                    json: async () => ({ bio: 'AI generated content' })
-                } as Response)
-            );
+        it('renders loading state initially', () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: 'Test bio content' })
+            });
 
             render(<BlurbSection {...defaultProps} />);
-            
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
-            expect(mockFetch).toHaveBeenCalledWith('/api/artistBio/test-artist-id');
-        });
-
-        it('shows loading state while fetching AI content', async () => {
-            mockFetch.mockImplementationOnce(
-                () => new Promise(resolve => setTimeout(() => resolve({
-                    ok: true,
-                    json: async () => ({ bio: 'AI content' })
-                } as Response), 100))
-            );
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            fireEvent.click(screen.getByTestId('ai-tab'));
             
             expect(screen.getByText('Loading summary...')).toBeInTheDocument();
-            
-            await waitFor(() => {
-                expect(screen.getByText('AI content')).toBeInTheDocument();
-            }, { timeout: 200 });
         });
 
-        it('displays AI content after successful fetch', async () => {
-            mockFetch.mockImplementationOnce(() => 
-                Promise.resolve({
-                    ok: true,
-                    json: async () => ({ bio: 'This is AI generated content' })
-                } as Response)
-            );
+        it('displays AI-generated content when loaded', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: 'AI generated bio content' })
+            });
 
             render(<BlurbSection {...defaultProps} />);
             
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
             await waitFor(() => {
-                expect(screen.getByText('This is AI generated content')).toBeInTheDocument();
+                expect(screen.getByText('AI generated bio content')).toBeInTheDocument();
             });
         });
 
-        it('shows error message when API call fails', async () => {
+        it('displays error message when API fails', async () => {
             mockFetch.mockRejectedValueOnce(new Error('API Error'));
 
             render(<BlurbSection {...defaultProps} />);
             
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
             await waitFor(() => {
                 expect(screen.getByText('Failed to load summary.')).toBeInTheDocument();
             });
         });
 
-        it('shows error message when API returns non-ok response', async () => {
-            mockFetch.mockImplementationOnce(() => 
-                Promise.resolve({
-                    ok: false,
-                    status: 500
-                } as Response)
-            );
+        it('displays "No summary is available" when no content is returned', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: '' })
+            });
 
             render(<BlurbSection {...defaultProps} />);
-            
-            fireEvent.click(screen.getByTestId('ai-tab'));
             
             await waitFor(() => {
-                expect(screen.getByText('Failed to load summary.')).toBeInTheDocument();
+                expect(screen.getByText('No summary is available')).toBeInTheDocument();
             });
-        });
-
-        it('does not make duplicate API calls', async () => {
-            mockFetch.mockImplementation(() => 
-                Promise.resolve({
-                    ok: true,
-                    json: async () => ({ bio: 'AI content' })
-                } as Response)
-            );
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            // Switch to AI tab (first call)
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
-            
-            // Switch back to Wikipedia
-            fireEvent.click(screen.getByTestId('wikipedia-tab'));
-            
-            // Switch to AI tab again (should not make another call)
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
-            expect(mockFetch).toHaveBeenCalledTimes(1);
         });
     });
 
-    describe('Read More/Show Less Functionality', () => {
-        it('shows Read More button for Wikipedia content over 200 characters', () => {
-            render(<BlurbSection {...defaultProps} wikiBlurb={longContent} />);
+    describe('Read More Functionality', () => {
+        it('shows Read More button for long content', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: longContent })
+            });
+
+            render(<BlurbSection {...defaultProps} />);
             
-            expect(screen.getByText('Read More')).toBeInTheDocument();
+            await waitFor(() => {
+                expect(screen.getByText('Read More')).toBeInTheDocument();
+            });
         });
 
-        it('does not show Read More button for short Wikipedia content', () => {
-            render(<BlurbSection {...defaultProps} wikiBlurb="Short content" />);
+        it('does not show Read More button for short content', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: 'Short content' })
+            });
+
+            render(<BlurbSection {...defaultProps} />);
             
-            expect(screen.queryByText('Read More')).not.toBeInTheDocument();
+            await waitFor(() => {
+                expect(screen.queryByText('Read More')).not.toBeInTheDocument();
+            });
         });
 
-        it('expands Wikipedia content when Read More is clicked', () => {
-            render(<BlurbSection {...defaultProps} wikiBlurb={longContent} />);
+        it('opens modal when Read More is clicked', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: longContent })
+            });
+
+            render(<BlurbSection {...defaultProps} />);
             
+            await waitFor(() => {
+                expect(screen.getByText('Read More')).toBeInTheDocument();
+            });
+
             fireEvent.click(screen.getByText('Read More'));
             
             expect(screen.getByText('Show less')).toBeInTheDocument();
-            // Note: Read More button still exists in DOM, just covered by expanded overlay
-            expect(screen.getByText('Read More')).toBeInTheDocument();
         });
 
-        it('collapses expanded Wikipedia content when Show less is clicked', () => {
-            render(<BlurbSection {...defaultProps} wikiBlurb={longContent} />);
+        it('closes modal when Show less is clicked', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: longContent })
+            });
+
+            render(<BlurbSection {...defaultProps} />);
             
-            // Expand
+            await waitFor(() => {
+                expect(screen.getByText('Read More')).toBeInTheDocument();
+            });
+
             fireEvent.click(screen.getByText('Read More'));
             expect(screen.getByText('Show less')).toBeInTheDocument();
-            
-            // Collapse
+
             fireEvent.click(screen.getByText('Show less'));
-            expect(screen.getByText('Read More')).toBeInTheDocument();
             expect(screen.queryByText('Show less')).not.toBeInTheDocument();
         });
+    });
 
-        it('shows Read More button for AI content over 200 characters', async () => {
-            mockFetch.mockImplementationOnce(() => 
-                Promise.resolve({
-                    ok: true,
-                    json: async () => ({ bio: longContent })
-                } as Response)
-            );
+    describe('API Integration', () => {
+        it('calls the correct API endpoint', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ bio: 'Test bio' })
+            });
 
             render(<BlurbSection {...defaultProps} />);
             
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
             await waitFor(() => {
-                expect(screen.getByText('Read More')).toBeInTheDocument();
+                expect(mockFetch).toHaveBeenCalledWith('/api/artistBio/test-artist-id');
             });
         });
 
-        it('expands AI content when Read More is clicked', async () => {
-            mockFetch.mockImplementationOnce(() => 
-                Promise.resolve({
-                    ok: true,
-                    json: async () => ({ bio: longContent })
-                } as Response)
-            );
+        it('handles non-ok response', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                status: 500
+            });
 
             render(<BlurbSection {...defaultProps} />);
             
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
             await waitFor(() => {
-                expect(screen.getByText('Read More')).toBeInTheDocument();
+                expect(screen.getByText('Failed to load summary.')).toBeInTheDocument();
             });
-            
-            fireEvent.click(screen.getByText('Read More'));
-            
-            expect(screen.getByText('Show less')).toBeInTheDocument();
-            // Note: Read More button still exists in DOM, just covered by expanded overlay
-            expect(screen.getByText('Read More')).toBeInTheDocument();
-        });
-    });
-
-    describe('Tab Switch with Modal State', () => {
-        it('maintains modal state when switching between tabs with expandable content', async () => {
-            mockFetch.mockImplementationOnce(() => 
-                Promise.resolve({
-                    ok: true,
-                    json: async () => ({ bio: longContent })
-                } as Response)
-            );
-
-            render(<BlurbSection {...defaultProps} wikiBlurb={longContent} />);
-            
-            // Expand Wikipedia content
-            fireEvent.click(screen.getByText('Read More'));
-            expect(screen.getByText('Show less')).toBeInTheDocument();
-            
-            // Switch to AI tab
-            fireEvent.click(screen.getByTestId('ai-tab'));
-            
-            await waitFor(() => {
-                expect(screen.getByText('Show less')).toBeInTheDocument();
-            });
-        });
-    });
-
-    describe('Character Limit Edge Cases', () => {
-        it('does not show Read More for exactly 200 characters', () => {
-            const exactly200 = 'a'.repeat(200);
-            render(<BlurbSection {...defaultProps} wikiBlurb={exactly200} />);
-            
-            expect(screen.queryByText('Read More')).not.toBeInTheDocument();
-        });
-
-        it('shows Read More for 201 characters', () => {
-            const over200 = 'a'.repeat(201);
-            render(<BlurbSection {...defaultProps} wikiBlurb={over200} />);
-            
-            expect(screen.getByText('Read More')).toBeInTheDocument();
         });
     });
 }); 

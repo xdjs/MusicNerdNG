@@ -151,7 +151,6 @@ describe('ArtistPage', () => {
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
         expect(screen.getByText('Loading summary...')).toBeInTheDocument();
-        expect(screen.getByText('Music Nerd')).toBeInTheDocument();
     });
 
     it('calls notFound when artist is not found', async () => {
