@@ -1,6 +1,6 @@
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
 import { getUserById } from "@/server/utils/queries/userQueries";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
+import { getSpotifyImage, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
@@ -35,10 +35,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     }
     const headers = await getSpotifyHeaders();
 
-    const [spotifyImg, numReleases, wiki, urlMapList] = await Promise.all([
+    const [spotifyImg, numReleases, urlMapList] = await Promise.all([
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
-        getArtistWiki(artist.wikipedia ?? ""),
         getAllLinks(),
     ]);
 
@@ -71,8 +70,6 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             </div>
                             <BlurbSection 
                                 key={artist.bio ?? ""}
-                                wikiBlurb={wiki?.blurb}
-                                wikiLink={wiki?.link}
                                 artistName={artist.name ?? ""}
                                 artistId={artist.id}
                                 />
