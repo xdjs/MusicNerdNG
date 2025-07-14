@@ -74,5 +74,3 @@ export async function GET(req: Request, { params }: { params: { type: string } }
     return NextResponse.json({ error: "Failed to generate fun fact" }, { status: 500 });
   }
 } 
-
-const
