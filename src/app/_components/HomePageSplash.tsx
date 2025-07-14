@@ -103,7 +103,7 @@ export default function HomePage({ animation }: { animation: string }) {
             <div className="w-full">
                 <div className="flex flex-col items-center md:fixed md:left-8 md:top-8 mb-4">
                     <img
-                        src="/musicNerdLogo.png"
+                        src="/icon.ico"
                         className="w-auto"
                         style={{
                             width: 'clamp(68px, calc(68px + (94 - 68) * ((100vw - 360px) / (1440 - 360))), 94px)'
