@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { openai } from "@/server/lib/openai";
+import { funFacts } from "@/server/db/schema";
+import { db } from "@/server/db/drizzle";
+import { eq } from "drizzle-orm";
 
-// Map type param to descriptive prompt and section label
-const promptMap: Record<string, string> = {
-  surprise:
-    "Generate a random fun fact about the artist (ARTIST_NAME) that would be interesting to both new fans and superfans. This should not be a well-known fact. Do not provide or make up any false information.",
-  lore:
-    "Generate one concise paragraph about the artist (ARTIST_NAME) and their childhood/early life, as well as their reasons/motivations for getting into music. Do not provide or make up any false information.",
-  bts:
-    "Generate one concise paragraph about the artist (ARTIST_NAME)'s process for making music, what roles they execute (ex: singer, producer, and songwriter), and how they get their inspiration for making music. Make sure you include their process for writing, producing, and creating their music. Do not provide or make up any false information.",
-  activity:
-    "Generate one concise paragraph about the artist (ARTIST_NAME)'s recent news, announcements, and releases. Based on their posts on social media, write about what they have been up to lately. Write this in a singular, SHORT, and CONCISE paragraph. Do not provide or make up any false information.",
-};
+async function getPrompts() {
+  try {
+    const result = await db.query.funFacts.findFirst({
+      where: eq(funFacts.isActive, true),
+    });
+    return result;
+  } catch (error) {
+    console.error("Error fetching funFacts prompts:", error);
+    return null;
+  }
+}
 
 export async function GET(req: Request, { params }: { params: { type: string } }) {
   const { type } = params;
@@ -27,6 +30,18 @@ export async function GET(req: Request, { params }: { params: { type: string } }
   if (!artist) {
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
   }
+
+  const prompts = await getPrompts();
+  if (!prompts) {
+    return NextResponse.json({ error: "Failed to fetch prompts" }, { status: 500 });
+  }
+
+  const promptMap: Record<string, string> = {
+    surprise: prompts.surpriseMe,
+    lore: prompts.loreDrop,
+    bts: prompts.behindTheScenes,
+    activity: prompts.recentActivity,
+  };
 
   const basePrompt = promptMap[type];
   if (!basePrompt) {

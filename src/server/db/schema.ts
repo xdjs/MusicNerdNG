@@ -224,5 +224,13 @@ export const aiPrompts = pgTable("aiprompts", {
 	isDefault: boolean("is_default").default(false),
 	isEnabled: boolean("is_enabled").default(false),
 	createdAt: timestamp("created_at").defaultNow(),
-  }
-)
+  });
+
+export const funFacts = pgTable("funfacts", {
+	id: uuid("prompt_id").primaryKey().defaultRandom(),
+	loreDrop: text("lore_drop").notNull(),
+	behindTheScenes: text("behind_the_scenes").notNull(),
+	recentActivity: text("recent_activity").notNull(),
+	surpriseMe: text("surprise_me").notNull(),
+	isActive: boolean("is_active").default(false),
+});
