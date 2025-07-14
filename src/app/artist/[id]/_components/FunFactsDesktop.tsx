@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 interface FunFactsDesktopProps {
   artistId: string;
@@ -27,6 +28,13 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
     }
   };
 
+  const descriptionMap: Record<FactType, string> = {
+    lore: "Learn about the background, origins, and development story.",
+    bts: "Discover the creative process and development approach.",
+    activity: "See recent news, announcements, and releases.",
+    surprise: "Get a random fun fact that even superfans might not know!",
+  };
+
   const buttons = [
     { type: "lore" as FactType, label: "Lore Drop", icon: "📖" },
     { type: "bts" as FactType, label: "Behind the Scenes", icon: "🎬" },
@@ -39,25 +47,33 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
       <h2 className="text-2xl font-bold text-black">Fun Facts</h2>
       <div className="relative">
         {/* Buttons List */}
-        <div className={fact ? "invisible pointer-events-none" : "flex flex-col space-y-2"}>
-          {buttons.map(({ type, label, icon }) => (
-            <Button
-              key={type}
-              variant="outline"
-              className="w-full flex items-center justify-center text-base font-semibold border-2"
-              onClick={() => fetchFact(type)}
-            >
-              <span className="flex items-baseline gap-4">
-                <span
-                  className={`text-2xl ${type === "lore" || type === "bts" ? "relative -top-0.5" : ""}`}
-                >
-                  {icon}
-                </span>
-                <span className="leading-none">{label}</span>
-              </span>
-            </Button>
-          ))}
-        </div>
+        <TooltipProvider>
+          <div className={fact ? "invisible pointer-events-none" : "flex flex-col space-y-2"}>
+            {buttons.map(({ type, label, icon }) => (
+              <Tooltip key={type}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full flex items-center justify-center text-base font-semibold border-2"
+                    onClick={() => fetchFact(type)}
+                  >
+                    <span className="flex items-baseline gap-4">
+                      <span
+                        className={`text-2xl ${type === "lore" || type === "bts" ? "relative -top-0.5" : ""}`}
+                      >
+                        {icon}
+                      </span>
+                      <span className="leading-none">{label}</span>
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={0} className="max-w-xs text-center">
+                  {descriptionMap[type]}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </TooltipProvider>
 
         {/* Overlay Fact Box */}
         {(loading || fact !== null) && (
