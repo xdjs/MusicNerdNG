@@ -227,7 +227,7 @@ export const aiPrompts = pgTable("aiprompts", {
   });
 
 export const funFacts = pgTable("funfacts", {
-	id: uuid("prompt_id").primaryKey().defaultRandom(),
+	id: uuid("id").primaryKey().defaultRandom(),
 	loreDrop: text("lore_drop").notNull(),
 	behindTheScenes: text("behind_the_scenes").notNull(),
 	recentActivity: text("recent_activity").notNull(),
