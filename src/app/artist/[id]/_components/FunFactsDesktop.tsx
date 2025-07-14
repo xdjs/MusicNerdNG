@@ -77,7 +77,7 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
         </div>
 
         {/* Overlay Fact Box */}
-        {fact && (
+        {(fact || loading === true) && (
           <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 shadow-lg overflow-y-auto overflow-x-hidden pt-2 pb-2 pr-1 pl-4">
             {/* Close button */}
             <button
@@ -90,7 +90,7 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
             >
               <span className="relative -top-0.5">×</span>
             </button>
-            {loading ? (
+            {loading === true ? (
               <p className="text-center text-sm">Loading...</p>
             ) : (
               <p className="text-sm text-black whitespace-pre-line mt-0 pr-7">{fact}</p>
