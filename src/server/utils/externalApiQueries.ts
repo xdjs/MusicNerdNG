@@ -104,7 +104,7 @@ export type SpotifyArtist = {
 
 export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
-        console.log("Fetching Spotify artist with ID:", artistId);
+        console.debug("Fetching Spotify artist with ID:", artistId);
         
         if (!headers?.headers?.Authorization) {
             console.error("Missing Spotify authorization header");
@@ -113,7 +113,7 @@ export const getSpotifyArtist = unstable_cache(async (artistId: string, headers:
 
         // Check if token is expired or about to expire
         if (isTokenExpired(headers)) {
-            console.log("Token expired or about to expire, fetching new token");
+            console.debug("Token expired or about to expire, fetching new token");
             headers = await getSpotifyHeaders();
         }
 

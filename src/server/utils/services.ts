@@ -77,7 +77,7 @@ export async function extractArtistId(artistUrl: string) {
         try {
             pattern = new RegExp(regex as string, 'i');
             if (siteName === 'ens' || siteName === 'wallets') {
-                console.log('[extractArtistId] Compiled regex for', siteName, ':', pattern.source);
+                console.debug('[extractArtistId] Compiled regex for', siteName, ':', pattern.source);
             }
         } catch (err) {
             console.error('[extractArtistId] Invalid regex in urlmap row', siteName, ':', regex, err);
@@ -167,7 +167,7 @@ export async function extractArtistId(artistUrl: string) {
         }
     }
     // If we exit the loop with no match we log the failure
-    console.log('[extractArtistId] No matching platform for URL:', artistUrl);
+    console.debug('[extractArtistId] No matching platform for URL:', artistUrl);
     return null;
 }
 

@@ -155,8 +155,8 @@ export async function POST(req: NextRequest) {
   try {
     const response = await fetch(url, { method: 'GET' });
     const text = await response.text();
-    console.log(`${platform.name} status:`, response.status);
-    console.log(`${platform.name} backend validation HTML:`, text);
+    console.debug(`${platform.name} status:`, response.status);
+    console.debug(`${platform.name} backend validation HTML:`, text);
     if (response.status === 404) {
       return new Response(JSON.stringify({ valid: false, reason: '404 Not Found' }), {
         status: 200,

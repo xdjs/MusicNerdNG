@@ -489,7 +489,7 @@ describe('Authentication System', () => {
       expect(authOptions).toBeDefined();
       expect(authOptions.callbacks).toBeDefined();
       expect(authOptions.providers).toBeDefined();
-      console.log('authOptions imported successfully:', !!authOptions);
+              console.debug('authOptions imported successfully:', !!authOptions);
     });
 
     it('should have correct session strategy', () => {

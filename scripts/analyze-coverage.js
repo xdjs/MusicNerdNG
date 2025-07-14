@@ -242,7 +242,7 @@ function analyzeCoverage() {
   };
 
   // Output the webhook payload as JSON
-  console.log(JSON.stringify(webhookPayload, null, 2));
+      console.debug(JSON.stringify(webhookPayload, null, 2));
   
   // Also output some useful info for CI logs
   console.error(`Coverage Analysis Complete (Testable Files Only):`);

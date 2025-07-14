@@ -96,12 +96,12 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                     break;
                 }
             } catch (e) {
-                console.log(`[${siteName}] Regex error:`, e);
+                console.debug(`[${siteName}] Regex error:`, e);
             }
         }
 
         if (!matchedPlatform) {
-            console.log('No platform regex matched for URL:', url);
+            console.debug('No platform regex matched for URL:', url);
             return false; // Reject invalid URLs
         }
 
@@ -131,10 +131,10 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                 body: JSON.stringify({ url }),
             });
             const data = await response.json();
-            console.log('Backend validation response:', data); // Frontend log
+            console.debug('Backend validation response:', data); // Frontend log
             return data.valid;
         } catch (e) {
-            console.log('Backend validation error:', e); // Frontend log
+            console.debug('Backend validation error:', e); // Frontend log
             return true; // If the backend fails, don't block the user
         }
     }
