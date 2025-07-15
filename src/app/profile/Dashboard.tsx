@@ -39,6 +39,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
     const [savingUsername, setSavingUsername] = useState(false);
     const [recentUGC, setRecentUGC] = useState<RecentItem[]>([]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
+    const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
 
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
@@ -202,7 +203,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                         </div>
                     )}
 
-                    {showDateRange && (
+                    {showDateRange && !showLeaderboard && (
                         <>
                             {/* Date range picker and action button inline */}
                             <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
@@ -219,7 +220,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                     <div className="flex flex-col items-center gap-2 pb-4 w-full text-center">
                         {!isEditingUsername && (
                             <p className="text-lg font-semibold">
-                                {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
+                                {displayName}
                             </p>
                         )}
 
@@ -300,7 +301,14 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
 
             {/* Leaderboard Section */}
             {showLeaderboard && (
-            <div>
+            <div className="space-y-4">
+                {showDateRange && (
+                    <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+                        <DatePicker date={date} setDate={setDate} />
+                        <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
+                        {loading && <p>Loading...</p>}
+                    </div>
+                )}
                 <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
             </div>
             )}
