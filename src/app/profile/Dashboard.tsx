@@ -23,11 +23,11 @@ type RecentItem = {
     imageUrl: string | null;
 };
 
-export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
+export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
     return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} allowEditUsername={allowEditUsername} showDateRange={showDateRange} /></UgcStatsWrapper>;
 }
 
-function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
+function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
     const [date, setDate] = useState<DateRange | undefined>();
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -182,7 +182,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                 </div>
                             )
                         )}
-                        {isGuestUser && (
+                        {/* Show a standalone login button for guests only when username editing is disabled */}
+                        {!allowEditUsername && isGuestUser && (
                             <div className="pt-2">
                                 <Button
                                     size="sm"
@@ -265,6 +266,19 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                     </Button>
                                 </div>
                             )
+                        )}
+                        {/* Fallback login button for views where username editing is not allowed */}
+                        {!allowEditUsername && isGuestUser && (
+                            <div className="pt-2">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
+                                    onClick={handleLogin}
+                                >
+                                    Log In
+                                </Button>
+                            </div>
                         )}
                     </div>
 

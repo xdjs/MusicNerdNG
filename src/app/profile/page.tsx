@@ -23,7 +23,7 @@ export default async function Page() {
             updatedAt: new Date().toISOString(),
             legacyId: null
         } as const;
-        return <Dashboard user={mockUser} showLeaderboard={true} showDateRange={false} />;
+        return <Dashboard user={mockUser} showLeaderboard={true} showDateRange={false} allowEditUsername={true} />;
     }
     
     // Normal authentication flow
@@ -40,10 +40,10 @@ export default async function Page() {
             updatedAt: new Date().toISOString(),
             legacyId: null
         } as const;
-        return <Dashboard user={guestUser} showLeaderboard={true} showDateRange={false} />;
+        return <Dashboard user={guestUser} showLeaderboard={true} showDateRange={false} allowEditUsername={true} />;
     }
 
     const user = await getUserById(session.user.id);
     if (!user) return notFound();
-    return <Dashboard user={user} showLeaderboard={true} showDateRange={false} />;
+    return <Dashboard user={user} showLeaderboard={true} showDateRange={false} allowEditUsername={true} />;
 }
