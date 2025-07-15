@@ -143,19 +143,42 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
             {showLeaderboard ? (
                 <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
                     {/* Username + other controls as before */}
-                    <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
+                    <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {!isEditingUsername && (
                             <p className="text-sm text-gray-500">UGC Stats for: <strong>{
                                 ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
                             }</strong></p>
                         )}
 
-                        {allowEditUsername && !isEditingUsername && !isGuestUser && (
-                            <div className="pt-2">
-                                <Button size="sm" variant="secondary" className="bg-gray-200 text-black hover:bg-gray-300" onClick={() => setIsEditingUsername(true)}>
-                                    Edit Username
-                                </Button>
-                            </div>
+                        {allowEditUsername && (
+                            !isGuestUser && isEditingUsername ? (
+                                <div className="flex flex-col items-center gap-2 w-full">
+                                    <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                        <Input
+                                            value={usernameInput}
+                                            onChange={(e) => setUsernameInput(e.target.value)}
+                                            className="h-8 w-40 text-sm"
+                                        />
+                                        <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                            {savingUsername ? 'Saving...' : 'Save'}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="pt-2">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
+                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                                        </div>
+                                    </Button>
+                                </div>
+                            )
                         )}
                     </div>
                     {/* Admin controls for leaderboard stats */}
@@ -192,7 +215,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
             ) : (
                 <>
                     {/* Username row no edit button inline */}
-                    <div className="flex flex-wrap justify-center items-center gap-2 pb-4 w-full text-center">
+                    <div className="flex flex-col items-center gap-2 pb-4 w-full text-center">
                         {!isEditingUsername && (
                             <p className="text-lg font-semibold">
                                 {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
@@ -201,28 +224,32 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
 
                         {allowEditUsername && (
                             !isGuestUser && isEditingUsername ? (
-                                <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                                    <Input
-                                        value={usernameInput}
-                                        onChange={(e) => setUsernameInput(e.target.value)}
-                                        className="h-8 w-40 text-sm"
-                                    />
-                                    <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                        {savingUsername ? 'Saving...' : 'Save'}
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                                <div className="flex flex-col items-center gap-2 w-full">
+                                    <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                        <Input
+                                            value={usernameInput}
+                                            onChange={(e) => setUsernameInput(e.target.value)}
+                                            className="h-8 w-40 text-sm"
+                                        />
+                                        <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                            {savingUsername ? 'Saving...' : 'Save'}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                                    </div>
                                 </div>
                             ) : (
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    className="bg-gray-200 text-black hover:bg-gray-300"
-                                    onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                                >
-                                    <div className="flex items-center gap-1">
-                                        {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
-                                    </div>
-                                </Button>
+                                <div className="pt-2">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
+                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                                        </div>
+                                    </Button>
+                                </div>
                             )
                         )}
                     </div>
