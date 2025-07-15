@@ -20,6 +20,7 @@ type RecentItem = {
     artistId: string | null;
     artistName: string | null;
     updatedAt: string | null;
+    imageUrl: string | null;
 };
 
 export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
@@ -283,7 +284,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                     {recentUGC.map((item) => (
                                         <li key={item.ugcId}>
                                             <Link href={`/artist/${item.artistId ?? ''}`} className="flex items-center gap-3 hover:underline">
-                                                <img src="/default_pfp.png" alt="artist" className="h-8 w-8 rounded-full object-cover" />
+                                                <img src={item.imageUrl || "/default_pfp_pink.png"} alt="artist" className="h-8 w-8 rounded-full object-cover" />
                                                 <span>{item.artistName ?? 'Unknown Artist'}</span>
                                             </Link>
                                         </li>

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerAuthSession } from "@/server/auth";
 import { db } from "@/server/db/drizzle";
 import { ugcresearch, artists } from "@/server/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { and } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
+import { getSpotifyHeaders, getSpotifyImage } from "@/server/utils/externalApiQueries";
 
 export async function GET() {
   try {
@@ -28,6 +28,7 @@ export async function GET() {
         artistId: ugcresearch.artistId,
         updatedAt: ugcresearch.updatedAt,
         artistName: artists.name,
+        spotifyId: artists.spotify,
       })
       .from(ugcresearch)
       .leftJoin(artists, eq(artists.id, ugcresearch.artistId))
@@ -43,7 +44,20 @@ export async function GET() {
       if (Object.keys(unique).length === 3) break;
     }
 
-    return NextResponse.json(Object.values(unique), { status: 200 });
+    // Fetch spotify images
+    const headers = await getSpotifyHeaders();
+    const enriched = await Promise.all(Object.values(unique).map(async (row:any)=>{
+        let imageUrl: string | null = null;
+        if(row.spotifyId){
+            try{
+               const img = await getSpotifyImage(row.spotifyId, row.artistId ?? "", headers);
+               imageUrl = img.artistImage ?? null;
+            }catch(e){}
+        }
+        return {...row, imageUrl};
+    }));
+
+    return NextResponse.json(enriched, { status: 200 });
   } catch (e) {
     console.error("[recentEdited] error", e);
     return NextResponse.json([], { status: 500 });
