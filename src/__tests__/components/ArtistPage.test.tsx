@@ -52,7 +52,7 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({
 }));
 
 // Mock external API queries
-jest.mock('@/server/utils/externalApiQueries', () => ({
+jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyImage: jest.fn(),
     getArtistWiki: jest.fn(),
     getSpotifyHeaders: jest.fn(),

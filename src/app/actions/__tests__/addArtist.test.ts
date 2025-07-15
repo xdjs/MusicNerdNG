@@ -7,7 +7,7 @@ import { sendDiscordMessage } from '@/server/utils/queries/discord';
 
 // Mock all dependencies
 jest.mock('@/server/auth');
-jest.mock('@/server/utils/externalApiQueries');
+jest.mock('@/server/utils/queries/externalApiQueries');
 jest.mock('@/server/utils/queries/artistQueries');
 jest.mock('@/server/utils/queries/userQueries');
 jest.mock('@/server/utils/queries/discord');

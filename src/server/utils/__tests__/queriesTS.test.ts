@@ -39,7 +39,7 @@ jest.mock('@/server/auth', () => ({
     getServerAuthSession: jest.fn()
 }));
 
-jest.mock('../externalApiQueries', () => ({
+jest.mock('../queries/externalApiQueries', () => ({
     getSpotifyHeaders: jest.fn(),
     getSpotifyArtist: jest.fn(),
     getSpotifyImage: jest.fn()
