@@ -72,7 +72,8 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         return (
             <Card>
                 <CardHeader className="text-center">
-                    <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
+                    <CardTitle>Leaderboard</CardTitle>
+                    <p className="text-sm font-normal mt-0.5">({headingSuffix})</p>
                 </CardHeader>
                 <CardContent>
                     <p>Loading leaderboard...</p>
@@ -85,7 +86,8 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         return (
             <Card>
                 <CardHeader className="text-center">
-                    <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
+                    <CardTitle>Leaderboard</CardTitle>
+                    <p className="text-sm font-normal mt-0.5">({headingSuffix})</p>
                 </CardHeader>
                 <CardContent>
                     <p className="text-red-500">{error}</p>
@@ -98,7 +100,8 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         <>
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
-                <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
+                <CardTitle>Leaderboard</CardTitle>
+                <p className="text-sm font-normal mt-0.5">({headingSuffix})</p>
             </CardHeader>
             <CardContent>
                 {/* column headings */}
