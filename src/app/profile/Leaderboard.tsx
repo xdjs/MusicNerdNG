@@ -142,7 +142,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                                     </div>
 
                                     {/* UGC row */}
-                                    <div className="flex justify-between">
+                                    <div className="flex justify-between pl-10">
                                         <span className="text-muted-foreground">UGC Added</span>
                                         <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
                                             {entry.ugcCount}
@@ -150,7 +150,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                                     </div>
 
                                     {/* Artists row */}
-                                    <div className="flex justify-between">
+                                    <div className="flex justify-between pl-10">
                                         <span className="text-muted-foreground">Artists Added</span>
                                         <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
                                             {entry.artistsCount}
