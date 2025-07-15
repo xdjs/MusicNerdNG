@@ -104,11 +104,11 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                 <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
             </CardHeader>
             <CardContent>
-                {/* column headings */}
-                <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground text-center sticky top-0 z-20 bg-card py-2 mb-2">
-                    <span className="sm:justify-self-start sm:text-left">User</span>
+                {/* column headings (hidden on mobile) */}
+                <div className="hidden sm:grid grid-cols-3 font-semibold text-base text-muted-foreground text-center sticky top-0 z-20 bg-card py-2 mb-2">
+                    <span className="justify-self-start text-left">User</span>
                     <span>UGC Added</span>
-                    <span className="sm:justify-self-end sm:text-right">Artists Added</span>
+                    <span className="justify-self-end text-right">Artists Added</span>
                 </div>
 
                 <div className="space-y-2">
@@ -123,36 +123,70 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                             <div
                                 key={entry.userId}
                                 className={cn(
-                                    "grid grid-cols-3 items-center p-3 border rounded-md transition-colors",
+                                    "p-3 border rounded-md transition-colors",
                                     isHighlighted ? "ring-2 ring-primary bg-accent sticky top-12 z-10" : "hover:bg-accent/40"
                                 )}
                             >
-                                {/* User col */}
-                                <div className="flex items-center space-x-2 overflow-hidden">
-                                    <span className={
-                                        `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
-                                    }>
-                                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
-                                    </span>
-                                    <div className="truncate">
+                                {/* Mobile layout */}
+                                <div className="flex flex-col sm:hidden space-y-1">
+                                    {/* Username row */}
+                                    <div className="flex items-center space-x-2 overflow-hidden">
+                                        <span className={
+                                            `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
+                                        }>
+                                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                                        </span>
                                         <p className="font-medium truncate max-w-[200px] text-lg">
                                             {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
                                         </p>
                                     </div>
+
+                                    {/* UGC row */}
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">UGC Added</span>
+                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                            {entry.ugcCount}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Artists row */}
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Artists Added</span>
+                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                            {entry.artistsCount}
+                                        </Badge>
+                                    </div>
                                 </div>
 
-                                {/* UGC count */}
-                                <div className="text-center text-lg">
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                        {entry.ugcCount}
-                                    </Badge>
-                                </div>
+                                {/* Desktop layout */}
+                                <div className="hidden sm:grid grid-cols-3 items-center">
+                                    {/* User col */}
+                                    <div className="flex items-center space-x-2 overflow-hidden">
+                                        <span className={
+                                            `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
+                                        }>
+                                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                                        </span>
+                                        <div className="truncate">
+                                            <p className="font-medium truncate max-w-[200px] text-lg">
+                                                {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
+                                            </p>
+                                        </div>
+                                    </div>
 
-                                {/* Artist count */}
-                                <div className="text-right text-lg">
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                        {entry.artistsCount}
-                                    </Badge>
+                                    {/* UGC count */}
+                                    <div className="text-center text-lg">
+                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                            {entry.ugcCount}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Artist count */}
+                                    <div className="text-right text-lg">
+                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                            {entry.artistsCount}
+                                        </Badge>
+                                    </div>
                                 </div>
                             </div>
                         );
