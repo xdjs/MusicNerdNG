@@ -2,7 +2,6 @@
 
 import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
-import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
@@ -14,12 +13,21 @@ import Leaderboard from "./Leaderboard";
 import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 
-export default function Dashboard({ user }: { user: User }) {
-    return <UgcStatsWrapper><UgcStats user={user} /></UgcStatsWrapper>;
+type RecentItem = {
+    ugcId: string;
+    artistId: string | null;
+    artistName: string | null;
+    updatedAt: string | null;
+    imageUrl: string | null;
+};
+
+export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
+    return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} allowEditUsername={allowEditUsername} showDateRange={showDateRange} /></UgcStatsWrapper>;
 }
 
-function UgcStats({ user }: { user: User }) {
+function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
     const [date, setDate] = useState<DateRange | undefined>();
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -29,7 +37,10 @@ function UgcStats({ user }: { user: User }) {
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
+    const [recentUGC, setRecentUGC] = useState<RecentItem[]>([]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
+    const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
+    const isCompactLayout = !allowEditUsername; // compact layout (leaderboard-like) when username editing disabled
 
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
@@ -117,77 +128,215 @@ function UgcStats({ user }: { user: User }) {
         fetchAllTimeStats();
     }, [ugcStatsUserWallet]);
 
+    // Fetch recent edited UGC only for the profile layout (not the compact leaderboard layout)
+    useEffect(() => {
+        if (!isCompactLayout) {
+            fetch('/api/recentEdited')
+                .then(res => res.json())
+                .then((data: RecentItem[]) => setRecentUGC(data))
+                .catch((e) => console.error('[Dashboard] error fetching recent edited', e));
+        }
+    }, [isCompactLayout]);
+
     return (
         <section className="px-10 py-5 space-y-6">
-            <h1 className="text-2xl font-bold text-center">User Profile</h1>
-            
-            {/* Individual Stats Section */}
-            <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
-                {/* Row with username info and edit controls */}
-                <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
-                    {!isEditingUsername && (
-                        <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                            ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
-                        }</strong></p>
-                    )}
+            {/* Stats + Recently Edited layout */}
+            {isCompactLayout ? (
+                <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
+                    {/* Username + other controls as before */}
+                    <div className="flex flex-col items-center gap-2 pb-1 w-full">
+                        {!isEditingUsername && !isGuestUser && (
+                            <p className="text-sm text-gray-500">UGC Stats for: <strong>{
+                                ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                            }</strong></p>
+                        )}
 
-                    {!isGuestUser && isEditingUsername ? (
-                        <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                            <Input
-                                value={usernameInput}
-                                onChange={(e) => setUsernameInput(e.target.value)}
-                                className="h-8 w-40 text-sm"
-                            />
-                            <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                {savingUsername ? 'Saving...' : 'Save'}
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
-                        </div>
-                    ) : (
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            className="bg-gray-200 text-black hover:bg-gray-300"
-                            onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                        >
-                            <div className="flex items-center gap-1">
-                                {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                        {allowEditUsername && (
+                            !isGuestUser && isEditingUsername ? (
+                                <div className="flex flex-col items-center gap-2 w-full">
+                                    <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                        <Input
+                                            value={usernameInput}
+                                            onChange={(e) => setUsernameInput(e.target.value)}
+                                            className="h-8 w-40 text-sm"
+                                        />
+                                        <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                            {savingUsername ? 'Saving...' : 'Save'}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="pt-2">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
+                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                                        </div>
+                                    </Button>
+                                </div>
+                            )
+                        )}
+                        {/* Show a standalone login button for guests only when username editing is disabled */}
+                        {!allowEditUsername && isGuestUser && (
+                            <div className="pt-2">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
+                                    onClick={handleLogin}
+                                >
+                                    Log In
+                                </Button>
                             </div>
-                        </Button>
+                        )}
+                    </div>
+                    {/* Admin controls for leaderboard stats */}
+                    {user?.isAdmin && (
+                        <>
+                            <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
+                            <div className="mt-2">
+                                <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
+                                    Clear User
+                                </Button>
+                            </div>
+                        </>
+                    )}
+
+                    {/* Dynamic stats block – hide for guest */}
+                    {!isGuestUser && (ugcStats ?? allTimeStats) && (
+                        <div className="space-y-1">
+                            <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
+                            <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
+                        </div>
+                    )}
+
+                    {showDateRange && !isCompactLayout && (
+                        <>
+                            {/* Date range picker and action button inline */}
+                            <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+                                <DatePicker date={date} setDate={setDate} />
+                                <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
+                            </div>
+                            {loading && <p>Loading...</p>}
+                        </>
                     )}
                 </div>
+            ) : (
+                <>
+                    {/* Username row no edit button inline */}
+                    <div className="flex flex-col items-center gap-2 pb-4 w-full text-center">
+                        {!isEditingUsername && (
+                            <p className="text-lg font-semibold">
+                                {displayName}
+                            </p>
+                        )}
 
-                {user?.isAdmin && (
-                    <>
-                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
-                        <div className="mt-2">
-                            <Button disabled={!ugcStatsUserWallet} onClick={() => {setUgcStatsUserWallet(null); setQuery('')}}>
-                                Clear User
-                            </Button>
-                        </div>
-                    </>
-                )}
-
-                {/* Dynamic stats block (shows date-range stats if available, otherwise all-time) */}
-                {(ugcStats ?? allTimeStats) && (
-                    <div className="space-y-1">
-                        <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
-                        <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
+                        {allowEditUsername && (
+                            !isGuestUser && isEditingUsername ? (
+                                <div className="flex flex-col items-center gap-2 w-full">
+                                    <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                        <Input
+                                            value={usernameInput}
+                                            onChange={(e) => setUsernameInput(e.target.value)}
+                                            className="h-8 w-40 text-sm"
+                                        />
+                                        <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                            {savingUsername ? 'Saving...' : 'Save'}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="pt-2">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
+                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                                        </div>
+                                    </Button>
+                                </div>
+                            )
+                        )}
+                        {/* Fallback login button for views where username editing is not allowed */}
+                        {!allowEditUsername && isGuestUser && (
+                            <div className="pt-2">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
+                                    onClick={handleLogin}
+                                >
+                                    Log In
+                                </Button>
+                            </div>
+                        )}
                     </div>
-                )}
 
-                {/* Date range picker and action button inline */}
-                <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
-                    <DatePicker date={date} setDate={setDate} />
-                    <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
-                </div>
-                {loading && <p>Loading...</p>}
-            </div>
+                    {/* Two-column section under username */}
+                    <div className="flex flex-col md:flex-row md:gap-6 justify-center max-w-3xl mx-auto text-center md:text-left">
+                        {/* Left column - stats & admin controls */}
+                        <div className="md:w-1/2 space-y-4">
+                            {user?.isAdmin && (
+                                <>
+                                    <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
+                                    <div className="mt-2">
+                                        <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
+                                            Clear User
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
+
+                            <div className="space-y-1 text-center md:text-left">
+                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            </div>
+                        </div>
+
+                        {/* Right column - recently edited */}
+                        <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
+                            <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
+                            {recentUGC.length ? (
+                                <ul className="space-y-3">
+                                    {recentUGC.map((item) => (
+                                        <li key={item.ugcId}>
+                                            <Link href={`/artist/${item.artistId ?? ''}`} className="flex items-center gap-3 hover:underline">
+                                                <img src={item.imageUrl || "/default_pfp_pink.png"} alt="artist" className="h-8 w-8 rounded-full object-cover" />
+                                                <span>{item.artistName ?? 'Unknown Artist'}</span>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
 
             {/* Leaderboard Section */}
-            <div>
+            {showLeaderboard && (
+            <div className="space-y-4">
+                {showDateRange && (
+                    <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+                        <DatePicker date={date} setDate={setDate} />
+                        <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
+                        {loading && <p>Loading...</p>}
+                    </div>
+                )}
                 <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
             </div>
+            )}
         </section>
     )
 }
