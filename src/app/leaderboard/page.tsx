@@ -19,7 +19,7 @@ export default async function Page() {
       updatedAt: new Date().toISOString(),
       legacyId: null,
     } as const;
-    return <Dashboard user={mockUser} />; // showLeaderboard default true
+    return <Dashboard user={mockUser} allowEditUsername={false} />; // no edit on leaderboard
   }
 
   if (!session) {
@@ -34,10 +34,10 @@ export default async function Page() {
       updatedAt: new Date().toISOString(),
       legacyId: null,
     } as const;
-    return <Dashboard user={guestUser} />;
+    return <Dashboard user={guestUser} allowEditUsername={false} />;
   }
 
   const user = await getUserById(session.user.id);
   if (!user) return notFound();
-  return <Dashboard user={user} />;
+  return <Dashboard user={user} allowEditUsername={false} />;
 } 

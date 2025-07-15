@@ -14,11 +14,11 @@ import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
-export default function Dashboard({ user, showLeaderboard = true }: { user: User; showLeaderboard?: boolean }) {
-    return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} /></UgcStatsWrapper>;
+export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
+    return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} allowEditUsername={allowEditUsername} showDateRange={showDateRange} /></UgcStatsWrapper>;
 }
 
-function UgcStats({ user, showLeaderboard = true }: { user: User; showLeaderboard?: boolean }) {
+function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
     const [date, setDate] = useState<DateRange | undefined>();
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -130,29 +130,31 @@ function UgcStats({ user, showLeaderboard = true }: { user: User; showLeaderboar
                         }</strong></p>
                     )}
 
-                    {!isGuestUser && isEditingUsername ? (
-                        <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                            <Input
-                                value={usernameInput}
-                                onChange={(e) => setUsernameInput(e.target.value)}
-                                className="h-8 w-40 text-sm"
-                            />
-                            <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                {savingUsername ? 'Saving...' : 'Save'}
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
-                        </div>
-                    ) : (
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            className="bg-gray-200 text-black hover:bg-gray-300"
-                            onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                        >
-                            <div className="flex items-center gap-1">
-                                {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                    {allowEditUsername && (
+                        !isGuestUser && isEditingUsername ? (
+                            <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                <Input
+                                    value={usernameInput}
+                                    onChange={(e) => setUsernameInput(e.target.value)}
+                                    className="h-8 w-40 text-sm"
+                                />
+                                <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                    {savingUsername ? 'Saving...' : 'Save'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
                             </div>
-                        </Button>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                className="bg-gray-200 text-black hover:bg-gray-300"
+                                onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
+                            >
+                                <div className="flex items-center gap-1">
+                                    {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                                </div>
+                            </Button>
+                        )
                     )}
                 </div>
 
@@ -175,12 +177,16 @@ function UgcStats({ user, showLeaderboard = true }: { user: User; showLeaderboar
                     </div>
                 )}
 
-                {/* Date range picker and action button inline */}
-                <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
-                    <DatePicker date={date} setDate={setDate} />
-                    <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
-                </div>
-                {loading && <p>Loading...</p>}
+                {showDateRange && (
+                    <>
+                        {/* Date range picker and action button inline */}
+                        <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+                            <DatePicker date={date} setDate={setDate} />
+                            <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
+                        </div>
+                        {loading && <p>Loading...</p>}
+                    </>
+                )}
             </div>
 
             {/* Leaderboard Section */}
