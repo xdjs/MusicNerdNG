@@ -5,19 +5,41 @@ import type { LeaderboardEntry } from "@/app/actions/serverActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 
-export default function Leaderboard({ highlightIdentifier, dateRange }: { highlightIdentifier?: string; dateRange?: DateRange }) {
+type RangeKey = "today" | "week" | "month" | "all";
+
+export default function Leaderboard({ highlightIdentifier }: { highlightIdentifier?: string }) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showTopBtn, setShowTopBtn] = useState(false);
+    const [range, setRange] = useState<RangeKey>("all");
+
+    function getRangeDates(r: RangeKey) {
+        const now = new Date();
+        switch (r) {
+            case "today":
+                const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                return { from: startToday, to: now };
+            case "week":
+                const weekAgo = new Date(now);
+                weekAgo.setDate(now.getDate() - 7);
+                return { from: weekAgo, to: now };
+            case "month":
+                const monthAgo = new Date(now);
+                monthAgo.setMonth(now.getMonth() - 1);
+                return { from: monthAgo, to: now };
+            default:
+                return null;
+        }
+    }
 
     function buildUrl() {
-        if (dateRange?.from && dateRange?.to) {
-            const from = dateRange.from.toISOString();
-            const to = dateRange.to.toISOString();
+        const dates = getRangeDates(range);
+        if (dates) {
+            const from = dates.from.toISOString();
+            const to = dates.to.toISOString();
             return `/api/leaderboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
         }
         return "/api/leaderboard";
@@ -25,7 +47,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
 
     useEffect(() => {
         async function fetchLeaderboard() {
-            if ((dateRange?.from && !dateRange?.to) || (!dateRange?.from && dateRange?.to)) {
+            if ((getRangeDates(range)?.from && !getRangeDates(range)?.to) || (!getRangeDates(range)?.from && getRangeDates(range)?.to)) {
                 setLeaderboard([]);
                 return;
             }
@@ -47,7 +69,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         }
 
         fetchLeaderboard();
-    }, [dateRange]);
+    }, [range]);
 
     // Show/hide "back to top" button based on scroll position
     useEffect(() => {
@@ -58,15 +80,14 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    const isDateRangeActive = !!(dateRange?.from && dateRange?.to);
+    const headingSuffixMap: Record<RangeKey, string> = {
+        today: "Today",
+        week: "Last Week",
+        month: "Last Month",
+        all: "All Time",
+    };
 
-    function formatShort(date: Date) {
-        return date.toLocaleDateString(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
-    }
-
-    const headingSuffix = isDateRangeActive && dateRange?.from && dateRange?.to
-        ? `${formatShort(dateRange.from)} - ${formatShort(dateRange.to)}`
-        : "All Time";
+    const headingSuffix = headingSuffixMap[range];
 
     if (loading) {
         return (
@@ -74,6 +95,20 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
                     <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
+                    {/* Range selector buttons */}
+                    <div className="flex flex-wrap justify-center gap-2 mt-2">
+                        {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
+                            <Button
+                                key={key}
+                                size="sm"
+                                variant={range === key ? "default" : "secondary"}
+                                className="bg-gray-200 text-black hover:bg-gray-300"
+                                onClick={() => setRange(key)}
+                            >
+                                {headingSuffixMap[key]}
+                            </Button>
+                        ))}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <p>Loading leaderboard...</p>
@@ -88,6 +123,20 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
                     <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
+                    {/* Range selector */}
+                    <div className="flex flex-wrap justify-center gap-2 mt-2">
+                        {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
+                            <Button
+                                key={key}
+                                size="sm"
+                                variant={range === key ? "default" : "secondary"}
+                                className="bg-gray-200 text-black hover:bg-gray-300"
+                                onClick={() => setRange(key)}
+                            >
+                                {headingSuffixMap[key]}
+                            </Button>
+                        ))}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <p className="text-red-500">{error}</p>
@@ -102,6 +151,19 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
             <CardHeader className="text-center">
                 <CardTitle>Leaderboard</CardTitle>
                 <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
+                <div className="flex flex-wrap justify-center gap-2 mt-2">
+                    {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
+                        <Button
+                            key={key}
+                            size="sm"
+                            variant={range === key ? "default" : "secondary"}
+                            className="bg-gray-200 text-black hover:bg-gray-300"
+                            onClick={() => setRange(key)}
+                        >
+                            {headingSuffixMap[key]}
+                        </Button>
+                    ))}
+                </div>
             </CardHeader>
             <CardContent>
                 {/* column headings (hidden on mobile) */}
