@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerAuthSession } from "@/server/auth";
 import { db } from "@/server/db/drizzle";
-import { ugcresearch } from "@/server/db/schema";
+import { ugcresearch, artists } from "@/server/db/schema";
 import { desc, eq } from "drizzle-orm";
-
-type RespItem = {
-  artistId: string;
-  name: string | null;
-};
+import { and } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -25,25 +21,29 @@ export async function GET() {
       return NextResponse.json([], { status: 200 });
     }
 
-    const rows = await db.query.ugcresearch.findMany({
-      where: eq(ugcresearch.userId, userId),
-      orderBy: desc(ugcresearch.updatedAt),
-      with: { ugcArtist: true },
-      limit: 15, // grab extra to dedupe
-    });
+    // Fetch last 20 edits then dedupe by artistId to pick latest 3 unique artists
+    const rows = await db
+      .select({
+        ugcId: ugcresearch.id,
+        artistId: ugcresearch.artistId,
+        updatedAt: ugcresearch.updatedAt,
+        artistName: artists.name,
+      })
+      .from(ugcresearch)
+      .leftJoin(artists, eq(artists.id, ugcresearch.artistId))
+      .where(and(eq(ugcresearch.userId, userId), eq(ugcresearch.accepted, true)))
+      .orderBy(desc(ugcresearch.updatedAt))
+      .limit(20);
 
-    const unique: RespItem[] = [];
-    const seen = new Set<string>();
+    const unique: { [k: string]: any } = {};
     for (const row of rows) {
-      const artistId = row.artistId;
-      if (!artistId) continue;
-      if (seen.has(artistId)) continue;
-      seen.add(artistId);
-      unique.push({ artistId, name: (row as any).ugcArtist?.name ?? null });
-      if (unique.length >= 3) break;
+      if (row.artistId && !unique[row.artistId]) {
+        unique[row.artistId] = row;
+      }
+      if (Object.keys(unique).length === 3) break;
     }
 
-    return NextResponse.json(unique, { status: 200 });
+    return NextResponse.json(Object.values(unique), { status: 200 });
   } catch (e) {
     console.error("[recentEdited] error", e);
     return NextResponse.json([], { status: 500 });

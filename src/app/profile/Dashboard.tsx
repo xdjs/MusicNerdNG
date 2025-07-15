@@ -13,10 +13,13 @@ import Leaderboard from "./Leaderboard";
 import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 
 type RecentItem = {
-    artistId: string;
-    name: string | null;
+    ugcId: string;
+    artistId: string | null;
+    artistName: string | null;
+    updatedAt: string | null;
 };
 
 export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
@@ -147,31 +150,12 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                             }</strong></p>
                         )}
 
-                        {allowEditUsername && (
-                            !isGuestUser && isEditingUsername ? (
-                                <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                                    <Input
-                                        value={usernameInput}
-                                        onChange={(e) => setUsernameInput(e.target.value)}
-                                        className="h-8 w-40 text-sm"
-                                    />
-                                    <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                        {savingUsername ? 'Saving...' : 'Save'}
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
-                                </div>
-                            ) : (
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    className="bg-gray-200 text-black hover:bg-gray-300"
-                                    onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                                >
-                                    <div className="flex items-center gap-1">
-                                        {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
-                                    </div>
+                        {allowEditUsername && !isEditingUsername && !isGuestUser && (
+                            <div className="pt-2">
+                                <Button size="sm" variant="secondary" className="bg-gray-200 text-black hover:bg-gray-300" onClick={() => setIsEditingUsername(true)}>
+                                    Edit Username
                                 </Button>
-                            )
+                            </div>
                         )}
                     </div>
                     {/* Admin controls for leaderboard stats */}
@@ -207,7 +191,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                 </div>
             ) : (
                 <>
-                    {/* Username row centered */}
+                    {/* Username row no edit button inline */}
                     <div className="flex flex-wrap justify-center items-center gap-2 pb-4 w-full text-center">
                         {!isEditingUsername && (
                             <p className="text-lg font-semibold">
@@ -268,14 +252,16 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                         <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
                             {recentUGC.length ? (
-                                <div className="flex flex-col gap-3">
+                                <ul className="space-y-3">
                                     {recentUGC.map((item) => (
-                                        <a key={item.artistId} href={`/artist/${item.artistId}`} className="flex items-center gap-3 hover:underline">
-                                            <img src="/default_pfp_pink.png" alt="Artist" className="h-8 w-8 rounded-full object-cover" />
-                                            <span>{item.name ?? 'Unknown Artist'}</span>
-                                        </a>
+                                        <li key={item.ugcId}>
+                                            <Link href={`/artist/${item.artistId ?? ''}`} className="flex items-center gap-3 hover:underline">
+                                                <img src="/default_pfp.png" alt="artist" className="h-8 w-8 rounded-full object-cover" />
+                                                <span>{item.artistName ?? 'Unknown Artist'}</span>
+                                            </Link>
+                                        </li>
                                     ))}
-                                </div>
+                                </ul>
                             ) : (
                                 <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
                             )}
