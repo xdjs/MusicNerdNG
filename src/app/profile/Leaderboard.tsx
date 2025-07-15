@@ -81,7 +81,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    const headingSuffixMap: Record<RangeKey, string> = {
+    const headingLabelMap: Record<RangeKey, string> = {
         today: "Today",
         week: "Last Week",
         month: "Last Month",
@@ -94,16 +94,17 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
                     {/* Range selector buttons */}
-                    <div className="grid grid-cols-4 gap-2 mt-2 w-full">
+                    <div className="grid grid-cols-4 gap-2 w-full mt-2">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/4 mx-auto px-2"
+                                className={cn("w-full py-1", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
                                 onClick={() => setRange(key)}
                             >
-                                {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
+                                {range === key && <Check className="inline h-4 w-4 mr-1" />}
+                                {headingLabelMap[key]}
                             </Button>
                         ))}
                     </div>
@@ -120,16 +121,17 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
             <Card>
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
-                    <div className="grid grid-cols-4 gap-2 mt-2 w-full">
+                    <div className="grid grid-cols-4 gap-2 w-full mt-2">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/4 mx-auto px-2"
+                                className={cn("w-full py-1", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
                                 onClick={() => setRange(key)}
                             >
-                                {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
+                                {range === key && <Check className="inline h-4 w-4 mr-1" />}
+                                {headingLabelMap[key]}
                             </Button>
                         ))}
                     </div>
@@ -146,16 +148,17 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
                 <CardTitle>Leaderboard</CardTitle>
-                <div className="grid grid-cols-4 gap-2 mt-2 w-full">
+                <div className="grid grid-cols-4 gap-2 w-full mt-2">
                     {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                         <Button
                             key={key}
                             size="sm"
                             variant={range === key ? "default" : "secondary"}
-                            className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/4 mx-auto px-2"
+                            className={cn("w-full py-1", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
                             onClick={() => setRange(key)}
                         >
-                            {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
+                            {range === key && <Check className="inline h-4 w-4 mr-1" />}
+                            {headingLabelMap[key]}
                         </Button>
                     ))}
                 </div>
