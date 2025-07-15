@@ -52,7 +52,7 @@ describe('UGC Stats Page', () => {
         render(page);
 
         expect(screen.getByText('Leaderboard')).toBeInTheDocument();
-        expect(screen.getByText('User Profile')).toBeInTheDocument();
+        // Removed 'User Profile' heading assertion
     });
 
     it('should show dashboard when walletless mode is enabled', async () => {
@@ -65,7 +65,6 @@ describe('UGC Stats Page', () => {
         render(page);
 
         // Should show the dashboard with leaderboard
-        expect(screen.getByText('User Profile')).toBeInTheDocument();
         expect(screen.getByText('Leaderboard')).toBeInTheDocument();
     });
 
@@ -97,6 +96,6 @@ describe('UGC Stats Page', () => {
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('User Profile')).toBeInTheDocument();
+        // 'User Profile' heading no longer present after update
     });
 }); 

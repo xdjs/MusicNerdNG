@@ -333,7 +333,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => router.push('/leaderboard')}>Leaderboard</DropdownMenuItem>
                                 <DropdownMenuItem
                                     onSelect={() => {
                                 if (openConnectModal) {
@@ -371,7 +371,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => router.push('/leaderboard')}>Leaderboard</DropdownMenuItem>
                             {session?.user?.isAdmin && (
                                 <DropdownMenuItem onSelect={() => router.push('/admin')} className="flex items-center gap-2">
                                     <span>Admin Panel</span>

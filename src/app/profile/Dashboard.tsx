@@ -2,7 +2,6 @@
 
 import DatePicker from "./DatePicker";
 import { Button } from "@/components/ui/button";
-import { CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { DateRange } from "react-day-picker";
@@ -119,7 +118,7 @@ function UgcStats({ user }: { user: User }) {
 
     return (
         <section className="px-10 py-5 space-y-6">
-            <h1 className="text-2xl font-bold text-center">User Profile</h1>
+            {/* Removed "User Profile" heading as per design update */}
             
             {/* Individual Stats Section */}
             <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
