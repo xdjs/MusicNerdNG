@@ -106,9 +106,9 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
             <CardContent>
                 {/* column headings */}
                 <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground text-center sticky top-0 z-20 bg-card py-2 mb-2">
-                    <span>User</span>
+                    <span className="sm:justify-self-start sm:text-left">User</span>
                     <span>UGC Added</span>
-                    <span>Artists Added</span>
+                    <span className="sm:justify-self-end sm:text-right">Artists Added</span>
                 </div>
 
                 <div className="space-y-2">
