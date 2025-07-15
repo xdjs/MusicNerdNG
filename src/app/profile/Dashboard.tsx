@@ -291,7 +291,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                             )}
                         </div>
 
-                        {/* Right column - recently edited */}
+                        {/* Right column - recently edited (only for authenticated users) */}
+                        {!isGuestUser && (
                         <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
                             {recentUGC.length ? (
@@ -309,6 +310,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                 <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
                             )}
                         </div>
+                        )}
                     </div>
                 </>
             )}
