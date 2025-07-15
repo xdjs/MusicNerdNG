@@ -73,7 +73,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
             <Card>
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
-                    <p className="text-sm font-normal mt-0.5">({headingSuffix})</p>
+                    <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
                 </CardHeader>
                 <CardContent>
                     <p>Loading leaderboard...</p>
@@ -87,7 +87,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
             <Card>
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
-                    <p className="text-sm font-normal mt-0.5">({headingSuffix})</p>
+                    <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
                 </CardHeader>
                 <CardContent>
                     <p className="text-red-500">{error}</p>
@@ -101,14 +101,14 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
                 <CardTitle>Leaderboard</CardTitle>
-                <p className="text-sm font-normal mt-0.5">({headingSuffix})</p>
+                <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
             </CardHeader>
             <CardContent>
                 {/* column headings */}
-                <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground sticky top-0 z-20 bg-card py-2 mb-2">
-                    <span className="justify-self-start">User</span>
-                    <span className="justify-self-center">UGC Added</span>
-                    <span className="justify-self-end">Artists Added</span>
+                <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground text-center sticky top-0 z-20 bg-card py-2 mb-2">
+                    <span>User</span>
+                    <span>UGC Added</span>
+                    <span>Artists Added</span>
                 </div>
 
                 <div className="space-y-2">
