@@ -144,7 +144,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                 <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
-                        {!isEditingUsername && (
+                        {!isEditingUsername && !isGuestUser && (
                             <p className="text-sm text-gray-500">UGC Stats for: <strong>{
                                 ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
                             }</strong></p>
