@@ -39,7 +39,7 @@ jest.mock('@/server/auth', () => ({
     getServerAuthSession: jest.fn()
 }));
 
-jest.mock('../externalApiQueries', () => ({
+jest.mock('../queries/externalApiQueries', () => ({
     getSpotifyHeaders: jest.fn(),
     getSpotifyArtist: jest.fn(),
     getSpotifyImage: jest.fn()
@@ -92,7 +92,7 @@ jest.mock('@/server/db/drizzle', () => {
 // Import mocked dependencies
 import { db } from '@/server/db/drizzle';
 import { getServerAuthSession } from '@/server/auth';
-import { getSpotifyHeaders, getSpotifyArtist } from '../externalApiQueries';
+import { getSpotifyHeaders, getSpotifyArtist } from '../queries/externalApiQueries';
 import { extractArtistId } from '../services';
 import { headers } from 'next/headers';
 import axios from 'axios';

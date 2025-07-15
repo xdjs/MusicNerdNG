@@ -1,10 +1,10 @@
 import { POST } from '@/app/api/searchArtists/route';
 import { searchForArtistByName, getAllSpotifyIds } from '@/server/utils/queries/artistQueries';
-import { getSpotifyHeaders } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders } from '@/server/utils/queries/externalApiQueries';
 import axios from 'axios';
 
 jest.mock('@/server/utils/queries/artistQueries');
-jest.mock('@/server/utils/externalApiQueries');
+jest.mock('@/server/utils/queries/externalApiQueries');
 jest.mock('axios');
 
 // Polyfill Response.json for the test environment

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import axios from 'axios';
 import queryString from 'querystring';
 
@@ -76,7 +76,7 @@ describe('Spotify API Integration', () => {
             }));
 
             // Re-import the module to get the new mocked values
-            const { getSpotifyHeaders } = await import('@/server/utils/externalApiQueries');
+            const { getSpotifyHeaders } = await import('@/server/utils/queries/externalApiQueries');
 
             await expect(getSpotifyHeaders()).rejects.toThrow('Spotify credentials not configured');
 

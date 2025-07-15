@@ -1,4 +1,4 @@
-import type { SpotifyHeaders, SpotifyArtistApiResponse, SpotifyArtist } from '@/server/utils/externalApiQueries';
+import type { SpotifyHeaders, SpotifyArtistApiResponse, SpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 
 export const createMockSpotifyHeaders = (): { headers: { Authorization: string | null } } => ({
     headers: { 

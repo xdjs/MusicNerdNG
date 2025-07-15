@@ -4,7 +4,7 @@ import { db } from '@/server/db/drizzle';
 import { artists } from '@/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getServerAuthSession } from '@/server/auth';
-import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import { createMockDB } from '../__mocks__/mockDatabase';
 import { createMockSession } from '../__mocks__/mockAuth';
 import { createMockSpotifyHeaders, createMockSpotifyArtist, createMockSpotifyError } from '../__mocks__/mockSpotify';

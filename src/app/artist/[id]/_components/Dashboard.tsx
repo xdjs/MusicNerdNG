@@ -2,7 +2,7 @@
 
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Spotify } from 'react-spotify-embed';
-import { ArtistSpotifyImage } from "@/server/utils/externalApiQueries";
+import { ArtistSpotifyImage } from "@/server/utils/queries/externalApiQueries";
 import { Artist } from "@/server/db/DbTypes";
 
 export default function Dashboard({spotifyImg, artist} : {spotifyImg: ArtistSpotifyImage, artist: Artist}) {

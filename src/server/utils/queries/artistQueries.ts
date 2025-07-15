@@ -1,5 +1,5 @@
 import { db } from "@/server/db/drizzle";
-import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
+import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
 import { ilike, eq, sql, inArray, and, arrayContains } from "drizzle-orm";
 import { artists, users, ugcresearch, urlmap, aiPrompts } from "@/server/db/schema";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
