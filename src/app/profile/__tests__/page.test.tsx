@@ -51,7 +51,7 @@ describe('UGC Stats Page', () => {
         const page = await Page();
         render(page);
 
-        expect(screen.getByText('Leaderboard')).toBeInTheDocument();
+        expect(screen.getByText('User Profile')).toBeInTheDocument();
         // Removed 'User Profile' heading assertion
     });
 
@@ -64,8 +64,8 @@ describe('UGC Stats Page', () => {
         const page = await Page();
         render(page);
 
-        // Should show the dashboard with leaderboard
-        expect(screen.getByText('Leaderboard')).toBeInTheDocument();
+        // Should show the dashboard with user profile layout
+        expect(screen.getByText('User Profile')).toBeInTheDocument();
     });
 
     it('should show dashboard when authenticated', async () => {

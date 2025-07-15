@@ -215,7 +215,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                         </div>
                     )}
 
-                    {showDateRange && isCompactLayout && (
+                    {showDateRange && !isCompactLayout && (
                         <>
                             {/* Date range picker and action button inline */}
                             <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
@@ -296,16 +296,13 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </>
                             )}
 
-                            {!isGuestUser && (
-                                <div className="space-y-1 text-center md:text-left">
-                                    <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                    <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
-                                </div>
-                            )}
+                            <div className="space-y-1 text-center md:text-left">
+                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            </div>
                         </div>
 
-                        {/* Right column - recently edited (only for authenticated users) */}
-                        {!isGuestUser && (
+                        {/* Right column - recently edited */}
                         <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
                             {recentUGC.length ? (
@@ -323,7 +320,6 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
                             )}
                         </div>
-                        )}
                     </div>
                 </>
             )}
