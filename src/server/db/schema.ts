@@ -218,12 +218,10 @@ export const coverageReports = pgTable('coverage_reports', {
 
 export const aiPrompts = pgTable("aiprompts", {
 	id: uuid("prompt_id").primaryKey().defaultRandom(),
-	promptName: text("prompt_name").default("unnamed_prompt"),
+	createdAt: timestamp("created_at").defaultNow(), 	
 	promptBeforeName: text("prompt_before_name").notNull(),
 	promptAfterName: text("prompt_after_name").notNull(),
-	isDefault: boolean("is_default").default(false),
-	isEnabled: boolean("is_enabled").default(false),
-	createdAt: timestamp("created_at").defaultNow(),
+	isActive: boolean("is_enabled").default(false),
   });
 
 export const funFacts = pgTable("funfacts", {

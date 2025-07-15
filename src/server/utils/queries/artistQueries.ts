@@ -558,21 +558,13 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
 // ----------------------------------
 
 export async function getActivePrompt() {
-    return await db.query.aiPrompts.findFirst({ where: eq(aiPrompts.isDefault, true) });
+    return await db.query.aiPrompts.findFirst({ where: eq(aiPrompts.isActive, true) });
 }
 
 export async function setActivePrompt() {
     // TODO: implement if necessary
 }
 
-export async function getAllPrompts() {
-    try {
-        return await db.query.aiPrompts.findMany();
-    } catch (e) {
-        console.error("no work", e);
-        throw new Error("cant get table data");
-    }
-}
 
 // Helper to (re)generate an artist bio immediately using OpenAI and store it
 export async function generateArtistBio(artistId: string): Promise<string | null> {
