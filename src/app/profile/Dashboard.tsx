@@ -182,6 +182,18 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                 </div>
                             )
                         )}
+                        {isGuestUser && (
+                            <div className="pt-2">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
+                                    onClick={handleLogin}
+                                >
+                                    Log In
+                                </Button>
+                            </div>
+                        )}
                     </div>
                     {/* Admin controls for leaderboard stats */}
                     {user?.isAdmin && (
@@ -195,8 +207,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                         </>
                     )}
 
-                    {/* Dynamic stats block (shows date-range stats if available, otherwise all-time) */}
-                    {(ugcStats ?? allTimeStats) && (
+                    {/* Dynamic stats block – hide for guest */}
+                    {!isGuestUser && (ugcStats ?? allTimeStats) && (
                         <div className="space-y-1">
                             <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
                             <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
@@ -271,10 +283,12 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                 </>
                             )}
 
-                            <div className="space-y-1 text-center md:text-left">
-                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
-                            </div>
+                            {!isGuestUser && (
+                                <div className="space-y-1 text-center md:text-left">
+                                    <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                    <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Right column - recently edited */}
