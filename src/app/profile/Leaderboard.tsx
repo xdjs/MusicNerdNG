@@ -126,7 +126,9 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                             >
                                 {/* User col */}
                                 <div className="flex items-center space-x-2 overflow-hidden">
-                                    <span className="w-8 text-sm font-semibold text-muted-foreground">
+                                    <span className={
+                                        `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
+                                    }>
                                         {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
                                     </span>
                                     <div className="truncate">
