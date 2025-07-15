@@ -100,7 +100,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/2 mx-auto px-2"
+                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/4 mx-auto px-2"
                                 onClick={() => setRange(key)}
                             >
                                 {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
@@ -126,7 +126,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/2 mx-auto px-2"
+                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/4 mx-auto px-2"
                                 onClick={() => setRange(key)}
                             >
                                 {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
@@ -152,7 +152,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                             key={key}
                             size="sm"
                             variant={range === key ? "default" : "secondary"}
-                            className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/2 mx-auto px-2"
+                            className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center w-1/4 mx-auto px-2"
                             onClick={() => setRange(key)}
                         >
                             {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
