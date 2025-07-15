@@ -125,9 +125,15 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                 {/* Row with username info and edit controls */}
                 <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
                     {!isEditingUsername && (
-                        <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                            ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
-                        }</strong></p>
+                        showLeaderboard ? (
+                            <p className="text-sm text-gray-500">UGC Stats for: <strong>{
+                                ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                            }</strong></p>
+                        ) : (
+                            <p className="text-lg font-semibold text-center w-full">
+                                {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
+                            </p>
+                        )
                     )}
 
                     {allowEditUsername && (
@@ -169,11 +175,11 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                     </>
                 )}
 
-                {/* Dynamic stats block (shows date-range stats if available, otherwise all-time) */}
-                {(ugcStats ?? allTimeStats) && (
+                {/* Stats block always visible on profile (showLeaderboard false) */}
+                {(!showLeaderboard || (ugcStats ?? allTimeStats)) && (
                     <div className="space-y-1">
-                        <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
-                        <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
+                        <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</p>
+                        <p>Artists Added: {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</p>
                     </div>
                 )}
 
