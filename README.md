@@ -37,9 +37,6 @@ NEXTAUTH_SECRET=your_nextauth_secret
 
 # Discord Integration
 DISCORD_WEBHOOK_URL=your_discord_webhook_url
-
-# Google AI
-GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ## Getting Started

@@ -23,7 +23,6 @@ process.env.SUPABASE_DB_CONNECTION = process.env.SUPABASE_DB_CONNECTION || 'post
 process.env.NEXTAUTH_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000';
 process.env.NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || 'test-nextauth-secret-for-testing';
 process.env.DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'test-discord-webhook';
-process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-api-key';
 
 // Import polyfills
 import './polyfills'; 

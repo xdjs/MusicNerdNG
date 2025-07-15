@@ -5,6 +5,5 @@ declare namespace NodeJS {
     SUPABASE_DB_CONNECTION: string;
     NEXTAUTH_URL: string;
     DISCORD_WEBHOOK_URL: string;
-    GEMINI_API_KEY: string;
   }
 } 
