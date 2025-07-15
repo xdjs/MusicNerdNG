@@ -248,9 +248,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                     </div>
 
                     {/* Two-column section under username */}
-                    <div className="flex flex-col md:flex-row md:gap-8 max-w-4xl mx-auto text-center md:text-left">
+                    <div className="flex flex-col md:flex-row md:gap-6 justify-center max-w-3xl mx-auto text-center md:text-left">
                         {/* Left column - stats & admin controls */}
-                        <div className="md:w-1/2 space-y-6">
+                        <div className="md:w-1/2 space-y-4">
                             {user?.isAdmin && (
                                 <>
                                     <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
@@ -262,9 +262,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                                 </>
                             )}
 
-                            <div className="space-y-1">
-                                <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</p>
-                                <p>Artists Added: {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</p>
+                            <div className="space-y-1 text-center md:text-left">
+                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 
