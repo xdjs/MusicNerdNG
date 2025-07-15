@@ -1,6 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import '../../test/setup/testEnv';
 
 // Set up Request and Response for test environment

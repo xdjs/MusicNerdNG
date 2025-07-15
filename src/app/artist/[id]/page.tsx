@@ -4,7 +4,6 @@ import { getSpotifyImage, getSpotifyHeaders, getNumberOfSpotifyReleases } from "
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
-import Link from "next/link";
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 import { EditModeProvider } from "@/app/_components/EditModeContext";

@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { unstable_cache } from 'next/cache';
 import {
   getSpotifyHeaders,
   getSpotifyArtist,

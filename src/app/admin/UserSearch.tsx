@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useRef, ReactNode, Suspense } from 'react';
+import { useState, useRef } from 'react';
 import { useDebounce } from 'use-debounce';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query'
 import { searchForUsersByWalletAction as searchForUsersByWallet } from '@/app/actions/serverActions';

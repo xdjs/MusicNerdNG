@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import SearchBarWrapper from '@/app/_components/nav/components/SearchBar';
-import { useAccount, useConnect, useDisconnect, useConfig } from 'wagmi';
+import { useAccount, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import React from 'react';
 import { describe, it, expect, beforeEach } from '@jest/globals';

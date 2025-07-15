@@ -2,7 +2,6 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { addArtist } from '@/app/actions/addArtist';
-import { useToast } from '@/hooks/use-toast';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Session } from 'next-auth';
 import type { AddArtistResp } from '@/server/utils/queries';

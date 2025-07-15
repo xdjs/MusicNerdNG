@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { getActivePrompt, getArtistById } from "@/server/utils/queries/artistQueries";
+import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getOpenAIBio } from "@/server/utils/queries/openAIQuery";
-import { db } from "@/server/db/drizzle";
-import { aiPrompts, artists } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+
 
 export async function GET(_: Request, { params }: { params: { id: string, prompt: string } }) {
   // Fetch artist row/object
