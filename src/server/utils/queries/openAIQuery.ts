@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { openai } from "@/server/lib/openai";
 import { getActivePrompt, getArtistById } from "@/server/utils/queries/artistQueries";
 import { db } from "@/server/db/drizzle";
-import { aiPrompts, artists } from "@/server/db/schema";
+import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 import { getArtistTopTrackName, getNumberOfSpotifyReleases, getSpotifyArtist, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
 

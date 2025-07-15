@@ -1,7 +1,7 @@
 import { db } from "@/server/db/drizzle";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
-import { ilike, eq, sql, inArray, and, arrayContains } from "drizzle-orm";
-import { artists, users, ugcresearch, urlmap, aiPrompts } from "@/server/db/schema";
+import { eq, sql, inArray, and, arrayContains } from "drizzle-orm";
+import { artists, ugcresearch, aiPrompts } from "@/server/db/schema";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
 import { isObjKey, extractArtistId } from "@/server/utils/services";
 import { getServerAuthSession } from "@/server/auth";
@@ -9,7 +9,7 @@ import { PgColumn } from "drizzle-orm/pg-core";
 import { headers } from "next/headers";
 import { openai } from "@/server/lib/openai";
 
-import { getUserById, getUserByWallet } from "@/server/utils/queries/userQueries";
+import { getUserById } from "@/server/utils/queries/userQueries";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 
