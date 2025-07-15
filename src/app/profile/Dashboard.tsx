@@ -14,11 +14,11 @@ import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
-export default function Dashboard({ user }: { user: User }) {
-    return <UgcStatsWrapper><UgcStats user={user} /></UgcStatsWrapper>;
+export default function Dashboard({ user, showLeaderboard = true }: { user: User; showLeaderboard?: boolean }) {
+    return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} /></UgcStatsWrapper>;
 }
 
-function UgcStats({ user }: { user: User }) {
+function UgcStats({ user, showLeaderboard = true }: { user: User; showLeaderboard?: boolean }) {
     const [date, setDate] = useState<DateRange | undefined>();
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -184,9 +184,11 @@ function UgcStats({ user }: { user: User }) {
             </div>
 
             {/* Leaderboard Section */}
+            {showLeaderboard && (
             <div>
                 <Leaderboard highlightIdentifier={user.wallet} dateRange={date} />
             </div>
+            )}
         </section>
     )
 }
