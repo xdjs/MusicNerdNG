@@ -40,6 +40,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const [recentUGC, setRecentUGC] = useState<RecentItem[]>([]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
     const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
+    const isCompactLayout = !allowEditUsername; // compact layout (leaderboard-like) when username editing disabled
 
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
@@ -127,22 +128,20 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         fetchAllTimeStats();
     }, [ugcStatsUserWallet]);
 
-    // Fetch recent edited UGC on mount (only for profile page where leaderboard hidden)
+    // Fetch recent edited UGC only for the profile layout (not the compact leaderboard layout)
     useEffect(() => {
-        if (!showLeaderboard) {
+        if (!isCompactLayout) {
             fetch('/api/recentEdited')
                 .then(res => res.json())
                 .then((data: RecentItem[]) => setRecentUGC(data))
                 .catch((e) => console.error('[Dashboard] error fetching recent edited', e));
         }
-    }, [showLeaderboard]);
+    }, [isCompactLayout]);
 
     return (
         <section className="px-10 py-5 space-y-6">
-            {/* Removed "User Profile" heading as per design update */}
-            
             {/* Stats + Recently Edited layout */}
-            {showLeaderboard ? (
+            {isCompactLayout ? (
                 <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
@@ -216,7 +215,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                         </div>
                     )}
 
-                    {showDateRange && !showLeaderboard && (
+                    {showDateRange && isCompactLayout && (
                         <>
                             {/* Date range picker and action button inline */}
                             <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
