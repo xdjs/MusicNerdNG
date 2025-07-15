@@ -14,6 +14,15 @@ import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
+type RecentItem = {
+    id: string;
+    siteName: string | null;
+    siteUsername: string | null;
+    ugcUrl: string | null;
+    updatedAt: string | null;
+    name: string | null;
+};
+
 export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = true, showDateRange = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean }) {
     return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} allowEditUsername={allowEditUsername} showDateRange={showDateRange} /></UgcStatsWrapper>;
 }
@@ -28,6 +37,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
+    const [recentUGC, setRecentUGC] = useState<RecentItem[]>([]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
 
     const { openConnectModal } = useConnectModal();
@@ -116,82 +126,114 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
         fetchAllTimeStats();
     }, [ugcStatsUserWallet]);
 
+    // Fetch recent edited UGC on mount (only for profile page where leaderboard hidden)
+    useEffect(() => {
+        if (!showLeaderboard) {
+            fetch('/api/recentEdited')
+                .then(res => res.json())
+                .then((data: RecentItem[]) => setRecentUGC(data))
+                .catch((e) => console.error('[Dashboard] error fetching recent edited', e));
+        }
+    }, [showLeaderboard]);
+
     return (
         <section className="px-10 py-5 space-y-6">
             {/* Removed "User Profile" heading as per design update */}
             
-            {/* Individual Stats Section */}
-            <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
-                {/* Row with username info and edit controls */}
-                <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
-                    {!isEditingUsername && (
-                        showLeaderboard ? (
-                            <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                                ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
-                            }</strong></p>
-                        ) : (
-                            <p className="text-lg font-semibold text-center w-full">
-                                {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
-                            </p>
-                        )
+            {/* Stats + Recently Edited layout */}
+            <div className={`flex flex-col ${showLeaderboard ? '' : 'md:flex-row md:gap-8'} mb-8 max-w-4xl mx-auto`}> 
+                {/* Left column (stats & existing content) */}
+                <div className={`space-y-6 ${showLeaderboard ? 'mx-auto text-center' : 'md:w-1/2 text-center md:text-left'}`}>
+                    {/* Row with username info and edit controls */}
+                    <div className="flex flex-wrap justify-center items-center gap-2 pb-1 w-full">
+                        {/* existing username & edit controls code kept unchanged below */}
+                        {!isEditingUsername && (
+                            showLeaderboard ? (
+                                <p className="text-sm text-gray-500">UGC Stats for: <strong>{
+                                    ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
+                                }</strong></p>
+                            ) : (
+                                <p className="text-lg font-semibold text-center w-full">
+                                    {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
+                                </p>
+                            )
+                        )}
+
+                        {allowEditUsername && (
+                            !isGuestUser && isEditingUsername ? (
+                                <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                    <Input
+                                        value={usernameInput}
+                                        onChange={(e) => setUsernameInput(e.target.value)}
+                                        className="h-8 w-40 text-sm"
+                                    />
+                                    <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                        {savingUsername ? 'Saving...' : 'Save'}
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
+                                    onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
+                                    </div>
+                                </Button>
+                            )
+                        )}
+                    </div>
+
+                    {user?.isAdmin && (
+                        <>
+                            <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
+                            <div className="mt-2">
+                                <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
+                                    Clear User
+                                </Button>
+                            </div>
+                        </>
                     )}
 
-                    {allowEditUsername && (
-                        !isGuestUser && isEditingUsername ? (
-                            <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                                <Input
-                                    value={usernameInput}
-                                    onChange={(e) => setUsernameInput(e.target.value)}
-                                    className="h-8 w-40 text-sm"
-                                />
-                                <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                    {savingUsername ? 'Saving...' : 'Save'}
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
+                    {/* Stats block always visible on profile (showLeaderboard false) */}
+                    {(!showLeaderboard || (ugcStats ?? allTimeStats)) && (
+                        <div className="space-y-1">
+                            <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</p>
+                            <p>Artists Added: {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</p>
+                        </div>
+                    )}
+
+                    {showDateRange && (
+                        <>
+                            {/* Date range picker and action button inline */}
+                            <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+                                <DatePicker date={date} setDate={setDate} />
+                                <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
                             </div>
-                        ) : (
-                            <Button
-                                size="sm"
-                                variant="secondary"
-                                className="bg-gray-200 text-black hover:bg-gray-300"
-                                onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                            >
-                                <div className="flex items-center gap-1">
-                                    {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
-                                </div>
-                            </Button>
-                        )
+                            {loading && <p>Loading...</p>}
+                        </>
                     )}
                 </div>
 
-                {user?.isAdmin && (
-                    <>
-                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
-                        <div className="mt-2">
-                            <Button disabled={!ugcStatsUserWallet} onClick={() => {setUgcStatsUserWallet(null); setQuery('')}}>
-                                Clear User
-                            </Button>
-                        </div>
-                    </>
-                )}
-
-                {/* Stats block always visible on profile (showLeaderboard false) */}
-                {(!showLeaderboard || (ugcStats ?? allTimeStats)) && (
-                    <div className="space-y-1">
-                        <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</p>
-                        <p>Artists Added: {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</p>
+                {/* Right column - recently edited (only for profile) */}
+                {!showLeaderboard && (
+                    <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
+                        <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
+                        {recentUGC.length ? (
+                            <ul className="list-disc pl-5 text-sm text-left">
+                                {recentUGC.map((item) => (
+                                    <li key={item.id}>
+                                        {(item as any).name ?? item.siteUsername ?? 'UGC'} ({item.siteName})
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
+                        )}
                     </div>
-                )}
-
-                {showDateRange && (
-                    <>
-                        {/* Date range picker and action button inline */}
-                        <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
-                            <DatePicker date={date} setDate={setDate} />
-                            <Button disabled={!date?.from || !date?.to} onClick={checkUgcStats}>Check UGC Stats</Button>
-                        </div>
-                        {loading && <p>Loading...</p>}
-                    </>
                 )}
             </div>
 
