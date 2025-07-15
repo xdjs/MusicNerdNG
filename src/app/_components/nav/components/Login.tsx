@@ -362,6 +362,12 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         >
                             {isplaceholder ? (
                                 <img className="max-h-6" src="/spinner.svg" alt="Loading..." />
+                            ) : account?.ensAvatar ? (
+                                <img
+                                    src={account.ensAvatar}
+                                    alt="Profile picture"
+                                    className="w-8 h-8 rounded-full object-cover"
+                                />
                             ) : (
                                 <span className="text-xl">🥳</span>
                             )}
