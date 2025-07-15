@@ -15,11 +15,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 
 type RecentItem = {
-    id: string;
-    siteName: string | null;
-    siteUsername: string | null;
-    ugcUrl: string | null;
-    updatedAt: string | null;
+    artistId: string;
     name: string | null;
 };
 
@@ -272,13 +268,14 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = true, show
                         <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
                             {recentUGC.length ? (
-                                <ul className="list-disc pl-5 text-sm text-left">
+                                <div className="flex flex-col gap-3">
                                     {recentUGC.map((item) => (
-                                        <li key={item.id}>
-                                            {(item as any).name ?? item.siteUsername ?? 'UGC'} ({item.siteName})
-                                        </li>
+                                        <a key={item.artistId} href={`/artist/${item.artistId}`} className="flex items-center gap-3 hover:underline">
+                                            <img src="/default_pfp_pink.png" alt="Artist" className="h-8 w-8 rounded-full object-cover" />
+                                            <span>{item.name ?? 'Unknown Artist'}</span>
+                                        </a>
                                     ))}
-                                </ul>
+                                </div>
                             ) : (
                                 <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
                             )}

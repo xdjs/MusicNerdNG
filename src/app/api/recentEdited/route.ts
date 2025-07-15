@@ -4,6 +4,11 @@ import { db } from "@/server/db/drizzle";
 import { ugcresearch } from "@/server/db/schema";
 import { desc, eq } from "drizzle-orm";
 
+type RespItem = {
+  artistId: string;
+  name: string | null;
+};
+
 export async function GET() {
   try {
     const session = await getServerAuthSession();
@@ -20,14 +25,25 @@ export async function GET() {
       return NextResponse.json([], { status: 200 });
     }
 
-    const recent = await db
-      .select()
-      .from(ugcresearch)
-      .where(eq(ugcresearch.userId, userId))
-      .orderBy(desc(ugcresearch.updatedAt))
-      .limit(3);
+    const rows = await db.query.ugcresearch.findMany({
+      where: eq(ugcresearch.userId, userId),
+      orderBy: desc(ugcresearch.updatedAt),
+      with: { ugcArtist: true },
+      limit: 15, // grab extra to dedupe
+    });
 
-    return NextResponse.json(recent, { status: 200 });
+    const unique: RespItem[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const artistId = row.artistId;
+      if (!artistId) continue;
+      if (seen.has(artistId)) continue;
+      seen.add(artistId);
+      unique.push({ artistId, name: (row as any).ugcArtist?.name ?? null });
+      if (unique.length >= 3) break;
+    }
+
+    return NextResponse.json(unique, { status: 200 });
   } catch (e) {
     console.error("[recentEdited] error", e);
     return NextResponse.json([], { status: 500 });
