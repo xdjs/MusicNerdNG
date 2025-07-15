@@ -27,9 +27,9 @@ export const alchemy: Alchemy | null = alchemyApiKey
   : null;
 
 if (alchemy) {
-  console.log("[ensClient] Alchemy SDK initialised with key", alchemyApiKey?.slice(0, 6) + "…");
+  console.debug("[ensClient] Alchemy SDK initialised with key", alchemyApiKey?.slice(0, 6) + "…");
 } else {
-  console.log("[ensClient] Alchemy SDK disabled – no API key detected (set ALCHEMY_API_KEY or ALCHEMY_HTTP_URL)");
+  console.debug("[ensClient] Alchemy SDK disabled – no API key detected (set ALCHEMY_API_KEY or ALCHEMY_HTTP_URL)");
 }
 
 const alchemyUrl = process.env.ALCHEMY_HTTP_URL;
@@ -48,16 +48,16 @@ function makeProvider(url: string) {
 
 if (alchemyUrl) {
   rpcProviders.push(makeProvider(alchemyUrl));
-  console.log("[ensClient] Added Alchemy provider");
+  console.debug("[ensClient] Added Alchemy provider");
 }
 
 if (infuraUrl) {
   rpcProviders.push(makeProvider(infuraUrl));
-  console.log("[ensClient] Added Infura provider");
+  console.debug("[ensClient] Added Infura provider");
 }
 
 // Always include Cloudflare as a free fallback
 rpcProviders.push(makeProvider("https://cloudflare-eth.com"));
-console.log("[ensClient] Added Cloudflare provider");
+console.debug("[ensClient] Added Cloudflare provider");
 
 // We export the raw providers array; calling code handles fallback logic. 

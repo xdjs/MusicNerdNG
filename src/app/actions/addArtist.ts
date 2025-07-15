@@ -7,10 +7,10 @@ import { sendDiscordMessage } from '@/server/utils/queries/discord';
 import { addArtist as dbAddArtist, type AddArtistResp } from "@/server/utils/queries/artistQueries";
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
-    console.log("[Server Action] Starting addArtist for spotifyId:", spotifyId);
+    console.debug("[Server Action] Starting addArtist for spotifyId:", spotifyId);
     
     const session = await getServerAuthSession();
-    console.log("[Server Action] Session state:", {
+    console.debug("[Server Action] Session state:", {
         exists: !!session,
         userId: session?.user?.id
     });
@@ -18,21 +18,21 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== 'true';
 
     if (isWalletRequired && !session) {
-        console.log("[Server Action] No session found - authentication failed");
+        console.debug("[Server Action] No session found - authentication failed");
         throw new Error("Not authenticated");
     }
 
     try {
-        console.log("[Server Action] Getting Spotify headers...");
+        console.debug("[Server Action] Getting Spotify headers...");
         const headers = await getSpotifyHeaders();
         if (!headers?.headers?.Authorization) {
             console.error("[Server Action] Failed to get Spotify headers");
             return { status: "error", message: "Failed to authenticate with Spotify" };
         }
 
-        console.log("[Server Action] Fetching Spotify artist data...");
+        console.debug("[Server Action] Fetching Spotify artist data...");
         const spotifyArtist = await getSpotifyArtist(spotifyId, headers);
-        console.log("[Server Action] Spotify artist response:", spotifyArtist);
+        console.debug("[Server Action] Spotify artist response:", spotifyArtist);
 
         if (spotifyArtist.error) {
             console.error("[Server Action] Spotify artist error:", spotifyArtist.error);
@@ -47,9 +47,9 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         // Get user data if we have a session
         let user = null;
         if (session?.user?.id) {
-            console.log("[Server Action] Getting user data...");
+            console.debug("[Server Action] Getting user data...");
             user = await getUserById(session.user.id);
-            console.log("[Server Action] User data:", {
+            console.debug("[Server Action] User data:", {
                 userId: user?.id,
                 isWhitelisted: user?.isWhiteListed,
                 wallet: user?.wallet

@@ -37,7 +37,7 @@ export const setupMocks = () => {
         mockSpotify: (artistName?: string, error?: string) => {
             // Always mock Spotify in test environment
             if (!isTest) {
-                console.log('Not in test environment - skipping Spotify mock');
+                console.debug('Not in test environment - skipping Spotify mock');
                 return;
             }
 

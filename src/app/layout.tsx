@@ -44,7 +44,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const session = await getServerSession(authOptions);
-  console.log("Root layout session state:", {
+  console.debug("Root layout session state:", {
     exists: !!session,
     userId: session?.user?.id
   });

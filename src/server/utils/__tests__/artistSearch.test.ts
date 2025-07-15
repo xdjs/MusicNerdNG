@@ -44,9 +44,9 @@ describe('Real Database Performance Tests', () => {
             // Try to connect to the real database
             const result = await searchWithRealDb('test');
             isRealDbAvailable = true;
-            console.log('\n🌐 Remote database connection available - running tests with real Supabase DB\n');
+            console.debug('\n🌐 Remote database connection available - running tests with real Supabase DB\n');
         } catch (e) {
-            console.log('\n🔧 Remote database not available - skipping real database tests\n');
+            console.debug('\n🔧 Remote database not available - skipping real database tests\n');
             isRealDbAvailable = false;
         }
     });
@@ -101,7 +101,7 @@ describe('Real Database Performance Tests', () => {
             `);
             const endTime = performance.now();
             const duration = endTime - startTime;
-            console.log(`🌐 Remote DB search for "${name}" took ${duration}ms`);
+            console.debug(`🌐 Remote DB search for "${name}" took ${duration}ms`);
             return result as unknown as Artist[];
         } catch(e) {
             console.error(`Error in real DB search:`, e);
@@ -114,7 +114,7 @@ describe('Real Database Performance Tests', () => {
         const result = await searchWithRealDb('deadmau5');
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🌐 Remote DB search for "deadmau5" took ${duration}ms`);
+        console.debug(`🌐 Remote DB search for "deadmau5" took ${duration}ms`);
         expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
     });
 
@@ -123,7 +123,7 @@ describe('Real Database Performance Tests', () => {
         const result = await searchWithRealDb('rüfüs');
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🌐 Remote DB search for "rüfüs" took ${duration}ms`);
+        console.debug(`🌐 Remote DB search for "rüfüs" took ${duration}ms`);
         expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
     });
 
@@ -132,7 +132,7 @@ describe('Real Database Performance Tests', () => {
         const result = await searchWithRealDb('test');
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🌐 Remote DB search for "test" took ${duration}ms`);
+        console.debug(`🌐 Remote DB search for "test" took ${duration}ms`);
         expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
     });
 
@@ -141,7 +141,7 @@ describe('Real Database Performance Tests', () => {
         const result = await searchWithRealDb('a');
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🌐 Remote DB search for "a" took ${duration}ms`);
+        console.debug(`🌐 Remote DB search for "a" took ${duration}ms`);
         expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
     });
 
@@ -150,7 +150,7 @@ describe('Real Database Performance Tests', () => {
         const result = await searchWithRealDb('zzzzzz');
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🌐 Remote DB search for "zzzzzz" took ${duration}ms`);
+        console.debug(`🌐 Remote DB search for "zzzzzz" took ${duration}ms`);
         expect(duration).toBeLessThan(REMOTE_SEARCH_THRESHOLD);
     });
 
@@ -160,7 +160,7 @@ describe('Real Database Performance Tests', () => {
         await Promise.all(searches.map(search => searchWithRealDb(search)));
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🌐 Remote DB concurrent searches took ${duration}ms`);
+        console.debug(`🌐 Remote DB concurrent searches took ${duration}ms`);
         expect(duration).toBeLessThan(REMOTE_CONCURRENT_THRESHOLD);
     });
 });
@@ -227,7 +227,7 @@ const searchForArtistByName = async (name: string): Promise<Artist[]> => {
             LIMIT 10
         `);
         const endTime = performance.now();
-        console.log(`Search for "${name}" took ${endTime - startTime}ms`);
+        console.debug(`Search for "${name}" took ${endTime - startTime}ms`);
         return result;
     } catch(e) {
         console.error(`Error fetching artist by name`, e);
@@ -484,7 +484,7 @@ describe('Mock Database Performance Tests', () => {
         const result = await searchForArtistByName('deadmau5');
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🔧 Mock DB search for "deadmau5" took ${duration}ms`);
+        console.debug(`🔧 Mock DB search for "deadmau5" took ${duration}ms`);
         expect(duration).toBeLessThan(MOCK_SEARCH_THRESHOLD);
     });
 
@@ -494,7 +494,7 @@ describe('Mock Database Performance Tests', () => {
         await Promise.all(searches.map(search => searchForArtistByName(search)));
         const endTime = performance.now();
         const duration = endTime - startTime;
-        console.log(`🔧 Mock DB concurrent searches took ${duration}ms`);
+        console.debug(`🔧 Mock DB concurrent searches took ${duration}ms`);
         expect(duration).toBeLessThan(MOCK_CONCURRENT_THRESHOLD);
     });
 });
