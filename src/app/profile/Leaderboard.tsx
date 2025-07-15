@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Check } from "lucide-react";
 
 type RangeKey = "today" | "week" | "month" | "all";
 
@@ -87,25 +88,22 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         all: "All Time",
     };
 
-    const headingSuffix = headingSuffixMap[range];
-
     if (loading) {
         return (
             <Card>
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
-                    <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
                     {/* Range selector buttons */}
-                    <div className="flex flex-wrap justify-center gap-2 mt-2">
+                    <div className="grid grid-cols-4 gap-2 mt-2 w-full">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className="bg-gray-200 text-black hover:bg-gray-300"
+                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center"
                                 onClick={() => setRange(key)}
                             >
-                                {headingSuffixMap[key]}
+                                {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
                             </Button>
                         ))}
                     </div>
@@ -122,18 +120,16 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
             <Card>
                 <CardHeader className="text-center">
                     <CardTitle>Leaderboard</CardTitle>
-                    <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
-                    {/* Range selector */}
-                    <div className="flex flex-wrap justify-center gap-2 mt-2">
+                    <div className="grid grid-cols-4 gap-2 mt-2 w-full">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className="bg-gray-200 text-black hover:bg-gray-300"
+                                className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center"
                                 onClick={() => setRange(key)}
                             >
-                                {headingSuffixMap[key]}
+                                {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
                             </Button>
                         ))}
                     </div>
@@ -150,17 +146,16 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
                 <CardTitle>Leaderboard</CardTitle>
-                <p className="text-base font-normal mt-0.5">({headingSuffix})</p>
-                <div className="flex flex-wrap justify-center gap-2 mt-2">
+                <div className="grid grid-cols-4 gap-2 mt-2 w-full">
                     {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                         <Button
                             key={key}
                             size="sm"
                             variant={range === key ? "default" : "secondary"}
-                            className="bg-gray-200 text-black hover:bg-gray-300"
+                            className="bg-gray-200 text-black hover:bg-gray-300 flex items-center justify-center"
                             onClick={() => setRange(key)}
                         >
-                            {headingSuffixMap[key]}
+                            {range === key && <Check className="w-4 h-4 mr-1" />} {headingSuffixMap[key]}
                         </Button>
                     ))}
                 </div>
