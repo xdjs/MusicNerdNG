@@ -1,6 +1,6 @@
 import { addArtist } from '../addArtist';
 import { getServerAuthSession } from '@/server/auth';
-import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import { addArtist as dbAddArtist } from '@/server/utils/queries/artistQueries';
 import { getUserById } from '@/server/utils/queries/userQueries';
 import { sendDiscordMessage } from '@/server/utils/queries/discord';

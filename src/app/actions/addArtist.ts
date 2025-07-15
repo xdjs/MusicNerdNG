@@ -1,7 +1,7 @@
 "use server"
 
 import { getServerAuthSession } from "@/server/auth";
-import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import { getUserById } from '@/server/utils/queries/userQueries';
 import { sendDiscordMessage } from '@/server/utils/queries/discord';
 import { addArtist as dbAddArtist, type AddArtistResp } from "@/server/utils/queries/artistQueries";

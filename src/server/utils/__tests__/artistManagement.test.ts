@@ -19,7 +19,7 @@ jest.mock('@/server/db/drizzle', () => ({
 }));
 
 // Mock external API queries
-jest.mock('../externalApiQueries', () => ({
+jest.mock('../queries/externalApiQueries', () => ({
     getSpotifyHeaders: jest.fn(),
     getSpotifyArtist: jest.fn()
 }));

@@ -1,5 +1,5 @@
 import { searchForArtistByName, getAllSpotifyIds } from "@/server/utils/queries/artistQueries";
-import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
+import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
 import axios from "axios";
 
 // Defines the structure of a Spotify artist's image metadata

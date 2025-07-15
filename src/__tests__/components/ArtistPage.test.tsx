@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import ArtistProfile from '@/app/artist/[id]/page';
 import { getArtistById, getArtistLinks, getAllLinks } from '@/server/utils/queries/artistQueries';
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from '@/server/utils/externalApiQueries';
+import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from '@/server/utils/queries/externalApiQueries';
 import { getServerAuthSession } from '@/server/auth';
 
 // Mock next/navigation

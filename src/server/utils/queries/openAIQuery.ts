@@ -4,7 +4,7 @@ import { getActivePrompt, getArtistById } from "@/server/utils/queries/artistQue
 import { db } from "@/server/db/drizzle";
 import { aiPrompts, artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
-import { getArtistTopTrackName, getNumberOfSpotifyReleases, getSpotifyArtist, getSpotifyHeaders } from "@/server/utils/externalApiQueries";
+import { getArtistTopTrackName, getNumberOfSpotifyReleases, getSpotifyArtist, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
 
 
 //Helper function that generates a bio using OpenAI with data drawn from Spotify
