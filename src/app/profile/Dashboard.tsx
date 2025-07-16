@@ -198,7 +198,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Count / Artists Count) */}
-                        {!isGuestUser && (ugcStats ?? allTimeStats) && (
+                        {!isGuestUser && (
                             <div className="grid grid-cols-3 gap-2 w-full text-sm sm:text-base font-semibold mt-2">
                                 <p className="truncate text-left">User: <span className="font-normal">{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</span></p>
                                 <p className="text-center">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
