@@ -232,7 +232,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Rank */}
                                 <div className="text-center text-lg flex items-center justify-center gap-1">
-                                    <span className="text-base font-semibold">Rank:</span>
+                                    <span className="text-base font-semibold whitespace-nowrap">Rank:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {rank ?? '—'}
                                     </Badge>
@@ -240,7 +240,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* UGC Count */}
                                 <div className="flex items-center justify-center gap-2">
-                                    <span className="text-base font-semibold">UGC Count:</span>
+                                    <span className="text-base font-semibold whitespace-nowrap">UGC Count:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
                                     </Badge>
@@ -248,7 +248,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Artists Count */}
                                 <div className="flex items-center justify-center gap-2">
-                                    <span className="text-base font-semibold">Artists Count:</span>
+                                    <span className="text-base font-semibold whitespace-nowrap">Artists Count:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
                                     </Badge>
