@@ -75,18 +75,17 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 />
                         </div>
                     </div>
-                    <div className="space-y-6 mt-8 md:mt-8">
+                    <div className="space-y-4 mt-6 md:mt-6">
                         {/* Grid layout for Check out and Support sections */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             {/* Check out section */}
                             <div className="space-y-6">
                                 <div className="flex flex-col md:flex-row md:items-center md:justify-between">
                                     <strong className="text-black text-2xl">
-                                        Check out {artist?.name} on <span className="whitespace-nowrap">other media platforms</span>!
+                                        Social Media Links
                                     </strong>
-                                    <div className="mt-4 md:mt-0 md:ml-4">
+                                    <div className="mt-2 md:mt-0 md:ml-2">
                                         <AddArtistData 
-                                            label="Add links" 
                                             artist={artist} 
                                             spotifyImg={spotifyImg.artistImage ?? ""} 
                                             availableLinks={urlMapList} 
@@ -103,9 +102,19 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
 
                             {/* Support section */}
                             <div className="space-y-6">
-                                <strong className="text-black text-2xl">
-                                    Support {artist?.name}
-                                </strong>
+                                <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                                    <strong className="text-black text-2xl">
+                                        Support the Artist
+                                    </strong>
+                                    <div className="mt-2 md:mt-0 md:ml-2">
+                                        <AddArtistData 
+                                            artist={artist} 
+                                            spotifyImg={spotifyImg.artistImage ?? ""} 
+                                            availableLinks={urlMapList} 
+                                            isOpenOnLoad={false} 
+                                        />
+                                    </div>
+                                </div>
                                 <div className="space-y-4">
                                     {(artist) &&
                                         <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
@@ -119,6 +128,25 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 <div className="flex flex-col md:w-1/3 space-y-4">
                     {/* Fun Facts section - visible on md and up */}
                     <FunFactsDesktop artistId={artist.id} />
+                    {/* Empty Collaborators box */}
+                    <div className="hidden md:block bg-white rounded-lg shadow-2xl p-6 space-y-4 overflow-x-hidden">
+                        <h2 className="text-2xl font-bold text-black">Collaborators</h2>
+                        <div className="relative w-full h-[180px]">
+                            <iframe
+                                src={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                                className="w-full h-full border-0 rounded-md pointer-events-none"
+                                loading="lazy"
+                            />
+                            <a
+                                href={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="absolute inset-0 z-10"
+                            >
+                                <span className="sr-only">Open Collaborators</span>
+                            </a>
+                        </div>
+                    </div>
                 </div>
                 {/* Insert Fun Facts section for mobile only */}
                 <FunFactsMobile artistId={artist.id} />
