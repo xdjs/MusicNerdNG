@@ -143,7 +143,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         <section className="px-5 sm:px-10 py-5 space-y-6">
             {/* Stats + Recently Edited layout */}
             {isCompactLayout ? (
-                <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
+                <div className="flex flex-col gap-6 mb-8 max-w-xl mx-auto text-center">
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {!isEditingUsername && !isGuestUser && (
@@ -198,9 +198,12 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     </div>
                     {/* Admin user search removed */}
 
+                    {/* Status row (now always visible) */}
+                    <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
+
                     {/* Dynamic stats block – hide for guest */}
                     {!isGuestUser && (ugcStats ?? allTimeStats) && (
-                        <div className="space-y-1">
+                        <div className="space-y-1 mt-auto">
                             <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
                             <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
                         </div>
@@ -282,7 +285,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Status row */}
                                 <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
-                            </div>
+                                    </div>
 
                             {/* Bottom area: UGC / Artists stats */}
                             <div className="space-y-1 text-center md:text-left pt-4 md:pt-0">
