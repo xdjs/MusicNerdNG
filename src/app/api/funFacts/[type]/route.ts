@@ -23,16 +23,19 @@ export async function GET(req: Request, { params }: { params: { type: string } }
   const id = searchParams.get("id");
 
   if (!id) {
+    console.error("Missing artist id");
     return NextResponse.json({ error: "Missing artist id" }, { status: 400 });
   }
 
   const artist = await getArtistById(id);
   if (!artist) {
+    console.error("Artist not found");
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
   }
 
   const prompts = await getPrompts();
   if (!prompts) {
+    console.error("Failed to fetch prompts");
     return NextResponse.json({ error: "Failed to fetch prompts" }, { status: 500 });
   }
 
@@ -45,6 +48,7 @@ export async function GET(req: Request, { params }: { params: { type: string } }
 
   const basePrompt = promptMap[type];
   if (!basePrompt) {
+    console.error("Invalid fun fact type");
     return NextResponse.json({ error: "Invalid fun fact type" }, { status: 400 });
   }
 
