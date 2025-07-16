@@ -1,0 +1,6 @@
+{
+    "functions": {
+      "regions": ["sfo1"],
+      "maxDuration": 30
+    }
+  }
