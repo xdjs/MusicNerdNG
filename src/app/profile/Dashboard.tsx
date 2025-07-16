@@ -8,7 +8,6 @@ import { DateRange } from "react-day-picker";
 import { getUgcStatsInRangeAction as getUgcStatsInRange } from "@/app/actions/serverActions";
 import { User } from "@/server/db/DbTypes";
 import UgcStatsWrapper from "./Wrapper";
-import SearchBar from "@/app/admin/UserSearch";
 import Leaderboard from "./Leaderboard";
 import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
@@ -31,8 +30,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const [date, setDate] = useState<DateRange | undefined>();
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
-    const [ugcStatsUserWallet, setUgcStatsUserWallet] = useState<string | null>(null);
-    const [query, setQuery] = useState('');
+    const [ugcStatsUserWallet, setUgcStatsUserWallet] = useState<string | null>(null); // retained for future but UI removed
+    const [query, setQuery] = useState(''); // retained; will not be used but harmless
     const [allTimeStats, setAllTimeStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [isEditingUsername, setIsEditingUsername] = useState(false);
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
@@ -197,17 +196,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             </div>
                         )}
                     </div>
-                    {/* Admin controls for leaderboard stats */}
-                    {user?.isAdmin && (
-                        <>
-                            <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
-                            <div className="mt-2">
-                                <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
-                                    Clear User
-                                </Button>
-                            </div>
-                        </>
-                    )}
+                    {/* Admin user search removed */}
 
                     {/* Dynamic stats block – hide for guest */}
                     {!isGuestUser && (ugcStats ?? allTimeStats) && (
@@ -289,16 +278,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                         <div className="md:w-1/2 flex flex-col justify-between">
                             {/* Top area: admin controls and status */}
                             <div className="space-y-4">
-                                {user?.isAdmin && (
-                                    <>
-                                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
-                                        <div className="mt-2">
-                                            <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
-                                                Clear User
-                                            </Button>
-                                        </div>
-                                    </>
-                                )}
+                                {/* Admin user search removed */}
 
                                 {/* Status row */}
                                 <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
