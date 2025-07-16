@@ -167,10 +167,13 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 <div className="flex flex-col gap-6 mb-8 max-w-xl mx-auto text-center">
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
-                        {!isEditingUsername && !isGuestUser && (
-                            <p className="text-sm text-gray-500">UGC Stats for: <strong>{
-                                ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)
-                            }</strong></p>
+                        {/* Horizontal stats row (User / UGC Count / Artists Count) */}
+                        {!isGuestUser && (ugcStats ?? allTimeStats) && (
+                            <div className="grid grid-cols-3 gap-2 w-full text-sm sm:text-base font-semibold mt-2">
+                                <p className="truncate text-left">UGC Stats for: <span className="font-normal">{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</span></p>
+                                <p className="text-center">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-right">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            </div>
                         )}
 
                         {allowEditUsername && (
@@ -224,13 +227,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
                     )}
 
-                    {/* Dynamic stats block – hide for guest */}
-                    {!isGuestUser && (ugcStats ?? allTimeStats) && (
-                        <div className="space-y-1 mt-4">
-                            <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
-                            <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
-                        </div>
-                    )}
+                    {/* The vertical dynamic stats block has been replaced by the horizontal grid above */}
 
                     {showDateRange && !isCompactLayout && (
                         <>
@@ -312,10 +309,11 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 )}
                                     </div>
 
-                            {/* Bottom area: UGC / Artists stats */}
-                            <div className="space-y-1 text-center md:text-left mt-4">
-                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            {/* Bottom area: UGC / Artists stats (horizontal layout) */}
+                            <div className="grid grid-cols-3 gap-2 mt-4 text-sm sm:text-base font-semibold">
+                                <p className="truncate text-left">UGC Stats for: <span className="font-normal">{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</span></p>
+                                <p className="text-center">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-right">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 
