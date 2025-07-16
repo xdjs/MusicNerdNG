@@ -220,7 +220,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 <div className="flex flex-col gap-6 mb-8 max-w-3xl mx-auto text-center">
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
-                        {/* Horizontal stats row (User / UGC Count / Artists Count) */}
+                        {/* Horizontal stats row (User / UGC Added / Artists Added) */}
                         {!isGuestUser && (ugcStats ?? allTimeStats) && (
                             <div className="grid grid-cols-4 items-center py-3 px-6 border rounded-md bg-accent/40 w-full gap-2 justify-items-start">
                                 {/* User */}
@@ -240,7 +240,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* UGC Count */}
                                 <div className="flex items-center justify-start gap-2">
-                                    <span className="text-base font-semibold">UGC Count:</span>
+                                    <span className="text-base font-semibold whitespace-nowrap">UGC Added:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
                                     </Badge>
@@ -248,7 +248,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Artists Count */}
                                 <div className="flex items-center justify-start gap-2">
-                                    <span className="text-base font-semibold">Artists Count:</span>
+                                    <span className="text-base font-semibold whitespace-nowrap">Artists Added:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
                                     </Badge>
@@ -362,8 +362,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
-                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">UGC Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 
