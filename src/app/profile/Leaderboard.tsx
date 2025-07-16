@@ -4,11 +4,142 @@ import { useEffect, useState } from "react";
 import type { LeaderboardEntry } from "@/app/actions/serverActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 
 type RangeKey = "today" | "week" | "month" | "all";
+
+type RecentItem = {
+    ugcId: string;
+    artistId: string | null;
+    artistName: string | null;
+    updatedAt: string | null;
+    imageUrl: string | null;
+};
+
+function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: LeaderboardEntry; index: number; highlightIdentifier?: string }) {
+    const [recent, setRecent] = useState<RecentItem[] | null>(null);
+    const [loadingRec, setLoadingRec] = useState(false);
+
+    const identifierLc = highlightIdentifier?.toLowerCase();
+    const isHighlighted = identifierLc && (
+        entry.wallet?.toLowerCase() === identifierLc ||
+        (entry.username ?? '').toLowerCase() === identifierLc ||
+        (entry.email ?? '').toLowerCase() === identifierLc
+    );
+
+    async function fetchRecent() {
+        if (recent || loadingRec) return;
+        setLoadingRec(true);
+        try {
+            const resp = await fetch(`/api/recentEdited?userId=${entry.userId}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                setRecent(data);
+            }
+        } catch (e) {
+            console.error('Error fetching recent edits for user', e);
+        } finally {
+            setLoadingRec(false);
+        }
+    }
+
+    const [showRecent, setShowRecent] = useState(false);
+
+    return (
+        <div
+            onMouseEnter={() => { setShowRecent(true); fetchRecent(); }}
+            onMouseLeave={() => setShowRecent(false)}
+            className={cn(
+                        "p-3 border rounded-md transition-colors",
+                        isHighlighted ? "ring-2 ring-primary bg-accent sticky top-12 z-10" : "hover:bg-accent/40"
+                    )}
+        >
+            {/* Mobile layout */}
+            <div className="flex flex-col sm:hidden space-y-1">
+                        {/* Username row */}
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                            <span className={`w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`}>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                            </span>
+                            <p className="font-medium truncate max-w-[200px] text-lg">
+                                {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
+                            </p>
+                        </div>
+
+                        {/* UGC row */}
+                        <div className="flex justify-between pl-10">
+                            <span className="text-muted-foreground">UGC Added</span>
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.ugcCount}
+                            </Badge>
+                        </div>
+
+                        {/* Artists row */}
+                        <div className="flex justify-between pl-10">
+                            <span className="text-muted-foreground">Artists Added</span>
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.artistsCount}
+                            </Badge>
+                        </div>
+                    </div>
+
+                    {/* Desktop layout */}
+                    <div className="hidden sm:grid grid-cols-3 items-center">
+                        {/* User col */}
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                            <span className={`w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`}>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                            </span>
+                            <div className="truncate">
+                                <p className="font-medium truncate max-w-[200px] text-lg">
+                                    {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* UGC count */}
+                        <div className="text-center text-lg">
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.ugcCount}
+                            </Badge>
+                        </div>
+
+                        {/* Artist count */}
+                        <div className="text-right text-lg">
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.artistsCount}
+                            </Badge>
+                        </div>
+                    </div>
+
+                    {/* Recently Added Artists inline expansion */}
+                    {showRecent && (
+                        <div className="mt-4">
+                            <p className="font-semibold text-center mb-2">{(entry.username || entry.email || entry.wallet.slice(0,8)+"...")}&#39;s Recently Added</p>
+                            {loadingRec && <p className="text-sm text-muted-foreground text-center">Loading...</p>}
+                            {recent && recent.length ? (
+                                <ul className="grid grid-cols-3 gap-6 justify-items-center">
+                                    {recent.map(r => (
+                                        <li key={r.artistId ?? r.ugcId}>
+                                            <Link href={`/artist/${r.artistId ?? ''}`} className="flex items-center gap-2 hover:underline">
+                                                <img src={r.imageUrl || "/default_pfp_pink.png"} alt="artist" className="h-8 w-8 rounded-full object-cover" />
+                                                <span className="text-sm">{r.artistName ?? 'Unknown Artist'}</span>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : !loadingRec ? (
+                                <p className="text-sm text-muted-foreground text-center">No recent artists</p>
+                            ) : null}
+                        </div>
+                    )}
+                </div>
+        );
+}
 
 export default function Leaderboard({ highlightIdentifier, onRangeChange }: { highlightIdentifier?: string; onRangeChange?: (range: RangeKey) => void }) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -115,7 +246,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <p>Loading leaderboard...</p>
+                    <p className="text-center">Loading...</p>
                 </CardContent>
             </Card>
         );
@@ -149,7 +280,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
     }
 
     return (
-        <>
+        <TooltipProvider delayDuration={200}>
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
                 <CardTitle className="mb-5">Leaderboard</CardTitle>
@@ -177,85 +308,9 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
                 </div>
 
                 <div className="space-y-2">
-                    {leaderboard.map((entry, index) => {
-                        const identifierLc = highlightIdentifier?.toLowerCase();
-                        const isHighlighted = identifierLc && (
-                            entry.wallet?.toLowerCase() === identifierLc ||
-                            (entry.username ?? '').toLowerCase() === identifierLc ||
-                            (entry.email ?? '').toLowerCase() === identifierLc
-                        );
-                        return (
-                            <div
-                                key={entry.userId}
-                                className={cn(
-                                    "p-3 border rounded-md transition-colors",
-                                    isHighlighted ? "ring-2 ring-primary bg-accent sticky top-12 z-10" : "hover:bg-accent/40"
-                                )}
-                            >
-                                {/* Mobile layout */}
-                                <div className="flex flex-col sm:hidden space-y-1">
-                                    {/* Username row */}
-                                    <div className="flex items-center space-x-2 overflow-hidden">
-                                        <span className={
-                                            `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
-                                        }>
-                                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
-                                        </span>
-                                        <p className="font-medium truncate max-w-[200px] text-lg">
-                                            {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
-                                        </p>
-                                    </div>
-
-                                    {/* UGC row */}
-                                    <div className="flex justify-between pl-10">
-                                        <span className="text-muted-foreground">UGC Added</span>
-                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                            {entry.ugcCount}
-                                        </Badge>
-                                    </div>
-
-                                    {/* Artists row */}
-                                    <div className="flex justify-between pl-10">
-                                        <span className="text-muted-foreground">Artists Added</span>
-                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                            {entry.artistsCount}
-                                        </Badge>
-                                    </div>
-                                </div>
-
-                                {/* Desktop layout */}
-                                <div className="hidden sm:grid grid-cols-3 items-center">
-                                    {/* User col */}
-                                    <div className="flex items-center space-x-2 overflow-hidden">
-                                        <span className={
-                                            `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
-                                        }>
-                                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
-                                        </span>
-                                        <div className="truncate">
-                                            <p className="font-medium truncate max-w-[200px] text-lg">
-                                                {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* UGC count */}
-                                    <div className="text-center text-lg">
-                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                            {entry.ugcCount}
-                                        </Badge>
-                                    </div>
-
-                                    {/* Artist count */}
-                                    <div className="text-right text-lg">
-                                        <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                            {entry.artistsCount}
-                                        </Badge>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
+                    {leaderboard.map((entry, index) => (
+                        <LeaderboardRow key={entry.userId} entry={entry} index={index} highlightIdentifier={highlightIdentifier} />
+                    ))}
                     {leaderboard.length === 0 && (
                         <p className="text-center text-muted-foreground py-8">
                             No users have added artists yet. Be the first!
@@ -275,6 +330,6 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
                 ↑
             </Button>
         )}
-        </>
+        </TooltipProvider>
     );
 } 

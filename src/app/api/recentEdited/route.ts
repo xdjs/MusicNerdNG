@@ -5,16 +5,21 @@ import { ugcresearch, artists } from "@/server/db/schema";
 import { desc, eq, and } from "drizzle-orm";
 import { getSpotifyHeaders, getSpotifyImage } from "@/server/utils/externalApiQueries";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getServerAuthSession();
-    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+    const { searchParams } = new URL(request.url);
+    let userId: string | null = searchParams.get('userId');
 
-    let userId: string | null = null;
-    if (session && session.user?.id) {
-      userId = session.user.id;
-    } else if (walletlessEnabled) {
-      userId = "00000000-0000-0000-0000-000000000000"; // guest
+    if (!userId) {
+        // fallback to session-based logic
+        const session = await getServerAuthSession();
+        const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === 'true' && process.env.NODE_ENV !== 'production';
+
+        if (session && session.user?.id) {
+          userId = session.user.id;
+        } else if (walletlessEnabled) {
+          userId = "00000000-0000-0000-0000-000000000000"; // guest
+        }
     }
 
     if (!userId) {
