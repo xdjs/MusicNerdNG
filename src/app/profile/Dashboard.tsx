@@ -209,14 +209,16 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </div>
 
                                 {/* UGC Count */}
-                                <div className="text-center text-lg">
+                                <div className="text-center text-lg flex items-center justify-center gap-1">
+                                    <span className="font-medium">UGC Count:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
                                         {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
                                     </Badge>
                                 </div>
 
                                 {/* Artists Count */}
-                                <div className="text-right text-lg">
+                                <div className="text-center text-lg flex items-center justify-end gap-1">
+                                    <span className="font-medium">Artists Count:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
                                         {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
                                     </Badge>
