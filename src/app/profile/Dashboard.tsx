@@ -38,6 +38,28 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const [usernameInput, setUsernameInput] = useState(user.username ?? "");
     const [savingUsername, setSavingUsername] = useState(false);
     const [recentUGC, setRecentUGC] = useState<RecentItem[]>([]);
+    const [rank, setRank] = useState<number | null>(null);
+
+    // (duplicate RangeKey and selectedRange definition removed)
+
+    // Fetch leaderboard rank (only in compact layout)
+    useEffect(() => {
+        if (!isCompactLayout) return;
+        async function fetchRank() {
+            try {
+                const dates = getRangeDates(selectedRange);
+                const url = dates ? `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}` : '/api/leaderboard';
+                const resp = await fetch(url);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const idx = data.findIndex((entry: any) => entry.wallet?.toLowerCase() === user.wallet.toLowerCase());
+                if (idx !== -1) setRank(idx + 1);
+            } catch (e) {
+                console.error('Error fetching rank', e);
+            }
+        }
+        fetchRank();
+    }, [selectedRange, user.wallet, isCompactLayout]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
     const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
     const isCompactLayout = !allowEditUsername; // compact layout (leaderboard-like) when username editing disabled
@@ -116,10 +138,6 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         setSavingUsername(false);
         setIsEditingUsername(false);
     }
-
-    // Range handling synchronized with Leaderboard filters
-    type RangeKey = "today" | "week" | "month" | "all";
-    const [selectedRange, setSelectedRange] = useState<RangeKey>("all");
 
     function getRangeDates(r: RangeKey) {
         const now = new Date();
@@ -200,26 +218,34 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Count / Artists Count) */}
                         {!isGuestUser && (ugcStats ?? allTimeStats) && (
-                            <div className="grid grid-cols-3 items-center p-3 border rounded-md bg-accent/40 w-full">
+                            <div className="grid grid-cols-4 items-center p-3 border rounded-md bg-accent/40 w-full gap-6 justify-items-center">
                                 {/* User */}
-                                <div className="flex items-center space-x-2 overflow-hidden">
+                                <div className="flex items-center space-x-2 overflow-hidden justify-self-start">
                                     <span className="font-medium truncate max-w-[200px] text-lg">
                                         {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
                                     </span>
                                 </div>
 
-                                {/* UGC Count */}
+                                {/* Rank */}
                                 <div className="text-center text-lg flex items-center justify-center gap-1">
-                                    <span className="font-medium">UGC Count:</span>
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                    <span className="text-base font-semibold">Rank:</span>
+                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
+                                        {rank ?? '—'}
+                                    </Badge>
+                                </div>
+
+                                {/* UGC Count */}
+                                <div className="flex items-center justify-center gap-2">
+                                    <span className="text-base font-semibold">UGC Count:</span>
+                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
                                     </Badge>
                                 </div>
 
                                 {/* Artists Count */}
-                                <div className="text-center text-lg flex items-center justify-end gap-1">
-                                    <span className="font-medium">Artists Count:</span>
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                <div className="flex items-center justify-center gap-2">
+                                    <span className="text-base font-semibold">Artists Count:</span>
+                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
                                     </Badge>
                                 </div>
