@@ -293,7 +293,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                         {/* Right column - recently edited */}
                         <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
-                            <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited</h3>
+                            <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
                                 <ul className="space-y-3">
                                     {recentUGC.map((item) => (
