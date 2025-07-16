@@ -46,6 +46,25 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
 
+    // ---------- Simplified view for guest (not logged-in) users ----------
+    if (isGuestUser) {
+        return (
+            <section className="flex flex-col items-center justify-center py-20 space-y-8 text-center">
+                <p className="text-3xl font-bold">User Profile</p>
+                {!hideLogin && (
+                    <Button
+                        size="lg"
+                        variant="secondary"
+                        className="bg-gray-200 text-black hover:bg-gray-300 px-8 py-4 text-xl"
+                        onClick={handleLogin}
+                    >
+                        Log In
+                    </Button>
+                )}
+            </section>
+        );
+    }
+
     // Refresh once when auth state changes (login/logout), with sessionStorage flag to avoid loops
     useEffect(() => {
         const skipReload = sessionStorage.getItem('skipReload') === 'true';
