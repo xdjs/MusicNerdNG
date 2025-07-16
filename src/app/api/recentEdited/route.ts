@@ -3,7 +3,7 @@ import { getServerAuthSession } from "@/server/auth";
 import { db } from "@/server/db/drizzle";
 import { ugcresearch, artists } from "@/server/db/schema";
 import { desc, eq, and } from "drizzle-orm";
-import { getSpotifyHeaders, getSpotifyImage } from "@/server/utils/externalApiQueries";
+import { getSpotifyHeaders, getSpotifyImage } from "@/server/utils/queries/externalApiQueries";
 
 export async function GET() {
   try {
