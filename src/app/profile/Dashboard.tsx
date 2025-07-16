@@ -221,7 +221,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* Status row */}
                     {showStatus && (
-                    <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
+                    <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
                     )}
 
                     {/* Dynamic stats block – hide for guest */}
@@ -308,7 +308,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Status row */}
                                 {showStatus && (
-                                <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
+                                <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
                                 )}
                                     </div>
 
