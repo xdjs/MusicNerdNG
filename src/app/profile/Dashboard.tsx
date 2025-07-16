@@ -150,7 +150,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <Button
                         size="lg"
                         variant="secondary"
-                        className="bg-[#ff9ce3] text-white hover:bg-[#ff9ce3]/90 px-8 py-4 text-xl"
+                        className="bg-gray-200 text-black hover:bg-gray-300 px-8 py-4 text-xl"
                         onClick={handleLogin}
                     >
                         Log In
@@ -193,7 +193,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     <Button
                                         size="sm"
                                         variant="secondary"
-                                        className="bg-[#ff9ce3] text-white hover:bg-[#ff9ce3]/90"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
                                         onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                                     >
                                         <div className="flex items-center gap-1">
@@ -209,7 +209,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 <Button
                                     size="sm"
                                     variant="secondary"
-                                    className="bg-[#ff9ce3] text-white hover:bg-[#ff9ce3]/90"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
                                     onClick={handleLogin}
                                 >
                                     Log In
@@ -273,7 +273,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     <Button
                                         size="sm"
                                         variant="secondary"
-                                        className="bg-[#ff9ce3] text-white hover:bg-[#ff9ce3]/90"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
                                         onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                                     >
                                         <div className="flex items-center gap-1">
@@ -289,7 +289,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 <Button
                                     size="sm"
                                     variant="secondary"
-                                    className="bg-[#ff9ce3] text-white hover:bg-[#ff9ce3]/90"
+                                    className="bg-gray-200 text-black hover:bg-gray-300"
                                     onClick={handleLogin}
                                 >
                                     Log In
