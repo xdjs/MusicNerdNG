@@ -1,6 +1,5 @@
 import { Artist } from '@/server/db/DbTypes';
-import { artists, users } from '@/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { artists } from '@/server/db/schema';
 
 // Type definitions for our mocked database operations
 type MockDBReturn<T> = {

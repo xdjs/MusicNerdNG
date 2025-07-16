@@ -41,7 +41,7 @@ jest.mock('@/server/auth', () => {
                 }
                 return token;
             }),
-            session: jest.fn().mockImplementation(({ session, token, user, newSession, trigger }) => {
+            session: jest.fn().mockImplementation(({ session, token, _user, _newSession, _trigger }) => {
                 return {
                     ...session,
                     user: {
@@ -72,18 +72,6 @@ jest.mock('../queries', () => ({
 }));
 
 describe('Session Security', () => {
-    const mockUser = {
-        id: 'test-user-id',
-        wallet: '0x1234567890abcdef',
-        isAdmin: false,
-        isWhiteListed: true,
-        email: 'test@example.com',
-        username: 'test-user',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        legacyId: null
-    };
-
     beforeEach(() => {
         jest.clearAllMocks();
         Object.defineProperty(process, 'env', {

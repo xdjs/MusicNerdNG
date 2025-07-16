@@ -7,7 +7,6 @@ import {
   getNumberOfSpotifyReleases,
   getArtistTopTrack,
   type SpotifyArtist,
-  type ArtistSpotifyImage
 } from '@/server/utils/queries/externalApiQueries';
 
 // Define the internal type used by the functions

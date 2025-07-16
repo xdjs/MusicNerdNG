@@ -6,8 +6,8 @@ import Login from '@/app/_components/nav/components/Login';
 // @ts-nocheck
 
 // -------------------- Shared mocks (same style as loginFlow.test.tsx) --------------------
-let authStatus: 'loading' | 'authenticated' | 'unauthenticated' = 'unauthenticated';
-let sessionData: any = null;
+const authStatus: 'loading' | 'authenticated' | 'unauthenticated' = 'unauthenticated';
+const sessionData: any = null;
 jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => ({ data: sessionData, status: authStatus })),
   signOut: jest.fn(),

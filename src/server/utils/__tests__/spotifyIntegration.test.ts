@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import axios from 'axios';
-import queryString from 'querystring';
 
 // Mock axios
 jest.mock('axios');

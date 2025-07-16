@@ -6,9 +6,6 @@ export * from "./discord";
 export * from "./externalApiQueries";
 export * from "./openAIQuery";
 
-
-const {youtube_api_key} = process.env;
-
 export type YTStats = {
     id: string;
     title: string;

@@ -7,8 +7,8 @@ import { getServerAuthSession } from '@/server/auth';
 import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import { createMockDB } from '../__mocks__/mockDatabase';
 import { createMockSession } from '../__mocks__/mockAuth';
-import { createMockSpotifyHeaders, createMockSpotifyArtist, createMockSpotifyError } from '../__mocks__/mockSpotify';
-import { isTest } from '../../setup/testEnv';
+import { createMockSpotifyArtist, createMockSpotifyError } from '../__mocks__/mockSpotify';
+import { isTest } from '@/server/utils/setup/testEnv';
 
 // Setup all mocks for a test
 export const setupMocks = () => {

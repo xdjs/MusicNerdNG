@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addArtist } from "../../actions/addArtist";
-import { useSession, signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 
 interface SpotifyArtist {
     id: string;

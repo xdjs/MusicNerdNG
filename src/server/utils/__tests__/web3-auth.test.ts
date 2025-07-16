@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { SiweMessage } from 'siwe';
 import { authOptions } from '../../auth';
 import { getUserByWallet, createUser } from '../queries';
 import { cookies } from 'next/headers';

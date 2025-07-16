@@ -52,7 +52,7 @@ export async function storeCoverageReport(
 export async function getCoverageHistory(
   repository: string,
   branch?: string,
-  limit: number = 50
+  limit = 50
 ) {
   try {
     const whereCondition = branch 
@@ -94,7 +94,7 @@ export async function getLatestCoverage(repository: string, branch: string) {
   }
 }
 
-export async function getCoverageTrends(repository: string, branch: string, days: number = 30) {
+export async function getCoverageTrends(repository: string, branch: string, days = 30) {
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);

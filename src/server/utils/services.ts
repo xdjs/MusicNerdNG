@@ -9,7 +9,7 @@ export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mints
 
 export const getArtistSplitPlatforms = (artist: Artist) => {
     let web3Platforms: string[] = [];
-    let socialPlatforms: string[] = [];
+    const socialPlatforms: string[] = [];
 
     artistPlatforms.forEach(platform => {
         const formattedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1);
