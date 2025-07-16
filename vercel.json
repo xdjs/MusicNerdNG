@@ -1,7 +1,5 @@
 {
     "$schema": "https://openapi.vercel.sh/vercel.json",
     "regions": ["sfo1"],
-    "functions": {
-        "maxDuration": 30
-    }
+    "maxDuration": 30
   }
