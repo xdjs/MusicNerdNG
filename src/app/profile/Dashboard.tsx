@@ -22,11 +22,11 @@ type RecentItem = {
     imageUrl: string | null;
 };
 
-export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true, hideLogin = false }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean; hideLogin?: boolean }) {
-    return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} allowEditUsername={allowEditUsername} showDateRange={showDateRange} hideLogin={hideLogin} /></UgcStatsWrapper>;
+export default function Dashboard({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true, hideLogin = false, showStatus = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean; hideLogin?: boolean; showStatus?: boolean }) {
+    return <UgcStatsWrapper><UgcStats user={user} showLeaderboard={showLeaderboard} allowEditUsername={allowEditUsername} showDateRange={showDateRange} hideLogin={hideLogin} showStatus={showStatus} /></UgcStatsWrapper>;
 }
 
-function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true, hideLogin = false }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean; hideLogin?: boolean }) {
+function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, showDateRange = true, hideLogin = false, showStatus = true }: { user: User; showLeaderboard?: boolean; allowEditUsername?: boolean; showDateRange?: boolean; hideLogin?: boolean; showStatus?: boolean }) {
     const [date, setDate] = useState<DateRange | undefined>();
     const [ugcStats, setUgcStats] = useState<{ ugcCount: number, artistsCount: number } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -198,8 +198,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     </div>
                     {/* Admin user search removed */}
 
-                    {/* Status row (now always visible) */}
+                    {/* Status row */}
+                    {showStatus && (
                     <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
+                    )}
 
                     {/* Dynamic stats block – hide for guest */}
                     {!isGuestUser && (ugcStats ?? allTimeStats) && (
@@ -284,7 +286,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 {/* Admin user search removed */}
 
                                 {/* Status row */}
+                                {showStatus && (
                                 <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
+                                )}
                                     </div>
 
                             {/* Bottom area: UGC / Artists stats */}
