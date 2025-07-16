@@ -141,6 +141,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
     // Fetch stats whenever selectedRange or target wallet changes
     useEffect(() => {
+        if (status !== "authenticated") return; // wait until user is authenticated
+
         async function fetchStatsForRange() {
             try {
                 const dates = getRangeDates(selectedRange);
@@ -148,12 +150,12 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 const result = await getUgcStatsInRange(dateRange, ugcStatsUserWallet);
                 if (result) setAllTimeStats(result);
             } catch (e) {
-                console.error('Error fetching UGC stats for range', e);
+                console.error("Error fetching UGC stats for range", e);
             }
         }
 
         fetchStatsForRange();
-    }, [selectedRange, ugcStatsUserWallet]);
+    }, [selectedRange, ugcStatsUserWallet, status]);
 
     // Callback from Leaderboard to keep range in sync
     const handleLeaderboardRangeChange = (range: RangeKey) => {
@@ -198,7 +200,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Count / Artists Count) */}
-                        {!isGuestUser && (
+                        {!isGuestUser && (ugcStats ?? allTimeStats) && (
                             <div className="grid grid-cols-3 gap-2 w-full text-sm sm:text-base font-semibold mt-2">
                                 <p className="truncate text-left">User: <span className="font-normal">{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</span></p>
                                 <p className="text-center">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
