@@ -313,9 +313,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </div>
 
                             {/* Bottom area: UGC / Artists stats */}
-                            <div className="space-y-1 text-center md:text-left mt-4">
+                            <div className="space-y-2 text-center md:text-left mt-4">
+                                <p className="text-sm text-gray-500">UGC Stats for: <strong>{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</strong></p>
                                 <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 
