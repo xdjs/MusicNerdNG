@@ -81,11 +81,11 @@ export async function POST(req: Request) {
     }
 
     // Set a timeout for the entire operation to prevent Vercel timeouts
-    const timeout = new Promise((_, reject) => 
+    const timeoutPromise = new Promise<Response>((_, reject) => 
       setTimeout(() => reject(new Error('Search timeout')), 12000) // 12 second timeout
     );
 
-    const searchOperation = async () => {
+    const searchOperation = async (): Promise<Response> => {
       // Parallel execution of database search and Spotify headers
       const [dbResults, spotifyHeaders] = await Promise.all([
         searchForArtistByName(query),
@@ -172,7 +172,7 @@ export async function POST(req: Request) {
     };
 
     // Race between the search operation and timeout
-    return await Promise.race([searchOperation(), timeout]);
+    return await Promise.race([searchOperation(), timeoutPromise]);
     
   } catch (error) {
     console.error('Error in search artists:', error);
