@@ -203,7 +203,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* Dynamic stats block – hide for guest */}
                     {!isGuestUser && (ugcStats ?? allTimeStats) && (
-                        <div className="space-y-1 mt-auto">
+                        <div className="space-y-1 mt-4">
                             <p>UGC Count: {(ugcStats ?? allTimeStats)?.ugcCount}</p>
                             <p>Artists Count: {(ugcStats ?? allTimeStats)?.artistsCount}</p>
                         </div>
@@ -278,7 +278,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Two-column section under username */}
                     <div className="flex flex-col md:flex-row md:gap-6 justify-center max-w-3xl mx-auto text-center md:text-left">
                         {/* Left column - admin controls, status & stats */}
-                        <div className="md:w-1/2 flex flex-col justify-between">
+                        <div className="md:w-1/2 flex flex-col">
                             {/* Top area: admin controls and status */}
                             <div className="space-y-4">
                                 {/* Admin user search removed */}
@@ -288,7 +288,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </div>
 
                             {/* Bottom area: UGC / Artists stats */}
-                            <div className="space-y-1 text-center md:text-left pt-4 md:pt-0">
+                            <div className="space-y-1 text-center md:text-left mt-4">
                                 <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
