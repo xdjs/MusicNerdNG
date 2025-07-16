@@ -220,7 +220,7 @@ export const aiPrompts = pgTable("aiprompts", {
 	createdAt: timestamp("created_at").defaultNow(), 	
 	promptBeforeName: text("prompt_before_name").notNull(),
 	promptAfterName: text("prompt_after_name").notNull(),
-	isActive: boolean("is_enabled").default(false),
+	isActive: boolean("is_active").default(false),
   });
 
 export const funFacts = pgTable("funfacts", {
