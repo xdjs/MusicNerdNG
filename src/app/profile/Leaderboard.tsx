@@ -10,12 +10,17 @@ import { Check } from "lucide-react";
 
 type RangeKey = "today" | "week" | "month" | "all";
 
-export default function Leaderboard({ highlightIdentifier }: { highlightIdentifier?: string }) {
+export default function Leaderboard({ highlightIdentifier, onRangeChange }: { highlightIdentifier?: string; onRangeChange?: (range: RangeKey) => void }) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showTopBtn, setShowTopBtn] = useState(false);
     const [range, setRange] = useState<RangeKey>("all");
+
+    // Notify parent whenever the range changes (including initial mount)
+    useEffect(() => {
+        onRangeChange?.(range);
+    }, [range, onRangeChange]);
 
     function getRangeDates(r: RangeKey) {
         const now = new Date();
