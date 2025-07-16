@@ -139,7 +139,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     }, [isCompactLayout]);
 
     return (
-        <section className="px-10 py-5 space-y-6">
+        <section className="px-5 sm:px-10 py-5 space-y-6">
             {/* Stats + Recently Edited layout */}
             {isCompactLayout ? (
                 <div className="space-y-6 mb-8 max-w-xl mx-auto text-center">
