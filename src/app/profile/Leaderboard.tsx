@@ -92,7 +92,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         return (
             <Card className="max-w-3xl mx-auto">
                 <CardHeader className="text-center">
-                    <CardTitle>Leaderboard</CardTitle>
+                    <CardTitle className="mb-4">Leaderboard</CardTitle>
                     {/* Range selector buttons */}
                     <div className="grid grid-cols-4 gap-2 w-full mt-6 mb-4">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
@@ -120,7 +120,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         return (
             <Card className="max-w-3xl mx-auto">
                 <CardHeader className="text-center">
-                    <CardTitle>Leaderboard</CardTitle>
+                    <CardTitle className="mb-4">Leaderboard</CardTitle>
                     <div className="grid grid-cols-4 gap-2 w-full mt-6 mb-4">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
@@ -147,7 +147,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
         <>
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
-                <CardTitle>Leaderboard</CardTitle>
+                <CardTitle className="mb-4">Leaderboard</CardTitle>
                 <div className="grid grid-cols-4 gap-2 w-full mt-6 mb-4">
                     {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                         <Button
