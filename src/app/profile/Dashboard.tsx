@@ -13,6 +13,7 @@ import { Pencil } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 
 type RecentItem = {
     ugcId: string;
@@ -199,10 +200,27 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Count / Artists Count) */}
                         {!isGuestUser && (ugcStats ?? allTimeStats) && (
-                            <div className="grid grid-cols-3 gap-2 w-full text-sm sm:text-base font-semibold mt-2">
-                                <p className="truncate text-left">User: <span className="font-normal">{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</span></p>
-                                <p className="text-center">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-right">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            <div className="grid grid-cols-3 items-center p-3 border rounded-md bg-accent/40 w-full">
+                                {/* User */}
+                                <div className="flex items-center space-x-2 overflow-hidden">
+                                    <span className="font-medium truncate max-w-[200px] text-lg">
+                                        {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
+                                    </span>
+                                </div>
+
+                                {/* UGC Count */}
+                                <div className="text-center text-lg">
+                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                        {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
+                                    </Badge>
+                                </div>
+
+                                {/* Artists Count */}
+                                <div className="text-right text-lg">
+                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                        {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
+                                    </Badge>
+                                </div>
                             </div>
                         )}
 
