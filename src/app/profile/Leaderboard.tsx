@@ -122,12 +122,12 @@ function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: Leaderbo
                             <p className="font-semibold text-center mb-2">{(entry.username || entry.email || entry.wallet.slice(0,8)+"...")}&#39;s Recently Added</p>
                             {loadingRec && <p className="text-sm text-muted-foreground text-center">Loading...</p>}
                             {recent && recent.length ? (
-                                <ul className="grid grid-cols-3 gap-6 justify-items-center">
+                                <ul className="grid grid-cols-3 gap-4 justify-items-center">
                                     {recent.map(r => (
-                                        <li key={r.artistId ?? r.ugcId}>
-                                            <Link href={`/artist/${r.artistId ?? ''}`} className="flex items-center gap-2 hover:underline">
-                                                <img src={r.imageUrl || "/default_pfp_pink.png"} alt="artist" className="h-8 w-8 rounded-full object-cover" />
-                                                <span className="text-sm">{r.artistName ?? 'Unknown Artist'}</span>
+                                        <li key={r.artistId ?? r.ugcId} className="w-full flex flex-col items-center">
+                                            <Link href={`/artist/${r.artistId ?? ''}`} className="flex flex-col items-center gap-1 hover:underline w-full">
+                                                <img src={r.imageUrl || "/default_pfp_pink.png"} alt="artist" className="h-10 w-10 rounded-full object-cover" />
+                                                <span className="text-xs truncate max-w-[80px] text-center">{r.artistName ?? 'Unknown Artist'}</span>
                                             </Link>
                                         </li>
                                     ))}
