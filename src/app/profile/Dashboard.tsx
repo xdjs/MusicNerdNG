@@ -313,11 +313,34 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </div>
 
                             {/* Bottom area: UGC / Artists stats */}
-                            <div className="space-y-2 text-center md:text-left mt-4">
-                                <p className="text-sm text-gray-500">UGC Stats for: <strong>{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</strong></p>
-                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
-                            </div>
+                            <div className="mt-4 space-y-2">
+                                {/* Header row (hidden on mobile to mimic leaderboard) */}
+                                <div className="hidden sm:grid grid-cols-3 font-semibold text-muted-foreground text-base text-center">
+                                    <span className="justify-self-start text-left">User</span>
+                                    <span>UGC Added</span>
+                                    <span className="justify-self-end text-right">Artists Added</span>
+                                </div>
+
+                                {/* Stats row */}
+                                <div className="grid grid-cols-3 items-center p-3 border rounded-md bg-accent/40">
+                                    {/* User */}
+                                    <div className="flex items-center space-x-2 overflow-hidden justify-self-start text-left">
+                                        <span className="font-medium truncate max-w-[200px] text-lg">
+                                            {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
+                                        </span>
+                                    </div>
+
+                                    {/* UGC Count */}
+                                    <div className="text-center text-lg font-semibold">
+                                        {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
+                                    </div>
+
+                                    {/* Artists Count */}
+                                    <div className="text-right text-lg font-semibold">
+                                        {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
+                                    </div>
+                                </div>
+                             </div>
                         </div>
 
                         {/* Right column - recently edited */}
