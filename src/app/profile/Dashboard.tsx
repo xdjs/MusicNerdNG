@@ -39,6 +39,11 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const [savingUsername, setSavingUsername] = useState(false);
     const [recentUGC, setRecentUGC] = useState<RecentItem[]>([]);
     const [rank, setRank] = useState<number | null>(null);
+    const isCompactLayout = !allowEditUsername; // compact (leaderboard-style) when username editing disabled
+
+    // Range selection (synced with Leaderboard)
+    type RangeKey = "today" | "week" | "month" | "all";
+    const [selectedRange, setSelectedRange] = useState<RangeKey>("all");
 
     // (duplicate RangeKey and selectedRange definition removed)
 
@@ -62,7 +67,6 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     }, [selectedRange, user.wallet, isCompactLayout]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
     const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
-    const isCompactLayout = !allowEditUsername; // compact layout (leaderboard-like) when username editing disabled
     // Determine user status string for display
     const statusString = user.isAdmin ? 'Admin' : (user.isWhiteListed ? 'Whitelisted' : 'User');
 
@@ -181,7 +185,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
     // Fetch recent edited UGC only for the profile layout (not the compact leaderboard layout)
     useEffect(() => {
-        if (!isCompactLayout) {
+        if (isCompactLayout) {
             fetch('/api/recentEdited')
                 .then(res => res.json())
                 .then((data: RecentItem[]) => setRecentUGC(data))
@@ -276,7 +280,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* The vertical dynamic stats block has been replaced by the horizontal grid above */}
 
-                    {showDateRange && !isCompactLayout && (
+                    {showDateRange && !allowEditUsername && (
                         <>
                             {/* Date range picker and action button inline */}
                             <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
