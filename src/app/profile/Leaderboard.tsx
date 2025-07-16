@@ -230,7 +230,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
                 <CardHeader className="text-center">
                     <CardTitle className="mb-5">Leaderboard</CardTitle>
                     {/* Range selector buttons */}
-                    <div className="grid grid-cols-4 gap-2 w-full mt-6 mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-6 mb-4">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
                                 key={key}
@@ -257,7 +257,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
             <Card className="max-w-3xl mx-auto">
                 <CardHeader className="text-center">
                     <CardTitle className="mb-5">Leaderboard</CardTitle>
-                    <div className="grid grid-cols-4 gap-2 w-full mt-6 mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-6 mb-4">
                         {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                             <Button
                                 key={key}
@@ -284,7 +284,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
                 <CardTitle className="mb-5">Leaderboard</CardTitle>
-                <div className="grid grid-cols-4 gap-2 w-full mt-6 mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-6 mb-4">
                     {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
                         <Button
                             key={key}

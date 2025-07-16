@@ -231,7 +231,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </div>
 
                                 {/* Rank */}
-                                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1 text-sm sm:text-lg">
+                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-lg whitespace-nowrap">
                                     <span className="font-semibold text-xs sm:text-base">Rank:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {rank ?? '—'}
@@ -239,7 +239,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </div>
 
                                 {/* UGC Count */}
-                                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-base whitespace-nowrap">
                                     <span className="font-semibold text-xs sm:text-base">UGC Added:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
@@ -247,7 +247,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </div>
 
                                 {/* Artists Count */}
-                                <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-base whitespace-nowrap">
                                     <span className="font-semibold text-xs sm:text-base">Artists Added:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
