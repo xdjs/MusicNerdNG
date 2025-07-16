@@ -41,6 +41,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
     const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
     const isCompactLayout = !allowEditUsername; // compact layout (leaderboard-like) when username editing disabled
+    // Determine user status string for display
+    const statusString = user.isAdmin ? 'Admin' : (user.isWhiteListed ? 'Whitelisted' : 'User');
 
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
@@ -283,20 +285,27 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* Two-column section under username */}
                     <div className="flex flex-col md:flex-row md:gap-6 justify-center max-w-3xl mx-auto text-center md:text-left">
-                        {/* Left column - stats & admin controls */}
-                        <div className="md:w-1/2 space-y-4">
-                            {user?.isAdmin && (
-                                <>
-                                    <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
-                                    <div className="mt-2">
-                                        <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
-                                            Clear User
-                                        </Button>
-                                    </div>
-                                </>
-                            )}
+                        {/* Left column - admin controls, status & stats */}
+                        <div className="md:w-1/2 flex flex-col justify-between">
+                            {/* Top area: admin controls and status */}
+                            <div className="space-y-4">
+                                {user?.isAdmin && (
+                                    <>
+                                        <SearchBar setUsers={(user) => setUgcStatsUserWallet(user)} query={query} setQuery={setQuery} />
+                                        <div className="mt-2">
+                                            <Button disabled={!ugcStatsUserWallet} onClick={() => { setUgcStatsUserWallet(null); setQuery('') }}>
+                                                Clear User
+                                            </Button>
+                                        </div>
+                                    </>
+                                )}
 
-                            <div className="space-y-1 text-center md:text-left">
+                                {/* Status row */}
+                                <p className="text-lg font-semibold">Status: <span className="font-normal">{statusString}</span></p>
+                            </div>
+
+                            {/* Bottom area: UGC / Artists stats */}
+                            <div className="space-y-1 text-center md:text-left pt-4 md:pt-0">
                                 <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
