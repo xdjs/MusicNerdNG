@@ -100,7 +100,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className={cn("w-full py-1 px-2 text-xs sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
+                                className={cn("w-full py-1 px-2 text-[0.7rem] leading-tight sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
                                 onClick={() => setRange(key)}
                             >
                                 {range === key && <Check className="inline h-4 w-4 mr-1" />}
@@ -127,7 +127,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                                 key={key}
                                 size="sm"
                                 variant={range === key ? "default" : "secondary"}
-                                className={cn("w-full py-1 px-2 text-xs sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
+                                className={cn("w-full py-1 px-2 text-[0.7rem] leading-tight sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
                                 onClick={() => setRange(key)}
                             >
                                 {range === key && <Check className="inline h-4 w-4 mr-1" />}
@@ -154,7 +154,7 @@ export default function Leaderboard({ highlightIdentifier }: { highlightIdentifi
                             key={key}
                             size="sm"
                             variant={range === key ? "default" : "secondary"}
-                            className={cn("w-full py-1 px-2 text-xs sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
+                            className={cn("w-full py-1 px-2 text-[0.7rem] leading-tight sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
                             onClick={() => setRange(key)}
                         >
                             {range === key && <Check className="inline h-4 w-4 mr-1" />}
