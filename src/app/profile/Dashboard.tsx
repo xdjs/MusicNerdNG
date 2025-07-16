@@ -224,7 +224,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                         {!isGuestUser && (ugcStats ?? allTimeStats) && (
                             <div className="grid grid-cols-4 items-center p-3 border rounded-md bg-accent/40 w-full gap-6 justify-items-center">
                                 {/* User */}
-                                <div className="flex items-center space-x-2 overflow-hidden justify-self-start">
+                                <div className="flex items-center space-x-2 overflow-hidden justify-center">
                                     <span className="font-medium truncate max-w-[200px] text-lg">
                                         {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
                                     </span>
