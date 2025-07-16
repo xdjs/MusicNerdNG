@@ -312,10 +312,11 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 )}
                                     </div>
 
-                            {/* Bottom area: UGC / Artists stats (vertical layout) */}
-                            <div className="space-y-1 text-center md:text-left mt-4">
-                                <p className="text-lg font-semibold">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            {/* Bottom area: UGC / Artists stats (horizontal layout) */}
+                            <div className="grid grid-cols-3 gap-2 mt-4 text-sm sm:text-base font-semibold">
+                                <p className="truncate text-left">User: <span className="font-normal">{ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}</span></p>
+                                <p className="text-center">UGC Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-right">Artists Count: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 
