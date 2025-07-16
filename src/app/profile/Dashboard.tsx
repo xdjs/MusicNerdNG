@@ -217,7 +217,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         <section className="px-5 sm:px-10 py-5 space-y-6">
             {/* Stats + Recently Edited layout */}
             {isCompactLayout ? (
-                <div className="flex flex-col gap-6 mb-8 max-w-xl mx-auto text-center">
+                <div className="flex flex-col gap-6 mb-8 max-w-3xl mx-auto text-center">
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Count / Artists Count) */}
