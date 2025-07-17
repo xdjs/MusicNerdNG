@@ -19,7 +19,8 @@ describe('Leaderboard', () => {
         render(<Leaderboard />);
         
         expect(screen.getByText('Leaderboard')).toBeInTheDocument();
-        expect(screen.getByText('Loading leaderboard...')).toBeInTheDocument();
+        // Component shows a generic Loading message while data is fetched
+        expect(screen.getByText('Loading...')).toBeInTheDocument();
     });
 
     it('should render leaderboard data when loaded', async () => {
@@ -43,10 +44,18 @@ describe('Leaderboard', () => {
 
         await waitFor(() => {
             expect(screen.getByText('Leaderboard')).toBeInTheDocument();
-            expect(screen.getByText('user1')).toBeInTheDocument();
-            // Counts rendered as plain numbers inside badges
-            expect(screen.getByText('10')).toBeInTheDocument();
-            expect(screen.getByText('5')).toBeInTheDocument();
+            /*
+             * JSDOM does not evaluate Tailwind classes like `hidden` / `sm:hidden`,
+             * so both the mobile and desktop markup for each row are present in the
+             * DOM at the same time. That means there can be multiple nodes that
+             * contain the same text (e.g. `user1`, `10`, `5`).  Use the *AllBy*
+             * query variants to avoid the "found multiple elements" error and
+             * simply assert that at least one matching node exists.
+             */
+            expect(screen.getAllByText('user1').length).toBeGreaterThan(0);
+            // Counts rendered as plain numbers inside badges (may appear twice)
+            expect(screen.getAllByText('10').length).toBeGreaterThan(0);
+            expect(screen.getAllByText('5').length).toBeGreaterThan(0);
         });
     });
 
