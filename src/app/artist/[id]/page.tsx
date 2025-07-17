@@ -80,7 +80,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             {/* Check out section */}
                             <div className="space-y-6">
-                                <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                                <div className="flex flex-row items-center justify-between">
                                     <strong className="text-black text-2xl">
                                         Social Media Links
                                     </strong>
@@ -102,7 +102,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
 
                             {/* Support section */}
                             <div className="space-y-6">
-                                <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                                <div className="flex flex-row items-center justify-between">
                                     <strong className="text-black text-2xl">
                                         Support the Artist
                                     </strong>
@@ -150,6 +150,26 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </div>
                 {/* Insert Fun Facts section for mobile only */}
                 <FunFactsMobile artistId={artist.id} />
+
+                {/* Mobile-only Collaborators box displayed below Fun Facts */}
+                <div className="block md:hidden bg-white rounded-lg shadow-2xl mt-4 p-6 space-y-4 overflow-x-hidden">
+                    <h2 className="text-2xl font-bold text-black">Collaborators</h2>
+                    <div className="relative w-full h-[180px]">
+                        <iframe
+                            src={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                            className="w-full h-full border-0 rounded-md pointer-events-none"
+                            loading="lazy"
+                        />
+                        <a
+                            href={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute inset-0 z-10"
+                        >
+                            <span className="sr-only">Open Collaborators</span>
+                        </a>
+                    </div>
+                </div>
             </div>
             </EditModeProvider>
         </>
