@@ -240,7 +240,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* UGC Count */}
                                 <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-base whitespace-nowrap">
-                                    <span className="font-semibold text-xs sm:text-base">UGC Added:</span>
+                                    <span className="font-semibold text-xs sm:text-base">UGC Total:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}
                                     </Badge>
@@ -248,7 +248,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Artists Count */}
                                 <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-base whitespace-nowrap">
-                                    <span className="font-semibold text-xs sm:text-base">Artists Added:</span>
+                                    <span className="font-semibold text-xs sm:text-base">Artists Total:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}
                                     </Badge>
@@ -362,8 +362,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
-                                <p className="text-lg font-semibold">UGC Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Added: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 

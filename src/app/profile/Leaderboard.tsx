@@ -119,7 +119,7 @@ function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: Leaderbo
                     {/* Recently Added Artists inline expansion */}
                     {showRecent && (
                         <div className="mt-4">
-                            <p className="font-semibold text-center mb-2">{(entry.username || entry.email || entry.wallet.slice(0,8)+"...")}&#39;s Recently Added</p>
+                            <p className="font-semibold text-center mb-2">{(entry.username || entry.email || entry.wallet.slice(0,8)+"...")}&#39;s Recently Edited</p>
                             {loadingRec && <p className="text-sm text-muted-foreground text-center">Loading...</p>}
                             {recent && recent.length ? (
                                 <ul className="grid grid-cols-3 gap-4 justify-items-center">
