@@ -221,7 +221,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Added / Artists Added) */}
-                        {!isGuestUser && (ugcStats ?? allTimeStats) && (
+                        {!isGuestUser && (
                             <div className="grid grid-cols-2 sm:grid-cols-4 items-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 w-full gap-x-4 gap-y-3 justify-items-center">
                                 {/* User */}
                                 <div className="flex items-center space-x-2 overflow-hidden justify-center">
