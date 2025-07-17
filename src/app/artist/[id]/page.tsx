@@ -13,6 +13,7 @@ import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import FunFactsMobile from "./_components/FunFactsMobile";
 import FunFactsDesktop from "./_components/FunFactsDesktop";
+import { GRAPEVINE_URL } from "@/env";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -133,12 +134,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         <h2 className="text-2xl font-bold text-black">Collaborators</h2>
                         <div className="relative w-full h-[180px]">
                             <iframe
-                                src={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                                src={`${GRAPEVINE_URL}/${artist.id}`}
                                 className="w-full h-full border-0 rounded-md pointer-events-none"
                                 loading="lazy"
                             />
                             <a
-                                href={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                                href={`${GRAPEVINE_URL}/${artist.id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="absolute inset-0 z-10"
@@ -156,12 +157,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <h2 className="text-2xl font-bold text-black">Collaborators</h2>
                     <div className="relative w-full h-[180px]">
                         <iframe
-                            src={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                            src={`${GRAPEVINE_URL}/${artist.id}`}
                             className="w-full h-full border-0 rounded-md pointer-events-none"
                             loading="lazy"
                         />
                         <a
-                            href={`https://grapevine.musicnerd.xyz/${artist.id}`}
+                            href={`${GRAPEVINE_URL}/${artist.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="absolute inset-0 z-10"

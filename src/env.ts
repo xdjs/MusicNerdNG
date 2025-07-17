@@ -19,3 +19,6 @@ export const NEXTAUTH_URL = process.env.NEXTAUTH_URL ?? "";
 export const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL ?? "";
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
 export const OPENAI_API_KEY = validateEnv(process.env.OPENAI_API_KEY, 'OPENAI_API_KEY', isTestEnv);
+
+// Base URL for Grapevine collaborator widget/i-frame
+export const GRAPEVINE_URL = validateEnv(process.env.NEXT_PUBLIC_GRAPEVINE_URL, 'NEXT_PUBLIC_GRAPEVINE_URL', isTestEnv);
