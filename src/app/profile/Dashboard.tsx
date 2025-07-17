@@ -244,7 +244,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                             onClick={() => {
                                                 const el = document.getElementById('leaderboard-current-user');
                                                 if (el) {
-                                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                                 }
                                             }}
                                             className="ml-1 text-muted-foreground hover:text-primary transition-colors"

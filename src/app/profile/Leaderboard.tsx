@@ -55,7 +55,7 @@ function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: Leaderbo
             onMouseEnter={() => { setShowRecent(true); fetchRecent(); }}
             onMouseLeave={() => setShowRecent(false)}
             className={cn(
-                        "p-3 border rounded-md transition-colors",
+                        "p-3 border rounded-md transition-colors scroll-mt-24",
                         isHighlighted ? "ring-2 ring-primary bg-accent sticky top-12 z-10" : "hover:bg-accent/40"
                     )}
         >
