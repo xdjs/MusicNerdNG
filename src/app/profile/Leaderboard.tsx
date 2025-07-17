@@ -51,6 +51,7 @@ function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: Leaderbo
 
     return (
         <div
+            id={isHighlighted ? "leaderboard-current-user" : undefined}
             onMouseEnter={() => { setShowRecent(true); fetchRecent(); }}
             onMouseLeave={() => setShowRecent(false)}
             className={cn(
