@@ -4,20 +4,180 @@ import { useEffect, useState } from "react";
 import type { LeaderboardEntry } from "@/app/actions/serverActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { DateRange } from "react-day-picker";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Check } from "lucide-react";
 
-export default function Leaderboard({ highlightIdentifier, dateRange }: { highlightIdentifier?: string; dateRange?: DateRange }) {
+type RangeKey = "today" | "week" | "month" | "all";
+
+type RecentItem = {
+    ugcId: string;
+    artistId: string | null;
+    artistName: string | null;
+    updatedAt: string | null;
+    imageUrl: string | null;
+};
+
+function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: LeaderboardEntry; index: number; highlightIdentifier?: string }) {
+    const [recent, setRecent] = useState<RecentItem[] | null>(null);
+    const [loadingRec, setLoadingRec] = useState(false);
+
+    const identifierLc = highlightIdentifier?.toLowerCase();
+    const isHighlighted = identifierLc && (
+        entry.wallet?.toLowerCase() === identifierLc ||
+        (entry.username ?? '').toLowerCase() === identifierLc ||
+        (entry.email ?? '').toLowerCase() === identifierLc
+    );
+
+    async function fetchRecent() {
+        if (recent || loadingRec) return;
+        setLoadingRec(true);
+        try {
+            const resp = await fetch(`/api/recentEdited?userId=${entry.userId}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                setRecent(data);
+            }
+        } catch (e) {
+            console.error('Error fetching recent edits for user', e);
+        } finally {
+            setLoadingRec(false);
+        }
+    }
+
+    const [showRecent, setShowRecent] = useState(false);
+
+    return (
+        <div
+            id={isHighlighted ? "leaderboard-current-user" : undefined}
+            onMouseEnter={() => { setShowRecent(true); fetchRecent(); }}
+            onMouseLeave={() => setShowRecent(false)}
+            className={cn(
+                        "p-3 border rounded-md transition-colors scroll-mt-12",
+                        isHighlighted ? "ring-2 ring-primary bg-accent sticky top-12 z-10" : "hover:bg-accent/40"
+                    )}
+        >
+            {/* Mobile layout */}
+            <div className="flex flex-col sm:hidden space-y-1">
+                        {/* Username row */}
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                            <span className={`w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`}>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                            </span>
+                            <p className="font-medium truncate max-w-[200px] text-lg">
+                                {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
+                            </p>
+                        </div>
+
+                        {/* UGC row */}
+                        <div className="flex justify-between pl-10">
+                            <span className="text-muted-foreground">UGC Added</span>
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.ugcCount}
+                            </Badge>
+                        </div>
+
+                        {/* Artists row */}
+                        <div className="flex justify-between pl-10">
+                            <span className="text-muted-foreground">Artists Added</span>
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.artistsCount}
+                            </Badge>
+                        </div>
+                    </div>
+
+                    {/* Desktop layout */}
+                    <div className="hidden sm:grid grid-cols-3 items-center">
+                        {/* User col */}
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                            <span className={`w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`}>
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                            </span>
+                            <div className="truncate">
+                                <p className="font-medium truncate max-w-[200px] text-lg">
+                                    {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* UGC count */}
+                        <div className="text-center text-lg">
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.ugcCount}
+                            </Badge>
+                        </div>
+
+                        {/* Artist count */}
+                        <div className="text-right text-lg">
+                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
+                                {entry.artistsCount}
+                            </Badge>
+                        </div>
+                    </div>
+
+                    {/* Recently Added Artists inline expansion */}
+                    {showRecent && (
+                        <div className="mt-4">
+                            <p className="font-semibold text-center mb-2">{(entry.username || entry.email || entry.wallet.slice(0,8)+"...")}&#39;s Recently Edited</p>
+                            {loadingRec && <p className="text-sm text-muted-foreground text-center">Loading...</p>}
+                            {recent && recent.length ? (
+                                <ul className="grid grid-cols-3 gap-4 justify-items-center">
+                                    {recent.map(r => (
+                                        <li key={r.artistId ?? r.ugcId} className="w-full flex flex-col items-center">
+                                            <Link href={`/artist/${r.artistId ?? ''}`} className="flex flex-col items-center gap-1 hover:underline w-full">
+                                                <img src={r.imageUrl || "/default_pfp_pink.png"} alt="artist" className="h-10 w-10 rounded-full object-cover" />
+                                                <span className="text-xs truncate max-w-[80px] text-center">{r.artistName ?? 'Unknown Artist'}</span>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : !loadingRec ? (
+                                <p className="text-sm text-muted-foreground text-center">No recent artists</p>
+                            ) : null}
+                        </div>
+                    )}
+                </div>
+        );
+}
+
+export default function Leaderboard({ highlightIdentifier, onRangeChange }: { highlightIdentifier?: string; onRangeChange?: (range: RangeKey) => void }) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showTopBtn, setShowTopBtn] = useState(false);
+    const [range, setRange] = useState<RangeKey>("all");
+
+    // Notify parent whenever the range changes (including initial mount)
+    useEffect(() => {
+        onRangeChange?.(range);
+    }, [range, onRangeChange]);
+
+    function getRangeDates(r: RangeKey) {
+        const now = new Date();
+        switch (r) {
+            case "today":
+                const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                return { from: startToday, to: now };
+            case "week":
+                const weekAgo = new Date(now);
+                weekAgo.setDate(now.getDate() - 7);
+                return { from: weekAgo, to: now };
+            case "month":
+                const monthAgo = new Date(now);
+                monthAgo.setMonth(now.getMonth() - 1);
+                return { from: monthAgo, to: now };
+            default:
+                return null;
+        }
+    }
 
     function buildUrl() {
-        if (dateRange?.from && dateRange?.to) {
-            const from = dateRange.from.toISOString();
-            const to = dateRange.to.toISOString();
+        const dates = getRangeDates(range);
+        if (dates) {
+            const from = dates.from.toISOString();
+            const to = dates.to.toISOString();
             return `/api/leaderboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
         }
         return "/api/leaderboard";
@@ -25,7 +185,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
 
     useEffect(() => {
         async function fetchLeaderboard() {
-            if ((dateRange?.from && !dateRange?.to) || (!dateRange?.from && dateRange?.to)) {
+            if ((getRangeDates(range)?.from && !getRangeDates(range)?.to) || (!getRangeDates(range)?.from && getRangeDates(range)?.to)) {
                 setLeaderboard([]);
                 return;
             }
@@ -47,7 +207,7 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         }
 
         fetchLeaderboard();
-    }, [dateRange]);
+    }, [range]);
 
     // Show/hide "back to top" button based on scroll position
     useEffect(() => {
@@ -58,24 +218,36 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    const isDateRangeActive = !!(dateRange?.from && dateRange?.to);
-
-    function formatShort(date: Date) {
-        return date.toLocaleDateString(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
-    }
-
-    const headingSuffix = isDateRangeActive && dateRange?.from && dateRange?.to
-        ? `${formatShort(dateRange.from)} - ${formatShort(dateRange.to)}`
-        : "All Time";
+    const headingLabelMap: Record<RangeKey, string> = {
+        today: "Today",
+        week: "Last Week",
+        month: "Last Month",
+        all: "All Time",
+    };
 
     if (loading) {
         return (
-            <Card>
+            <Card className="max-w-3xl mx-auto">
                 <CardHeader className="text-center">
-                    <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
+                    <CardTitle className="mb-5">Leaderboard</CardTitle>
+                    {/* Range selector buttons */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-6 mb-4">
+                        {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
+                            <Button
+                                key={key}
+                                size="sm"
+                                variant={range === key ? "default" : "secondary"}
+                                className={cn("w-full py-1 px-2 text-[0.7rem] leading-tight sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
+                                onClick={() => setRange(key)}
+                            >
+                                {range === key && <Check className="inline h-4 w-4 mr-1" />}
+                                {headingLabelMap[key]}
+                            </Button>
+                        ))}
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    <p>Loading leaderboard...</p>
+                    <p className="text-center">Loading...</p>
                 </CardContent>
             </Card>
         );
@@ -83,9 +255,23 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
 
     if (error) {
         return (
-            <Card>
+            <Card className="max-w-3xl mx-auto">
                 <CardHeader className="text-center">
-                    <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
+                    <CardTitle className="mb-5">Leaderboard</CardTitle>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-6 mb-4">
+                        {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
+                            <Button
+                                key={key}
+                                size="sm"
+                                variant={range === key ? "default" : "secondary"}
+                                className={cn("w-full py-1 px-2 text-[0.7rem] leading-tight sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
+                                onClick={() => setRange(key)}
+                            >
+                                {range === key && <Check className="inline h-4 w-4 mr-1" />}
+                                {headingLabelMap[key]}
+                            </Button>
+                        ))}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <p className="text-red-500">{error}</p>
@@ -95,65 +281,37 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
     }
 
     return (
-        <>
+        <TooltipProvider delayDuration={200}>
         <Card className="max-w-3xl mx-auto">
             <CardHeader className="text-center">
-                <CardTitle>Leaderboard <span className="font-normal">({headingSuffix})</span></CardTitle>
+                <CardTitle className="mb-5">Leaderboard</CardTitle>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-6 mb-4">
+                    {(["today", "week", "month", "all"] as RangeKey[]).map((key) => (
+                        <Button
+                            key={key}
+                            size="sm"
+                            variant={range === key ? "default" : "secondary"}
+                            className={cn("w-full py-1 px-2 text-[0.7rem] leading-tight sm:text-sm", range === key ? "bg-primary text-white" : "bg-gray-200 text-black hover:bg-gray-300")}
+                            onClick={() => setRange(key)}
+                        >
+                            {range === key && <Check className="inline h-4 w-4 mr-1" />}
+                            {headingLabelMap[key]}
+                        </Button>
+                    ))}
+                </div>
             </CardHeader>
             <CardContent>
-                {/* column headings */}
-                <div className="grid grid-cols-3 font-semibold text-base text-muted-foreground sticky top-0 z-20 bg-card py-2 mb-2">
-                    <span className="justify-self-start">User</span>
-                    <span className="justify-self-center">UGC Added</span>
-                    <span className="justify-self-end">Artists Added</span>
+                {/* column headings (hidden on mobile) */}
+                <div className="hidden sm:grid grid-cols-3 font-semibold text-base text-muted-foreground text-center sticky top-0 z-20 bg-card py-2 mb-2">
+                    <span className="justify-self-start text-left">User</span>
+                    <span>UGC Added</span>
+                    <span className="justify-self-end text-right">Artists Added</span>
                 </div>
 
                 <div className="space-y-2">
-                    {leaderboard.map((entry, index) => {
-                        const identifierLc = highlightIdentifier?.toLowerCase();
-                        const isHighlighted = identifierLc && (
-                            entry.wallet?.toLowerCase() === identifierLc ||
-                            (entry.username ?? '').toLowerCase() === identifierLc ||
-                            (entry.email ?? '').toLowerCase() === identifierLc
-                        );
-                        return (
-                            <div
-                                key={entry.userId}
-                                className={cn(
-                                    "grid grid-cols-3 items-center p-3 border rounded-md transition-colors",
-                                    isHighlighted ? "ring-2 ring-primary bg-accent sticky top-12 z-10" : "hover:bg-accent/40"
-                                )}
-                            >
-                                {/* User col */}
-                                <div className="flex items-center space-x-2 overflow-hidden">
-                                    <span className={
-                                        `w-8 font-semibold text-center text-muted-foreground ${index < 3 ? 'text-2xl' : 'text-sm'}`
-                                    }>
-                                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
-                                    </span>
-                                    <div className="truncate">
-                                        <p className="font-medium truncate max-w-[200px] text-lg">
-                                            {entry.username || entry.email || entry.wallet.slice(0, 8) + "..."}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* UGC count */}
-                                <div className="text-center text-lg">
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                        {entry.ugcCount}
-                                    </Badge>
-                                </div>
-
-                                {/* Artist count */}
-                                <div className="text-right text-lg">
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary">
-                                        {entry.artistsCount}
-                                    </Badge>
-                                </div>
-                            </div>
-                        );
-                    })}
+                    {leaderboard.map((entry, index) => (
+                        <LeaderboardRow key={entry.userId} entry={entry} index={index} highlightIdentifier={highlightIdentifier} />
+                    ))}
                     {leaderboard.length === 0 && (
                         <p className="text-center text-muted-foreground py-8">
                             No users have added artists yet. Be the first!
@@ -173,6 +331,6 @@ export default function Leaderboard({ highlightIdentifier, dateRange }: { highli
                 ↑
             </Button>
         )}
-        </>
+        </TooltipProvider>
     );
 } 
