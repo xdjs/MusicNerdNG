@@ -1,5 +1,6 @@
 import { getServerAuthSession } from "@/server/auth";
 import Dashboard from "@/app/profile/Dashboard";
+import Leaderboard from "@/app/profile/Leaderboard";
 import { notFound } from "next/navigation";
 import { getUserById } from "@/server/utils/queries/userQueries";
 
@@ -19,7 +20,7 @@ export default async function Page() {
       updatedAt: new Date().toISOString(),
       legacyId: null,
     } as const;
-    return <Dashboard user={mockUser} allowEditUsername={false} />; // no edit on leaderboard
+    return <main className="px-5 sm:px-10 py-10"><Leaderboard /></main>; // show leaderboard only for guest
   }
 
   if (!session) {
@@ -34,10 +35,10 @@ export default async function Page() {
       updatedAt: new Date().toISOString(),
       legacyId: null,
     } as const;
-    return <Dashboard user={guestUser} allowEditUsername={false} />;
+    return <main className="px-5 sm:px-10 py-10"><Leaderboard /></main>; // leaderboard for guest
   }
 
   const user = await getUserById(session.user.id);
   if (!user) return notFound();
-  return <Dashboard user={user} allowEditUsername={false} />;
+  return <Dashboard user={user} allowEditUsername={false} showDateRange={false} hideLogin={true} showStatus={false} />;
 } 
