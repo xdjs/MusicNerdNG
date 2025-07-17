@@ -222,28 +222,24 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Added / Artists Added) */}
                         {!isGuestUser && (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 items-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 w-full gap-x-4 gap-y-3 justify-items-center">
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                title="Jump to my leaderboard position"
+                                onClick={() => {
+                                    const el = document.getElementById('leaderboard-current-user');
+                                    if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                }}
+                                className="cursor-pointer grid grid-cols-2 sm:grid-cols-4 items-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 hover:bg-accent/60 w-full gap-x-4 gap-y-3 justify-items-center focus:outline-none focus:ring-2 focus:ring-primary"
+                            >
                                 {/* User */}
                                 <div className="flex items-center space-x-2 overflow-hidden justify-center">
                                     <span className="font-medium truncate max-w-[160px] text-sm sm:text-lg">
                                         {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
                                     </span>
-                                    {/* Jump to leaderboard row */}
-                                    {!isGuestUser && rank && (
-                                        <button
-                                            type="button"
-                                            aria-label="Jump to my rank"
-                                            onClick={() => {
-                                                const el = document.getElementById('leaderboard-current-user');
-                                                if (el) {
-                                                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                                }
-                                            }}
-                                            className="ml-1 text-muted-foreground hover:text-primary transition-colors"
-                                        >
-                                            <ArrowDownCircle size={18} />
-                                        </button>
-                                    )}
+                                    {/* (arrow removed; entire bar now clickable) */}
                                 </div>
 
                                 {/* Rank */}
