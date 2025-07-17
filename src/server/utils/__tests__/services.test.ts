@@ -8,7 +8,7 @@ import {
 import type { Artist } from "../../db/DbTypes";
 
 // Mock the getAllLinks function used inside extractArtistId
-jest.mock("../queries", () => ({
+jest.mock("../queries/queriesTS", () => ({
   // Provide deterministic regex patterns for a few platforms
   getAllLinks: jest.fn().mockResolvedValue([
     {
