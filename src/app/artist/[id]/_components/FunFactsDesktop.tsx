@@ -27,6 +27,8 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
     try {
       const res = await fetch(`/api/funFacts/${type}?id=${artistId}`);
       const data = await res.json();
+      console.log("data", data);
+      console.log("data.text", data.text);
       setFact(data.text);
     } catch (err) {
       console.error("Error fetching fun fact", err);
