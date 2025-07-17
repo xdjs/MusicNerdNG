@@ -232,7 +232,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                     }
                                 }}
-                                className="cursor-pointer grid grid-cols-2 sm:grid-cols-4 items-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 hover:bg-accent/60 w-full gap-x-4 gap-y-3 justify-items-center focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="cursor-pointer grid grid-cols-2 sm:grid-cols-4 items-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 hover:bg-accent/60 hover:ring-2 hover:ring-black w-full gap-x-4 gap-y-3 justify-items-center focus:outline-none focus:ring-2 focus:ring-primary"
                             >
                                 {/* User */}
                                 <div className="flex items-center space-x-2 overflow-hidden justify-center">
