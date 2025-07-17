@@ -9,7 +9,7 @@ import { getUgcStatsInRangeAction as getUgcStatsInRange } from "@/app/actions/se
 import { User } from "@/server/db/DbTypes";
 import UgcStatsWrapper from "./Wrapper";
 import Leaderboard from "./Leaderboard";
-import { Pencil, ChevronDown } from "lucide-react";
+import { Pencil, ArrowDownCircle } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -228,14 +228,6 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     <span className="font-medium truncate max-w-[160px] text-sm sm:text-lg">
                                         {ugcStatsUserWallet ?? (user?.username ? user.username : user?.wallet)}
                                     </span>
-                                </div>
-
-                                {/* Rank */}
-                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-lg whitespace-nowrap">
-                                    <span className="font-semibold text-xs sm:text-base">Rank:</span>
-                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
-                                        {rank ?? '—'}
-                                    </Badge>
                                     {/* Jump to leaderboard row */}
                                     {!isGuestUser && rank && (
                                         <button
@@ -249,9 +241,18 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                             }}
                                             className="ml-1 text-muted-foreground hover:text-primary transition-colors"
                                         >
-                                            <ChevronDown size={16} />
+                                            <ArrowDownCircle size={18} />
                                         </button>
                                     )}
+                                </div>
+
+                                {/* Rank */}
+                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-lg whitespace-nowrap">
+                                    <span className="font-semibold text-xs sm:text-base">Rank:</span>
+                                    <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
+                                        {rank ?? '—'}
+                                    </Badge>
+                                    {/* (arrow moved next to name) */}
                                 </div>
 
                                 {/* UGC Count */}
