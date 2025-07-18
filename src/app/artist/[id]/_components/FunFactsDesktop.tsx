@@ -27,7 +27,15 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
     try {
       const res = await fetch(`/api/funFacts/${type}?id=${artistId}`);
       const data = await res.json();
-      setFact(data.text || "couldnt work adsljhkfsa");
+      
+      // Check if the response was successful and contains text
+      if (!res.ok || data.error) {
+        console.error("API error:", data.error || `HTTP ${res.status}`);
+        setFact("Couldn't fetch fact. Try again later.");
+        return;
+      }
+      
+      setFact(data.text || "Couldn't fetch fact. Try again later.");
       console.log("data", data);
       console.log("data.text", data.text);
     } catch (err) {
