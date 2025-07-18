@@ -3,16 +3,71 @@ import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { openai } from "@/server/lib/openai";
 import { funFacts } from "@/server/db/schema";
 import { db } from "@/server/db/drizzle";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 async function getPrompts() {
   try {
+    console.log("=== getPrompts() Debug ===");
+    console.log("1. About to query funFacts table...");
+    console.log("2. funFacts schema check:");
+    console.log("   - funFacts object exists:", !!funFacts);
+    console.log("   - isActive field exists:", !!funFacts.isActive);
+    console.log("3. Database connection check:");
+    console.log("   - db object exists:", !!db);
+    console.log("   - db.query exists:", !!db.query);
+    console.log("   - db.query.funFacts exists:", !!db.query.funFacts);
+    
+    console.log("4. Making database query...");
     const result = await db.query.funFacts.findFirst({
       where: eq(funFacts.isActive, true),
     });
+    
+    console.log("5. Query completed. Result:", result);
+    console.log("6. Result type:", typeof result);
+    console.log("7. Result is null:", result === null);
+    console.log("8. Result is undefined:", result === undefined);
+    console.log("9. Result is truthy:", !!result);
+    
+    if (result) {
+      console.log("10. Result structure:");
+      console.log("    - id:", result.id, typeof result.id);
+      console.log("    - isActive:", result.isActive, typeof result.isActive);
+      console.log("    - loreDrop exists:", !!result.loreDrop, "length:", result.loreDrop?.length);
+      console.log("    - behindTheScenes exists:", !!result.behindTheScenes, "length:", result.behindTheScenes?.length);
+      console.log("    - recentActivity exists:", !!result.recentActivity, "length:", result.recentActivity?.length);
+      console.log("    - surpriseMe exists:", !!result.surpriseMe, "length:", result.surpriseMe?.length);
+    } else {
+      console.log("11. No result found, trying alternative queries...");
+      
+      // Try a broader query to see if any funFacts exist at all
+      try {
+        const allFunFacts = await db.query.funFacts.findMany({});
+        console.log("12. All funFacts count:", allFunFacts.length);
+        if (allFunFacts.length > 0) {
+          console.log("13. Sample funFact:", allFunFacts[0]);
+          console.log("14. isActive values:", allFunFacts.map(f => f.isActive));
+        }
+      } catch (allError) {
+        console.error("15. Error querying all funFacts:", allError);
+      }
+      
+      // Try raw SQL as fallback
+      try {
+        const rawResult = await db.execute(sql`SELECT * FROM funfacts WHERE is_active = true LIMIT 1`);
+        console.log("16. Raw SQL result:", rawResult);
+      } catch (sqlError) {
+        console.error("17. Raw SQL error:", sqlError);
+      }
+    }
+    
     return result;
   } catch (error) {
     console.error("Error fetching funFacts prompts:", error);
+    console.error("Error details:", {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
     return null;
   }
 }
