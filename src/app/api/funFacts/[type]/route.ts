@@ -3,16 +3,60 @@ import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { openai } from "@/server/lib/openai";
 import { funFacts } from "@/server/db/schema";
 import { db } from "@/server/db/drizzle";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 async function getPrompts() {
   try {
+    console.log("=== getPrompts() Debug ===");
+    console.log("1. About to query funFacts table...");
+    console.log("2. Query: db.query.funFacts.findFirst with isActive = true");
+    
     const result = await db.query.funFacts.findFirst({
       where: eq(funFacts.isActive, true),
     });
+    
+    console.log("3. Query completed. Result:", result);
+    console.log("4. Result type:", typeof result);
+    console.log("5. Result is null:", result === null);
+    console.log("6. Result is undefined:", result === undefined);
+    console.log("7. Result is truthy:", !!result);
+    
+    if (result) {
+      console.log("8. Result fields:");
+      console.log("   - id:", result.id);
+      console.log("   - isActive:", result.isActive);
+      console.log("   - loreDrop exists:", !!result.loreDrop);
+      console.log("   - behindTheScenes exists:", !!result.behindTheScenes);
+      console.log("   - recentActivity exists:", !!result.recentActivity);
+      console.log("   - surpriseMe exists:", !!result.surpriseMe);
+    } else {
+      console.log("9. No result found, trying raw SQL fallback...");
+      try {
+        // Try with different table name variations
+        const rawResult = await db.execute(sql`
+          SELECT * FROM funfacts WHERE is_active = true LIMIT 1
+        `);
+        console.log("10. Raw SQL result (funfacts):", rawResult);
+        
+        if (rawResult.length === 0) {
+          const rawResult2 = await db.execute(sql`
+            SELECT * FROM "funFacts" WHERE is_active = true LIMIT 1
+          `);
+          console.log("11. Raw SQL result (funFacts):", rawResult2);
+        }
+      } catch (sqlError) {
+        console.error("12. Raw SQL also failed:", sqlError);
+      }
+    }
+    
     return result;
   } catch (error) {
     console.error("Error fetching funFacts prompts:", error);
+    console.error("Error details:", {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
     return null;
   }
 }
