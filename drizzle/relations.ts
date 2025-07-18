@@ -1,6 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { users, ugcwhitelist, artists, featured, ugcresearch, urlmap } from "./schema";
-import { funFacts, aiPrompts, coverageReports } from "../src/server/db/schema";
+import { users, ugcwhitelist, artists, featured, ugcresearch, urlmap, funFacts, aiPrompts, coverageReports } from "../src/server/db/schema";
 
 export const ugcwhitelistRelations = relations(ugcwhitelist, ({one}) => ({
 	user: one(users, {
