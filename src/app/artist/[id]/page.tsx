@@ -130,10 +130,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     {/* Empty Collaborators box */}
                     <div className="hidden md:block bg-white rounded-lg shadow-2xl p-6 space-y-4 overflow-x-hidden">
                         <h2 className="text-2xl font-bold text-black">Grapevine</h2>
-                        <div className="relative w-full h-[180px]">
+                        <div className="relative w-full h-[180px] overflow-hidden">
+                            {/* Crop the i-frame to hide Grapevine header / search / buttons */}
                             <iframe
                                 src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
-                                className="w-full h-full border-0 rounded-md pointer-events-none"
+                                className="w-full border-0 rounded-md pointer-events-none"
+                                style={{ transform: "translateY(-80px)", height: "260px" }}
                                 loading="lazy"
                             />
                             <a
@@ -153,10 +155,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 {/* Mobile-only Collaborators box displayed below Fun Facts */}
                 <div className="block md:hidden bg-white rounded-lg shadow-2xl mt-4 p-6 space-y-4 overflow-x-hidden">
                     <h2 className="text-2xl font-bold text-black">Grapevine</h2>
-                    <div className="relative w-full h-[180px]">
+                    <div className="relative w-full h-[180px] overflow-hidden">
+                        {/* Crop the i-frame to hide Grapevine header / search / buttons */}
                         <iframe
                             src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
-                            className="w-full h-full border-0 rounded-md pointer-events-none"
+                            className="w-full border-0 rounded-md pointer-events-none"
+                            style={{ transform: "translateY(-80px)", height: "260px" }}
                             loading="lazy"
                         />
                         <a
