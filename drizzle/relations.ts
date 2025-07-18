@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm/relations";
-import { users, ugcwhitelist, artists, featured, ugcresearch } from "./schema";
+import { users, ugcwhitelist, artists, featured, ugcresearch, urlmap } from "./schema";
+import { funFacts, aiPrompts, coverageReports } from "../src/server/db/schema";
 
 export const ugcwhitelistRelations = relations(ugcwhitelist, ({one}) => ({
 	user: one(users, {
@@ -51,3 +52,9 @@ export const ugcresearchRelations = relations(ugcresearch, ({one}) => ({
 		references: [users.id]
 	}),
 }));
+
+// Add missing table relations (required for db.query API)
+export const funFactsRelations = relations(funFacts, () => ({}));
+export const aiPromptsRelations = relations(aiPrompts, () => ({}));
+export const urlmapRelations = relations(urlmap, () => ({}));
+export const coverageReportsRelations = relations(coverageReports, () => ({}));
