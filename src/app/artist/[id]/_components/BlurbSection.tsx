@@ -7,10 +7,7 @@ interface BlurbSectionProps {
   artistId: string;
 }
 
-export default function BlurbSection({ 
-  artistName, 
-  artistId
-}: BlurbSectionProps) {
+export default function BlurbSection({ artistName, artistId }: BlurbSectionProps) {
   const [openModal, setOpenModal] = useState<boolean>(false);
   const [aiBlurb, setAiBlurb] = useState<string | undefined>();
   const [loadingAi, setLoadingAi] = useState(false);
@@ -33,13 +30,7 @@ export default function BlurbSection({
       console.error("Error fetching bio:", err);
       const errorMessage = err.message || "Failed to load summary";
       setError(errorMessage);
-      
-      // If it was a timeout, show a user-friendly message with retry option
-      if (errorMessage.includes("timeout") || errorMessage.includes("timed out")) {
-        setAiBlurb("Bio generation is taking longer than expected. Click 'Retry' to try again.");
-      } else {
-        setAiBlurb("Failed to load summary. Click 'Retry' to try again.");
-      }
+      setAiBlurb("No summary is available");
     } finally {
       setLoadingAi(false);
     }
