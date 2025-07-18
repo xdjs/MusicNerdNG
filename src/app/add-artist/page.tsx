@@ -1,6 +1,5 @@
-import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
+import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
 import AddArtistContent from "./_components/AddArtistContent";
 
 export default async function AddArtistPage({

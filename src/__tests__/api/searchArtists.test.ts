@@ -1,10 +1,10 @@
 import { POST } from '@/app/api/searchArtists/route';
 import { searchForArtistByName, getAllSpotifyIds } from '@/server/utils/queries/artistQueries';
-import { getSpotifyHeaders } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders } from '@/server/utils/queries/externalApiQueries';
 import axios from 'axios';
 
 jest.mock('@/server/utils/queries/artistQueries');
-jest.mock('@/server/utils/externalApiQueries');
+jest.mock('@/server/utils/queries/externalApiQueries');
 jest.mock('axios');
 
 // Polyfill Response.json for the test environment
@@ -51,7 +51,9 @@ describe('searchArtists API route', () => {
     (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: { Authorization: 'Bearer token' } });
     (getAllSpotifyIds as jest.Mock).mockResolvedValue(['spotify1']);
 
-    mockedAxios.get.mockResolvedValueOnce({ data: { images: [{ url: 'img1', height: 1, width: 1 }] } });
+    // Mock order must match API call order:
+    // 1. Spotify search API call first
+    // 2. Individual artist data calls second
     mockedAxios.get.mockResolvedValueOnce({
       data: {
         artists: {
@@ -62,6 +64,7 @@ describe('searchArtists API route', () => {
         },
       },
     });
+    mockedAxios.get.mockResolvedValueOnce({ data: { images: [{ url: 'img1', height: 1, width: 1 }] } });
 
     const response = await POST(
       createTestRequest('http://localhost/api/searchArtists', {

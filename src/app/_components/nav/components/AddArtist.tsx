@@ -4,16 +4,14 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Session } from "next-auth";
-import { Spotify } from "react-spotify-embed";
 import Link from "next/link";
-import { set, z } from "zod";
+import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {

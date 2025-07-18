@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { unstable_cache } from 'next/cache';
 import {
   getSpotifyHeaders,
   getSpotifyArtist,
@@ -9,7 +8,7 @@ import {
   getArtistTopTrack,
   type SpotifyArtist,
   type ArtistSpotifyImage
-} from '@/server/utils/externalApiQueries';
+} from '@/server/utils/queries/externalApiQueries';
 
 // Define the internal type used by the functions
 type SpotifyHeaderType = {

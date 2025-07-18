@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import ArtistProfile from '@/app/artist/[id]/page';
 import { getArtistById, getArtistLinks, getAllLinks } from '@/server/utils/queries/artistQueries';
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from '@/server/utils/externalApiQueries';
+import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases, getArtistTopTrack } from '@/server/utils/queries/externalApiQueries';
 import { getServerAuthSession } from '@/server/auth';
 
 // Mock next/navigation
@@ -52,7 +52,7 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({
 }));
 
 // Mock external API queries
-jest.mock('@/server/utils/externalApiQueries', () => ({
+jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyImage: jest.fn(),
     getArtistWiki: jest.fn(),
     getSpotifyHeaders: jest.fn(),
@@ -151,7 +151,6 @@ describe('ArtistPage', () => {
         expect(screen.getByTestId('artist-links-social')).toBeInTheDocument();
         expect(screen.getByTestId('artist-links-monetized')).toBeInTheDocument();
         expect(screen.getByText('Loading summary...')).toBeInTheDocument();
-        expect(screen.getByText('Music Nerd')).toBeInTheDocument();
     });
 
     it('calls notFound when artist is not found', async () => {

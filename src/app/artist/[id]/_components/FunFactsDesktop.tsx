@@ -2,12 +2,21 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface FunFactsDesktopProps {
   artistId: string;
 }
 
 type FactType = "surprise" | "lore" | "bts" | "activity";
+
+// Abridged prompt descriptions that are consistent for all artists
+const PROMPT_DESCRIPTIONS: Record<FactType, string> = {
+  lore: "Uncover hidden stories and background about this artist",
+  bts: "Learn about the creative process and production details",
+  activity: "Find out what this artist has been up to recently",
+  surprise: "Get a random fun fact you might not know",
+};
 
 export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
   const [fact, setFact] = useState<string | null>(null);
@@ -18,7 +27,17 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
     try {
       const res = await fetch(`/api/funFacts/${type}?id=${artistId}`);
       const data = await res.json();
+      
+      // Check if the response was successful and contains text
+      if (!res.ok || data.error) {
+        console.error("API error:", data.error || `HTTP ${res.status}`);
+        setFact("Couldn't fetch fact. Try again later.");
+        return;
+      }
+      
       setFact(data.text || "Couldn't fetch fact. Try again later.");
+      console.log("data", data);
+      console.log("data.text", data.text);
     } catch (err) {
       console.error("Error fetching fun fact", err);
       setFact("Couldn't fetch fact. Try again later.");
@@ -40,27 +59,35 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
       <div className="relative">
         {/* Buttons List */}
         <div className={fact ? "invisible pointer-events-none" : "flex flex-col space-y-2"}>
-          {buttons.map(({ type, label, icon }) => (
-            <Button
-              key={type}
-              variant="outline"
-              className="w-full flex items-center justify-center text-base font-semibold border-2"
-              onClick={() => fetchFact(type)}
-            >
-              <span className="flex items-baseline gap-4">
-                <span
-                  className={`text-2xl ${type === "lore" || type === "bts" ? "relative -top-0.5" : ""}`}
-                >
-                  {icon}
-                </span>
-                <span className="leading-none">{label}</span>
-              </span>
-            </Button>
-          ))}
+          <TooltipProvider>
+            {buttons.map(({ type, label, icon }) => (
+              <Tooltip key={type} delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full flex items-center justify-center text-base font-semibold border-2"
+                    onClick={() => fetchFact(type)}
+                  >
+                    <span className="flex items-baseline gap-4">
+                      <span
+                        className={`text-2xl ${type === "lore" || type === "bts" ? "relative -top-0.5" : ""}`}
+                      >
+                        {icon}
+                      </span>
+                      <span className="leading-none">{label}</span>
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="whitespace-nowrap">
+                  <p>{PROMPT_DESCRIPTIONS[type]}</p>
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </TooltipProvider>
         </div>
 
         {/* Overlay Fact Box */}
-        {(loading || fact !== null) && (
+        {(fact || loading === true) && (
           <div className="absolute inset-0 flex flex-col bg-white rounded-lg border-2 border-gray-300 shadow-lg overflow-y-auto overflow-x-hidden pt-2 pb-2 pr-1 pl-4">
             {/* Close button */}
             <button
@@ -73,7 +100,7 @@ export default function FunFactsDesktop({ artistId }: FunFactsDesktopProps) {
             >
               <span className="relative -top-0.5">×</span>
             </button>
-            {loading ? (
+            {loading === true ? (
               <p className="text-center text-sm">Loading...</p>
             ) : (
               <p className="text-sm text-black whitespace-pre-line mt-0 pr-7">{fact}</p>

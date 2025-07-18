@@ -41,7 +41,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
     const { openConnectModal } = useConnectModal();
 
     useEffect(() => {
-        console.log("[Login] State changed:", {
+        console.debug("[Login] State changed:", {
             authFrom: currentStatus,
             authTo: status,
             isConnected,
@@ -87,7 +87,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                 (shouldPromptRef.current || (loginInitiator === 'searchBar' && isSearchFlow)) &&
                 !isSearchFlowPrompted
             ) {
-                console.log("[Login] Starting initial connection");
+                console.debug("[Login] Starting initial connection");
                 if (openConnectModal) {
                     openConnectModal();
                 }
@@ -141,7 +141,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
     // Handle disconnection and cleanup
     const handleDisconnect = useCallback(async () => {
         try {
-            console.log("[Login] Disconnecting wallet and cleaning up session");
+            console.debug("[Login] Disconnecting wallet and cleaning up session");
             
             // Save any existing search flow data
             const searchSpotifyId = sessionStorage.getItem('pendingArtistSpotifyId');
@@ -202,7 +202,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
     }, [disconnect, toast]);
 
     useEffect(() => {
-        console.log("[Login] State changed:", {
+        console.debug("[Login] State changed:", {
             authFrom: currentStatus,
             authTo: status,
             isConnected,
@@ -239,7 +239,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
 
         // Only handle reconnection if explicitly triggered
         if (shouldPromptRef.current && !session && status === "unauthenticated" && !isConnected) {
-            console.log("[Login] Detected explicit login action, initiating connection");
+                            console.debug("[Login] Detected explicit login action, initiating connection");
             if (openConnectModal) {
                 openConnectModal();
             }
@@ -333,7 +333,8 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => router.push('/profile')}>Leaderboard</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => router.push('/leaderboard')}>Leaderboard</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                                 <DropdownMenuItem
                                     onSelect={() => {
                                 if (openConnectModal) {
@@ -371,6 +372,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => router.push('/leaderboard')}>Leaderboard</DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => router.push('/profile')}>User Profile</DropdownMenuItem>
                             {session?.user?.isAdmin && (
                                 <DropdownMenuItem onSelect={() => router.push('/admin')} className="flex items-center gap-2">

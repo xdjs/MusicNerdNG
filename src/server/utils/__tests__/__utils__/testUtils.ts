@@ -4,7 +4,7 @@ import { db } from '@/server/db/drizzle';
 import { artists } from '@/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getServerAuthSession } from '@/server/auth';
-import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/externalApiQueries';
+import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
 import { createMockDB } from '../__mocks__/mockDatabase';
 import { createMockSession } from '../__mocks__/mockAuth';
 import { createMockSpotifyHeaders, createMockSpotifyArtist, createMockSpotifyError } from '../__mocks__/mockSpotify';
@@ -37,7 +37,7 @@ export const setupMocks = () => {
         mockSpotify: (artistName?: string, error?: string) => {
             // Always mock Spotify in test environment
             if (!isTest) {
-                console.log('Not in test environment - skipping Spotify mock');
+                console.debug('Not in test environment - skipping Spotify mock');
                 return;
             }
 

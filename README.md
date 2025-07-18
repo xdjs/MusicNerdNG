@@ -4,12 +4,14 @@ MusicNerdNG is a Next.js application that provides artist discovery and manageme
 
 ## Features
 
-- Artist discovery and search
-- Spotify integration
-- Social media handle lookup
-- Artist management
-- Authentication with NextAuth.js
-- Web3 wallet integration
+- **Artist Discovery**: Search and explore artists from various platforms
+- **Spotify Integration**: Rich artist data, images, and music embeds
+- **Social Media Aggregation**: Collect and display artist links from multiple platforms
+- **AI-Powered Content**: Auto-generated artist bios and fun facts using OpenAI
+- **Web3 Integration**: Wallet-based authentication and ENS support
+- **User Management**: Role-based access control and whitelisting
+- **Real-time Search**: Fast, debounced search with combined local and Spotify results
+- **Responsive Design**: Mobile-first UI with modern components
 
 ## Prerequisites
 
@@ -17,7 +19,7 @@ MusicNerdNG is a Next.js application that provides artist discovery and manageme
 - npm
 - PostgreSQL database (Supabase)
 - Spotify Developer Account
-- Google Cloud Account (for Gemini AI)
+- OpenAI Account (for AI features like bio generation and fun facts)
 
 ## Environment Variables
 
@@ -35,12 +37,20 @@ SUPABASE_DB_CONNECTION=your_supabase_connection_string
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your_nextauth_secret
 
-# Discord Integration
+# Discord Integration for UGC notifications
 DISCORD_WEBHOOK_URL=your_discord_webhook_url
 
-# Google AI
-GEMINI_API_KEY=your_gemini_api_key
+# OpenAI API (for AI features like bio generation and fun facts)
+OPENAI_API_KEY=your_openai_api_key
+
+# Optional: Coverage reporting webhook
+DISCORD_COVERAGE_URL=your_discord_coverage_webhook_url
+
+# Optional: Disable wallet requirement for development
+NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT=false
 ```
+
+**Note**: You can also copy `.env.example` to `.env.local` and fill in your values.
 
 ## Getting Started
 
@@ -55,7 +65,13 @@ cd MusicNerdNG
 npm install
 ```
 
-3. Run the development server:
+3. Set up your environment variables:
+```bash
+cp .env.example .env.local
+# Edit .env.local with your actual values
+```
+
+4. Run the development server:
 ```bash
 npm run dev
 ```
@@ -64,15 +80,21 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Available Scripts
 
+### Development
 - `npm run dev` - Start development server with HTTPS
 - `npm run build` - Build for production
 - `npm run start` - Start production server
+
+### Code Quality
 - `npm run lint` - Run ESLint
+- `npm run type-check` - Run TypeScript type checking
+- `npm run ci` - Run all checks (types, lint, tests, build)
+
+### Testing
 - `npm run test` - Run tests
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Run tests with coverage
-- `npm run type-check` - Run TypeScript type checking
-- `npm run ci` - Run all checks (types, lint, tests, build)
+- `npm run test:ci` - Run tests with coverage for CI
 
 ## API Documentation
 
@@ -94,15 +116,16 @@ npm run test:coverage
 
 ## Tech Stack
 
-- Next.js 14
-- TypeScript
-- Tailwind CSS
-- Drizzle ORM
-- NextAuth.js
-- RainbowKit
-- Jest
-- React Query
-- Radix UI
+- **Framework**: Next.js 14
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS + SCSS
+- **Database**: PostgreSQL with Drizzle ORM
+- **Authentication**: NextAuth.js + RainbowKit
+- **AI**: OpenAI API
+- **Testing**: Jest with React Testing Library
+- **State Management**: React Query
+- **UI Components**: Radix UI + Custom components
+- **Web3**: Wagmi + RainbowKit + SIWE
 
 ## License
 

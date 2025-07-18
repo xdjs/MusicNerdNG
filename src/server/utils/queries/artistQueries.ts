@@ -1,7 +1,7 @@
 import { db } from "@/server/db/drizzle";
-import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/externalApiQueries";
-import { ilike, eq, sql, inArray, and, arrayContains } from "drizzle-orm";
-import { artists, users, ugcresearch, urlmap, aiPrompts } from "@/server/db/schema";
+import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
+import { eq, sql, inArray, and, arrayContains } from "drizzle-orm";
+import { artists, ugcresearch, aiPrompts } from "@/server/db/schema";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
 import { isObjKey, extractArtistId } from "@/server/utils/services";
 import { getServerAuthSession } from "@/server/auth";
@@ -9,7 +9,7 @@ import { PgColumn } from "drizzle-orm/pg-core";
 import { headers } from "next/headers";
 import { openai } from "@/server/lib/openai";
 
-import { getUserById, getUserByWallet } from "@/server/utils/queries/userQueries";
+import { getUserById } from "@/server/utils/queries/userQueries";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 
@@ -169,7 +169,7 @@ export async function searchForArtistByName(name: string) {
         `);
 
         const endTime = performance.now();
-        console.log(`Search for "${name}" (normalised: "${normalisedQuery}") took ${endTime - startTime}ms`);
+        console.debug(`Search for "${name}" (normalised: "${normalisedQuery}") took ${endTime - startTime}ms`);
         return result;
     } catch (e) {
         console.error(`Error fetching artist by name`, e);
@@ -245,36 +245,36 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
 
 export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
     try {
-        console.log("[Server] Starting addArtist for spotifyId:", spotifyId);
+        console.debug("[Server] Starting addArtist for spotifyId:", spotifyId);
 
         const headersList = headers();
-        console.log("[Server] Request headers:", {
+        console.debug("[Server] Request headers:", {
             cookie: headersList.get("cookie"),
             authorization: headersList.get("authorization"),
         });
 
         const session = await getServerAuthSession();
-        console.log("[Server] Session state:", {
+        console.debug("[Server] Session state:", {
             exists: !!session,
             userId: session?.user?.id,
         });
 
         const isWalletRequired = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT !== "true";
         if (isWalletRequired && !session) {
-            console.log("[Server] No session found - authentication failed");
+            console.debug("[Server] No session found - authentication failed");
             throw new Error("Not authenticated");
         }
 
-        console.log("[Server] Getting Spotify headers...");
+        console.debug("[Server] Getting Spotify headers...");
         const spotifyHeaders = await getSpotifyHeaders();
         if (!spotifyHeaders?.headers?.Authorization) {
             console.error("[Server] Failed to get Spotify headers");
             return { status: "error", message: "Failed to authenticate with Spotify" };
         }
 
-        console.log("[Server] Fetching Spotify artist data...");
+        console.debug("[Server] Fetching Spotify artist data...");
         const spotifyArtist = await getSpotifyArtist(spotifyId, spotifyHeaders);
-        console.log("[Server] Spotify artist response:", spotifyArtist);
+        console.debug("[Server] Spotify artist response:", spotifyArtist);
 
         if (spotifyArtist.error) {
             console.error("[Server] Spotify artist error:", spotifyArtist.error);
@@ -286,10 +286,10 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             return { status: "error", message: "Invalid artist data received from Spotify" };
         }
 
-        console.log("[Server] Checking if artist exists in database...");
+        console.debug("[Server] Checking if artist exists in database...");
         const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
         if (artist) {
-            console.log("[Server] Artist already exists:", artist);
+            console.debug("[Server] Artist already exists:", artist);
             return {
                 status: "exists",
                 artistId: artist.id,
@@ -298,7 +298,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             };
         }
 
-        console.log("[Server] Inserting new artist into database...");
+        console.debug("[Server] Inserting new artist into database...");
         const artistData = {
             spotify: spotifyId,
             lcname: normaliseText(spotifyArtist.data.name),
@@ -307,7 +307,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
         };
 
         const [newArtist] = await db.insert(artists).values(artistData).returning();
-        console.log("[Server] New artist created:", newArtist);
+        console.debug("[Server] New artist created:", newArtist);
 
         if (session?.user?.id) {
             const user = await getUserById(session.user.id);
@@ -417,7 +417,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) {
-        console.log("[addArtistData] URL did not match any approved link regex:", artistUrl);
+        console.debug("[addArtistData] URL did not match any approved link regex:", artistUrl);
         return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
     }
 
@@ -431,7 +431,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         });
 
         if (existingArtistUGC) {
-            console.log(
+            console.debug(
                 "[addArtistData] Duplicate submission – data already exists for artist",
                 artist.id,
                 ":",
@@ -502,9 +502,17 @@ export async function getPendingUGC() {
 // Misc helpers
 // ----------------------------------
 
+// NOTE: Consider adding an index on (spotify) column for better performance:
+// CREATE INDEX IF NOT EXISTS idx_artists_spotify ON artists(spotify) WHERE spotify IS NOT NULL;
 export async function getAllSpotifyIds(): Promise<string[]> {
     try {
-        const result = await db.execute<{ spotify: string }>(sql`SELECT spotify FROM artists WHERE spotify IS NOT NULL`);
+        // Limit the result set - we don't need ALL Spotify IDs for filtering, just a reasonable subset
+        const result = await db.execute<{ spotify: string }>(sql`
+            SELECT spotify 
+            FROM artists 
+            WHERE spotify IS NOT NULL 
+            LIMIT 10000
+        `);
         return result.map((r) => r.spotify);
     } catch (e) {
         console.error("Error fetching Spotify IDs:", e);
@@ -558,21 +566,13 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
 // ----------------------------------
 
 export async function getActivePrompt() {
-    return await db.query.aiPrompts.findFirst({ where: eq(aiPrompts.isDefault, true) });
+    return await db.query.aiPrompts.findFirst({ where: eq(aiPrompts.isActive, true) });
 }
 
 export async function setActivePrompt() {
     // TODO: implement if necessary
 }
 
-export async function getAllPrompts() {
-    try {
-        return await db.query.aiPrompts.findMany();
-    } catch (e) {
-        console.error("no work", e);
-        throw new Error("cant get table data");
-    }
-}
 
 // Helper to (re)generate an artist bio immediately using OpenAI and store it
 export async function generateArtistBio(artistId: string): Promise<string | null> {

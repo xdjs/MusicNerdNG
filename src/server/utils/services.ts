@@ -1,7 +1,7 @@
 import { Artist, UrlMap } from "../db/DbTypes";
 
 // Import directly from the artist queries module to ensure the symbol is recognised by TypeScript’s type checker
-import { getAllLinks } from "./queriesTS"; // Wrapper maintains compatibility with existing mocks
+import { getAllLinks } from "./queries/queriesTS"; // Wrapper maintains compatibility with existing mocks
 
 export const artistWeb3Platforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'supercollector', 'wallets', 'ens'];
 export const artistPlatforms = ['catalog', 'soundxyz', 'opensea', 'zora', 'mintsongs', 'x', 'audius', 'bandisintown', 'ens', 'wallets', 'facebook', 'instagram', 'lastfm', 'soundcloud', 'tiktok', 'youtubechannel', 'supercollector'];
@@ -77,7 +77,7 @@ export async function extractArtistId(artistUrl: string) {
         try {
             pattern = new RegExp(regex as string, 'i');
             if (siteName === 'ens' || siteName === 'wallets') {
-                console.log('[extractArtistId] Compiled regex for', siteName, ':', pattern.source);
+                console.debug('[extractArtistId] Compiled regex for', siteName, ':', pattern.source);
             }
         } catch (err) {
             console.error('[extractArtistId] Invalid regex in urlmap row', siteName, ':', regex, err);
@@ -167,7 +167,7 @@ export async function extractArtistId(artistUrl: string) {
         }
     }
     // If we exit the loop with no match we log the failure
-    console.log('[extractArtistId] No matching platform for URL:', artistUrl);
+    console.debug('[extractArtistId] No matching platform for URL:', artistUrl);
     return null;
 }
 

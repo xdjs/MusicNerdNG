@@ -18,7 +18,7 @@ export default function Nav() {
             <div className="flex gap-2">
                 <Link href={"/"}>
                     <img
-                        src="/musicNerdLogo.png"
+                        src="/icon.ico"
                         className="w-16 hover:animate-[spin_3s_linear_infinite]"
                         alt="logo"
                     />

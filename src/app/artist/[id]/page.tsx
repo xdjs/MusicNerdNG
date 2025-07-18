@@ -1,10 +1,9 @@
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
 import { getUserById } from "@/server/utils/queries/userQueries";
-import { getSpotifyImage, getArtistWiki, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/externalApiQueries";
+import { getSpotifyImage, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/queries/externalApiQueries";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import ArtistLinks from "@/app/_components/ArtistLinks";
 import { getArtistDetailsText } from "@/server/utils/services";
-import Link from "next/link";
 import { getServerAuthSession } from "@/server/auth";
 import { notFound } from "next/navigation";
 import { EditModeProvider } from "@/app/_components/EditModeContext";
@@ -35,10 +34,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     }
     const headers = await getSpotifyHeaders();
 
-    const [spotifyImg, numReleases, wiki, urlMapList] = await Promise.all([
+    const [spotifyImg, numReleases, urlMapList] = await Promise.all([
         getSpotifyImage(artist.spotify ?? "", undefined, headers),
         getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
-        getArtistWiki(artist.wikipedia ?? ""),
         getAllLinks(),
     ]);
 
@@ -71,58 +69,106 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             </div>
                             <BlurbSection 
                                 key={artist.bio ?? ""}
-                                wikiBlurb={wiki?.blurb}
-                                wikiLink={wiki?.link}
                                 artistName={artist.name ?? ""}
                                 artistId={artist.id}
                                 />
                         </div>
                     </div>
-                    <div className="space-y-6 mt-8">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-                            <strong className="text-black text-2xl">
-                                Check out {artist?.name} on <span className="whitespace-nowrap">other media platforms</span>!
-                            </strong>
-                            <div className="mt-4 md:mt-0 md:ml-4">
-                                <AddArtistData 
-                                    label="Add links" 
-                                    artist={artist} 
-                                    spotifyImg={spotifyImg.artistImage ?? ""} 
-                                    availableLinks={urlMapList} 
-                                    isOpenOnLoad={false} 
-                                />
+                    <div className="space-y-4 mt-6 md:mt-6">
+                        {/* Grid layout for Check out and Support sections */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Check out section */}
+                            <div className="space-y-6">
+                                <div className="flex flex-row items-center justify-between">
+                                    <strong className="text-black text-2xl">
+                                        Social Media Links
+                                    </strong>
+                                    <div className="mt-2 md:mt-0 md:ml-2">
+                                        <AddArtistData 
+                                            artist={artist} 
+                                            spotifyImg={spotifyImg.artistImage ?? ""} 
+                                            availableLinks={urlMapList} 
+                                            isOpenOnLoad={false} 
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    {(artist) &&
+                                        <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} showAddButton={false} />
+                                    }
+                                </div>
                             </div>
-                        </div>
-                        <div className="space-y-4">
-                            {(artist) &&
-                                <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} showAddButton={false} />
-                            }
+
+                            {/* Support section */}
+                            <div className="space-y-6">
+                                <div className="flex flex-row items-center justify-between">
+                                    <strong className="text-black text-2xl">
+                                        Support the Artist
+                                    </strong>
+                                    <div className="mt-2 md:mt-0 md:ml-2">
+                                        <AddArtistData 
+                                            artist={artist} 
+                                            spotifyImg={spotifyImg.artistImage ?? ""} 
+                                            availableLinks={urlMapList} 
+                                            isOpenOnLoad={false} 
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    {(artist) &&
+                                        <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
+                                    }
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                {/* Sidebar: Fun Facts (desktop) and Support section */}
+                {/* Sidebar: Fun Facts (desktop) */}
                 <div className="flex flex-col md:w-1/3 space-y-4">
                     {/* Fun Facts section - visible on md and up */}
                     <FunFactsDesktop artistId={artist.id} />
-
-                    {/* Support Artist Box */}
-                    <div className="bg-white p-6 rounded-lg shadow-2xl flex flex-col">
-                        <div className="space-y-6">
-                            <div className="text-black text-2xl">
-                                <strong>
-                                    Support {artist?.name}
-                                </strong>
-                            </div>
-                            <div className="space-y-4">
-                                {(artist) &&
-                                    <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
-                                }
-                            </div>
+                    {/* Empty Collaborators box */}
+                    <div className="hidden md:block bg-white rounded-lg shadow-2xl p-6 space-y-4 overflow-x-hidden">
+                        <h2 className="text-2xl font-bold text-black">Grapevine</h2>
+                        <div className="relative w-full h-[180px]">
+                            <iframe
+                                src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                                className="w-full h-full border-0 rounded-md pointer-events-none"
+                                loading="lazy"
+                            />
+                            <a
+                                href={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="absolute inset-0 z-10"
+                            >
+                                <span className="sr-only">Open Grapevine</span>
+                            </a>
                         </div>
                     </div>
                 </div>
                 {/* Insert Fun Facts section for mobile only */}
                 <FunFactsMobile artistId={artist.id} />
+
+                {/* Mobile-only Collaborators box displayed below Fun Facts */}
+                <div className="block md:hidden bg-white rounded-lg shadow-2xl mt-4 p-6 space-y-4 overflow-x-hidden">
+                    <h2 className="text-2xl font-bold text-black">Grapevine</h2>
+                    <div className="relative w-full h-[180px]">
+                        <iframe
+                            src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                            className="w-full h-full border-0 rounded-md pointer-events-none"
+                            loading="lazy"
+                        />
+                        <a
+                            href={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute inset-0 z-10"
+                        >
+                            <span className="sr-only">Open Grapevine</span>
+                        </a>
+                    </div>
+                </div>
             </div>
             </EditModeProvider>
         </>

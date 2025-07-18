@@ -459,7 +459,7 @@ const NoWalletSearchBar = forwardRef(
 
     // Add effect to handle authentication state changes
     useEffect(() => {
-        console.log("[SearchBar] Auth state changed:", {
+        console.debug("[SearchBar] Auth state changed:", {
             status,
             walletConnected,
             session: !!session,
@@ -474,7 +474,7 @@ const NoWalletSearchBar = forwardRef(
             !walletConnected &&
             !sessionStorage.getItem('searchFlowPrompted')
         ) {
-            console.log("[SearchBar] Search flow needs authentication, initiating connection");
+            console.debug("[SearchBar] Search flow needs authentication, initiating connection");
 
             // Mark that we've already prompted once for this flow
             sessionStorage.setItem('searchFlowPrompted', 'true');
@@ -527,17 +527,17 @@ const NoWalletSearchBar = forwardRef(
 
         if (result.isSpotifyOnly) {
             if (status === "loading") {
-                console.log("[SearchBar] Auth status is loading, waiting...");
+                console.debug("[SearchBar] Auth status is loading, waiting...");
                 return;
             }
 
             // In non-wallet mode, we can directly try to add the artist
             try {
-                console.log("[SearchBar] Adding Spotify artist:", result.name);
+                console.debug("[SearchBar] Adding Spotify artist:", result.name);
                 setIsAddingArtist(true);
                 setIsAddingNew(true);
                 const addResult = await addArtist(result.spotify ?? "");
-                console.log("[SearchBar] Add artist result:", addResult);
+                console.debug("[SearchBar] Add artist result:", addResult);
                 
                 if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                     // Navigate using push
@@ -641,7 +641,7 @@ const NoWalletSearchBar = forwardRef(
 
     const handleLogout = async () => {
         try {
-            console.log("[SearchBar] Signing out");
+            console.debug("[SearchBar] Signing out");
             
             // Set flag to indicate this was a manual disconnect
             sessionStorage.setItem('manualDisconnect', 'true');
