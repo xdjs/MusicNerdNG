@@ -129,7 +129,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <FunFactsDesktop artistId={artist.id} />
                     {/* Empty Collaborators box */}
                     <div className="hidden md:block bg-white rounded-lg shadow-2xl p-6 space-y-4 overflow-x-hidden">
-                        <h2 className="text-2xl font-bold text-black">Collaborators</h2>
+                        <h2 className="text-2xl font-bold text-black">Grapevine</h2>
                         <div className="relative w-full h-[180px]">
                             <iframe
                                 src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
@@ -142,7 +142,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 rel="noopener noreferrer"
                                 className="absolute inset-0 z-10"
                             >
-                                <span className="sr-only">Open Collaborators</span>
+                                <span className="sr-only">Open Grapevine</span>
                             </a>
                         </div>
                     </div>
@@ -152,7 +152,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
 
                 {/* Mobile-only Collaborators box displayed below Fun Facts */}
                 <div className="block md:hidden bg-white rounded-lg shadow-2xl mt-4 p-6 space-y-4 overflow-x-hidden">
-                    <h2 className="text-2xl font-bold text-black">Collaborators</h2>
+                    <h2 className="text-2xl font-bold text-black">Grapevine</h2>
                     <div className="relative w-full h-[180px]">
                         <iframe
                             src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
@@ -165,7 +165,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                             rel="noopener noreferrer"
                             className="absolute inset-0 z-10"
                         >
-                            <span className="sr-only">Open Collaborators</span>
+                            <span className="sr-only">Open Grapevine</span>
                         </a>
                     </div>
                 </div>
