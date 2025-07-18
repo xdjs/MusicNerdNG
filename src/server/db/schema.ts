@@ -224,10 +224,10 @@ export const aiPrompts = pgTable("aiprompts", {
   });
 
 export const funFacts = pgTable("funfacts", {
-	id: uuid("id").primaryKey().defaultRandom(),
+	id: integer("id").primaryKey().notNull(), 
 	loreDrop: text("lore_drop").notNull(),
-	behindTheScenes: text("behind_the_scenes").notNull(),
-	recentActivity: text("recent_activity").notNull(),
-	surpriseMe: text("surprise_me").notNull(),
+     behindTheScenes: text("behind_the_scenes").notNull(),
+     recentActivity: text("recent_activity").notNull(),
+     surpriseMe: text("surprise_me").notNull(),  
 	isActive: boolean("is_active").default(false),
 });

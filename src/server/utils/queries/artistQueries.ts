@@ -502,9 +502,17 @@ export async function getPendingUGC() {
 // Misc helpers
 // ----------------------------------
 
+// NOTE: Consider adding an index on (spotify) column for better performance:
+// CREATE INDEX IF NOT EXISTS idx_artists_spotify ON artists(spotify) WHERE spotify IS NOT NULL;
 export async function getAllSpotifyIds(): Promise<string[]> {
     try {
-        const result = await db.execute<{ spotify: string }>(sql`SELECT spotify FROM artists WHERE spotify IS NOT NULL`);
+        // Limit the result set - we don't need ALL Spotify IDs for filtering, just a reasonable subset
+        const result = await db.execute<{ spotify: string }>(sql`
+            SELECT spotify 
+            FROM artists 
+            WHERE spotify IS NOT NULL 
+            LIMIT 10000
+        `);
         return result.map((r) => r.spotify);
     } catch (e) {
         console.error("Error fetching Spotify IDs:", e);

@@ -7,10 +7,7 @@ interface BlurbSectionProps {
   artistId: string;
 }
 
-export default function BlurbSection({ 
-  artistName, 
-  artistId
-}: BlurbSectionProps) {
+export default function BlurbSection({ artistName, artistId }: BlurbSectionProps) {
   const [openModal, setOpenModal] = useState<boolean>(false);
   const [aiBlurb, setAiBlurb] = useState<string | undefined>();
   const [loadingAi, setLoadingAi] = useState(false);
