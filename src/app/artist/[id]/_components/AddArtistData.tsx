@@ -223,18 +223,29 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         }
 
         const currentVal = form.getValues("artistDataUrl");
-        // Remove placeholder tokens if present
-        const sanitized = currentVal.replace(PLACEHOLDER_REGEX_GLOBAL, "");
+        // Find first placeholder position so we know where to place the caret later
+        const firstPlaceholderMatch = currentVal.match(PLACEHOLDER_REGEX_GLOBAL);
+        const firstPlaceholder = firstPlaceholderMatch ? firstPlaceholderMatch[0] : null;
+        const startIdx = firstPlaceholder ? currentVal.indexOf(firstPlaceholder) : -1;
 
+        let sanitized = currentVal.replace(PLACEHOLDER_REGEX_GLOBAL, "");
+
+        // Basic cleanup: remove any "://." pattern left by subdomain placeholders and collapse consecutive dots
+        sanitized = sanitized.replace(/:\/\//, "://").replace(/:\/\//g, "://").replace(/\.\./g, ".").replace(/:\/\//g, "://");
+ 
         if (sanitized !== currentVal) {
             form.setValue("artistDataUrl", sanitized, { shouldDirty: true, shouldTouch: true });
-
+ 
             // Move cursor to the end after stripping
             setTimeout(() => {
                 const el = inputRef.current;
                 if (el) {
-                    const len = sanitized.length;
-                    el.setSelectionRange(len, len);
+                    if (startIdx !== -1) {
+                        el.setSelectionRange(startIdx, startIdx);
+                    } else {
+                        const len = sanitized.length;
+                        el.setSelectionRange(len, len);
+                    }
                 }
             }, 0);
         }
