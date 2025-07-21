@@ -48,6 +48,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     // (duplicate RangeKey and selectedRange definition removed)
 
     // Fetch leaderboard rank (only in compact layout)
+    const [totalEntries, setTotalEntries] = useState<number | null>(null);
+
     useEffect(() => {
         if (!isCompactLayout) return;
         async function fetchRank() {
@@ -57,6 +59,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 const resp = await fetch(url);
                 if (!resp.ok) return;
                 const data = await resp.json();
+                setTotalEntries(data.length);
                 const idx = data.findIndex((entry: any) => entry.wallet?.toLowerCase() === user.wallet.toLowerCase());
                 if (idx !== -1) setRank(idx + 1);
             } catch (e) {
@@ -248,6 +251,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {rank ?? '—'}
                                     </Badge>
+                                    {totalEntries && (
+                                        <span className="text-xs sm:text-base"> / {totalEntries}</span>
+                                    )}
                                     {/* (arrow moved next to name) */}
                                 </div>
 
