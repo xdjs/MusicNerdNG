@@ -5,6 +5,7 @@ import {
     flexRender,
     getCoreRowModel,
     getSortedRowModel,
+    getPaginationRowModel,
     useReactTable,
 } from "@tanstack/react-table";
 import { addUsersToWhitelistAction as addUsersToWhitelist, addUsersToAdminAction as addUsersToAdmin } from "@/app/actions/serverActions";
@@ -19,7 +20,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import {
     Dialog,
@@ -230,6 +231,7 @@ export default function WhitelistedDataTable<TData, TValue>({
     const router = useRouter();
     const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
     const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
+    const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
     const [roleFilter, setRoleFilter] = useState<string>("All");
 
@@ -238,26 +240,32 @@ export default function WhitelistedDataTable<TData, TValue>({
         setRowSelection({});
     }, [roleFilter]);
 
-    // Apply role filter
-    const filteredData = roleFilter === "All" ? data : data.filter((row: any) => {
-        if (roleFilter === "Admin") return row.isAdmin;
-        if (roleFilter === "Whitelisted") return !row.isAdmin && row.isWhiteListed;
-        if (roleFilter === "User") return !row.isAdmin && !row.isWhiteListed;
-        return true;
-    });
+    // Apply role filter – memoised for performance
+    const filteredData = useMemo(() => {
+        if (roleFilter === "All") return data;
+        return data.filter((row: any) => {
+            if (roleFilter === "Admin") return row.isAdmin;
+            if (roleFilter === "Whitelisted") return !row.isAdmin && row.isWhiteListed;
+            if (roleFilter === "User") return !row.isAdmin && !row.isWhiteListed;
+            return true;
+        });
+    }, [roleFilter, data]);
 
     const table = useReactTable({
         data: filteredData,
         columns,
         getCoreRowModel: getCoreRowModel(),
-        onSortingChange: setSorting,
         getSortedRowModel: getSortedRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+        onSortingChange: setSorting,
         onRowSelectionChange: setRowSelection,
+        onPaginationChange: setPagination as any,
         state: {
             sorting,
             rowSelection,
+            pagination,
         },
-    })
+    });
 
     type TDataWithId = TData & { id: string };
 
@@ -381,6 +389,20 @@ export default function WhitelistedDataTable<TData, TValue>({
                         )}
                     </TableBody>
                 </Table>
+                {/* Pagination controls */}
+                <div className="flex items-center justify-between px-2 py-2">
+                    <div className="flex-1 text-sm text-muted-foreground">
+                        Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                    </div>
+                    <div className="space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+                            Previous
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+                            Next
+                        </Button>
+                    </div>
+                </div>
             </div>
         </div>
     )
