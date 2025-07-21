@@ -153,4 +153,17 @@ export async function removeFromAdmin(userIds: string[]) {
     } catch (e) {
         console.error("error removing admin privileges", e);
     }
+}
+
+export async function getAllUsers() {
+    const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === "true" && process.env.NODE_ENV !== "production";
+    const session = await getServerAuthSession();
+    if (!session && !walletlessEnabled) throw new Error("Unauthorized");
+    try {
+        const result = await db.query.users.findMany();
+        return result ?? [];
+    } catch (e) {
+        console.error("error getting all users", e);
+        throw new Error("Error getting all users");
+    }
 } 

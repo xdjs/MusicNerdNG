@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import SearchBar from "./UserSearch";
 import { ArrowUpDown } from "lucide-react";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 
 // -----------------------------
@@ -230,8 +231,23 @@ export default function WhitelistedDataTable<TData, TValue>({
     const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
     const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
+    const [roleFilter, setRoleFilter] = useState<string>("All");
+
+    // Reset selection when filter changes
+    useEffect(() => {
+        setRowSelection({});
+    }, [roleFilter]);
+
+    // Apply role filter
+    const filteredData = roleFilter === "All" ? data : data.filter((row: any) => {
+        if (roleFilter === "Admin") return row.isAdmin;
+        if (roleFilter === "Whitelisted") return !row.isAdmin && row.isWhiteListed;
+        if (roleFilter === "User") return !row.isAdmin && !row.isWhiteListed;
+        return true;
+    });
+
     const table = useReactTable({
-        data,
+        data: filteredData,
         columns,
         getCoreRowModel: getCoreRowModel(),
         onSortingChange: setSorting,
@@ -279,7 +295,19 @@ export default function WhitelistedDataTable<TData, TValue>({
 
     return (
         <div className="space-y-4">
-            <div className="flex gap-4 text-black flex-wrap">
+            <div className="flex gap-4 text-black flex-wrap items-center">
+                {/* Role filter */}
+                <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value)}>
+                    <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Filter Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="All">All</SelectItem>
+                        <SelectItem value="Admin">Admin</SelectItem>
+                        <SelectItem value="Whitelisted">Whitelisted</SelectItem>
+                        <SelectItem value="User">User</SelectItem>
+                    </SelectContent>
+                </Select>
                 {Object.values(rowSelection).some(Boolean) ? (
                     <>
                         {/* Selected state buttons */}

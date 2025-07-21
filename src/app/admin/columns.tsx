@@ -163,6 +163,19 @@ export const whitelistedColumns: ColumnDef<User>[] = [
     cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
   },
   {
+    id: "role",
+    accessorFn: (row) => (row.isAdmin ? "Admin" : row.isWhiteListed ? "Whitelisted" : "User"),
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Role
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+  },
+  {
     id: "actions",
     header: "Actions",
     cell: ({ row }) => {

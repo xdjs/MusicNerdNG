@@ -1,5 +1,5 @@
 import { getServerAuthSession } from "@/server/auth";
-import { getUserById, getWhitelistedUsers } from "@/server/utils/queries/userQueries";
+import { getUserById, getAllUsers } from "@/server/utils/queries/userQueries";
 import { getPendingUGC } from "@/server/utils/queries/artistQueries";
 import UGCDataTable from "./ugc-data-table";        
 import { ugcColumns } from "./columns";
@@ -30,9 +30,9 @@ export default async function Admin() {
         return <PleaseLoginPage text="You are not authorized to access this page" />;
     }
 
-    const [pendingUGCData, whitelistedUsers] = await Promise.all([
+    const [pendingUGCData, allUsers] = await Promise.all([
         getPendingUGC(),
-        getWhitelistedUsers(),
+        getAllUsers(),
     ]);
 
     return (
@@ -43,8 +43,8 @@ export default async function Admin() {
                 <UGCDataTable columns={ugcColumns} data={pendingUGCData} />
             </div>
             <div>
-                <h2 className="text-xl pb-3">Whitelisted Users</h2>
-                <WhitelistedDataTable columns={whitelistedColumns} data={whitelistedUsers || []} />
+                <h2 className="text-xl pb-3">Users</h2>
+                <WhitelistedDataTable columns={whitelistedColumns} data={allUsers || []} />
             </div>
         </section>
     );
