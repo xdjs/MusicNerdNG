@@ -7,7 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import WhitelistUserEditDialog from "./WhitelistUserEditDialog";
 
-
+// Helper to format dates in local timezone without seconds
+const formatDate = (value: string | Date | null | undefined): string => {
+  if (!value) return "";
+  const dateObj = value instanceof Date ? value : new Date(value);
+  const datePart = dateObj.toLocaleDateString();
+  const timePart = dateObj
+    .toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    // Replace the regular space between minutes and AM/PM with a non-breaking space
+    .replace(/\s([AP]M)$/i, "\u00A0$1");
+  return `${datePart} ${timePart}`;
+};
 
 export const ugcColumns: ColumnDef<UgcResearch>[] = [
   {
@@ -57,10 +71,12 @@ export const ugcColumns: ColumnDef<UgcResearch>[] = [
         </Button>
       )
     },
+    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
   },
   {
     accessorKey: "updatedAt",
     header: "Updated At",
+    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
   },
   {
     accessorKey: "id",
@@ -93,6 +109,7 @@ export const ugcColumns: ColumnDef<UgcResearch>[] = [
   {
     accessorKey: "dateProcessed",
     header: "Date Processed",
+    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
   },
   
 ];
@@ -121,10 +138,6 @@ export const whitelistedColumns: ColumnDef<User>[] = [
     enableHiding: false,
   },
   {
-    accessorKey: "id",
-    header: "ID",
-  },
-  {
     accessorKey: "wallet",
     header: "Wallet Address",
   },
@@ -139,6 +152,7 @@ export const whitelistedColumns: ColumnDef<User>[] = [
   {
     accessorKey: "updatedAt",
     header: "Updated At",
+    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
   },
   {
     id: "actions",
