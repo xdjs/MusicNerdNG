@@ -90,13 +90,15 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         setTimeout(() => {
             current.focus();
 
-            const placeholderText = "USERNAME";
-            const startIdx = selectedOption.indexOf(placeholderText);
-            if (startIdx !== -1) {
-                // Highlight the USERNAME substring so typing immediately replaces it
+            // Detect the first placeholder token (all caps, underscores allowed) like USERNAME, ARTIST_NAME, CHANNEL_ID
+            const placeholderMatch = selectedOption.match(/[A-Z][A-Z0-9_]+/);
+
+            if (placeholderMatch) {
+                const placeholderText = placeholderMatch[0];
+                const startIdx = selectedOption.indexOf(placeholderText);
                 current.setSelectionRange(startIdx, startIdx + placeholderText.length);
             } else {
-                // Place caret at the end for examples without USERNAME token
+                // If no placeholder present, place caret at end
                 const len = selectedOption.length;
                 current.setSelectionRange(len, len);
             }
