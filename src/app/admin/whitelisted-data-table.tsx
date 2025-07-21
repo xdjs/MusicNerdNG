@@ -224,7 +224,7 @@ interface DataTableProps<TData, TValue> {
     data: TData[]
 }
 
-export default function WhitelistedDataTable<TData, TValue>({
+export default function UsersDataTable<TData, TValue>({
     columns,
     data,
 }: DataTableProps<TData, TValue>) {

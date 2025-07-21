@@ -4,7 +4,7 @@ import { getPendingUGC } from "@/server/utils/queries/artistQueries";
 import UGCDataTable from "./ugc-data-table";        
 import { ugcColumns } from "./columns";
 import { whitelistedColumns } from "./columns";
-import WhitelistedDataTable from "./whitelisted-data-table";
+import UsersDataTable from "./whitelisted-data-table";
 import PleaseLoginPage from "@/app/_components/PleaseLoginPage";
 
 export default async function Admin() {
@@ -44,7 +44,7 @@ export default async function Admin() {
             </div>
             <div>
                 <h2 className="text-xl pb-3">Users</h2>
-                <WhitelistedDataTable columns={whitelistedColumns} data={allUsers || []} />
+                <UsersDataTable columns={whitelistedColumns} data={allUsers || []} />
             </div>
         </section>
     );
