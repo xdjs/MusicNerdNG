@@ -68,7 +68,7 @@ export function AddWhitelistDialog() {
                 <DialogHeader>
                     <DialogTitle>Add Users to Whitelist</DialogTitle>
                 </DialogHeader>
-                <p className="text-sm text-gray-500">Insert Wallet ID or username</p>
+                <p className="text-sm text-gray-500">Insert wallet address or username</p>
                 <div className="space-y-4">
                     <SearchBar setUsers={(user:string) => setUserWithFilter(user)} query={query} setQuery={setQuery} />
                     <div>
@@ -119,7 +119,7 @@ export function AddAdminDialog() {
                 <DialogHeader>
                     <DialogTitle>Add Users to Admin</DialogTitle>
                 </DialogHeader>
-                <p className="text-sm text-gray-500">Insert Wallet ID or username</p>
+                <p className="text-sm text-gray-500">Insert wallet address or username</p>
                 <div className="space-y-4">
                     <SearchBar setUsers={(user:string) => setUserWithFilter(user)} query={query} setQuery={setQuery} />
                     <div>
