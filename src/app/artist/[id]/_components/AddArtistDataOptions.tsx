@@ -10,13 +10,30 @@ import { UrlMap } from "@/server/db/DbTypes";
 
 export default function AddArtistDataOptions({availableLinks, setOption}: {availableLinks: UrlMap[], setOption: (option: string) => void}) {
     const sortedLinks = [...availableLinks].sort((a, b) => (a.example || "").localeCompare(b.example || ""));
+
+    const HIGHLIGHT_TARGET = "USERNAME";
+
+    const renderExample = (example: string) => {
+        const noProtocol = example.replace(/^https?:\/\//, "");
+        if (!noProtocol.includes(HIGHLIGHT_TARGET)) return noProtocol;
+
+        const [prefix, suffix] = noProtocol.split(HIGHLIGHT_TARGET);
+        return (
+            <>
+                {prefix}
+                <span className="px-1 bg-yellow-200 text-black rounded-sm">{HIGHLIGHT_TARGET}</span>
+                {suffix}
+            </>
+        );
+    };
+
     const dataOptions = sortedLinks.map(link => (
         <DropdownMenuItem
             key={link.id}
             className="cursor-pointer"
             onClick={() => setOption(link.example)}
         >
-            {link.example.replace(/^https?:\/\//, '')}
+            {renderExample(link.example)}
         </DropdownMenuItem>
     ));
     return (

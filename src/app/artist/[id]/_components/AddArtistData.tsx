@@ -8,7 +8,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input"
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Artist } from "@/server/db/DbTypes";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Label } from "@radix-ui/react-label";
@@ -37,6 +37,8 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    // Ref for the text input so we can programmatically select the USERNAME portion
+    const inputRef = useRef<HTMLInputElement | null>(null);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
     const router = useRouter();
     const { toast } = useToast();
@@ -70,6 +72,37 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
     // Filter out ENS and wallets from display, but keep them in availableLinks for add options
     const displayLinks = availableLinks.filter(link => link.siteName !== 'ens' && link.siteName !== 'wallets');
+
+    // When the user chooses a template (e.g. https://instagram.com/USERNAME) we want to:
+    // 1. Prefill the form input with the full example.
+    // 2. Automatically highlight the USERNAME section so the user can immediately type.
+    useEffect(() => {
+        if (!selectedOption) return;
+
+        // Always set the value first so we have the correct text in the field
+        form.setValue("artistDataUrl", selectedOption, { shouldDirty: true, shouldTouch: true });
+
+        // Focus the input and select the USERNAME part (if it exists)
+        const current = inputRef.current;
+        if (!current) return;
+
+        // Defer selection until after the DOM updates
+        setTimeout(() => {
+            current.focus();
+
+            const placeholderText = "USERNAME";
+            const startIdx = selectedOption.indexOf(placeholderText);
+            if (startIdx !== -1) {
+                // Highlight the USERNAME substring so typing immediately replaces it
+                current.setSelectionRange(startIdx, startIdx + placeholderText.length);
+            } else {
+                // Place caret at the end for examples without USERNAME token
+                const len = selectedOption.length;
+                current.setSelectionRange(len, len);
+            }
+        }, 0);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedOption]);
 
     async function validateTwitterLink(url: string): Promise<boolean> {
         try {
@@ -231,11 +264,16 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                                 <FormControl>
                                                     <div className="flex-grow px-3 py-0 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
                                                         <Input
+                                                            {...field}
+                                                            // Attach the combined ref so react-hook-form and our logic both get it
+                                                            ref={(el) => {
+                                                                field.ref(el);
+                                                                inputRef.current = el;
+                                                            }}
                                                             placeholder={selectedOption}
                                                             onClick={checkInput}
-                                                            id="name"
+                                                            id="artistDataUrl-input"
                                                             className="w-full p-0 bg-transparent focus:outline-none text-md"
-                                                            {...field}
                                                         />
                                                     </div>
                                                 </FormControl>
