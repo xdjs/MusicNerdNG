@@ -254,7 +254,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </Badge>
                                     {totalEntries && (
                                         <>
-                                            <span className="text-xs sm:text-base px-1">out of</span>
+                                            <span className="text-xs sm:text-base px-1">of</span>
                                             <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                                 {totalEntries}
                                             </Badge>
