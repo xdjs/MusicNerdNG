@@ -225,6 +225,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Added / Artists Added) */}
                         {!isGuestUser && (
+                            <>
                             <div
                                 role="button"
                                 tabIndex={0}
@@ -252,7 +253,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                         {rank ?? '—'}
                                     </Badge>
                                     {totalEntries && (
-                                        <span className="text-xs sm:text-base"> / {totalEntries}</span>
+                                        <span className="text-xs sm:text-base"> out of {totalEntries}</span>
                                     )}
                                     {/* (arrow moved next to name) */}
                                 </div>
@@ -273,7 +274,23 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </Badge>
                                 </div>
                             </div>
-                        )}
+
+                            {/* Link under stats bar to jump to leaderboard */}
+                            <a
+                                href="#leaderboard-current-user"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    const el = document.getElementById('leaderboard-current-user');
+                                    if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                }}
+                                className="mt-2 text-sm text-blue-600 underline hover:text-blue-800"
+                            >
+                                View my leaderboard position
+                            </a>
+                            </>
+                          )}
 
                         {/* Edit username controls removed in leaderboard view */}
                         {/* Show a standalone login button for guests only when username editing is disabled */}
