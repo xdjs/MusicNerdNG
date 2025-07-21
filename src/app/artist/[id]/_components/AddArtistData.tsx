@@ -265,7 +265,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                         <h2 className="text-green-600">{addArtistResp.message}</h2>
                                         <Link
                                             href="/leaderboard"
-                                            className="mt-1 text-pastypink hover:text-pastyblue font-semibold underline decoration-dotted hover:decoration-solid transition-colors duration-200"
+                                            className="mt-1 text-pastypink hover:text-pastyblue font-semibold underline transition-colors duration-200"
                                         >
                                             🏆 Go to leaderboard
                                         </Link>
