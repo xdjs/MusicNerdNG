@@ -54,7 +54,8 @@ export async function getWhitelistedUsers() {
 
 export async function removeFromWhitelist(userIds: string[]) {
     try {
-        await db.update(users).set({ isWhiteListed: false }).where(inArray(users.id, userIds));
+        const now = new Date().toISOString();
+        await db.update(users).set({ isWhiteListed: false, updatedAt: now }).where(inArray(users.id, userIds));
     } catch (e) {
         console.error("error removing from whitelist", e);
     }
@@ -67,7 +68,13 @@ export type AddUsersToWhitelistResp = {
 
 export async function addUsersToWhitelist(walletAddresses: string[]): Promise<AddUsersToWhitelistResp> {
     try {
-        await db.update(users).set({ isWhiteListed: true }).where(inArray(users.wallet, walletAddresses));
+        // Update by wallet addresses
+        if (walletAddresses.length) {
+            const now = new Date().toISOString();
+            await db.update(users).set({ isWhiteListed: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
+            // Also update by username matches
+            await db.update(users).set({ isWhiteListed: true, updatedAt: now }).where(inArray(users.username, walletAddresses));
+        }
         return { status: "success", message: "Users added to whitelist" };
     } catch (e) {
         console.error("error adding users to whitelist", e);
@@ -77,10 +84,17 @@ export async function addUsersToWhitelist(walletAddresses: string[]): Promise<Ad
 
 export async function searchForUsersByWallet(wallet: string) {
     try {
-        const result = await db.query.users.findMany({ where: ilike(users.wallet, `%${wallet}%`) });
-        return result.map((user) => user.wallet);
+        const result = await db.query.users.findMany({
+            where: ilike(users.wallet, `%${wallet}%`) ,
+        });
+        const resultUsername = await db.query.users.findMany({
+            where: ilike(users.username, `%${wallet}%`),
+        });
+        const values = [...result.map((u)=>u.wallet), ...resultUsername.map((u)=>u.username??"")].filter(Boolean);
+        // deduplicate
+        return Array.from(new Set(values));
     } catch (e) {
-        console.error("searching for users by wallet", e);
+        console.error("searching for users", e);
     }
 }
 
@@ -110,5 +124,33 @@ export async function updateWhitelistedUser(
     } catch (e) {
         console.error("error updating whitelisted user", e);
         return { status: "error", message: "Error updating whitelisted user" };
+    }
+}
+
+export type AddUsersToAdminResp = {
+    status: "success" | "error";
+    message: string;
+};
+
+export async function addUsersToAdmin(walletAddresses: string[]): Promise<AddUsersToAdminResp> {
+    try {
+        if (walletAddresses.length) {
+            const now = new Date().toISOString();
+            await db.update(users).set({ isAdmin: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
+            await db.update(users).set({ isAdmin: true, updatedAt: now }).where(inArray(users.username, walletAddresses));
+        }
+        return { status: "success", message: "Users granted admin access" };
+    } catch (e) {
+        console.error("error adding users to admin", e);
+        return { status: "error", message: "Error adding users to admin" };
+    }
+}
+
+export async function removeFromAdmin(userIds: string[]) {
+    try {
+        const now = new Date().toISOString();
+        await db.update(users).set({ isAdmin: false, updatedAt: now }).where(inArray(users.id, userIds));
+    } catch (e) {
+        console.error("error removing admin privileges", e);
     }
 } 
