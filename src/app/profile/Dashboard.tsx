@@ -48,6 +48,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     // (duplicate RangeKey and selectedRange definition removed)
 
     // Fetch leaderboard rank (only in compact layout)
+    const [totalEntries, setTotalEntries] = useState<number | null>(null);
+
     useEffect(() => {
         if (!isCompactLayout) return;
         async function fetchRank() {
@@ -57,6 +59,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 const resp = await fetch(url);
                 if (!resp.ok) return;
                 const data = await resp.json();
+                setTotalEntries(data.length);
                 const idx = data.findIndex((entry: any) => entry.wallet?.toLowerCase() === user.wallet.toLowerCase());
                 if (idx !== -1) setRank(idx + 1);
             } catch (e) {
@@ -221,6 +224,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Added / Artists Added) */}
                         {!isGuestUser && (
+                            <>
                             <div
                                 role="button"
                                 tabIndex={0}
@@ -242,11 +246,19 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </div>
 
                                 {/* Rank */}
-                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-lg whitespace-nowrap">
+                                <div className="flex flex-row items-center justify-center gap-2 text-xs sm:text-lg whitespace-nowrap">
                                     <span className="font-semibold text-xs sm:text-base">Rank:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {rank ?? '—'}
                                     </Badge>
+                                    {totalEntries && (
+                                        <>
+                                            <span className="text-xs sm:text-base">of</span>
+                                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
+                                                {totalEntries}
+                                            </Badge>
+                                        </>
+                                    )}
                                     {/* (arrow moved next to name) */}
                                 </div>
 
@@ -266,7 +278,23 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </Badge>
                                 </div>
                             </div>
-                        )}
+
+                            {/* Link under stats bar to jump to leaderboard */}
+                            <a
+                                href="#leaderboard-current-user"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    const el = document.getElementById('leaderboard-current-user');
+                                    if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                }}
+                                className="mt-2 text-sm text-blue-600 underline hover:text-blue-800"
+                            >
+                                View my leaderboard position
+                            </a>
+                            </>
+                          )}
 
                         {/* Edit username controls removed in leaderboard view */}
                         {/* Show a standalone login button for guests only when username editing is disabled */}
