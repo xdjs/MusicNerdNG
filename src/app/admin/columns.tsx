@@ -174,6 +174,16 @@ export const whitelistedColumns: ColumnDef<User>[] = [
         <ArrowUpDown className="ml-2 h-4 w-4" />
       </Button>
     ),
+    sortingFn: (rowA, rowB, columnId) => {
+      const order: Record<string, number> = {
+        "Admin": 0,
+        "Whitelisted": 1,
+        "User": 2,
+      };
+      const a = order[rowA.getValue(columnId) as string] ?? 99;
+      const b = order[rowB.getValue(columnId) as string] ?? 99;
+      return a - b;
+    },
   },
   {
     id: "actions",

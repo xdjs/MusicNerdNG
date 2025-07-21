@@ -231,7 +231,7 @@ export default function WhitelistedDataTable<TData, TValue>({
     const router = useRouter();
     const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
     const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
-    const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
+    const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
     const [roleFilter, setRoleFilter] = useState<string>("All");
 
@@ -390,8 +390,22 @@ export default function WhitelistedDataTable<TData, TValue>({
                     </TableBody>
                 </Table>
                 {/* Pagination controls */}
-                <div className="flex items-center justify-between px-2 py-2">
-                    <div className="flex-1 text-sm text-muted-foreground">
+                <div className="flex flex-col sm:flex-row items-center justify-between px-2 py-2 gap-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>Rows per page:</span>
+                        <Select value={String(table.getState().pagination.pageSize)} onValueChange={(value)=> table.setPageSize(Number(value))}>
+                            <SelectTrigger className="w-[80px] h-8">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="10">10</SelectItem>
+                                <SelectItem value="20">20</SelectItem>
+                                <SelectItem value="50">50</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex-1 text-sm text-muted-foreground text-center sm:text-left">
                         Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
                     </div>
                     <div className="space-x-2">
