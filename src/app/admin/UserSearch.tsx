@@ -69,7 +69,7 @@ const SearchBar = ({setUsers, query, setQuery}: {setUsers: (users: string) => vo
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:border-blue-300"
-                placeholder="Search by wallet or username..."
+                placeholder=""
             />
             {(showResults && query.length > 2) && (
                 <div ref={resultsContainer} className="absolute left-0 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
