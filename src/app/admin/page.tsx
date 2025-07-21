@@ -19,7 +19,7 @@ export default async function Admin() {
     } else {
         const session = await getServerAuthSession();
         const user = session?.user;
-        if (!user) return <PleaseLoginPage text="Login to access this page" />;
+        if (!user) return <PleaseLoginPage text="Log in to access this page" />;
         userId = user.id;
         const userRecord = await getUserById(userId);
         if (!userRecord || !userRecord.isAdmin) return <PleaseLoginPage text="You are not authorized to access this page" />;

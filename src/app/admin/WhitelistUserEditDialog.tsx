@@ -59,15 +59,32 @@ export default function WhitelistUserEditDialog({ user }: WhitelistUserEditDialo
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Wallet Address</label>
-            <Input value={wallet} onChange={(e) => setWallet(e.target.value)} />
+            <Input
+              value={wallet}
+              onChange={(e) => setWallet(e.target.value)}
+              className="border border-gray-300 focus:border-black focus:outline-none"
+            />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Email</label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="border border-gray-300 focus:border-black focus:outline-none"
+            />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Username</label>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="border border-gray-300 focus:border-black focus:outline-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">ID</label>
+            <Input value={user.id} readOnly className="bg-gray-100 border border-gray-200 cursor-not-allowed" />
           </div>
           {uploadStatus.status === "error" && (
             <p className="text-red-500 text-sm">{uploadStatus.message}</p>
