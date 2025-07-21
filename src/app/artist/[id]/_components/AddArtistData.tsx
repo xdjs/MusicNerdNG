@@ -212,10 +212,31 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         form.reset();
     }
 
+    // Regex that matches placeholder tokens like USERNAME, ARTIST_NAME, CHANNEL_ID
+    const PLACEHOLDER_REGEX_GLOBAL = /[A-Z][A-Z0-9_]+/g;
+
     function checkInput() {
+        // Clear any success message when user edits again
         if (addArtistResp?.status === "success") {
             form.reset();
             setAddArtistResp(null);
+        }
+
+        const currentVal = form.getValues("artistDataUrl");
+        // Remove placeholder tokens if present
+        const sanitized = currentVal.replace(PLACEHOLDER_REGEX_GLOBAL, "");
+
+        if (sanitized !== currentVal) {
+            form.setValue("artistDataUrl", sanitized, { shouldDirty: true, shouldTouch: true });
+
+            // Move cursor to the end after stripping
+            setTimeout(() => {
+                const el = inputRef.current;
+                if (el) {
+                    const len = sanitized.length;
+                    el.setSelectionRange(len, len);
+                }
+            }, 0);
         }
     }
 
@@ -274,6 +295,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                                             }}
                                                             placeholder={selectedOption}
                                                             onClick={checkInput}
+                                                            onFocus={checkInput}
                                                             id="artistDataUrl-input"
                                                             className="w-full p-0 bg-transparent focus:outline-none text-md"
                                                         />
