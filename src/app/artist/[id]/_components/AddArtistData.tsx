@@ -37,6 +37,8 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    // Store current placeholder token (e.g., USERNAME) so we can show it as grey placeholder
+    const [placeholderToken, setPlaceholderToken] = useState<string>("");
     // Ref for the text input so we can programmatically select the USERNAME portion
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
@@ -79,8 +81,16 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     useEffect(() => {
         if (!selectedOption) return;
 
-        // Always set the value first so we have the correct text in the field
-        form.setValue("artistDataUrl", selectedOption, { shouldDirty: true, shouldTouch: true });
+        // Detect the first placeholder token (all caps, underscores allowed)
+        const placeholderMatch = selectedOption.match(/[A-Z][A-Z0-9_]+/);
+        const token = placeholderMatch ? placeholderMatch[0] : "";
+        setPlaceholderToken(token);
+
+        // Remove the placeholder token from the actual input value so users see the gap
+        const sanitizedTemplate = selectedOption.replace(token, "");
+
+        // Always set the sanitized value first so we have the correct text in the field
+        form.setValue("artistDataUrl", sanitizedTemplate, { shouldDirty: true, shouldTouch: true });
 
         // Focus the input and select the USERNAME part (if it exists)
         const current = inputRef.current;
@@ -91,15 +101,15 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
             current.focus();
 
             // Detect the first placeholder token (all caps, underscores allowed) like USERNAME, ARTIST_NAME, CHANNEL_ID
-            const placeholderMatch = selectedOption.match(/[A-Z][A-Z0-9_]+/);
+            const placeholderMatch = sanitizedTemplate.match(/[A-Z][A-Z0-9_]+/); // should be none but keep safeguard
 
             if (placeholderMatch) {
                 const placeholderText = placeholderMatch[0];
-                const startIdx = selectedOption.indexOf(placeholderText);
+                const startIdx = sanitizedTemplate.indexOf(placeholderText);
                 current.setSelectionRange(startIdx, startIdx + placeholderText.length);
             } else {
                 // If no placeholder present, place caret at end
-                const len = selectedOption.length;
+                const len = sanitizedTemplate.length;
                 current.setSelectionRange(len, len);
             }
         }, 0);
@@ -304,7 +314,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                                                 field.ref(el);
                                                                 inputRef.current = el;
                                                             }}
-                                                            placeholder={selectedOption}
+                                                            placeholder={placeholderToken || undefined}
                                                             onClick={checkInput}
                                                             onFocus={checkInput}
                                                             id="artistDataUrl-input"
