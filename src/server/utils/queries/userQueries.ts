@@ -54,7 +54,8 @@ export async function getWhitelistedUsers() {
 
 export async function removeFromWhitelist(userIds: string[]) {
     try {
-        await db.update(users).set({ isWhiteListed: false }).where(inArray(users.id, userIds));
+        const now = new Date().toISOString();
+        await db.update(users).set({ isWhiteListed: false, updatedAt: now }).where(inArray(users.id, userIds));
     } catch (e) {
         console.error("error removing from whitelist", e);
     }
@@ -69,9 +70,10 @@ export async function addUsersToWhitelist(walletAddresses: string[]): Promise<Ad
     try {
         // Update by wallet addresses
         if (walletAddresses.length) {
-            await db.update(users).set({ isWhiteListed: true }).where(inArray(users.wallet, walletAddresses));
+            const now = new Date().toISOString();
+            await db.update(users).set({ isWhiteListed: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
             // Also update by username matches
-            await db.update(users).set({ isWhiteListed: true }).where(inArray(users.username, walletAddresses));
+            await db.update(users).set({ isWhiteListed: true, updatedAt: now }).where(inArray(users.username, walletAddresses));
         }
         return { status: "success", message: "Users added to whitelist" };
     } catch (e) {
@@ -133,8 +135,9 @@ export type AddUsersToAdminResp = {
 export async function addUsersToAdmin(walletAddresses: string[]): Promise<AddUsersToAdminResp> {
     try {
         if (walletAddresses.length) {
-            await db.update(users).set({ isAdmin: true }).where(inArray(users.wallet, walletAddresses));
-            await db.update(users).set({ isAdmin: true }).where(inArray(users.username, walletAddresses));
+            const now = new Date().toISOString();
+            await db.update(users).set({ isAdmin: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
+            await db.update(users).set({ isAdmin: true, updatedAt: now }).where(inArray(users.username, walletAddresses));
         }
         return { status: "success", message: "Users granted admin access" };
     } catch (e) {
@@ -145,7 +148,8 @@ export async function addUsersToAdmin(walletAddresses: string[]): Promise<AddUse
 
 export async function removeFromAdmin(userIds: string[]) {
     try {
-        await db.update(users).set({ isAdmin: false }).where(inArray(users.id, userIds));
+        const now = new Date().toISOString();
+        await db.update(users).set({ isAdmin: false, updatedAt: now }).where(inArray(users.id, userIds));
     } catch (e) {
         console.error("error removing admin privileges", e);
     }

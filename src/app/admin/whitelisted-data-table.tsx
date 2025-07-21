@@ -30,6 +30,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import SearchBar from "./UserSearch";
+import { ArrowUpDown } from "lucide-react";
 
 
 export function AddWhitelistDialog() {
@@ -143,7 +144,7 @@ export default function WhitelistedDataTable<TData, TValue>({
     data,
 }: DataTableProps<TData, TValue>) {
     const router = useRouter();
-    const [sorting, setSorting] = useState<SortingState>([]);
+    const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
     const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
     const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
     const table = useReactTable({
