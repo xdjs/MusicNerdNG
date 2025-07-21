@@ -5,6 +5,7 @@ import UGCDataTable from "./ugc-data-table";
 import { ugcColumns } from "./columns";
 import { whitelistedColumns } from "./columns";
 import UsersDataTable from "./whitelisted-data-table";
+import AdminAutoRefresh from "./AdminAutoRefresh";
 import PleaseLoginPage from "@/app/_components/PleaseLoginPage";
 
 export default async function Admin() {
@@ -37,6 +38,8 @@ export default async function Admin() {
 
     return (
         <section className="px-10 py-5 space-y-6">
+            {/* Silent client-side helper to refresh page after login */}
+            <AdminAutoRefresh />
             <h1 className="text-2xl">Site Management</h1>
             <div>
                 <h2 className="text-xl pb-3">Pending UGC</h2>
