@@ -310,10 +310,10 @@ export default function UsersDataTable<TData, TValue>({
                         <SelectValue placeholder="Filter Role" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="All">All</SelectItem>
-                        <SelectItem value="Admin">Admin</SelectItem>
-                        <SelectItem value="Whitelisted">Whitelisted</SelectItem>
-                        <SelectItem value="User">User</SelectItem>
+                        <SelectItem value="All">All Users</SelectItem>
+                        <SelectItem value="Admin">Admins</SelectItem>
+                        <SelectItem value="Whitelisted">Whitelisted Users</SelectItem>
+                        <SelectItem value="User">Users</SelectItem>
                     </SelectContent>
                 </Select>
                 {Object.values(rowSelection).some(Boolean) ? (

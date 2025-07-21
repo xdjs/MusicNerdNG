@@ -332,8 +332,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 <div className="pt-2">
                                     <Button
                                         size="sm"
-                                        variant="secondary"
-                                        className="bg-gray-200 text-black hover:bg-gray-300"
+                                        className="bg-pastypink hover:bg-gray-200 text-white"
                                         onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                                     >
                                         <div className="flex items-center gap-1">
