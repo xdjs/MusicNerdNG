@@ -43,7 +43,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
     // Range selection (synced with Leaderboard)
     type RangeKey = "today" | "week" | "month" | "all";
-    const [selectedRange, setSelectedRange] = useState<RangeKey>("today");
+    const [selectedRange, setSelectedRange] = useState<RangeKey>("all");
 
     // (duplicate RangeKey and selectedRange definition removed)
 
