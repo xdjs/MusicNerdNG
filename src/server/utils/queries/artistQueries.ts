@@ -424,7 +424,13 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     try {
         const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === "true" && process.env.NODE_ENV !== "production";
         const user = session?.user?.id ? await getUserById(session.user.id) : null;
+
         const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
+        let isArtistOwner = false;
+        if (user?.isArtist && artist.wallets?.length) {
+            const walletLower = user.wallet.toLowerCase();
+            isArtistOwner = artist.wallets.some(w => w?.toLowerCase() === walletLower);
+        }
 
         const existingArtistUGC = await db.query.ugcresearch.findFirst({
             where: and(eq(ugcresearch.ugcUrl, artistUrl), eq(ugcresearch.artistId, artist.id)),
@@ -453,7 +459,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
             })
             .returning();
 
-        if (isWhitelistedOrAdmin && newUGC?.id) {
+        if ((isWhitelistedOrAdmin || isArtistOwner) && newUGC?.id) {
             await approveUGC(newUGC.id, artist.id, artistIdFromUrl.siteName, artistIdFromUrl.id);
         } else {
             // Pending submission by regular user – trigger (throttled) Discord ping
@@ -468,7 +474,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
 
         return {
             status: "success",
-            message: isWhitelistedOrAdmin
+            message: (isWhitelistedOrAdmin || isArtistOwner)
                 ? "We updated the artist with that data"
                 : "Thanks for adding, we'll review this addition before posting",
             siteName: artistIdFromUrl.cardPlatformName ?? "",
@@ -530,8 +536,18 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
     const walletlessEnabled = process.env.NEXT_PUBLIC_DISABLE_WALLET_REQUIREMENT === "true" && process.env.NODE_ENV !== "production";
     const user = session?.user?.id ? await getUserById(session.user.id) : null;
     const isWhitelistedOrAdmin = user?.isWhiteListed || user?.isAdmin;
+    let isArtistOwner = false;
+    if (user?.isArtist) {
+        // Need artist record; fetch it quickly
+        try {
+            const artistRes = await getArtistbyWallet(user.wallet);
+            if (!artistRes.isError && artistRes.data) {
+                isArtistOwner = artistRes.data.id === artistId; // Only allow removal on own artist
+            }
+        } catch {}
+    }
 
-    if (!walletlessEnabled && !isWhitelistedOrAdmin) {
+    if (!walletlessEnabled && !(isWhitelistedOrAdmin || isArtistOwner)) {
         return { status: "error", message: "Unauthorized" };
     }
 

@@ -177,6 +177,7 @@ export const users = pgTable("users", {
 	legacyId: text("legacy_id"),
 	isAdmin: boolean("is_admin").default(false).notNull(),
 	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
+	isArtist: boolean("is_artist").default(false).notNull(),
 	isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	acceptedUgcCount: bigint("accepted_ugc_count", { mode: "number" }),

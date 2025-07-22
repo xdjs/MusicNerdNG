@@ -8,6 +8,10 @@ import { NEXTAUTH_URL } from "@/env";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { SiweMessage } from "siwe";
 import { getUserByWallet, createUser } from "@/server/utils/queries/userQueries";
+import { getArtistbyWallet } from "@/server/utils/queries/artistQueries";
+import { eq } from "drizzle-orm";
+import { users } from "@/server/db/schema";
+import { db } from "@/server/db/drizzle";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -22,6 +26,7 @@ declare module "next-auth" {
       walletAddress?: string;
       isWhiteListed?: boolean;
       isAdmin?: boolean;
+      isArtist?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -37,6 +42,7 @@ declare module "next-auth" {
     isSignupComplete: boolean;
     isWhiteListed?: boolean;
     isAdmin?: boolean;
+    isArtist?: boolean;
   }
 }
 
@@ -45,6 +51,7 @@ declare module "next-auth/jwt" {
     walletAddress?: string;
     isWhiteListed?: boolean;
     isAdmin?: boolean;
+    isArtist?: boolean;
   }
 }
 
@@ -63,6 +70,7 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name || user.username;
         token.isWhiteListed = user.isWhiteListed;
         token.isAdmin = user.isAdmin;
+        token.isArtist = user.isArtist;
       }
       return token;
     },
@@ -77,6 +85,7 @@ export const authOptions: NextAuthOptions = {
           name: token.name,
           isWhiteListed: token.isWhiteListed,
           isAdmin: token.isAdmin,
+          isArtist: token.isArtist,
         },
       }
     },
@@ -128,6 +137,7 @@ export const authOptions: NextAuthOptions = {
               isSignupComplete: true,
               isWhiteListed: true, // Make temporary user whitelisted
               isAdmin: false,
+              isArtist: false,
             };
           }
 
@@ -172,6 +182,20 @@ export const authOptions: NextAuthOptions = {
             user = await createUser(siwe.address);
           }
 
+          // Determine if the user is an Artist (wallet associated with an artist record)
+          try {
+            if (!user.isArtist) {
+              const artistResp = await getArtistbyWallet(user.wallet);
+              if (!artistResp.isError && artistResp.data) {
+                user.isArtist = true;
+                // Persist to DB
+                await db.update(users).set({ isArtist: true }).where(eq(users.id, user.id));
+              }
+            }
+          } catch (e) {
+            console.error("[Auth] Error determining artist role", e);
+          }
+
           console.debug("[Auth] Returning user", { id: user.id });
           
           // Map the database user to the NextAuth user format
@@ -184,6 +208,7 @@ export const authOptions: NextAuthOptions = {
             isSignupComplete: true,
             isWhiteListed: user.isWhiteListed, // Include whitelist status from database
             isAdmin: user.isAdmin,
+            isArtist: user.isArtist,
           };
         } catch (e) {
           console.error("[Auth] Error during authorization:", e);

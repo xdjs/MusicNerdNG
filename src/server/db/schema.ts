@@ -86,6 +86,7 @@ export const users = pgTable("users", {
 	legacyId: text("legacy_id"),
 	isAdmin: boolean("is_admin").default(false).notNull(),
 	isWhiteListed: boolean("is_white_listed").default(false).notNull(),
+	isArtist: boolean("is_artist").default(false).notNull(),
 },
 	(table) => {
 		return {

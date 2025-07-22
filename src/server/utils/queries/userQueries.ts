@@ -1,5 +1,5 @@
 import { db } from "@/server/db/drizzle";
-import { eq, ilike, inArray } from "drizzle-orm";
+import { eq, ilike, inArray, sql } from "drizzle-orm";
 import { users } from "@/server/db/schema";
 import { getServerAuthSession } from "@/server/auth";
 
@@ -165,5 +165,26 @@ export async function getAllUsers() {
     } catch (e) {
         console.error("error getting all users", e);
         throw new Error("Error getting all users");
+    }
+}
+
+export async function assignArtistRoleToUsers(): Promise<void> {
+    try {
+        // Fetch all artists that have wallets
+        const res = await db.execute<{ wallets: string[]; }>(sql`SELECT wallets FROM artists WHERE wallets IS NOT NULL`);
+
+        const walletAddresses: string[] = [];
+        res.forEach(row => {
+            if (Array.isArray(row.wallets)) {
+                walletAddresses.push(...row.wallets.filter(Boolean));
+            }
+        });
+
+        if (!walletAddresses.length) return;
+
+        const now = new Date().toISOString();
+        await db.update(users).set({ isArtist: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
+    } catch (e) {
+        console.error('[assignArtistRoleToUsers] Error assigning artist roles', e);
     }
 } 
