@@ -227,7 +227,7 @@ describe('Artist Links Functions', () => {
 
             expect(result).toHaveLength(2);
             expect(result[0].artistUrl).toBe('https://open.spotify.com/artist/spotify123');
-            expect(result[1].artistUrl).toBe('https://www.youtube.com/@testartist');
+            expect(result[1].artistUrl).toBe('https://youtube.com/@testartist');
         });
 
         it('should handle empty values', async () => {
@@ -241,6 +241,151 @@ describe('Artist Links Functions', () => {
             const artist: Artist = { ...baseArtist, id: '123', name: 'Test Artist', bio: null };
             
             await expect(getArtistLinks(artist)).rejects.toThrow('Error fetching artist links');
+        });
+
+        // YouTube URL Construction Tests
+        describe('YouTube URL Construction', () => {
+            beforeEach(() => {
+                // Add a mock youtube platform entry for dedicated username testing
+                const mockUrlMapsWithYoutube: UrlMap[] = [
+                    ...mockUrlMaps,
+                    {
+                        id: '3',
+                        siteName: 'youtube',
+                        siteUrl: 'https://youtube.com',
+                        example: 'example',
+                        appStringFormat: 'https://youtube.com/@%@',
+                        order: 3,
+                        isIframeEnabled: false,
+                        isEmbedEnabled: false,
+                        cardDescription: 'Watch on YouTube',
+                        cardPlatformName: 'YouTube',
+                        isWeb3Site: false,
+                        createdAt: '2024-01-01T00:00:00Z',
+                        updatedAt: '2024-01-01T00:00:00Z',
+                        siteImage: '',
+                        regex: '',
+                        regexMatcher: '',
+                        isMonetized: false,
+                        regexOptions: [],
+                        platformTypeList: ['social'],
+                        colorHex: '#FF0000'
+                    }
+                ];
+                (db.query.urlmap.findMany as jest.Mock).mockResolvedValue(mockUrlMapsWithYoutube);
+            });
+
+            testWithSpotify('should prefer youtube column over youtubechannel when both exist', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtube: 'preferredusername',
+                    youtubechannel: 'UC123456789',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                // Should find youtubechannel platform and prefer youtube column data
+                const youtubeLink = result.find(link => link.siteName === 'youtubechannel');
+                expect(youtubeLink?.artistUrl).toBe('https://youtube.com/@preferredusername');
+            });
+
+            testWithSpotify('should handle username with @ prefix in youtube column', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtube: '@testuser',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                // Should find the dedicated youtube platform link 
+                const youtubeLink = result.find(link => link.siteName === 'youtube');
+                expect(youtubeLink?.artistUrl).toBe('https://youtube.com/@testuser');
+            });
+
+            testWithSpotify('should handle channel ID in youtubechannel column when no username', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtubechannel: 'UC123456789abcdef',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                const youtubeLink = result.find(link => link.siteName === 'youtubechannel');
+                expect(youtubeLink?.artistUrl).toBe('https://www.youtube.com/channel/UC123456789abcdef');
+            });
+
+            testWithSpotify('should handle username data in youtubechannel column (legacy state)', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtubechannel: '@legacyusername',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                const youtubeLink = result.find(link => link.siteName === 'youtubechannel');
+                expect(youtubeLink?.artistUrl).toBe('https://youtube.com/@legacyusername');
+            });
+
+            testWithSpotify('should handle dedicated youtube platform', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtube: 'testusername',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                const youtubeLink = result.find(link => link.siteName === 'youtube');
+                expect(youtubeLink?.artistUrl).toBe('https://youtube.com/@testusername');
+            });
+
+            testWithSpotify('should handle empty/null YouTube values', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtube: '',
+                    youtubechannel: null,
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                const youtubeLinks = result.filter(link => 
+                    link.siteName === 'youtube' || link.siteName === 'youtubechannel'
+                );
+                expect(youtubeLinks).toHaveLength(0);
+            });
+
+            testWithSpotify('should handle whitespace in YouTube values', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtube: '  testuser  ',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                // Should find the dedicated youtube platform link with trimmed username
+                const youtubeLink = result.find(link => link.siteName === 'youtube');
+                expect(youtubeLink?.artistUrl).toBe('https://youtube.com/@testuser');
+            });
         });
     });
 

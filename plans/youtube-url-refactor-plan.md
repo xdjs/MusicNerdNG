@@ -69,20 +69,31 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
 - All tests passing (14/14) with TypeScript and ESLint validation
 - **Commit:** `9cae35f` - Implement YouTube URL parsing refactor Task 1
 
-### 2. Update URL Construction/Display Logic
+### 2. Update URL Construction/Display Logic ✅ COMPLETED
 **File:** `src/server/utils/queries/artistQueries.ts`
 **Function:** `getArtistLinks`
 
-- [ ] Update the special handling for YouTube links
-- [ ] Add logic to check both `youtube` and `youtubechannel` columns
-- [ ] Prefer displaying @username format when `youtube` column has data
-- [ ] Fallback to channel ID format only when `youtube` column has no data but `youtubechannel` has data
-- [ ] Handle case where both columns have data (prefer username)
-- [ ] **Tests Required:**
-  - [ ] Test username display generates correct @username URL
-  - [ ] Test channel ID display generates correct channel URL
-  - [ ] Test preference logic when both username and channel ID exist
-  - [ ] Test empty/null values don't generate links
+- [x] Update the special handling for YouTube links
+- [x] Add logic to check both `youtube` and `youtubechannel` columns
+- [x] Prefer displaying @username format when `youtube` column has data
+- [x] Fallback to channel ID format only when `youtube` column has no data but `youtubechannel` has data
+- [x] Handle case where both columns have data (prefer username)
+- [x] **Tests Required:**
+  - [x] Test username display generates correct @username URL
+  - [x] Test channel ID display generates correct channel URL
+  - [x] Test preference logic when both username and channel ID exist
+  - [x] Test empty/null values don't generate links
+
+**Implementation Notes:**
+- Enhanced `getArtistLinks` function with comprehensive YouTube URL construction logic
+- Implemented preference system: `youtube` column (username) takes priority over `youtubechannel` column
+- Added support for both dedicated `youtube` platform and legacy `youtubechannel` platform handling
+- URL formats: `https://youtube.com/@username` (preferred) and `https://www.youtube.com/channel/CHANNEL_ID` (fallback)
+- Proper handling of `@` prefix, whitespace trimming, and edge cases (empty/null values)
+- Smart detection for username data stored in `youtubechannel` column (legacy state)
+- Added 7 comprehensive tests covering all scenarios with 100% pass rate
+- **Tests covering:** preference logic, username/channel ID display, legacy state handling, dedicated platform, empty values, whitespace handling
+- All existing functionality remains backwards compatible
 
 ### 3. Update Database Schema and Types
 **Files:** `drizzle/schema.ts`, `src/server/db/schema.ts`

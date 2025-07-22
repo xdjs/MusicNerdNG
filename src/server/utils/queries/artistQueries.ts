@@ -212,10 +212,39 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
             ) {
                 let artistUrl = platform.appStringFormat;
                 if (platform.siteName === "youtubechannel") {
-                    const value = artist[platform.siteName]?.toString() ?? "";
-                    artistUrl = value.startsWith("@")
-                        ? `https://www.youtube.com/${value}`
-                        : `https://www.youtube.com/channel/${value}`;
+                    // Handle YouTube URL construction with preference for username format
+                    const youtubeUsername = artist.youtube?.toString()?.trim() ?? "";
+                    const youtubeChannelValue = artist[platform.siteName]?.toString()?.trim() ?? "";
+                    
+                    // Prefer username format if available in dedicated youtube column
+                    if (youtubeUsername) {
+                        // Remove @ prefix if present, we'll add it in the URL
+                        const cleanUsername = youtubeUsername.startsWith("@") ? youtubeUsername.substring(1) : youtubeUsername;
+                        artistUrl = `https://youtube.com/@${cleanUsername}`;
+                    } else if (youtubeChannelValue) {
+                        // Check if youtubechannel column contains username data (starts with @) or channel ID
+                        if (youtubeChannelValue.startsWith("@")) {
+                            // It's username data stored in youtubechannel column (legacy state)
+                            const cleanUsername = youtubeChannelValue.substring(1);
+                            artistUrl = `https://youtube.com/@${cleanUsername}`;
+                        } else {
+                            // It's actual channel ID data
+                            artistUrl = `https://www.youtube.com/channel/${youtubeChannelValue}`;
+                        }
+                    } else {
+                        // No YouTube data available, skip this platform
+                        continue;
+                    }
+                } else if (platform.siteName === "youtube") {
+                    // Handle dedicated YouTube username platform
+                    const youtubeUsername = artist[platform.siteName]?.toString()?.trim() ?? "";
+                    if (youtubeUsername) {
+                        // Remove @ prefix if present, we'll add it in the URL
+                        const cleanUsername = youtubeUsername.startsWith("@") ? youtubeUsername.substring(1) : youtubeUsername;
+                        artistUrl = `https://youtube.com/@${cleanUsername}`;
+                    } else {
+                        continue;
+                    }
                 } else if (platform.siteName === "supercollector") {
                     const value = artist[platform.siteName]?.toString() ?? "";
                     const ethRemoved = value.endsWith(".eth") ? value.slice(0, -4) : value;
