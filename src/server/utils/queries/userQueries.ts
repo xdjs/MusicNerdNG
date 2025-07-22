@@ -170,21 +170,31 @@ export async function getAllUsers() {
 
 export async function assignArtistRoleToUsers(): Promise<void> {
     try {
-        // Fetch all artists that have wallets
-        const res = await db.execute<{ wallets: string[]; }>(sql`SELECT wallets FROM artists WHERE wallets IS NOT NULL`);
+        // Fetch all artists that have either wallets or ENS values
+        const res = await db.execute<{ wallets: string[] | null; ens: string | null }>(sql`
+            SELECT wallets, ens FROM artists WHERE wallets IS NOT NULL OR ens IS NOT NULL
+        `);
 
-        const walletAddresses: string[] = [];
-        res.forEach(row => {
+        // Collect wallet addresses and ENS names in a single list
+        const identifiers: string[] = [];
+        res.forEach((row) => {
             if (Array.isArray(row.wallets)) {
-                walletAddresses.push(...row.wallets.filter(Boolean));
+                identifiers.push(...row.wallets.filter(Boolean));
+            }
+            if (row.ens) {
+                identifiers.push(row.ens);
             }
         });
 
-        if (!walletAddresses.length) return;
+        // Nothing to do if we have no identifiers
+        if (!identifiers.length) return;
 
         const now = new Date().toISOString();
-        await db.update(users).set({ isArtist: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
+        await db
+            .update(users)
+            .set({ isArtist: true, updatedAt: now })
+            .where(inArray(users.wallet, identifiers));
     } catch (e) {
-        console.error('[assignArtistRoleToUsers] Error assigning artist roles', e);
+        console.error("[assignArtistRoleToUsers] Error assigning artist roles", e);
     }
 } 

@@ -71,7 +71,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
     const displayName = isGuestUser ? 'User Profile' : (user?.username ? user.username : user?.wallet);
     // Determine user status string for display
-    const statusString = user.isAdmin ? 'Admin' : (user.isArtist ? 'Artist' : (user.isWhiteListed ? 'Whitelisted' : 'User'));
+    const primaryRole = user.isAdmin ? 'Admin' : (user.isWhiteListed ? 'Whitelisted' : 'User');
+    const statusString = user.isArtist && primaryRole !== 'Artist' ? `${primaryRole} – Artist` : (user.isArtist ? 'Artist' : primaryRole);
 
     const { openConnectModal } = useConnectModal();
     const { status } = useSession();
