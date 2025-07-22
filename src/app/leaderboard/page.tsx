@@ -20,6 +20,7 @@ export default async function Page() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       legacyId: null,
+      isArtist: false,
     } as const;
     return (
         <main className="px-5 sm:px-10 py-10">
@@ -42,6 +43,7 @@ export default async function Page() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       legacyId: null,
+      isArtist: false,
     } as const;
     return (
         <main className="px-5 sm:px-10 py-10">

@@ -21,7 +21,8 @@ export default async function Page() {
             isWhiteListed: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            legacyId: null
+            legacyId: null,
+            isArtist: false
         } as const;
         return <Dashboard user={mockUser} showLeaderboard={false} showDateRange={false} allowEditUsername={true} />;
     }
@@ -38,7 +39,8 @@ export default async function Page() {
             isWhiteListed: false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            legacyId: null
+            legacyId: null,
+            isArtist: false
         } as const;
         return <Dashboard user={guestUser} showLeaderboard={false} showDateRange={false} allowEditUsername={true} />;
     }
