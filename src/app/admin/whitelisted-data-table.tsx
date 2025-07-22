@@ -8,10 +8,10 @@ import {
     getPaginationRowModel,
     useReactTable,
 } from "@tanstack/react-table";
-import { addUsersToWhitelistAction as addUsersToWhitelist, addUsersToAdminAction as addUsersToAdmin } from "@/app/actions/serverActions";
+import { addUsersToWhitelistAction as addUsersToWhitelist, addUsersToAdminAction as addUsersToAdmin, addUsersToArtistAction as addUsersToArtist } from "@/app/actions/serverActions";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { removeFromWhitelistAction as removeFromWhitelist, removeFromAdminAction as removeFromAdmin } from "@/app/actions/serverActions";
+import { removeFromWhitelistAction as removeFromWhitelist, removeFromAdminAction as removeFromAdmin, removeFromArtistAction as removeFromArtist } from "@/app/actions/serverActions";
 import {
     Table,
     TableBody,
@@ -219,6 +219,86 @@ export function RemoveAdminDialog() {
     );
 }
 
+// Dialog for adding users to artist role
+export function AddArtistDialog() {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const router = useRouter();
+    const [users, setUsers] = useState<string[]>([]);
+    const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
+    const [query, setQuery] = useState('');
+
+    async function addToArtist() {
+        setUploadStatus({ status: "success", message: "", isLoading: true });
+        const resp = await addUsersToArtist(users);
+        if (resp.status === "success") {
+            router.refresh();
+            setIsDialogOpen(false);
+            setUsers([]);
+        }
+        setUploadStatus({ status: resp.status as "success" | "error", message: resp.message, isLoading: false });
+    }
+
+    function removeFromUsers(user: string) { setUsers(users.filter((u) => u !== user)); }
+    function setUserWithFilter(user: string) { setUsers([...users.filter((u) => u !== user), user]); }
+
+    return (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline">Add User to Artist</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px] text-black">
+                <DialogHeader><DialogTitle>Add Users to Artist Role</DialogTitle></DialogHeader>
+                <p className="text-sm text-gray-500">Insert wallet address or username</p>
+                <div className="space-y-4">
+                    <SearchBar setUsers={(user:string)=>setUserWithFilter(user)} query={query} setQuery={setQuery} />
+                    <div>{users.map((u)=><Button variant="outline" onClick={()=>removeFromUsers(u)} key={u}>{u} <X className="w-4 h-4 ml-1" /></Button>)}</div>
+                </div>
+                <DialogFooter>
+                    <Button type="submit" onClick={addToArtist}>Save changes {uploadStatus.isLoading && <img className="w-4 h-4" src="/spinner.svg" alt="loading" />}</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// Dialog to remove users from artist role
+export function RemoveArtistDialog() {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const router = useRouter();
+    const [users, setUsers] = useState<string[]>([]);
+    const [uploadStatus, setUploadStatus] = useState<{ status: "success" | "error", message: string, isLoading: boolean }>({ status: "success", message: "", isLoading: false });
+    const [query, setQuery] = useState('');
+
+    async function removeArtistBySearch() {
+        setUploadStatus({ status: "success", message: "", isLoading: true });
+        await removeFromArtist(users);
+        setUploadStatus({ status: "success", message: "", isLoading: false });
+        router.refresh();
+        setIsDialogOpen(false);
+        setUsers([]);
+    }
+
+    function removeFromUsers(user: string) { setUsers(users.filter((u)=>u!==user)); }
+    function setUserWithFilter(user: string) { setUsers([...users.filter((u)=>u!==user), user]); }
+
+    return (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild><Button variant="outline">Remove User from Artist</Button></DialogTrigger>
+            <DialogContent className="sm:max-w-[425px] text-black">
+                <DialogHeader><DialogTitle>Remove Users from Artist Role</DialogTitle></DialogHeader>
+                <p className="text-sm text-gray-500">Insert wallet address or username</p>
+                <div className="space-y-4">
+                    <SearchBar setUsers={(user:string)=>setUserWithFilter(user)} query={query} setQuery={setQuery} />
+                    <div>{users.map((u)=><Button variant="outline" onClick={()=>removeFromUsers(u)} key={u}>{u} <X className="w-4 h-4 ml-1" /></Button>)}</div>
+                </div>
+                <DialogFooter>
+                    <Button type="submit" onClick={removeArtistBySearch}>Save changes {uploadStatus.isLoading && <img className="w-4 h-4" src="/spinner.svg" alt="loading" />}</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
     data: TData[]
@@ -246,7 +326,8 @@ export default function UsersDataTable<TData, TValue>({
         return data.filter((row: any) => {
             if (roleFilter === "Admin") return row.isAdmin;
             if (roleFilter === "Whitelisted") return !row.isAdmin && row.isWhiteListed;
-            if (roleFilter === "User") return !row.isAdmin && !row.isWhiteListed;
+            if (roleFilter === "Artist") return row.isArtist;
+            if (roleFilter === "User") return !row.isAdmin && !row.isWhiteListed && !row.isArtist;
             return true;
         });
     }, [roleFilter, data]);
@@ -301,6 +382,22 @@ export default function UsersDataTable<TData, TValue>({
         router.refresh();
     }
 
+    async function commitAddSelectedToArtist() {
+        const wallets = table.getFilteredSelectedRowModel().rows.map((row)=> row.original as TDataWithId).map((row:any)=> row.wallet).filter(Boolean);
+        setUploadStatus({ status: "success", message: "", isLoading: true });
+        await addUsersToArtist(wallets);
+        setUploadStatus({ status: "success", message: "", isLoading: false });
+        router.refresh();
+    }
+
+    async function commitRemoveFromArtist() {
+        const selectedUsers = table.getFilteredSelectedRowModel().rows.map((row) => row.original as TDataWithId).map((row) => row.id);
+        setUploadStatus({ status: "success", message: "", isLoading: true });
+        await removeFromArtist(selectedUsers);
+        setUploadStatus({ status: "success", message: "", isLoading: false });
+        router.refresh();
+    }
+
     return (
         <div className="space-y-4">
             <div className="flex gap-4 text-black flex-wrap items-center">
@@ -313,6 +410,7 @@ export default function UsersDataTable<TData, TValue>({
                         <SelectItem value="All">All Users</SelectItem>
                         <SelectItem value="Admin">Admins</SelectItem>
                         <SelectItem value="Whitelisted">Whitelisted Users</SelectItem>
+                        <SelectItem value="Artist">Artists</SelectItem>
                         <SelectItem value="User">Users</SelectItem>
                     </SelectContent>
                 </Select>
@@ -333,6 +431,14 @@ export default function UsersDataTable<TData, TValue>({
                         <Button variant="outline" onClick={() => commitRemoveFromAdmin()}>
                             {uploadStatus.isLoading ? <img className="w-4 h-4" src="/spinner.svg" alt="loading" /> : "Remove Selected from Admin"}
                         </Button>
+
+                        {/* Artist selected buttons */}
+                        <Button variant="outline" onClick={() => commitAddSelectedToArtist()}>
+                            {uploadStatus.isLoading ? <img className="w-4 h-4" src="/spinner.svg" alt="loading" /> : "Add Selected to Artist"}
+                        </Button>
+                        <Button variant="outline" onClick={() => commitRemoveFromArtist()}>
+                            {uploadStatus.isLoading ? <img className="w-4 h-4" src="/spinner.svg" alt="loading" /> : "Remove Selected from Artist"}
+                        </Button>
                     </>
                 ) : (
                     <>
@@ -341,6 +447,8 @@ export default function UsersDataTable<TData, TValue>({
                         <RemoveWhitelistDialog />
                         <AddAdminDialog />
                         <RemoveAdminDialog />
+                        <AddArtistDialog />
+                        <RemoveArtistDialog />
                     </>
                 )}
             </div>

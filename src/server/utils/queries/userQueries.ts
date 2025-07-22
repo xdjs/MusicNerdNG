@@ -197,4 +197,33 @@ export async function assignArtistRoleToUsers(): Promise<void> {
     } catch (e) {
         console.error("[assignArtistRoleToUsers] Error assigning artist roles", e);
     }
+}
+
+// ---------- Artist role management ----------
+export type AddUsersToArtistResp = {
+    status: "success" | "error";
+    message: string;
+};
+
+export async function addUsersToArtist(walletAddresses: string[]): Promise<AddUsersToArtistResp> {
+    try {
+        if (walletAddresses.length) {
+            const now = new Date().toISOString();
+            await db.update(users).set({ isArtist: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
+            await db.update(users).set({ isArtist: true, updatedAt: now }).where(inArray(users.username, walletAddresses));
+        }
+        return { status: "success", message: "Users granted artist role" };
+    } catch (e) {
+        console.error("error adding users to artist role", e);
+        return { status: "error", message: "Error adding users to artist role" };
+    }
+}
+
+export async function removeFromArtist(userIds: string[]): Promise<void> {
+    try {
+        const now = new Date().toISOString();
+        await db.update(users).set({ isArtist: false, updatedAt: now }).where(inArray(users.id, userIds));
+    } catch (e) {
+        console.error("error removing artist role", e);
+    }
 } 
