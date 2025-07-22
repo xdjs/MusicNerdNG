@@ -76,7 +76,7 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
 - [ ] Update the special handling for YouTube links
 - [ ] Add logic to check both `youtube` and `youtubechannel` columns
 - [ ] Prefer displaying @username format when `youtube` column has data
-- [ ] Fallback to channel ID format when only `youtubechannel` column has data
+- [ ] Fallback to channel ID format only when `youtube` column has no data but `youtubechannel` has data
 - [ ] Handle case where both columns have data (prefer username)
 - [ ] **Tests Required:**
   - [ ] Test username display generates correct @username URL
