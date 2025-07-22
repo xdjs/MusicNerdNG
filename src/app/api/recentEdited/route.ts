@@ -5,6 +5,8 @@ import { ugcresearch, artists } from "@/server/db/schema";
 import { desc, eq, and } from "drizzle-orm";
 import { getSpotifyHeaders, getSpotifyImage } from "@/server/utils/queries/externalApiQueries";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

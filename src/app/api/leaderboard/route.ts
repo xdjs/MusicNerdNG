@@ -1,6 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getLeaderboard, getLeaderboardInRange } from "@/server/utils/queries/leaderboardQueries";
 
+export const dynamic = "force-dynamic";
+
 export const revalidate = 60; // cache for 1 minute
 
 export async function GET(request: NextRequest | Request) {
