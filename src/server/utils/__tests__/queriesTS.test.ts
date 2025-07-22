@@ -389,6 +389,37 @@ describe('Artist Links Functions', () => {
         });
     });
 
+    describe('Database Schema and Types', () => {
+        it('should verify Artist type includes both youtube columns', () => {
+            // Test that Artist type includes both YouTube columns
+            const artist: Artist = {
+                ...baseArtist,
+                id: '123',
+                name: 'Test Artist',
+                youtube: '@testuser',
+                youtubechannel: 'UC123456789',
+                bio: null
+            };
+
+            // TypeScript compilation should succeed if both properties exist
+            expect(artist.youtube).toBe('@testuser');
+            expect(artist.youtubechannel).toBe('UC123456789');
+            
+            // Test that both can be null independently
+            const artistWithPartialYouTube: Artist = {
+                ...baseArtist,
+                id: '124', 
+                name: 'Partial YouTube Artist',
+                youtube: null,
+                youtubechannel: 'UC987654321',
+                bio: null
+            };
+
+            expect(artistWithPartialYouTube.youtube).toBeNull();
+            expect(artistWithPartialYouTube.youtubechannel).toBe('UC987654321');
+        });
+    });
+
     describe('getAllLinks', () => {
         it('should return all URL mappings', async () => {
             const result = await getAllLinks();
