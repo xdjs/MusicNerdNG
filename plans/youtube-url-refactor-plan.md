@@ -113,18 +113,34 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
 - Added comprehensive test verifying Artist type includes both YouTube columns with proper TypeScript compilation
 - All existing type definitions remain valid and compatible
 
-### 4. Update URL Validation Logic
+### 4. Update URL Validation Logic ✅ COMPLETED
 **File:** `src/app/api/validateLink/route.ts`
 
-- [ ] Update YouTube regex to handle both username formats and channel IDs
-- [ ] Ensure regex supports both `youtube.com` and `www.youtube.com` domains
-- [ ] Add separate validation for `youtube` siteName if needed
-- [ ] Ensure validation works with both URL formats
-- [ ] **Tests Required:**
-  - [ ] Test validation for channel ID URLs (both domains)
-  - [ ] Test validation for @username URLs (both domains)
-  - [ ] Test validation for username URLs without @ (both domains)
-  - [ ] Test validation rejection for invalid YouTube URLs
+- [x] Update YouTube regex to handle both username formats and channel IDs
+- [x] Ensure regex supports both `youtube.com` and `www.youtube.com` domains
+- [x] Add separate validation for `youtube` siteName if needed
+- [x] Ensure validation works with both URL formats
+- [x] **Tests Required:**
+  - [x] Test validation for channel ID URLs (both domains)
+  - [x] Test validation for @username URLs (both domains)
+  - [x] Test validation for username URLs without @ (both domains)
+  - [x] Test validation rejection for invalid YouTube URLs
+
+**Implementation Notes:**
+- Split YouTube validation into two separate platforms: `youtube` and `youtubechannel`
+- Updated regex patterns to handle all 6 supported URL formats:
+  - `youtube` platform: `/^https?:\/\/(www\.)?youtube\.com\/(?:@([^/]+)|([^/]+))$/` (matches username URLs)
+  - `youtubechannel` platform: `/^https?:\/\/(www\.)?youtube\.com\/channel\/([^/]+)$/` (matches channel ID URLs)
+- Both platforms support optional `www` subdomain and use the same error phrases for consistency
+- Added 12 comprehensive tests covering all scenarios:
+  - ✅ Valid @username URLs (with and without www)
+  - ✅ Valid username URLs without @ (with and without www)  
+  - ✅ Valid channel ID URLs (with and without www)
+  - ✅ Invalid URL format rejection (regex-based and network-based)
+  - ✅ 404 response handling
+  - ✅ Error phrase detection in content
+  - ✅ Generic unsupported platform rejection
+- All tests passing (12/12) with proper error handling for both regex rejection and network failures
 
 ### 5. Update URL Mapping Configuration
 **Files:** Database `urlmap` table entries

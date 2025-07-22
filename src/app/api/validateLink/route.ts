@@ -5,12 +5,28 @@ import { getAllLinks } from '@/server/utils/queries/artistQueries';
 const platforms = [
   {
     name: 'youtube',
-    regex: /^https?:\/\/(www\.)?youtube\.com\/(channel|user|c|@)[A-Za-z0-9_-]+/,
+    regex: /^https?:\/\/(www\.)?youtube\.com\/(?:@([^/]+)|([^/]+))$/,
+    errorPhrases: [
+      "This page isn't available",
+      "404 Not Found",
+      "Channel does not exist", 
+      "has been terminated",
+      "is not available",
+      "This account has been terminated",
+      "The page you are looking for does not exist",
+      "<title>Not Found</title>",
+      "<title>404 Not Found</title>",
+      "<title>YouTube</title>"
+    ]
+  },
+  {
+    name: 'youtubechannel',
+    regex: /^https?:\/\/(www\.)?youtube\.com\/channel\/([^/]+)$/,
     errorPhrases: [
       "This page isn't available",
       "404 Not Found",
       "Channel does not exist",
-      "has been terminated",
+      "has been terminated", 
       "is not available",
       "This account has been terminated",
       "The page you are looking for does not exist",
