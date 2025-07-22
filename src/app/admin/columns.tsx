@@ -165,8 +165,8 @@ export const whitelistedColumns: ColumnDef<User>[] = [
   {
     id: "role",
     accessorFn: (row) => {
-      const primary = row.isAdmin ? "Admin" : row.isWhiteListed ? "Whitelisted" : "User";
-      return row.isArtist && primary !== "Artist" ? `${primary} – Artist` : (row.isArtist ? "Artist" : primary);
+      const primary: string = row.isAdmin ? "Admin" : row.isWhiteListed ? "Whitelisted" : "User";
+      return row.isArtist ? `${primary} – Artist` : primary;
     },
     header: ({ column }) => (
       <Button
@@ -180,9 +180,11 @@ export const whitelistedColumns: ColumnDef<User>[] = [
     sortingFn: (rowA, rowB, columnId) => {
       const order: Record<string, number> = {
         "Admin": 0,
+        "Admin – Artist": 0,
         "Whitelisted": 1,
-        "Artist": 2,
-        "User": 3,
+        "Whitelisted – Artist": 1,
+        "User": 2,
+        "User – Artist": 2,
       };
       const a = order[rowA.getValue(columnId) as string] ?? 99;
       const b = order[rowB.getValue(columnId) as string] ?? 99;
