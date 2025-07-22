@@ -170,60 +170,50 @@ export async function getAllUsers() {
 
 export async function assignArtistRoleToUsers(): Promise<void> {
     try {
-        // Fetch all artists that have either wallets or ENS values
-        const res = await db.execute<{ wallets: string[] | null; ens: string | null }>(sql`
-            SELECT wallets, ens FROM artists WHERE wallets IS NOT NULL OR ens IS NOT NULL
-        `);
+        // Fetch wallets, names and ENS values from all artists
+        const res = await db.execute<{ wallets: string[] | null; name: string | null; ens: string | null }>(
+            sql`SELECT wallets, name, ens FROM artists WHERE wallets IS NOT NULL OR name IS NOT NULL OR ens IS NOT NULL`
+        );
 
-        // Collect wallet addresses and ENS names in a single list
-        const identifiers: string[] = [];
+        const walletAddresses: string[] = [];
+        const usernames: string[] = [];
+
         res.forEach((row) => {
+            // Collect wallet addresses
             if (Array.isArray(row.wallets)) {
-                identifiers.push(...row.wallets.filter(Boolean));
+                walletAddresses.push(...row.wallets.filter(Boolean));
             }
+
+            // Collect artist names (exact match to username)
+            if (row.name) {
+                usernames.push(row.name.trim());
+            }
+
+            // Collect ENS values (strip the .eth suffix before comparing)
             if (row.ens) {
-                identifiers.push(row.ens);
+                const stripped = row.ens.replace(/\.eth$/i, "").trim();
+                if (stripped) usernames.push(stripped);
             }
         });
 
-        // Nothing to do if we have no identifiers
-        if (!identifiers.length) return;
-
         const now = new Date().toISOString();
-        await db
-            .update(users)
-            .set({ isArtist: true, updatedAt: now })
-            .where(inArray(users.wallet, identifiers));
-    } catch (e) {
-        console.error("[assignArtistRoleToUsers] Error assigning artist roles", e);
-    }
-}
 
-// ---------- Artist role management ----------
-export type AddUsersToArtistResp = {
-    status: "success" | "error";
-    message: string;
-};
-
-export async function addUsersToArtist(walletAddresses: string[]): Promise<AddUsersToArtistResp> {
-    try {
+        // Assign by wallet
         if (walletAddresses.length) {
-            const now = new Date().toISOString();
-            await db.update(users).set({ isArtist: true, updatedAt: now }).where(inArray(users.wallet, walletAddresses));
-            await db.update(users).set({ isArtist: true, updatedAt: now }).where(inArray(users.username, walletAddresses));
+            await db
+                .update(users)
+                .set({ isArtist: true, updatedAt: now })
+                .where(inArray(users.wallet, walletAddresses));
         }
-        return { status: "success", message: "Users granted artist role" };
-    } catch (e) {
-        console.error("error adding users to artist role", e);
-        return { status: "error", message: "Error adding users to artist role" };
-    }
-}
 
-export async function removeFromArtist(userIds: string[]): Promise<void> {
-    try {
-        const now = new Date().toISOString();
-        await db.update(users).set({ isArtist: false, updatedAt: now }).where(inArray(users.id, userIds));
+        // Assign by username (artist name or ENS)
+        if (usernames.length) {
+            await db
+                .update(users)
+                .set({ isArtist: true, updatedAt: now })
+                .where(inArray(users.username, usernames));
+        }
     } catch (e) {
-        console.error("error removing artist role", e);
+        console.error('[assignArtistRoleToUsers] Error assigning artist roles', e);
     }
 } 

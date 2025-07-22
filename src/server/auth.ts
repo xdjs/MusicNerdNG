@@ -156,9 +156,7 @@ export const authOptions: NextAuthOptions = {
 
           const result = await siwe.verify({
             signature: credentials?.signature || "",
-            // Validate against the domain we expect (from NEXTAUTH_URL),
-            // not the one that came back inside the message.
-            domain: normalizedAuthDomain,
+            domain: normalizedMessageDomain,
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           });
 
@@ -184,11 +182,19 @@ export const authOptions: NextAuthOptions = {
             user = await createUser(siwe.address);
           }
 
-          // We no longer query the artist table during the login handshake to
-          // keep SIWE verification lightweight.  The background job
-          // `assignArtistRoleToUsers` periodically sets `isArtist` for wallets
-          // that appear in the `artists` table, so we simply trust the flag
-          // stored on the user record here.
+          // Determine if the user is an Artist (wallet associated with an artist record)
+          try {
+            if (!user.isArtist) {
+              const artistResp = await getArtistbyWallet(user.wallet);
+              if (!artistResp.isError && artistResp.data) {
+                user.isArtist = true;
+                // Persist to DB
+                await db.update(users).set({ isArtist: true }).where(eq(users.id, user.id));
+              }
+            }
+          } catch (e) {
+            console.error("[Auth] Error determining artist role", e);
+          }
 
           console.debug("[Auth] Returning user", { id: user.id });
           
