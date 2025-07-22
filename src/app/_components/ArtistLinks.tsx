@@ -5,7 +5,30 @@ import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import { Session } from "next-auth";
 import EditablePlatformLink from "./EditablePlatformLink";
 
-function StaticPlatformLink({ link, descriptor, image }: { link: string; descriptor: string; image: string }) {
+// Static link item – shows normal link when logged in, gray placeholder when logged out
+function StaticPlatformLink({ link, descriptor, image, isLoggedIn }: { link: string; descriptor: string; image: string; isLoggedIn: boolean }) {
+    // Logged-out users see a non-interactive gray box (same footprint)
+    if (!isLoggedIn) {
+        return (
+            <li className="list-none">
+                <div className="bg-gray-300 rounded-md h-12 w-full flex items-center justify-center">
+                    <Link
+                        href="#"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            const loginBtn = document.getElementById("login-btn") as HTMLButtonElement | null;
+                            loginBtn?.click();
+                        }}
+                        className="px-4 py-2 bg-pastypink text-white rounded-md text-xs sm:text-sm hover:bg-pastypink/80 focus:outline-none"
+                    >
+                        Log in to view your statistics
+                    </Link>
+                </div>
+            </li>
+        );
+    }
+
+    // Logged-in users get the normal hyperlink behaviour
     return (
         <li className="list-none">
             <Link href={`${link}`} target="blank" className="text-black">
@@ -37,6 +60,7 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
                     descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
                     link={el.artistUrl}
                     image={el.siteImage ?? ""}
+                    isLoggedIn={!!session}
                 />
             ))
         );
@@ -59,6 +83,7 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
                     descriptor="Listen on Spotify"
                     link={`https://open.spotify.com/artist/${artist.spotify}`}
                     image="/siteIcons/spotify_icon.svg"
+                    isLoggedIn={!!session}
                 />
             )}
 
@@ -81,6 +106,7 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
                         descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
                         link={el.artistUrl}
                         image={el.siteImage ?? ""}
+                        isLoggedIn={!!session}
                     />
                 )
             ))}
