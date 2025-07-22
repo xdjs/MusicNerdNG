@@ -147,7 +147,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showTopBtn, setShowTopBtn] = useState(false);
-    const [range, setRange] = useState<RangeKey>("all");
+    const [range, setRange] = useState<RangeKey>("today");
 
     // Notify parent whenever the range changes (including initial mount)
     useEffect(() => {
