@@ -4,6 +4,7 @@ import Leaderboard from "@/app/profile/Leaderboard";
 import LeaderboardAutoRefresh from "./LeaderboardAutoRefresh";
 import { notFound } from "next/navigation";
 import { getUserById } from "@/server/utils/queries/userQueries";
+import PleaseLoginPage from "@/app/_components/PleaseLoginPage";
 
 export default async function Page() {
   const session = await getServerAuthSession();
@@ -30,23 +31,12 @@ export default async function Page() {
   }
 
   if (!session) {
-    const guestUser = {
-      id: '00000000-0000-0000-0000-000000000000',
-      wallet: '0x0000000000000000000000000000000000000000',
-      email: null,
-      username: 'Guest User',
-      isAdmin: false,
-      isWhiteListed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      legacyId: null,
-    } as const;
     return (
         <main className="px-5 sm:px-10 py-10">
             <LeaderboardAutoRefresh />
-            <Leaderboard />
+            <PleaseLoginPage text="Log in to view leaderboard statistics" />
         </main>
-    ); // leaderboard for guest
+    );
   }
 
   const user = await getUserById(session.user.id);
