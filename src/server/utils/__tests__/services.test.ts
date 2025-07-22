@@ -17,8 +17,12 @@ jest.mock("../queries/queriesTS", () => ({
       cardPlatformName: "Twitter",
     },
     {
-      // Combined regex for YouTube channel IDs and usernames
-      regex: /https?:\/\/www\.youtube\.com\/(?:channel\/([^/?]+)|@?([^/?]+))/,
+      // Comprehensive YouTube regex for all formats:
+      // Group 1: optional www.
+      // Group 2: channel ID (from /channel/ID pattern)
+      // Group 3: @username (from /@username pattern)  
+      // Group 4: plain username (from /username pattern, not channel or @)
+      regex: /^https?:\/\/(www\.)?youtube\.com\/(?:channel\/([^/?]+)|@([^/?]+)|([^/?@]+))$/,
       siteName: "youtubechannel",
       cardPlatformName: "YouTube",
     },
@@ -92,7 +96,8 @@ describe("utils/services", () => {
       });
     });
 
-    it("extracts youtube channel id", async () => {
+    // YouTube Channel ID Tests
+    it("extracts youtube channel id from www.youtube.com", async () => {
       const res = await extractArtistId(
         "https://www.youtube.com/channel/UC1234567890abcdef"
       );
@@ -103,10 +108,50 @@ describe("utils/services", () => {
       });
     });
 
-    it("extracts youtube username and adds @ prefix when missing", async () => {
-      const res = await extractArtistId("https://www.youtube.com/artistname");
+    it("extracts youtube channel id from youtube.com", async () => {
+      const res = await extractArtistId(
+        "https://youtube.com/channel/UC1234567890abcdef"
+      );
       expect(res).toEqual({
         siteName: "youtubechannel",
+        cardPlatformName: "YouTube",
+        id: "UC1234567890abcdef",
+      });
+    });
+
+    // YouTube Username Tests (@username format)
+    it("extracts youtube @username from www.youtube.com", async () => {
+      const res = await extractArtistId("https://www.youtube.com/@artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@artistname",
+      });
+    });
+
+    it("extracts youtube @username from youtube.com", async () => {
+      const res = await extractArtistId("https://youtube.com/@artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@artistname",
+      });
+    });
+
+    // YouTube Username Tests (plain username format - new feature)
+    it("extracts youtube username from www.youtube.com and adds @ prefix", async () => {
+      const res = await extractArtistId("https://www.youtube.com/artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@artistname",
+      });
+    });
+
+    it("extracts youtube username from youtube.com and adds @ prefix", async () => {
+      const res = await extractArtistId("https://youtube.com/artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
         cardPlatformName: "YouTube",
         id: "@artistname",
       });
