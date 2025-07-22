@@ -198,7 +198,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
     // ------------------- RENDER -------------------
 
-    if (isGuestUser) {
+    // Show simplified "please log in" screen only on the full (non-compact) profile view.
+    // In the compact leaderboard view we still want to show the stats box so we can
+    // prompt the user to log in from there.
+    if (isGuestUser && !isCompactLayout) {
         return (
             <section className="px-10 py-20 space-y-8 flex items-center justify-center flex-col text-center">
                 <h1 className="text-3xl font-bold">User Profile</h1>
@@ -223,7 +226,17 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Added / Artists Added) */}
-                        {!isGuestUser && (
+                        {isGuestUser ? (
+                            // Guest variant – single clickable row that asks the visitor to log in
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={handleLogin}
+                                className="cursor-pointer flex items-center justify-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 hover:bg-accent/60 hover:ring-2 hover:ring-black w-full gap-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                            >
+                                <span className="text-sm sm:text-lg font-medium underline">Log in to compare your statistics</span>
+                            </div>
+                        ) : (
                             <>
                             <div
                                 role="button"
@@ -291,7 +304,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 }}
                                 className="mt-2 text-sm text-blue-600 underline hover:text-blue-800"
                             >
-                                View my leaderboard position
+                                View leaderboard position
                             </a>
                             </>
                           )}
