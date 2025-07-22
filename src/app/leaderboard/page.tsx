@@ -2,6 +2,7 @@ import { getServerAuthSession } from "@/server/auth";
 import Dashboard from "@/app/profile/Dashboard";
 import Leaderboard from "@/app/profile/Leaderboard";
 import LeaderboardAutoRefresh from "./LeaderboardAutoRefresh";
+import Login from "@/app/_components/nav/components/Login";
 import { notFound } from "next/navigation";
 import { getUserById } from "@/server/utils/queries/userQueries";
 
@@ -42,9 +43,15 @@ export default async function Page() {
       legacyId: null,
     } as const;
     return (
-        <main className="px-5 sm:px-10 py-10">
+        <main className="px-5 sm:px-10 py-10 flex flex-col items-center gap-6">
             <LeaderboardAutoRefresh />
             <Leaderboard />
+            <div className="mt-4">
+                <Login
+                    buttonChildren={<span className="font-semibold whitespace-nowrap">View&nbsp;My&nbsp;Stats</span>}
+                    buttonStyles="w-auto h-auto px-4 py-2 bg-pastypink text-white hover:bg-pastypink/90 rounded-md"
+                />
+            </div>
         </main>
     ); // leaderboard for guest
   }
