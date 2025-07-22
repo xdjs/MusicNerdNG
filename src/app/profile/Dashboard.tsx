@@ -165,21 +165,20 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         }
     }
 
-    // Fetch stats whenever selectedRange or target wallet changes
+    // Fetch all-time stats **once** on mount. These counts remain static and are not affected by leaderboard range filters.
     useEffect(() => {
-        async function fetchStatsForRange() {
+        async function fetchAllTimeStats() {
             try {
-                const dates = getRangeDates(selectedRange);
-                const dateRange: DateRange = dates ?? { from: new Date(0), to: new Date() } as DateRange;
+                const dateRange: DateRange = { from: new Date(0), to: new Date() } as DateRange;
                 const result = await getUgcStatsInRange(dateRange, ugcStatsUserWallet);
                 if (result) setAllTimeStats(result);
             } catch (e) {
-                console.error('Error fetching UGC stats for range', e);
+                console.error('[Dashboard] Error fetching all-time UGC stats', e);
             }
         }
 
-        fetchStatsForRange();
-    }, [selectedRange, ugcStatsUserWallet]);
+        fetchAllTimeStats();
+    }, [ugcStatsUserWallet]);
 
     // Callback from Leaderboard to keep range in sync
     const handleLeaderboardRangeChange = (range: RangeKey) => {
