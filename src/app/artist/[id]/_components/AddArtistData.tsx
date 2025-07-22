@@ -142,20 +142,25 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setAddArtistResp(null);
         setIsLoading(true);
-        const isTwitterValid = await validateTwitterLink(values.artistDataUrl);
+        let formattedUrl = values.artistDataUrl.trim();
+        if (!/^https?:\/\//i.test(formattedUrl)) {
+            formattedUrl = `https://${formattedUrl}`;
+        }
+
+        const isTwitterValid = await validateTwitterLink(formattedUrl);
         if (!isTwitterValid) {
             setAddArtistResp({ status: "error", message: "This link is invalid. Please enter a valid Twitter/X profile URL." });
             setIsLoading(false);
             return;
         }
         // Only use regex and backend for YouTube validation
-        const isPlatformValid = await validatePlatformLinkBackend(values.artistDataUrl);
+        const isPlatformValid = await validatePlatformLinkBackend(formattedUrl);
         if (!isPlatformValid) {
             setAddArtistResp({ status: "error", message: "This link is invalid or not supported." });
             setIsLoading(false);
             return;
         }
-        const resp = await addArtistData(values.artistDataUrl, artist);
+        const resp = await addArtistData(formattedUrl, artist);
         if (resp.status === "success") {
             toast({
                 title: `${artist.name}'s ${resp.siteName ?? "data"} added`,
