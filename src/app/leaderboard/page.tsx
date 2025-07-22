@@ -24,7 +24,7 @@ export default async function Page() {
     return (
         <main className="px-5 sm:px-10 py-10">
             {/* Compact dashboard bar prompting guest users to log in */}
-            <Dashboard user={mockUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={false} showStatus={false} />
+            <Dashboard user={mockUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
             <LeaderboardAutoRefresh />
             <Leaderboard />
         </main>
@@ -46,7 +46,7 @@ export default async function Page() {
     return (
         <main className="px-5 sm:px-10 py-10">
             {/* Compact dashboard bar prompting guest users to log in */}
-            <Dashboard user={guestUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={false} showStatus={false} />
+            <Dashboard user={guestUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
             <LeaderboardAutoRefresh />
             <Leaderboard />
         </main>
