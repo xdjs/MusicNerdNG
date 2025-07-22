@@ -156,7 +156,9 @@ export const authOptions: NextAuthOptions = {
 
           const result = await siwe.verify({
             signature: credentials?.signature || "",
-            domain: normalizedMessageDomain,
+            // Validate against the domain we expect (from NEXTAUTH_URL),
+            // not the one that came back inside the message.
+            domain: normalizedAuthDomain,
             nonce: cookies().get('next-auth.csrf-token')?.value.split('|')[0],
           });
 
