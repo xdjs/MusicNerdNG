@@ -234,7 +234,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 onClick={handleLogin}
                                 className="cursor-pointer flex items-center justify-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 hover:bg-accent/60 hover:ring-2 hover:ring-black w-full gap-2 focus:outline-none focus:ring-2 focus:ring-primary"
                             >
-                                <span className="text-sm sm:text-lg font-medium underline">Log in to view statistics</span>
+                                <span className="text-sm sm:text-lg font-medium">Log in to view your statistics</span>
                             </div>
                         ) : (
                             <>
