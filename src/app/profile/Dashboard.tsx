@@ -304,7 +304,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 }}
                                 className="mt-2 text-sm text-blue-600 underline hover:text-blue-800"
                             >
-                                View my leaderboard position
+                                View leaderboard position
                             </a>
                             </>
                           )}
