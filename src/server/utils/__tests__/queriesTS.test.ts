@@ -620,8 +620,13 @@ describe('Artist Management Functions', () => {
             (extractArtistId as jest.Mock).mockResolvedValue({ id: 'test', siteName: 'instagram', cardPlatformName: 'Instagram' });
             (db.query.ugcresearch.findFirst as jest.Mock).mockResolvedValue({ id: 'existing' });
             const result2 = await addArtistData('https://instagram.com/test', mockArtist);
-            expect(result2.status).toBe('error');
-            expect(result2.message).toBe('This artist data has already been added');
+            expect(result2.status).toBe('success');
+
+            // Case 2: Link still present on profile – should block duplicate (error)
+            const artistWithLink = { ...mockArtist, instagram: 'test' } as Artist;
+            const result3 = await addArtistData('https://instagram.com/test', artistWithLink);
+            expect(result3.status).toBe('error');
+            expect(result3.message).toBe('This artist data has already been added');
         });
 
         it('should handle authentication error', async () => {

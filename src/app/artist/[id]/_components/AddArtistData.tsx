@@ -31,6 +31,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useConnectModal } from '@rainbow-me/rainbowkit';
+import Link from "next/link";
 
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string }) {
     const { data: session } = useSession();
@@ -265,7 +266,12 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                     }
                                 </Button>
                                 {addArtistResp && addArtistResp.status === "success" ?
-                                    <h2 className="text-green-600">{addArtistResp.message}</h2>
+                                    <div className="flex flex-col items-center">
+                                        <h2 className="text-green-600">{addArtistResp.message}</h2>
+                                        <Link href="/leaderboard" className="text-blue-600 underline hover:underline mt-1">
+                                            🏆 View Leaderboard
+                                        </Link>
+                                    </div>
                                     : null
                                 }
                             </DialogFooter>
