@@ -202,8 +202,18 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         const allLinkObjects = await getAllLinks();
         if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames: ArtistLink[] = [];
+        // Check if both YouTube columns have data to implement preference logic
+        const hasYoutubeUsername = artist.youtube?.toString()?.trim();
+        const hasYoutubeChannel = artist.youtubechannel?.toString()?.trim();
+
         for (const platform of allLinkObjects) {
             if (platform.siteName === "ens" || platform.siteName === "wallets") continue;
+            
+            // Skip youtubechannel platform if both youtube and youtubechannel have data (prefer username)
+            if (platform.siteName === "youtubechannel" && hasYoutubeUsername && hasYoutubeChannel) {
+                continue;
+            }
+            
             if (
                 isObjKey(platform.siteName, artist) &&
                 artist[platform.siteName] !== null &&
@@ -212,16 +222,10 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
             ) {
                 let artistUrl = platform.appStringFormat;
                 if (platform.siteName === "youtubechannel") {
-                    // Handle YouTube URL construction with preference for username format
-                    const youtubeUsername = artist.youtube?.toString()?.trim() ?? "";
+                    // Handle YouTube channel URL construction - only use youtubechannel column
                     const youtubeChannelValue = artist[platform.siteName]?.toString()?.trim() ?? "";
                     
-                    // Prefer username format if available in dedicated youtube column
-                    if (youtubeUsername) {
-                        // Remove @ prefix if present, we'll add it in the URL
-                        const cleanUsername = youtubeUsername.startsWith("@") ? youtubeUsername.substring(1) : youtubeUsername;
-                        artistUrl = `https://youtube.com/@${cleanUsername}`;
-                    } else if (youtubeChannelValue) {
+                    if (youtubeChannelValue) {
                         // Check if youtubechannel column contains username data (starts with @) or channel ID
                         if (youtubeChannelValue.startsWith("@")) {
                             // It's username data stored in youtubechannel column (legacy state)
@@ -232,7 +236,7 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
                             artistUrl = `https://www.youtube.com/channel/${youtubeChannelValue}`;
                         }
                     } else {
-                        // No YouTube data available, skip this platform
+                        // No YouTube channel data available, skip this platform
                         continue;
                     }
                 } else if (platform.siteName === "youtube") {

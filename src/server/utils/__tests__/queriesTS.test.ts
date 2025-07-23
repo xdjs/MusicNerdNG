@@ -275,7 +275,7 @@ describe('Artist Links Functions', () => {
                 (db.query.urlmap.findMany as jest.Mock).mockResolvedValue(mockUrlMapsWithYoutube);
             });
 
-            testWithSpotify('should prefer youtube column over youtubechannel when both exist', async () => {
+            testWithSpotify('should prefer youtube link when both youtube and youtubechannel exist', async () => {
                 const artist: Artist = {
                     ...baseArtist,
                     id: '123',
@@ -287,9 +287,32 @@ describe('Artist Links Functions', () => {
 
                 const result = await getArtistLinks(artist);
                 
-                // Should find youtubechannel platform and prefer youtube column data
-                const youtubeLink = result.find(link => link.siteName === 'youtubechannel');
+                // Should only show youtube link when both exist (preference logic)
+                const youtubeChannelLink = result.find(link => link.siteName === 'youtubechannel');
+                const youtubeLink = result.find(link => link.siteName === 'youtube');
+                
+                expect(youtubeChannelLink).toBeUndefined(); // Should be skipped
                 expect(youtubeLink?.artistUrl).toBe('https://youtube.com/@preferredusername');
+            });
+
+            testWithSpotify('should show youtubechannel link when only channel ID exists', async () => {
+                const artist: Artist = {
+                    ...baseArtist,
+                    id: '123',
+                    name: 'Test Artist',
+                    youtube: null,
+                    youtubechannel: 'UC123456789',
+                    bio: null
+                };
+
+                const result = await getArtistLinks(artist);
+                
+                // Should show youtubechannel link when only channel ID exists
+                const youtubeChannelLink = result.find(link => link.siteName === 'youtubechannel');
+                const youtubeLink = result.find(link => link.siteName === 'youtube');
+                
+                expect(youtubeChannelLink?.artistUrl).toBe('https://www.youtube.com/channel/UC123456789');
+                expect(youtubeLink).toBeUndefined(); // youtube column is null
             });
 
             testWithSpotify('should handle username with @ prefix in youtube column', async () => {
