@@ -112,7 +112,6 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
             'bandcamp',
             'audius',
             'lastfm',
-            'patreon',
             'opensea',
             'zora',
             'catalog',
