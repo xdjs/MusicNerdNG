@@ -431,13 +431,21 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         });
 
         if (existingArtistUGC) {
-            console.debug(
-                "[addArtistData] Duplicate submission – data already exists for artist",
-                artist.id,
-                ":",
-                artistUrl
-            );
-            return { status: "error", message: "This artist data has already been added" };
+            // If the artist profile still HAS this link, block duplicate submissions.
+            // But if the link was previously removed (so the artist column is now null),
+            // allow the user to re-submit and earn credit again.
+            const columnName = artistIdFromUrl.siteName as keyof Artist;
+            const artistHasValue = (artist as any)?.[columnName];
+            if (artistHasValue) {
+                console.debug(
+                    "[addArtistData] Duplicate submission – data already exists for artist",
+                    artist.id,
+                    ":",
+                    artistUrl
+                );
+                return { status: "error", message: "This artist data has already been added" };
+            }
+            // Else: link no longer on artist profile – proceed so user can add again.
         }
 
         const [newUGC] = await db
