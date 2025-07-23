@@ -22,4 +22,6 @@ export const signIn = jest.fn(() => Promise.resolve({ ok: true, error: null }));
 
 export const signOut = jest.fn(() => Promise.resolve({ ok: true }));
 
-export const getServerSession = jest.fn(() => Promise.resolve(mockSession)); 
+export const getServerSession = jest.fn(() => Promise.resolve(mockSession));
+
+export const SessionProvider = ({ children }: { children: React.ReactNode }) => children as unknown as JSX.Element; 
