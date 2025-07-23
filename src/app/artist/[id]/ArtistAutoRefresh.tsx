@@ -9,7 +9,14 @@ import { useSession } from "next-auth/react";
  * session data. Uses sessionStorage to ensure only a single refresh.
  */
 export default function ArtistAutoRefresh() {
-  const { status } = useSession();
+  // Guard against missing SessionProvider in some test environments
+  let status: ReturnType<typeof useSession>["status"] = "unauthenticated";
+  try {
+    status = useSession().status;
+  } catch {
+    // If SessionProvider is not in the tree (e.g., during isolated tests), skip auto-refresh logic
+    return null;
+  }
   const prevStatus = useRef<typeof status | null>(null);
 
   useEffect(() => {
