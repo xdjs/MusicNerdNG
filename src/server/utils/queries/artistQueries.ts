@@ -552,7 +552,12 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
             await generateArtistBio(artistId);
         }
 
-        await db.delete(ugcresearch).where(and(eq(ugcresearch.artistId, artistId), eq(ugcresearch.siteName, siteName)));
+        // NOTE: We no longer delete the UGC record so that the original contribution
+        // continues to count towards the leaderboard. Keeping the row ensures the
+        // user retains credit for having added the link, even after it is removed
+        // from the artist profile. If we want to track removal explicitly in the
+        // future we can add a column (e.g. `removed: boolean`) but for now simply
+        // leaving the row untouched is sufficient.
 
         return { status: "success", message: "Artist data removed" };
     } catch (e) {
