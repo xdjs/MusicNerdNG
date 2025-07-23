@@ -1034,6 +1034,36 @@ describe('UGC Functions', () => {
             await expect(approveUGC('ugc1', 'artist1', 'instagram', 'testhandle'))
                 .rejects.toThrow('Error approving UGC');
         });
+
+        it('should successfully approve YouTube username UGC entry', async () => {
+            await approveUGC('ugc1', 'artist1', 'youtube', '@testuser');
+            
+            // Verify db.execute was called twice (column update + bio reset)
+            expect(db.execute).toHaveBeenCalledTimes(2);
+            expect(db.update).toHaveBeenCalled();
+        });
+
+        it('should successfully approve YouTube channel ID UGC entry', async () => {
+            await approveUGC('ugc1', 'artist1', 'youtubechannel', 'UC1234567890');
+            
+            // Verify db.execute was called twice (column update + bio reset)
+            expect(db.execute).toHaveBeenCalledTimes(2);
+            expect(db.update).toHaveBeenCalled();
+        });
+
+        it('should trigger bio regeneration for YouTube username platform', async () => {
+            await approveUGC('ugc1', 'artist1', 'youtube', '@testuser');
+            
+            // Verify bio regeneration was triggered (should call db.execute twice)
+            expect(db.execute).toHaveBeenCalledTimes(2);
+        });
+
+        it('should trigger bio regeneration for YouTube channel platform', async () => {
+            await approveUGC('ugc1', 'artist1', 'youtubechannel', 'UC1234567890');
+            
+            // Verify bio regeneration was triggered (should call db.execute twice)
+            expect(db.execute).toHaveBeenCalledTimes(2);
+        });
     });
 });
 

@@ -427,7 +427,7 @@ export async function approveUGC(
                 WHERE id = ${artistId}`);
         }
 
-        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
+        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtube", "youtubechannel"];
         if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
@@ -620,6 +620,7 @@ export async function generateArtistBio(artistId: string): Promise<string | null
         if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
         if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
         if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
+        if (artist.youtube) promptParts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, '')}`);
         if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
         promptParts.push("Focus on genre, key achievements, and unique traits; avoid speculation.");
 

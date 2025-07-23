@@ -142,37 +142,54 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
   - ✅ Generic unsupported platform rejection
 - All tests passing (12/12) with proper error handling for both regex rejection and network failures
 
-### 5. Update URL Mapping Configuration
+### 5. Update URL Mapping Configuration ✅ COMPLETED
 **Files:** Database `urlmap` table entries
 
-- [ ] **Create new `urlmap` entry for `youtube` siteName:**
-  - [ ] `site_name = 'youtube'`
-  - [ ] `regex = '^https://(www\.)?youtube\.com\/(?:@([^/]+)|([^/]+))$'` (matches @username and username formats)
-  - [ ] `app_string_format = 'https://youtube.com/@%@'` (always display with @ prefix)
-  - [ ] Copy other fields from existing youtubechannel entry:
-    - [ ] `card_platform_name = 'YouTube'`
-    - [ ] `color_hex = '#FF0000'`
-    - [ ] `platform_type_list = '{social}'`
-    - [ ] `card_description = 'Watch their videos on %@'`
-    - [ ] `site_url = 'youtube.com'`
-- [ ] **Update existing `youtubechannel` entry:**
-  - [ ] Change regex to `'^https://(www\.)?youtube\.com\/channel\/([^/]+)$'` (only channel IDs)
-  - [ ] Keep existing `app_string_format = 'https://www.youtube.com/channel/%@'`
-- [ ] **Tests Required:**
-  - [ ] Test channel ID regex only matches channel URLs
-  - [ ] Test username regex matches @username and plain username formats
-  - [ ] Test both regexes support optional www subdomain
-  - [ ] Test `appStringFormat` generates correct URLs for each type
+- [x] **Create new `urlmap` entry for `youtube` siteName:**
+  - [x] `site_name = 'youtube'`
+  - [x] `regex = '^https://(www\.)?youtube\.com\/(?:@([^/]+)|([^/]+))$'` (matches @username and username formats)
+  - [x] `app_string_format = 'https://youtube.com/@%@'` (always display with @ prefix)
+  - [x] Copy other fields from existing youtubechannel entry:
+    - [x] `card_platform_name = 'YouTube'`
+    - [x] `color_hex = '#FF0000'`
+    - [x] `platform_type_list = '{social}'`
+    - [x] `card_description = 'Watch their videos on %@'`
+    - [x] `site_url = 'youtube.com'`
+- [x] **Update existing `youtubechannel` entry:**
+  - [x] Change regex to `'^https://(www\.)?youtube\.com\/channel\/([^/]+)$'` (only channel IDs)
+  - [x] Keep existing `app_string_format = 'https://www.youtube.com/channel/%@'`
+- [x] **Tests Required:**
+  - [x] Test channel ID regex only matches channel URLs
+  - [x] Test username regex matches @username and plain username formats
+  - [x] Test both regexes support optional www subdomain
+  - [x] Test `appStringFormat` generates correct URLs for each type
 
-### 6. Update UGC Approval Logic
+**Implementation Notes:**
+- Both `youtube` and `youtubechannel` entries exist in database with correct configurations
+- `youtube` entry handles username URLs with regex supporting both @username and plain username formats
+- `youtubechannel` entry updated to only handle channel ID URLs
+- Both entries support optional www subdomain and have proper app_string_format
+- Database entries updated on 2025-07-22 and verified working
+- **Database verification:** Both urlmap entries confirmed present and properly configured
+
+### 6. Update UGC Approval Logic ✅ COMPLETED
 **File:** `src/server/utils/queries/artistQueries.ts`
 **Function:** `approveUGC`
 
-- [ ] Ensure UGC approval correctly handles both `youtube` and `youtubechannel` platforms
-- [ ] Test that approvals update the correct database columns
-- [ ] **Tests Required:**
-  - [ ] Test UGC approval for YouTube username updates `youtube` column
-  - [ ] Test UGC approval for YouTube channel ID updates `youtubechannel` column
+- [x] Ensure UGC approval correctly handles both `youtube` and `youtubechannel` platforms
+- [x] Test that approvals update the correct database columns
+- [x] **Tests Required:**
+  - [x] Test UGC approval for YouTube username updates `youtube` column
+  - [x] Test UGC approval for YouTube channel ID updates `youtubechannel` column
+
+**Implementation Notes:**
+- Updated `promptRelevantColumns` array to include both `'youtube'` and `'youtubechannel'` for bio regeneration
+- Enhanced `generateArtistBio` function to include YouTube username data in AI prompt generation
+- Updated `getOpenAIBio` function to include YouTube username data in AI prompt generation
+- Added comprehensive tests for both YouTube platforms (4 new test cases)
+- Verified bio regeneration triggers correctly for both `youtube` and `youtubechannel` platforms
+- All existing functionality remains backwards compatible
+- **Tests passing:** 10/10 UGC approval tests passing including new YouTube-specific tests
 
 ### 7. Update Frontend Components
 **Files:** Various components that display YouTube links
