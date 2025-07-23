@@ -268,7 +268,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                 {addArtistResp && addArtistResp.status === "success" ?
                                     <div className="flex flex-col items-center">
                                         <h2 className="text-green-600">{addArtistResp.message}</h2>
-                                        <Link href="/leaderboard" className="text-blue-600 hover:underline mt-1">
+                                        <Link href="/leaderboard" className="text-blue-600 underline hover:underline mt-1">
                                             🏆 View Leaderboard
                                         </Link>
                                     </div>
