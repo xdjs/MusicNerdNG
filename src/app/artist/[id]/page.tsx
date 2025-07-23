@@ -116,7 +116,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                                 </div>
                                 <div className="space-y-4">
                                     {(artist) &&
-                                        <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} />
+                                        <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} session={session} availableLinks={urlMapList} isOpenOnLoad={false} canEdit={canEdit} />
                                     }
                                 </div>
                             </div>
