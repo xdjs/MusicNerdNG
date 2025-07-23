@@ -13,9 +13,16 @@ interface Props {
     image: string;
     siteName: string;
     artistId: string;
+    /**
+     * When true, the delete (trash) icon will be displayed regardless of the current
+     * Edit Mode state. This is useful for cases like monetised/support links where we
+     * want the same deletion behaviour as social links but without requiring the user
+     * to toggle Edit Mode.
+     */
+    forceShowDelete?: boolean;
 }
 
-export default function EditablePlatformLink({ link, descriptor, image, siteName, artistId }: Props) {
+export default function EditablePlatformLink({ link, descriptor, image, siteName, artistId, forceShowDelete }: Props) {
     const { isEditing } = useContext(EditModeContext);
     const router = useRouter();
     const [isDeleting, setIsDeleting] = useState(false);
@@ -55,7 +62,7 @@ export default function EditablePlatformLink({ link, descriptor, image, siteName
 
     return (
         <li className="list-none relative">
-            {isEditing && (
+            {(isEditing || forceShowDelete) && (
                 <button
                     onClick={handleDelete}
                     className="absolute right-0 top-1/2 -translate-y-1/2 text-red-600 hover:text-red-800 p-1"

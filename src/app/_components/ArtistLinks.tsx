@@ -31,14 +31,27 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ses
             );
         }
         return (
-            artistLinks.map((el) => (
-                <StaticPlatformLink
-                    key={el.cardPlatformName}
-                    descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
-                    link={el.artistUrl}
-                    image={el.siteImage ?? ""}
-                />
-            ))
+            <>
+            {artistLinks.map((el) => (
+                canEdit ? (
+                    <EditablePlatformLink
+                        key={el.cardPlatformName}
+                        descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
+                        link={el.artistUrl}
+                        image={el.siteImage ?? ""}
+                        siteName={el.siteName}
+                        artistId={artist.id}
+                    />
+                ) : (
+                    <StaticPlatformLink
+                        key={el.cardPlatformName}
+                        descriptor={el.cardDescription?.replace('%@', el.cardPlatformName ?? "") ?? ""}
+                        link={el.artistUrl}
+                        image={el.siteImage ?? ""}
+                    />
+                )
+            ))}
+            </>
         );
     }
 
