@@ -144,6 +144,7 @@ export async function searchForArtistByName(name: string) {
                 name, 
                 spotify,
                 bandcamp,
+                youtube,
                 youtubechannel,
                 instagram,
                 x,
@@ -579,7 +580,7 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
             await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
         }
 
-        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
+        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtube", "youtubechannel"];
         if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);

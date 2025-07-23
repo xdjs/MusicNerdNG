@@ -221,13 +221,26 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
   - Artists with no YouTube data (shows no icon)
 - All existing functionality remains backwards compatible
 
-### 8. Update Platform Lists and Constants
+### 8. Update Platform Lists and Constants ✅ COMPLETED
 **File:** `src/server/utils/services.ts`
 
-- [ ] Update `artistPlatforms` array if needed to include both `youtube` and `youtubechannel`
-- [ ] Review any platform filtering logic
-- [ ] **Tests Required:**
-  - [ ] Test platform enumeration includes both YouTube types
+- [x] Update `artistPlatforms` array if needed to include both `youtube` and `youtubechannel`
+- [x] Review any platform filtering logic
+- [x] **Tests Required:**
+  - [x] Test platform enumeration includes both YouTube types
+
+**Implementation Notes:**
+- **✅ artistPlatforms array**: Already included both `youtube` and `youtubechannel` - no changes needed
+- **🐛 Fixed platform filtering bugs**:
+  - Fixed `removeArtistData` function: Added missing `youtube` to `promptRelevantColumns` array (was only including `youtubechannel`)
+  - Fixed `searchForArtistByName` query: Added missing `youtube` column to SELECT statement (was only selecting `youtubechannel`)
+- **✅ Comprehensive test coverage**: Added 6 new tests:
+  - 3 tests for `artistPlatforms` array: YouTube types inclusion, social platforms, web3 platforms
+  - 3 tests for `getArtistSplitPlatforms`: Both YouTube types, single YouTube type handling
+- **Critical fixes ensure**:
+  - Bio regeneration now triggers correctly for both YouTube platforms when removing artist data
+  - Search results now include both YouTube username and channel data
+  - Platform enumeration works correctly for both YouTube types
 
 ### 9. Update Existing Tests
 **Files:** Various test files
