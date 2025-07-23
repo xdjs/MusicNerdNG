@@ -4,6 +4,17 @@ import { getAllLinks } from '@/server/utils/queries/artistQueries';
 // Platform regexes and error phrases
 const platforms = [
   {
+    name: 'patreon',
+    regex: /^https?:\/\/(www\.)?patreon\.com\/[A-Za-z0-9_-]+\/?/,
+    errorPhrases: [
+      "404 Not Found",
+      "This page has moved",
+      "Patreon page not found",
+      "<title>404 Not Found</title>",
+      "<title>Patreon</title>"
+    ]
+  },
+  {
     name: 'youtube',
     regex: /^https?:\/\/(www\.)?youtube\.com\/(channel|user|c|@)[A-Za-z0-9_-]+/,
     errorPhrases: [
