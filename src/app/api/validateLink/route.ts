@@ -5,7 +5,8 @@ import { getAllLinks } from '@/server/utils/queries/artistQueries';
 const platforms = [
   {
     name: 'patreon',
-    regex: /^https?:\/\/(www\.)?patreon\.com\/[A-Za-z0-9_-]+\/?/,
+    // Accept extra path segments or query parameters after username
+    regex: /^https?:\/\/(?:www\.)?patreon\.com\/[A-Za-z0-9_-]+(?:[\/\?].*)?$/,
     errorPhrases: [
       "404 Not Found",
       "This page has moved",
