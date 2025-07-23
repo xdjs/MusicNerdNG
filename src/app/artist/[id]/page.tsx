@@ -131,13 +131,18 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <div className="hidden md:block bg-white rounded-lg shadow-2xl p-6 space-y-4 overflow-x-hidden">
                         <h2 className="text-2xl font-bold text-black">Grapevine</h2>
                         <div className="relative w-full h-[180px]">
+                            {/**
+                             * Use the configured Grapevine URL if present; otherwise fall back to the
+                             * production instance. This ensures the preview deployment can still embed
+                             * Grapevine even when the environment variable hasn’t been configured.
+                             */}
                             <iframe
-                                src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                                src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL ?? "https://grapevine.musicnerd.xyz"}/${artist.id}`}
                                 className="w-full h-full border-0 rounded-md pointer-events-none"
                                 loading="lazy"
                             />
                             <a
-                                href={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                                href={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL ?? "https://grapevine.musicnerd.xyz"}/${artist.id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="absolute inset-0 z-10"
@@ -155,12 +160,12 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <h2 className="text-2xl font-bold text-black">Grapevine</h2>
                     <div className="relative w-full h-[180px]">
                         <iframe
-                            src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                            src={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL ?? "https://grapevine.musicnerd.xyz"}/${artist.id}`}
                             className="w-full h-full border-0 rounded-md pointer-events-none"
                             loading="lazy"
                         />
                         <a
-                            href={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL}/${artist.id}`}
+                            href={`${process.env.NEXT_PUBLIC_GRAPEVINE_URL ?? "https://grapevine.musicnerd.xyz"}/${artist.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="absolute inset-0 z-10"
