@@ -124,6 +124,34 @@ export async function extractArtistId(artistUrl: string) {
                     };
                 }
             }
+            
+            // Handle dedicated YouTube username platform parsing
+            if (siteName === 'youtube') {
+                // YouTube username platform regex: ^https://(www\.)?youtube\.com/(?:@([^/]+)|([^/]+))$
+                // Group 1: optional www
+                // Group 2: @username capture group  
+                // Group 3: plain username capture group
+                
+                const atUsername = match[2]; // From @([^/]+) pattern
+                const plainUsername = match[3]; // From ([^/]+) pattern
+                
+                // Extract the actual username (prefer @username over plain username)
+                if (atUsername) {
+                    return {
+                        siteName: 'youtube',
+                        cardPlatformName,
+                        id: atUsername.startsWith('@') ? atUsername : `@${atUsername}`
+                    };
+                }
+                
+                if (plainUsername) {
+                    return {
+                        siteName: 'youtube', 
+                        cardPlatformName,
+                        id: plainUsername.startsWith('@') ? plainUsername : `@${plainUsername}`
+                    };
+                }
+            }
             let extractedId = match[1] || match[2] || match[3];
 
             // Decode any percent-encoded characters in the captured ID as well

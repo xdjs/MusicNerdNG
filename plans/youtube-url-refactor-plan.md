@@ -55,6 +55,7 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
 - [x] Add support for `https://youtube.com/USERNAME` format (without @)
 - [x] Ensure regex patterns support both `youtube.com` and `www.youtube.com` domains
 - [x] Ensure usernames are stored with @ prefix for consistency
+- [x] **🐛 CRITICAL UGC BUG FIX**: Added dedicated parsing logic for `siteName === 'youtube'` platform
 - [x] **Tests Required:**
   - [x] Test channel ID extraction returns `youtubechannel` siteName (both domains)
   - [x] Test @username extraction returns `youtube` siteName (both domains)
@@ -67,6 +68,9 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
 - Updated `artistPlatforms` array to include both `'youtube'` and `'youtubechannel'`
 - Added comprehensive test coverage for all 6 URL format combinations
 - All tests passing (14/14) with TypeScript and ESLint validation
+- **🐛 CRITICAL UGC BUG FIX**: The original implementation only had special YouTube parsing logic for `siteName === 'youtubechannel'`. When URLs like `https://www.youtube.com/@fkj` matched the new `youtube` platform, they fell through to generic parsing logic that returned "www." instead of "fkj". Added dedicated parsing logic for `siteName === 'youtube'` to properly extract usernames from both `@username` and `username` formats.
+- **Bug Impact**: UGC submissions for YouTube usernames were storing incorrect data (e.g., "www." instead of "fkj")
+- **Fix Applied**: Added proper YouTube username extraction logic for the dedicated `youtube` platform
 - **Commit:** `9cae35f` - Implement YouTube URL parsing refactor Task 1
 
 ### 2. Update URL Construction/Display Logic ✅ COMPLETED
@@ -191,14 +195,31 @@ Modify the YouTube URL handling logic to properly separate usernames and channel
 - All existing functionality remains backwards compatible
 - **Tests passing:** 10/10 UGC approval tests passing including new YouTube-specific tests
 
-### 7. Update Frontend Components
+### 7. Update Frontend Components ✅ COMPLETED
 **Files:** Various components that display YouTube links
 
-- [ ] Review `src/app/_components/ArtistLinks.tsx` for any hardcoded YouTube logic
-- [ ] Update any components that specifically handle YouTube display
-- [ ] **Tests Required:**
-  - [ ] Test YouTube links render correctly in artist link lists
-  - [ ] Test both username and channel ID formats display properly
+- [x] Review `src/app/_components/ArtistLinks.tsx` for any hardcoded YouTube logic
+- [x] Update any components that specifically handle YouTube display
+- [x] **Tests Required:**
+  - [x] Test YouTube links render correctly in artist link lists
+  - [x] Test both username and channel ID formats display properly
+
+**Implementation Notes:**
+- **ArtistLinks.tsx**: ✅ No hardcoded YouTube logic found - properly uses backend `getArtistLinks()` function
+- **SearchBar.tsx**: ✅ Fixed 4 instances of hardcoded YouTube logic:
+  - Updated WalletSearchBar to check for both `result.youtube` and `result.youtubechannel`
+  - Updated NoWalletSearchBar to check for both `result.youtube` and `result.youtubechannel`
+  - Updated SocialIcons component to check for both YouTube data types
+  - Updated SearchResults component to check for both YouTube data types
+- **Comprehensive test coverage**: ✅ Added 2 new test files:
+  - `ArtistLinks.test.tsx`: 5 tests covering username/channel preference, link rendering for both formats, monetized vs social sections
+  - `SearchBarYoutube.test.tsx`: 7 tests covering YouTube icon display for username, channel, both, none, mixed platforms, multiple results, and edge cases
+- **SearchBar YouTube icons now correctly display for**:
+  - Artists with YouTube username data (`youtube` column)
+  - Artists with YouTube channel ID data (`youtubechannel` column)  
+  - Artists with both data types (shows single icon)
+  - Artists with no YouTube data (shows no icon)
+- All existing functionality remains backwards compatible
 
 ### 8. Update Platform Lists and Constants
 **File:** `src/server/utils/services.ts`

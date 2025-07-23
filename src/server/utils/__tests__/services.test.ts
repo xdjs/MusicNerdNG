@@ -17,14 +17,16 @@ jest.mock("../queries/queriesTS", () => ({
       cardPlatformName: "Twitter",
     },
     {
-      // Comprehensive YouTube regex for all formats:
-      // Group 1: optional www.
-      // Group 2: channel ID (from /channel/ID pattern)
-      // Group 3: @username (from /@username pattern)  
-      // Group 4: plain username (from /username pattern, not channel or @)
-      regex: /^https?:\/\/(www\.)?youtube\.com\/(?:channel\/([^/?]+)|@([^/?]+)|([^/?@]+))$/,
-      siteName: "youtubechannel",
+      // YouTube channel regex for channel IDs only
+      regex: /^https?:\/\/(www\.)?youtube\.com\/channel\/([^/?]+)$/,
+      siteName: "youtubechannel", 
       cardPlatformName: "YouTube",
+    },
+    {
+      // YouTube username regex for @username and plain username
+      regex: /^https?:\/\/(www\.)?youtube\.com\/(?:@([^/]+)|([^/]+))$/,
+      siteName: "youtube",
+      cardPlatformName: "YouTube", 
     },
   ]),
 }));
@@ -154,6 +156,16 @@ describe("utils/services", () => {
         siteName: "youtube",
         cardPlatformName: "YouTube",
         id: "@artistname",
+      });
+    });
+
+    // Test the specific failing case from UGC
+    it("extracts youtube username correctly for UGC case (www.youtube.com/@fkj)", async () => {
+      const res = await extractArtistId("https://www.youtube.com/@fkj");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@fkj",
       });
     });
 
