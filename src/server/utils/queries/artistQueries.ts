@@ -144,6 +144,7 @@ export async function searchForArtistByName(name: string) {
                 name, 
                 spotify,
                 bandcamp,
+                youtube,
                 youtubechannel,
                 instagram,
                 x,
@@ -202,8 +203,18 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
         const allLinkObjects = await getAllLinks();
         if (!artist) throw new Error("Artist not found");
         const artistLinksSiteNames: ArtistLink[] = [];
+        // Check if both YouTube columns have data to implement preference logic
+        const hasYoutubeUsername = artist.youtube?.toString()?.trim();
+        const hasYoutubeChannel = artist.youtubechannel?.toString()?.trim();
+
         for (const platform of allLinkObjects) {
             if (platform.siteName === "ens" || platform.siteName === "wallets") continue;
+            
+            // Skip youtubechannel platform if both youtube and youtubechannel have data (prefer username)
+            if (platform.siteName === "youtubechannel" && hasYoutubeUsername && hasYoutubeChannel) {
+                continue;
+            }
+            
             if (
                 isObjKey(platform.siteName, artist) &&
                 artist[platform.siteName] !== null &&
@@ -212,10 +223,33 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
             ) {
                 let artistUrl = platform.appStringFormat;
                 if (platform.siteName === "youtubechannel") {
-                    const value = artist[platform.siteName]?.toString() ?? "";
-                    artistUrl = value.startsWith("@")
-                        ? `https://www.youtube.com/${value}`
-                        : `https://www.youtube.com/channel/${value}`;
+                    // Handle YouTube channel URL construction - only use youtubechannel column
+                    const youtubeChannelValue = artist[platform.siteName]?.toString()?.trim() ?? "";
+                    
+                    if (youtubeChannelValue) {
+                        // Check if youtubechannel column contains username data (starts with @) or channel ID
+                        if (youtubeChannelValue.startsWith("@")) {
+                            // It's username data stored in youtubechannel column (legacy state)
+                            const cleanUsername = youtubeChannelValue.substring(1);
+                            artistUrl = `https://youtube.com/@${cleanUsername}`;
+                        } else {
+                            // It's actual channel ID data
+                            artistUrl = `https://www.youtube.com/channel/${youtubeChannelValue}`;
+                        }
+                    } else {
+                        // No YouTube channel data available, skip this platform
+                        continue;
+                    }
+                } else if (platform.siteName === "youtube") {
+                    // Handle dedicated YouTube username platform
+                    const youtubeUsername = artist[platform.siteName]?.toString()?.trim() ?? "";
+                    if (youtubeUsername) {
+                        // Remove @ prefix if present, we'll add it in the URL
+                        const cleanUsername = youtubeUsername.startsWith("@") ? youtubeUsername.substring(1) : youtubeUsername;
+                        artistUrl = `https://youtube.com/@${cleanUsername}`;
+                    } else {
+                        continue;
+                    }
                 } else if (platform.siteName === "supercollector") {
                     const value = artist[platform.siteName]?.toString() ?? "";
                     const ethRemoved = value.endsWith(".eth") ? value.slice(0, -4) : value;
@@ -394,7 +428,7 @@ export async function approveUGC(
                 WHERE id = ${artistId}`);
         }
 
-        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
+        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtube", "youtubechannel"];
         if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
@@ -554,7 +588,7 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
             await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
         }
 
-        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtubechannel"];
+        const promptRelevantColumns = ["spotify", "instagram", "x", "soundcloud", "youtube", "youtubechannel"];
         if (promptRelevantColumns.includes(columnName)) {
             await db.execute(sql`UPDATE artists SET bio = NULL WHERE id = ${artistId}`);
             await generateArtistBio(artistId);
@@ -600,6 +634,7 @@ export async function generateArtistBio(artistId: string): Promise<string | null
         if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
         if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
         if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
+        if (artist.youtube) promptParts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, '')}`);
         if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
         promptParts.push("Focus on genre, key achievements, and unique traits; avoid speculation.");
 

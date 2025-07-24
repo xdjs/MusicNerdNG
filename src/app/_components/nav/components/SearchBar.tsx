@@ -370,14 +370,14 @@ const WalletSearchBar = forwardRef(
                                                     ) : (
                                                         <div className="flex flex-col items-start gap-1">
                                                             <div className="flex flex-col w-[140px]">
-                                                                {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                                {(result.bandcamp || result.youtube || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
                                                                     <>
                                                                         <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
                                                                         <div className="flex items-center gap-2">
                                                                             {result.bandcamp && (
                                                                                 <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
                                                                             )}
-                                                                            {result.youtubechannel && (
+                                                                            {(result.youtube || result.youtubechannel) && (
                                                                                 <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
                                                                             )}
                                                                             {result.instagram && (
@@ -805,14 +805,14 @@ const NoWalletSearchBar = forwardRef(
                                                     ) : (
                                                         <div className="flex flex-col items-start gap-1">
                                                             <div className="flex flex-col w-[140px]">
-                                                                {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                                {(result.bandcamp || result.youtube || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
                                                                     <>
                                                                         <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
                                                                         <div className="flex items-center gap-2">
                                                                             {result.bandcamp && (
                                                                                 <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
                                                                             )}
-                                                                            {result.youtubechannel && (
+                                                                            {(result.youtube || result.youtubechannel) && (
                                                                                 <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
                                                                             )}
                                                                             {result.instagram && (
@@ -911,7 +911,7 @@ function SocialIcons({ result }: { result: SearchResult }) {
         );
     }
     
-    if (result.youtubechannel) {
+    if (result.youtube || result.youtubechannel) {
         icons.push(
             <img key="youtube" src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
         );
@@ -1008,14 +1008,14 @@ function SearchResults({
                                     ) : (
                                         <div className="flex flex-col items-start gap-1">
                                             <div className="flex flex-col w-[140px]">
-                                                {(result.bandcamp || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
+                                                {(result.bandcamp || result.youtube || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok) && (
                                                     <>
                                                         <div className="border-0 h-[1px] my-1 bg-gradient-to-r from-gray-400 to-transparent" style={{ height: '1px' }}></div>
                                                         <div className="flex items-center gap-2">
                                                             {result.bandcamp && (
                                                                 <img src="/siteIcons/bandcamp_icon.svg" alt="Bandcamp" className="w-3.5 h-3.5 opacity-70" />
                                                             )}
-                                                            {result.youtubechannel && (
+                                                            {(result.youtube || result.youtubechannel) && (
                                                                 <img src="/siteIcons/youtube_icon.svg" alt="YouTube" className="w-3.5 h-3.5 opacity-70" />
                                                             )}
                                                             {result.instagram && (

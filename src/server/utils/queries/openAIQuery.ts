@@ -74,6 +74,7 @@ export async function getOpenAIBio(artistId: string): Promise<NextResponse> {
     if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
     if (artist.x) promptParts.push(`Twitter: https://twitter.com/${artist.x}`);
     if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
+    if (artist.youtube) promptParts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, '')}`);
     if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
     if (spotifyBioData) promptParts.push(`Spotify Data: ${spotifyBioData}`);
 
