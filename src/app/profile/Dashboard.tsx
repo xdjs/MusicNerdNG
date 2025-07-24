@@ -392,11 +392,11 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </p>
                                 {allowEditUsername && !isGuestUser && (
                                     <Button
-                                        size="sm"
-                                        className="bg-gray-200 text-black hover:bg-gray-300"
+                                        size="icon"
+                                        className="bg-gray-200 text-black hover:bg-gray-300 h-6 w-6 sm:h-8 sm:w-8 p-0 flex items-center justify-center"
                                         onClick={() => setIsEditingUsername(true)}
                                     >
-                                        <Pencil size={28} />
+                                        <Pencil size={20} />
                                     </Button>
                                 )}
                             </div>
@@ -467,10 +467,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                         </div>
 
                         {/* Right column - recently edited */}
-                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0">
-                            <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
+                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0 text-center">
+                            <h3 className="text-lg font-semibold text-center">Recently Edited Artists</h3>
                             {recentUGC.length ? (
-                                <ul className="space-y-3">
+                                <ul className="space-y-3 flex flex-col items-center">
                                     {recentUGC.map((item) => (
                                         <li key={item.ugcId}>
                                             <Link href={`/artist/${item.artistId ?? ''}`} className="flex items-center gap-3 hover:underline">
@@ -481,7 +481,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     ))}
                                 </ul>
                             ) : (
-                                <p className="text-sm text-gray-500 text-center md:text-left">No recent edits</p>
+                                <p className="text-sm text-gray-500 text-center">No recent edits</p>
                             )}
                         </div>
                     </div>
