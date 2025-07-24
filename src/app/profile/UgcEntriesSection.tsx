@@ -122,11 +122,21 @@ export default function UgcEntriesSection() {
           );
         },
       },
-      // Status
+      // Status with colored dot
       {
         id: "status",
         header: "Status",
-        accessorFn: (row) => (row.accepted ? "Approved" : "Pending"),
+        cell: ({ row }) => {
+          const accepted = (row.original as any).accepted;
+          const label = accepted ? "Approved" : "Pending";
+          const colorClass = accepted ? "bg-green-500" : "bg-yellow-400";
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <span className={`inline-block h-2 w-2 rounded-full ${colorClass}`}></span>
+              <span>{label}</span>
+            </div>
+          );
+        },
       },
     ];
   }, [entryTypeFilter, entryTypes]);
