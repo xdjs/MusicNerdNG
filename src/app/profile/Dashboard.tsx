@@ -454,19 +454,12 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 <p className="text-lg font-semibold">
                                     User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
                                 </p>
-                                <a
-                                    href="#leaderboard-section"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        const el = document.getElementById('leaderboard-section');
-                                        if (el) {
-                                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                        }
-                                    }}
-                                    className="text-sm text-blue-600 underline hover:text-blue-800 mb-6 mt-4 inline-block"
+                                <Link
+                                    href="/leaderboard"
+                                    className="text-sm text-blue-600 underline hover:text-blue-800 mb-8 mt-4 inline-block"
                                 >
                                     Go to Leaderboard
-                                </a>
+                                </Link>
                                 <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
