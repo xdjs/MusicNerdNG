@@ -29,19 +29,37 @@ const formatDate = (value: string | Date | null | undefined): string => {
 };
 
 export const ugcEntryColumns: ColumnDef<UgcEntryRow>[] = [
-  // Date Added first
+  // Date column
   {
     accessorKey: "createdAt",
     header: ({ column }) => (
       <Button
         variant="ghost"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="px-0"
       >
-        Date Added
-        <ArrowUpDown className="ml-2 h-4 w-4" />
+        Date
+        <ArrowUpDown className="ml-1 h-4 w-4" />
       </Button>
     ),
-    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
+    cell: ({ getValue }) => {
+      const val = getValue() as string | Date | null | undefined;
+      if (!val) return "";
+      const dateObj = val instanceof Date ? val : new Date(val);
+      return dateObj.toLocaleDateString();
+    },
+  },
+  // Time column
+  {
+    id: "time",
+    header: "Time",
+    accessorFn: (row) => row.createdAt,
+    cell: ({ getValue }) => {
+      const val = getValue() as string | Date | null | undefined;
+      if (!val) return "";
+      const dateObj = val instanceof Date ? val : new Date(val);
+      return dateObj.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+    },
   },
   // Artist column (duplicates will be pre-processed to blank)
   {
