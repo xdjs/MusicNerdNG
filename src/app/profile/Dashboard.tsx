@@ -448,8 +448,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
             </div>
             )}
 
-            {/* Your UGC Entries Table */}
-            <UgcEntriesSection />
+            {/* Artist Data Entries Table shown only on full profile view */}
+            {!isCompactLayout && <UgcEntriesSection />}
         </section>
     )
 }

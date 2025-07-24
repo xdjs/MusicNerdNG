@@ -138,7 +138,7 @@ export default function UgcEntriesSection() {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-xl font-semibold text-center">Your UGC Entries</h2>
+      <h2 className="text-xl font-semibold text-center">Your Artist Data Entries</h2>
       <UgcEntriesDataTable columns={columns} data={filtered} />
     </div>
   );
