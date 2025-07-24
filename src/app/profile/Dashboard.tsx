@@ -456,18 +456,21 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </p>
                                 <Link
                                     href="/leaderboard"
-                                    className="text-sm text-blue-600 underline hover:text-blue-800 mb-8 mt-4 inline-block"
+                                    className="text-sm text-blue-600 underline hover:text-blue-800 mt-2 inline-block"
                                 >
                                     Go to Leaderboard
                                 </Link>
-                                <br />
-                                <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+
+                                {/* Stats Block */}
+                                <div className="mt-6 space-y-1">
+                                    <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                    <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                                </div>
                             </div>
                         </div>
 
                         {/* Right column - recently edited */}
-                        <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
+                        <div className="md:w-1/2 space-y-4 mt-10 md:mt-0">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
                                 <ul className="space-y-3">
