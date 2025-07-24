@@ -50,7 +50,7 @@ export default function UgcEntriesDataTable<TData, TValue>({
   });
 
   return (
-    <div className="border border-black bg-white rounded-md mx-auto my-6 overflow-x-auto">
+    <div className="border border-black bg-white rounded-md mx-auto my-6 overflow-x-auto w-full max-w-3xl">
       <Table className="text-sm">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
