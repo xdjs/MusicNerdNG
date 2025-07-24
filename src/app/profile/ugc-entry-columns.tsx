@@ -29,12 +29,27 @@ const formatDate = (value: string | Date | null | undefined): string => {
 };
 
 export const ugcEntryColumns: ColumnDef<UgcEntryRow>[] = [
+  // Date Added first
+  {
+    accessorKey: "createdAt",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Date Added
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
+  },
+  // Artist column (duplicates will be pre-processed to blank)
   {
     accessorKey: "artistName",
     header: "Artist",
     cell: ({ getValue }) => {
       const name = getValue() as string | null;
-      return name ?? "Unknown Artist";
+      return name ?? "";
     },
   },
   {
@@ -56,26 +71,8 @@ export const ugcEntryColumns: ColumnDef<UgcEntryRow>[] = [
     },
   },
   {
-    accessorKey: "createdAt",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-      >
-        Date Added
-        <ArrowUpDown className="ml-2 h-4 w-4" />
-      </Button>
-    ),
-    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
-  },
-  {
     id: "status",
     header: "Status",
     accessorFn: (row) => (row.accepted ? "Approved" : "Pending"),
-  },
-  {
-    accessorKey: "dateProcessed",
-    header: "Date Approved",
-    cell: ({ getValue }) => formatDate(getValue() as string | Date | null | undefined),
   },
 ]; 
