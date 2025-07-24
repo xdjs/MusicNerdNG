@@ -13,7 +13,14 @@ export default function UgcEntriesSection() {
     fetch("/api/userUgcEntries")
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load");
-        const data = (await res.json()) as UgcEntryRow[];
+        let data = (await res.json()) as UgcEntryRow[];
+        // Replace duplicate consecutive artist names with blank string
+        data = data.map((entry, idx, arr) => {
+          if (idx > 0 && entry.artistName === arr[idx - 1].artistName) {
+            return { ...entry, artistName: "" };
+          }
+          return entry;
+        });
         setEntries(data);
         setLoading(false);
       })
