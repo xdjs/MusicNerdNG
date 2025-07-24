@@ -463,7 +463,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                         }
                                     }}
-                                    className="text-sm text-blue-600 underline hover:text-blue-800 my-4 inline-block"
+                                    className="text-sm text-blue-600 underline hover:text-blue-800 mb-6 mt-4 inline-block"
                                 >
                                     Go to Leaderboard
                                 </a>
