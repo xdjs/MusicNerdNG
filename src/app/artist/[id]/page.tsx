@@ -13,10 +13,27 @@ import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import FunFactsMobile from "./_components/FunFactsMobile";
 import FunFactsDesktop from "./_components/FunFactsDesktop";
 import ArtistAutoRefresh from "./ArtistAutoRefresh";
+import { Metadata } from "next";
 
 type ArtistProfileProps = {
     params: { id: string };
     searchParams: { [key: string]: string | undefined };
+}
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+    const artist = await getArtistById(params.id);
+    
+    if (!artist) {
+        return {
+            title: 'Artist Not Found - Music Nerd',
+            description: 'The requested artist could not be found on Music Nerd.',
+        };
+    }
+
+    return {
+        title: `${artist.name} - Music Nerd`,
+        description: `Discover ${artist.name} on Music Nerd - social media links, music, and more.`,
+    };
 }
 
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
