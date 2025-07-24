@@ -41,7 +41,7 @@ export default function UgcEntriesSection() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Your UGC Entries</h2>
+      <h2 className="text-xl font-semibold text-center">Your UGC Entries</h2>
       <UgcEntriesDataTable columns={ugcEntryColumns} data={entries} />
     </div>
   );
