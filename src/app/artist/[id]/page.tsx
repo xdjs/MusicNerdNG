@@ -77,8 +77,9 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     const headers = await getSpotifyHeaders();
     const spotifyImg = await getSpotifyImage(artist.spotify ?? "", undefined, headers);
 
-    // Fetch artist bio for meta description
-    const artistBio = await getArtistBioForMetadata(params.id);
+    // Temporarily disable bio fetching to fix timeout issues
+    // TODO: Implement direct server-side bio generation without HTTP calls
+    const artistBio = ''; // Disabled for now
     
     // Create meta description
     let description: string;
