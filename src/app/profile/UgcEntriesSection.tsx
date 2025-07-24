@@ -54,14 +54,22 @@ export default function UgcEntriesSection() {
   }, []);
 
   const columns = useMemo<ColumnDef<UgcEntryRow>[]>(() => {
+    const toLocalDate = (val: string | Date) => {
+      // If val is ISO string without timezone, treat as UTC
+      if (typeof val === "string" && !val.endsWith("Z")) {
+        return new Date(val + "Z");
+      }
+      return val instanceof Date ? val : new Date(val);
+    };
+
     const formatDate = (val: string | Date | null | undefined) => {
       if (!val) return "";
-      const dateObj = val instanceof Date ? val : new Date(val);
+      const dateObj = toLocalDate(val);
       return dateObj.toLocaleDateString();
     };
     const formatTime = (val: string | Date | null | undefined) => {
       if (!val) return "";
-      const dateObj = val instanceof Date ? val : new Date(val);
+      const dateObj = toLocalDate(val);
       return dateObj.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
     };
     return [
