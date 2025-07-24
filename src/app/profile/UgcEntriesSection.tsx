@@ -3,11 +3,20 @@
 import { useEffect, useState } from "react";
 import UgcEntriesDataTable from "./UgcEntriesDataTable";
 import { ugcEntryColumns, UgcEntryRow } from "./ugc-entry-columns";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 export default function UgcEntriesSection() {
   const [entries, setEntries] = useState<UgcEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [entryTypeFilter, setEntryTypeFilter] = useState<string>("All");
+  const [entryTypes, setEntryTypes] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/userUgcEntries")
@@ -22,6 +31,8 @@ export default function UgcEntriesSection() {
           return entry;
         });
         setEntries(data);
+        const types = Array.from(new Set(data.map((e) => e.siteName).filter(Boolean))) as string[];
+        setEntryTypes(types);
         setLoading(false);
       })
       .catch((e) => {
@@ -42,7 +53,27 @@ export default function UgcEntriesSection() {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-center">Your UGC Entries</h2>
-      <UgcEntriesDataTable columns={ugcEntryColumns} data={entries} />
+
+      {/* Filter */}
+      <div className="flex justify-end">
+        <Select value={entryTypeFilter} onValueChange={setEntryTypeFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="All" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="All">All</SelectItem>
+            {entryTypes.map((type) => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Filtered table */}
+      <UgcEntriesDataTable
+        columns={ugcEntryColumns}
+        data={entries.filter((e) => entryTypeFilter === "All" || e.siteName === entryTypeFilter)}
+      />
     </div>
   );
 } 
