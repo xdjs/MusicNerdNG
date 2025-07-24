@@ -441,8 +441,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </p>
                                 <Button
                                     size="sm"
-                                    variant="link"
-                                    className="text-blue-600 underline hover:text-blue-800"
+                                    className="bg-pastypink hover:bg-gray-200 text-white"
                                     onClick={() => {
                                         const el = document.getElementById('leaderboard-section');
                                         if (el) {
@@ -452,7 +451,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 >
                                     Go to Leaderboard
                                 </Button>
-                                <p className="text-lg font-semibold mt-4">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                <p className="text-lg font-semibold mt-2">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
