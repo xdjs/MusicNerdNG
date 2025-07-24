@@ -20,6 +20,49 @@ type ArtistProfileProps = {
     searchParams: { [key: string]: string | undefined };
 }
 
+/**
+ * Helper function to get artist bio for metadata purposes
+ * Uses cached bio if available, otherwise returns fallback text
+ */
+async function getArtistBioForMetadata(artistId: string): Promise<string> {
+    try {
+        // Short timeout for metadata generation (5 seconds max)
+        const response = await Promise.race([
+            fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/artistBio/${artistId}`),
+            new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Bio fetch timeout')), 5000)
+            )
+        ]);
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.bio || '';
+        }
+    } catch (error) {
+        console.error('Error fetching bio for metadata:', error);
+    }
+    
+    // Return empty string if bio fetch fails
+    return '';
+}
+
+/**
+ * Truncate text to fit meta description limits (160 characters)
+ */
+function truncateForMetaDescription(text: string, maxLength: number = 160): string {
+    if (text.length <= maxLength) return text;
+    
+    // Try to truncate at word boundary
+    const truncated = text.substring(0, maxLength - 3);
+    const lastSpace = truncated.lastIndexOf(' ');
+    
+    if (lastSpace > maxLength * 0.8) {
+        return truncated.substring(0, lastSpace) + '...';
+    }
+    
+    return truncated + '...';
+}
+
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
     const artist = await getArtistById(params.id);
     
@@ -34,9 +77,22 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     const headers = await getSpotifyHeaders();
     const spotifyImg = await getSpotifyImage(artist.spotify ?? "", undefined, headers);
 
+    // Fetch artist bio for meta description
+    const artistBio = await getArtistBioForMetadata(params.id);
+    
+    // Create meta description
+    let description: string;
+    if (artistBio) {
+        // Use bio content, truncated to 160 characters
+        description = truncateForMetaDescription(artistBio);
+    } else {
+        // Fallback to generic description
+        description = `Discover ${artist.name} on Music Nerd - social media links, music, and more.`;
+    }
+
     return {
         title: `${artist.name} - Music Nerd`,
-        description: `Discover ${artist.name} on Music Nerd - social media links, music, and more.`,
+        description,
     };
 }
 

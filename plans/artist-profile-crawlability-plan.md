@@ -44,7 +44,7 @@ Enhance MusicNerdNG artist profile pages to be crawlable by automated tools like
 
 - [x] Create `generateMetadata` async function for artist-specific metadata
 - [x] Fetch artist data and Spotify image server-side
-- [ ] Generate artist bio server-side for meta description
+- [x] Generate artist bio server-side for meta description
 - [ ] Implement Open Graph metadata with artist image and bio
 - [ ] Add Twitter Card metadata for social sharing
 - [ ] Handle edge cases (artist not found, missing bio, missing image)
@@ -52,21 +52,28 @@ Enhance MusicNerdNG artist profile pages to be crawlable by automated tools like
   - [x] Test metadata generation for valid artist
   - [x] Test fallback metadata for artist not found
   - [ ] Test Open Graph image fallback to default
-  - [ ] Test meta description truncation (160 chars)
+  - [x] Test meta description truncation (160 chars)
   - [x] Test special characters in artist names
   - [x] Test empty artist name handling
   - [x] Test artist without Spotify ID
   - [x] Test artist with empty Spotify ID
   - [x] Test Spotify API calls with correct parameters
+  - [x] Test bio fetching for meta description
+  - [x] Test bio truncation at word boundaries
+  - [x] Test fallback when bio fetch fails
+  - [x] Test fallback when bio API returns error
+  - [x] Test fallback when bio is empty
 
 **Implementation Notes:** ✅ **COMPLETED (Partial)**
 - ✅ Use Next.js 13+ App Router `generateMetadata` function
 - ✅ Fetch artist data and Spotify images server-side with proper error handling
 - ✅ Implement proper fallbacks for missing artists and Spotify data
-- ✅ Comprehensive test coverage (6 test cases including edge cases)
-- 🔄 **TODO**: Fetch bio from existing `/api/artistBio/${artistId}` endpoint
-- 🔄 **TODO**: Ensure meta description stays under 160 characters
+- ✅ Fetch bio from existing `/api/artistBio/${artistId}` endpoint with 5s timeout
+- ✅ Ensure meta description stays under 160 characters with smart truncation
+- ✅ Comprehensive test coverage (11 test cases including edge cases and bio functionality)
 - 🔄 **TODO**: Include artist image from Spotify in Open Graph metadata
+- 🔄 **TODO**: Add Twitter Card metadata for social sharing
+- 🔄 **TODO**: Handle remaining edge cases for Open Graph implementation
 
 ### 2. Create Server-Side Bio Component
 **File:** `src/app/artist/[id]/_components/ServerBlurbSection.tsx` (new)

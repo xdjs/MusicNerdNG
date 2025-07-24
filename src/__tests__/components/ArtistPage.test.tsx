@@ -51,6 +51,9 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({
     getUserById: jest.fn().mockResolvedValue({ isWhiteListed: false, isAdmin: false }),
 }));
 
+// Mock global fetch for bio API calls
+global.fetch = jest.fn();
+
 // Mock external API queries
 jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyImage: jest.fn(),
@@ -116,6 +119,7 @@ describe('generateMetadata', () => {
         (getArtistById as jest.Mock).mockReset();
         (getSpotifyHeaders as jest.Mock).mockReset();
         (getSpotifyImage as jest.Mock).mockReset();
+        (global.fetch as jest.Mock).mockReset();
     });
 
     it('returns artist-specific metadata for valid artist', async () => {
@@ -130,6 +134,10 @@ describe('generateMetadata', () => {
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
         (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
         (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: '' })
+        });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
@@ -165,6 +173,10 @@ describe('generateMetadata', () => {
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
         (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
         (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: '' })
+        });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
@@ -185,6 +197,10 @@ describe('generateMetadata', () => {
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
         (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
         (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: '' })
+        });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
@@ -205,6 +221,10 @@ describe('generateMetadata', () => {
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
         (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
         (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: '' })
+        });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
@@ -226,12 +246,133 @@ describe('generateMetadata', () => {
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
         (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
         (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: '' })
+        });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
         expect(metadata.title).toBe('Test Artist - Music Nerd');
         expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
         expect(getSpotifyImage).toHaveBeenCalledWith('', undefined, { headers: {} });
+    });
+
+    it('uses artist bio for meta description when available (short bio)', async () => {
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: 'test-spotify-id',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: 'This is a great artist with amazing music.' })
+        });
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description).toBe('This is a great artist with amazing music.');
+        expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/api/artistBio/test-id');
+    });
+
+    it('truncates long bio for meta description', async () => {
+        const longBio = 'This is a very long artist biography that definitely exceeds the 160 character limit for meta descriptions and should be truncated at an appropriate word boundary to maintain readability while staying within SEO best practices for search engine results.';
+        
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: 'test-spotify-id',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: longBio })
+        });
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description!.length).toBeLessThanOrEqual(160);
+        expect(metadata.description).toMatch(/\.\.\.$/); // Should end with ellipsis
+        expect(metadata.description).toContain('This is a very long artist biography');
+    });
+
+    it('falls back to generic description when bio fetch fails', async () => {
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: 'test-spotify-id',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
+    });
+
+    it('falls back to generic description when bio API returns error', async () => {
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: 'test-spotify-id',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: false,
+            status: 500
+        });
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
+    });
+
+    it('falls back to generic description when bio is empty', async () => {
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: 'test-spotify-id',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+        (global.fetch as jest.Mock).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ bio: '' })
+        });
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
     });
 });
 
