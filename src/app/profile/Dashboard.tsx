@@ -423,8 +423,35 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
-                                {/* User Rank */}
-                                <p className="text-lg font-semibold">User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></p>
+                                {/* User Rank – clickable to jump to leaderboard */}
+                                <p
+                                    role="button"
+                                    tabIndex={0}
+                                    title="Jump to my leaderboard position"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        const el = document.getElementById('leaderboard-current-user');
+                                        if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }
+                                    }}
+                                    className="cursor-pointer text-lg font-semibold underline hover:text-blue-700"
+                                >
+                                    User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
+                                </p>
+                                <Button
+                                    size="sm"
+                                    variant="link"
+                                    className="text-blue-600 underline hover:text-blue-800"
+                                    onClick={() => {
+                                        const el = document.getElementById('leaderboard-section');
+                                        if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }
+                                    }}
+                                >
+                                    Go to Leaderboard
+                                </Button>
                                 <p className="text-lg font-semibold mt-4">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
@@ -454,7 +481,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
             {/* Leaderboard Section */}
             {showLeaderboard && (
-            <div className="space-y-4">
+            <div id="leaderboard-section" className="space-y-4">
                 <Leaderboard highlightIdentifier={user.wallet} onRangeChange={handleLeaderboardRangeChange} />
             </div>
             )}
