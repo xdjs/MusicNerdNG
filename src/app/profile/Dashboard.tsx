@@ -195,9 +195,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         setSelectedRange(range);
     };
 
-    // Fetch recent edited UGC only for the profile layout (not the compact leaderboard layout)
+    // Fetch recent edited UGC only for the full profile layout (not the compact leaderboard layout)
     useEffect(() => {
-        if (isCompactLayout) {
+        if (!isCompactLayout) {
             fetch('/api/recentEdited')
                 .then(res => res.json())
                 .then((data: RecentItem[]) => setRecentUGC(data))
@@ -423,9 +423,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
-                                {/* Rank */}
-                                <p className="text-lg font-semibold">Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></p>
-                                <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
+                                {/* User Rank */}
+                                <p className="text-lg font-semibold">User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></p>
+                                <p className="text-lg font-semibold mt-4">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
