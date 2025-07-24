@@ -30,6 +30,15 @@ export default function UgcEntriesSection() {
         const res = await fetch("/api/userUgcEntries");
         if (!res.ok) throw new Error("Request failed");
         let data = (await res.json()) as UgcEntryRow[];
+
+        // Sort by createdAt DESC (newest first)
+        data.sort((a, b) => {
+          const ta = new Date(a.createdAt || '').getTime();
+          const tb = new Date(b.createdAt || '').getTime();
+          return tb - ta;
+        });
+
+        // Replace duplicate consecutive artist names with blank string
         data = data.map((entry, idx, arr) => {
           if (idx > 0 && entry.artistName === arr[idx - 1].artistName) {
             return { ...entry, artistName: "" };

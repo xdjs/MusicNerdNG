@@ -386,11 +386,22 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username row no edit button inline */}
                     <div className="flex flex-col items-center gap-2 pb-4 w-full text-center">
                         {!isEditingUsername && (
-                            <p className="text-lg font-semibold">
-                                {displayName}
-                            </p>
+                            <div className="flex items-center justify-center gap-2">
+                                <p className="text-lg font-semibold">
+                                    {displayName}
+                                </p>
+                                {allowEditUsername && !isGuestUser && (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0 hover:bg-gray-200"
+                                        onClick={() => setIsEditingUsername(true)}
+                                    >
+                                        <Pencil size={14} />
+                                    </Button>
+                                )}
+                            </div>
                         )}
-
                         {allowEditUsername && (
                             !isGuestUser && isEditingUsername ? (
                                 <div className="flex flex-col items-center gap-2 w-full">
@@ -407,17 +418,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </div>
                                 </div>
                             ) : (
-                                <div className="pt-2">
-                                    <Button
-                                        size="sm"
-                                        className="bg-gray-200 text-black hover:bg-gray-300"
-                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
-                                        </div>
-                                    </Button>
-                                </div>
+                                <></>
                             )
                         )}
                         {/* Fallback login button for views where username editing is not allowed */}
