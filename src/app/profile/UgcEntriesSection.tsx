@@ -90,7 +90,7 @@ export default function UgcEntriesSection() {
       {
         accessorKey: "siteName",
         header: () => (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2 w-full">
             <span>Entry Type</span>
             <Select value={entryTypeFilter} onValueChange={setEntryTypeFilter}>
               <SelectTrigger className="h-6 w-28 text-xs px-2 py-0.5">
