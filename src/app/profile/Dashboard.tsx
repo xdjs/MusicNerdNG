@@ -460,6 +460,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 >
                                     Go to Leaderboard
                                 </Link>
+                                <br />
                                 <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
