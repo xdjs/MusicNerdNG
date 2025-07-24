@@ -27,10 +27,9 @@ export default function AuthToast() {
     // other state (after the initial mount), with a valid user object.
     if (prevStatus !== "authenticated" && status === "authenticated" && session?.user) {
       // Check if the user has any recently-approved UGC (last 24 h).
-      const today = new Date().toISOString().split("T")[0];
-      let approvedToastDismissedToday = false;
+      let approvedToastDismissedThisSession = false;
       if (typeof window !== "undefined") {
-        approvedToastDismissedToday = localStorage.getItem("ugcToastDismissedDate") === today;
+        approvedToastDismissedThisSession = sessionStorage.getItem("ugcToastDismissed") === "1";
       }
       (async () => {
         try {
@@ -46,7 +45,7 @@ export default function AuthToast() {
                 return now - ts <= oneDayMs;
               });
 
-              if (hasRecent && !approvedToastDismissedToday) {
+              if (hasRecent && !approvedToastDismissedThisSession) {
                 toast({
                   title: "Welcome!",
                   description: "Your recently added UGC has been approved.",
@@ -77,6 +76,10 @@ export default function AuthToast() {
         description: "You have been signed out successfully",
         duration: 3000,
       });
+      // Reset dismissal flag so the toast can appear on next login
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("ugcToastDismissed");
+      }
     }
 
     prevStatusRef.current = status;
