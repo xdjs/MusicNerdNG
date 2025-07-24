@@ -30,6 +30,10 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
         };
     }
 
+    // Fetch Spotify image for use in Open Graph meta tags
+    const headers = await getSpotifyHeaders();
+    const spotifyImg = await getSpotifyImage(artist.spotify ?? "", undefined, headers);
+
     return {
         title: `${artist.name} - Music Nerd`,
         description: `Discover ${artist.name} on Music Nerd - social media links, music, and more.`,

@@ -114,6 +114,8 @@ describe('generateMetadata', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (getArtistById as jest.Mock).mockReset();
+        (getSpotifyHeaders as jest.Mock).mockReset();
+        (getSpotifyImage as jest.Mock).mockReset();
     });
 
     it('returns artist-specific metadata for valid artist', async () => {
@@ -126,12 +128,16 @@ describe('generateMetadata', () => {
         };
 
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
         expect(metadata.title).toBe('Test Artist - Music Nerd');
         expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
         expect(getArtistById).toHaveBeenCalledWith('test-id');
+        expect(getSpotifyHeaders).toHaveBeenCalled();
+        expect(getSpotifyImage).toHaveBeenCalledWith('test-spotify-id', undefined, { headers: {} });
     });
 
     it('returns fallback metadata when artist is not found', async () => {
@@ -142,6 +148,9 @@ describe('generateMetadata', () => {
         expect(metadata.title).toBe('Artist Not Found - Music Nerd');
         expect(metadata.description).toBe('The requested artist could not be found on Music Nerd.');
         expect(getArtistById).toHaveBeenCalledWith('non-existent-id');
+        // Should not call Spotify APIs when artist is not found
+        expect(getSpotifyHeaders).not.toHaveBeenCalled();
+        expect(getSpotifyImage).not.toHaveBeenCalled();
     });
 
     it('handles special characters in artist names', async () => {
@@ -154,11 +163,14 @@ describe('generateMetadata', () => {
         };
 
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
         expect(metadata.title).toBe('Artist & The Band\'s "Greatest" Hits! - Music Nerd');
         expect(metadata.description).toBe('Discover Artist & The Band\'s "Greatest" Hits! on Music Nerd - social media links, music, and more.');
+        expect(getSpotifyImage).toHaveBeenCalledWith('test-spotify-id', undefined, { headers: {} });
     });
 
     it('handles empty artist name gracefully', async () => {
@@ -171,11 +183,55 @@ describe('generateMetadata', () => {
         };
 
         (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
 
         const metadata = await generateMetadata({ params: { id: 'test-id' } });
 
         expect(metadata.title).toBe(' - Music Nerd');
         expect(metadata.description).toBe('Discover  on Music Nerd - social media links, music, and more.');
+        expect(getSpotifyImage).toHaveBeenCalledWith('test-spotify-id', undefined, { headers: {} });
+    });
+
+    it('handles artist without Spotify ID', async () => {
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
+        expect(getSpotifyHeaders).toHaveBeenCalled();
+        expect(getSpotifyImage).toHaveBeenCalledWith('', undefined, { headers: {} });
+    });
+
+    it('handles artist with empty Spotify ID', async () => {
+        const mockArtist = {
+            id: 'test-id',
+            name: 'Test Artist',
+            spotify: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
+        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+        (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
+
+        const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+        expect(metadata.title).toBe('Test Artist - Music Nerd');
+        expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
+        expect(getSpotifyImage).toHaveBeenCalledWith('', undefined, { headers: {} });
     });
 });
 
