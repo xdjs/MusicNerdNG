@@ -50,12 +50,21 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     // Fetch leaderboard rank (only in compact layout)
     const [totalEntries, setTotalEntries] = useState<number | null>(null);
 
+    // Fetch the user's rank on the leaderboard. In the compact leaderboard view we
+    // respect the currently-selected date range. In the full profile view we
+    // always fetch the all-time leaderboard so the stat matches the "UGC Total"
+    // values directly above it.
     useEffect(() => {
-        if (!isCompactLayout) return;
         async function fetchRank() {
             try {
-                const dates = getRangeDates(selectedRange);
-                const url = dates ? `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}` : '/api/leaderboard';
+                let url = '/api/leaderboard';
+                if (isCompactLayout) {
+                    const dates = getRangeDates(selectedRange);
+                    if (dates) {
+                        url = `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}`;
+                    }
+                }
+
                 const resp = await fetch(url);
                 if (!resp.ok) return;
                 const data = await resp.json();
@@ -66,6 +75,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 console.error('Error fetching rank', e);
             }
         }
+
         fetchRank();
     }, [selectedRange, user.wallet, isCompactLayout]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
@@ -413,6 +423,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
+                                {/* Rank */}
+                                <p className="text-lg font-semibold">Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></p>
                                 <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
