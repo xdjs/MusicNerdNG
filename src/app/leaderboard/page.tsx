@@ -4,6 +4,7 @@ import Leaderboard from "@/app/profile/Leaderboard";
 import LeaderboardAutoRefresh from "./LeaderboardAutoRefresh";
 import { notFound } from "next/navigation";
 import { getUserById } from "@/server/utils/queries/userQueries";
+import MarkUGCToastSeen from "../_components/MarkUGCToastSeen";
 
 export default async function Page() {
   const session = await getServerAuthSession();
@@ -22,12 +23,15 @@ export default async function Page() {
       legacyId: null,
     } as const;
     return (
-        <main className="px-5 sm:px-10 py-10">
-            {/* Compact dashboard bar prompting guest users to log in */}
-            <Dashboard user={mockUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
-            <LeaderboardAutoRefresh />
-            <Leaderboard />
-        </main>
+        <>
+            <MarkUGCToastSeen />
+            <main className="px-5 sm:px-10 py-10">
+                {/* Compact dashboard bar prompting guest users to log in */}
+                <Dashboard user={mockUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
+                <LeaderboardAutoRefresh />
+                <Leaderboard />
+            </main>
+        </>
     ); // show leaderboard only for guest
   }
 
@@ -44,16 +48,24 @@ export default async function Page() {
       legacyId: null,
     } as const;
     return (
-        <main className="px-5 sm:px-10 py-10">
-            {/* Compact dashboard bar prompting guest users to log in */}
-            <Dashboard user={guestUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
-            <LeaderboardAutoRefresh />
-            <Leaderboard />
-        </main>
+        <>
+            <MarkUGCToastSeen />
+            <main className="px-5 sm:px-10 py-10">
+                {/* Compact dashboard bar prompting guest users to log in */}
+                <Dashboard user={guestUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
+                <LeaderboardAutoRefresh />
+                <Leaderboard />
+            </main>
+        </>
     ); // leaderboard for guest
   }
 
   const user = await getUserById(session.user.id);
   if (!user) return notFound();
-  return <Dashboard user={user} allowEditUsername={false} showDateRange={false} hideLogin={true} showStatus={false} />;
+  return (
+    <>
+      <MarkUGCToastSeen />
+      <Dashboard user={user} allowEditUsername={false} showDateRange={false} hideLogin={true} showStatus={false} />
+    </>
+  );
 } 

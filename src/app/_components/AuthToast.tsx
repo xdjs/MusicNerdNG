@@ -26,20 +26,34 @@ export default function AuthToast() {
     // Show a welcome toast only when transitioning into "authenticated" from any
     // other state (after the initial mount), with a valid user object.
     if (prevStatus !== "authenticated" && status === "authenticated" && session?.user) {
-      // Check if the user has any recently-approved UGC. If so, display a special
-      // approval message; otherwise fall back to the default welcome text.
+      // Check if the user has any recently-approved UGC (last 24 h).
+      const today = new Date().toISOString().split("T")[0];
+      let approvedToastDismissedToday = false;
+      if (typeof window !== "undefined") {
+        approvedToastDismissedToday = localStorage.getItem("ugcToastDismissedDate") === today;
+      }
       (async () => {
         try {
           const resp = await fetch("/api/recentEdited");
           if (resp.ok) {
             const data = await resp.json();
             if (Array.isArray(data) && data.length > 0) {
-              toast({
-                title: "Welcome!",
-                description: "Your recently added UGC has been approved.",
-                duration: 5000,
+              const oneDayMs = 24 * 60 * 60 * 1000;
+              const now = Date.now();
+              const hasRecent = data.some((row: any) => {
+                if (!row?.updatedAt) return false;
+                const ts = new Date(row.updatedAt).getTime();
+                return now - ts <= oneDayMs;
               });
-              return;
+
+              if (hasRecent && !approvedToastDismissedToday) {
+                toast({
+                  title: "Welcome!",
+                  description: "Your recently added UGC has been approved.",
+                  duration: 5000,
+                });
+                return;
+              }
             }
           }
         } catch (_) {
