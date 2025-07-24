@@ -9,6 +9,7 @@ import { getUgcStatsInRangeAction as getUgcStatsInRange } from "@/app/actions/se
 import { User } from "@/server/db/DbTypes";
 import UgcStatsWrapper from "./Wrapper";
 import Leaderboard from "./Leaderboard";
+import UgcEntriesSection from "./UgcEntriesSection";
 import { Pencil, ArrowDownCircle } from "lucide-react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
@@ -446,6 +447,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 <Leaderboard highlightIdentifier={user.wallet} onRangeChange={handleLeaderboardRangeChange} />
             </div>
             )}
+
+            {/* Your UGC Entries Table */}
+            <UgcEntriesSection />
         </section>
     )
 }
