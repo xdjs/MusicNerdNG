@@ -26,11 +26,33 @@ export default function AuthToast() {
     // Show a welcome toast only when transitioning into "authenticated" from any
     // other state (after the initial mount), with a valid user object.
     if (prevStatus !== "authenticated" && status === "authenticated" && session?.user) {
-      toast({
-        title: "Welcome!",
-        description: session.user.name ? "Welcome back!" : "You are now signed in",
-        duration: 3000,
-      });
+      // Check if the user has any recently-approved UGC. If so, display a special
+      // approval message; otherwise fall back to the default welcome text.
+      (async () => {
+        try {
+          const resp = await fetch("/api/recentEdited");
+          if (resp.ok) {
+            const data = await resp.json();
+            if (Array.isArray(data) && data.length > 0) {
+              toast({
+                title: "Welcome!",
+                description: "Your recently added UGC has been approved.",
+                duration: 5000,
+              });
+              return;
+            }
+          }
+        } catch (_) {
+          // Ignore errors – we'll fall back to the generic toast
+        }
+
+        // Default welcome toast (no newly-approved UGC or fetch error)
+        toast({
+          title: "Welcome!",
+          description: session.user.name ? "Welcome back!" : "You are now signed in",
+          duration: 3000,
+        });
+      })();
     }
 
     // Show a sign-out toast only when transitioning from "authenticated" to
