@@ -190,6 +190,33 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         fetchAllTimeStats();
     }, [ugcStatsUserWallet]);
 
+    // Fetch stats for the currently selected leaderboard range (compact layout only)
+    useEffect(() => {
+        if (!isCompactLayout) return;
+
+        async function fetchRangeStats() {
+            try {
+                let dateRange: DateRange;
+                const dates = getRangeDates(selectedRange);
+                if (dates) {
+                    dateRange = { from: dates.from, to: dates.to } as DateRange;
+                } else {
+                    // "all" range – use epoch to now
+                    dateRange = { from: new Date(0), to: new Date() } as DateRange;
+                }
+
+                const result = await getUgcStatsInRange(dateRange, ugcStatsUserWallet);
+                if (result) {
+                    setUgcStats(result);
+                }
+            } catch (e) {
+                console.error('[Dashboard] Error fetching UGC stats for range', e);
+            }
+        }
+
+        fetchRangeStats();
+    }, [selectedRange, ugcStatsUserWallet, isCompactLayout]);
+
     // Callback from Leaderboard to keep range in sync
     const handleLeaderboardRangeChange = (range: RangeKey) => {
         setSelectedRange(range);
@@ -423,20 +450,8 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
-                                {/* User Rank – clickable to jump to leaderboard */}
-                                <p
-                                    role="button"
-                                    tabIndex={0}
-                                    title="Jump to my leaderboard position"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        const el = document.getElementById('leaderboard-current-user');
-                                        if (el) {
-                                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                        }
-                                    }}
-                                    className="cursor-pointer text-lg font-semibold underline hover:text-blue-700"
-                                >
+                                {/* User Rank */}
+                                <p className="text-lg font-semibold">
                                     User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
                                 </p>
                                 <Button
