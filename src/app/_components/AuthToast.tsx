@@ -48,7 +48,11 @@ export default function AuthToast() {
               if (hasRecent && !approvedToastDismissedThisSession) {
                 toast({
                   title: "Welcome!",
-                  description: "Your recently added UGC has been approved.",
+                  description: (
+                    <span className="text-green-600 font-semibold">
+                      Your recently added UGC has been approved.
+                    </span>
+                  ),
                   duration: 5000,
                 });
                 return;
