@@ -23,11 +23,13 @@ export default function UgcEntriesSection() {
   const [entryTypes, setEntryTypes] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch("/api/userUgcEntries")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to load");
+    let attempts = 0;
+    const fetchEntries = async () => {
+      try {
+        attempts++;
+        const res = await fetch("/api/userUgcEntries");
+        if (!res.ok) throw new Error("Request failed");
         let data = (await res.json()) as UgcEntryRow[];
-        // Replace duplicate consecutive artist names with blank string
         data = data.map((entry, idx, arr) => {
           if (idx > 0 && entry.artistName === arr[idx - 1].artistName) {
             return { ...entry, artistName: "" };
@@ -38,12 +40,17 @@ export default function UgcEntriesSection() {
         const types = Array.from(new Set(data.map((e) => e.siteName).filter(Boolean))) as string[];
         setEntryTypes(types);
         setLoading(false);
-      })
-      .catch((e) => {
-        setError("Error loading entries");
-        setLoading(false);
-        console.error(e);
-      });
+      } catch (e) {
+        if (attempts < 3) {
+          setTimeout(fetchEntries, 1000);
+        } else {
+          setError("Error loading entries");
+          setLoading(false);
+          console.error(e);
+        }
+      }
+    };
+    fetchEntries();
   }, []);
 
   const columns = useMemo<ColumnDef<UgcEntryRow>[]>(() => {
@@ -136,8 +143,18 @@ export default function UgcEntriesSection() {
     ];
   }, [entryTypeFilter, entryTypes]);
 
-  if (loading) return <p>Loading your UGC entries...</p>;
-  if (error) return <p className="text-red-500">{error}</p>;
+  if (loading)
+    return (
+      <div className="flex justify-center py-4">
+        <p>Loading your artist data entries...</p>
+      </div>
+    );
+  if (error)
+    return (
+      <div className="flex justify-center py-4">
+        <p className="text-red-500">{error}</p>
+      </div>
+    );
 
   const filtered = entries.filter((e) => entryTypeFilter === "All" || e.siteName === entryTypeFilter);
 
