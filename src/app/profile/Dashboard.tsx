@@ -396,7 +396,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                         className="bg-gray-200 text-black hover:bg-gray-300"
                                         onClick={() => setIsEditingUsername(true)}
                                     >
-                                        <Pencil size={14} />
+                                        <Pencil size={28} />
                                     </Button>
                                 )}
                             </div>

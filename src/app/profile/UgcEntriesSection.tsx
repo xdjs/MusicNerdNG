@@ -37,14 +37,6 @@ export default function UgcEntriesSection() {
           const tb = new Date(b.createdAt || '').getTime();
           return tb - ta;
         });
-
-        // Replace duplicate consecutive artist names with blank string
-        data = data.map((entry, idx, arr) => {
-          if (idx > 0 && entry.artistName === arr[idx - 1].artistName) {
-            return { ...entry, artistName: "" };
-          }
-          return entry;
-        });
         setEntries(data);
         const types = Array.from(new Set(data.map((e) => e.siteName).filter(Boolean))) as string[];
         setEntryTypes(types);
