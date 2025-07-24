@@ -51,12 +51,21 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
     // Fetch leaderboard rank (only in compact layout)
     const [totalEntries, setTotalEntries] = useState<number | null>(null);
 
+    // Fetch the user's rank on the leaderboard. In the compact leaderboard view we
+    // respect the currently-selected date range. In the full profile view we
+    // always fetch the all-time leaderboard so the stat matches the "UGC Total"
+    // values directly above it.
     useEffect(() => {
-        if (!isCompactLayout) return;
         async function fetchRank() {
             try {
-                const dates = getRangeDates(selectedRange);
-                const url = dates ? `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}` : '/api/leaderboard';
+                let url = '/api/leaderboard';
+                if (isCompactLayout) {
+                    const dates = getRangeDates(selectedRange);
+                    if (dates) {
+                        url = `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}`;
+                    }
+                }
+
                 const resp = await fetch(url);
                 if (!resp.ok) return;
                 const data = await resp.json();
@@ -67,6 +76,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                 console.error('Error fetching rank', e);
             }
         }
+
         fetchRank();
     }, [selectedRange, user.wallet, isCompactLayout]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
@@ -181,14 +191,41 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         fetchAllTimeStats();
     }, [ugcStatsUserWallet]);
 
+    // Fetch stats for the currently selected leaderboard range (compact layout only)
+    useEffect(() => {
+        if (!isCompactLayout) return;
+
+        async function fetchRangeStats() {
+            try {
+                let dateRange: DateRange;
+                const dates = getRangeDates(selectedRange);
+                if (dates) {
+                    dateRange = { from: dates.from, to: dates.to } as DateRange;
+                } else {
+                    // "all" range – use epoch to now
+                    dateRange = { from: new Date(0), to: new Date() } as DateRange;
+                }
+
+                const result = await getUgcStatsInRange(dateRange, ugcStatsUserWallet);
+                if (result) {
+                    setUgcStats(result);
+                }
+            } catch (e) {
+                console.error('[Dashboard] Error fetching UGC stats for range', e);
+            }
+        }
+
+        fetchRangeStats();
+    }, [selectedRange, ugcStatsUserWallet, isCompactLayout]);
+
     // Callback from Leaderboard to keep range in sync
     const handleLeaderboardRangeChange = (range: RangeKey) => {
         setSelectedRange(range);
     };
 
-    // Fetch recent edited UGC only for the profile layout (not the compact leaderboard layout)
+    // Fetch recent edited UGC only for the full profile layout (not the compact leaderboard layout)
     useEffect(() => {
-        if (isCompactLayout) {
+        if (!isCompactLayout) {
             fetch('/api/recentEdited')
                 .then(res => res.json())
                 .then((data: RecentItem[]) => setRecentUGC(data))
@@ -373,7 +410,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 <div className="pt-2">
                                     <Button
                                         size="sm"
-                                        className="bg-pastypink hover:bg-gray-200 text-white"
+                                        className="bg-gray-200 text-black hover:bg-gray-300"
                                         onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
                                     >
                                         <div className="flex items-center gap-1">
@@ -414,13 +451,23 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
                             <div className="space-y-1 text-center md:text-left mt-4">
+                                {/* User Rank */}
+                                <p className="text-lg font-semibold">
+                                    User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
+                                </p>
+                                <Link
+                                    href="/leaderboard"
+                                    className="text-sm text-blue-600 underline hover:text-blue-800 mt-4 mb-8 inline-block"
+                                >
+                                    Go to Leaderboard
+                                </Link>
                                 <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
                                 <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
                             </div>
                         </div>
 
                         {/* Right column - recently edited */}
-                        <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
+                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
                                 <ul className="space-y-3">
@@ -443,7 +490,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
             {/* Leaderboard Section */}
             {showLeaderboard && (
-            <div className="space-y-4">
+            <div id="leaderboard-section" className="space-y-4">
                 <Leaderboard highlightIdentifier={user.wallet} onRangeChange={handleLeaderboardRangeChange} />
             </div>
             )}
