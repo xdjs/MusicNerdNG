@@ -56,7 +56,7 @@ export default function UgcEntriesDataTable<TData, TValue>({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="whitespace-nowrap px-1 py-0.5 text-center">
+                <TableHead key={header.id} className="whitespace-nowrap px-1 py-0.5 text-center w-1/6">
                   {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                 </TableHead>
               ))}
@@ -68,7 +68,7 @@ export default function UgcEntriesDataTable<TData, TValue>({
             table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="whitespace-nowrap px-1 py-0.5 text-center">
+                  <TableCell key={cell.id} className="whitespace-nowrap px-1 py-0.5 text-center w-1/6">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
