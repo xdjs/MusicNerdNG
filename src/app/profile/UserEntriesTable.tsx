@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Search as SearchIcon } from "lucide-react";
 import { ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
@@ -53,9 +54,9 @@ const formatTime = (iso: string | null) => {
 
 export default function UserEntriesTable() {
   const [entries, setEntries] = useState<UserEntry[]>([]);
+  const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [timeSort, setTimeSort] = useState<"asc" | "desc">("desc");
   const [artistQuery, setArtistQuery] = useState("");
 
   useEffect(() => {
@@ -81,22 +82,14 @@ export default function UserEntriesTable() {
       const q = artistQuery.toLowerCase();
       arr = arr.filter((e) => (e.artistName ?? "").toLowerCase().includes(q));
     }
-    // sort by date, then time within same date
+    // sort by full timestamp
     arr.sort((a, b) => {
-      const dA = parseUTC(a.createdAt ?? "");
-      const dB = parseUTC(b.createdAt ?? "");
-      // compare date (year,month,day)
-      const dateOnlyA = new Date(dA.getFullYear(), dA.getMonth(), dA.getDate()).getTime();
-      const dateOnlyB = new Date(dB.getFullYear(), dB.getMonth(), dB.getDate()).getTime();
-
-      if (dateOnlyA !== dateOnlyB) {
-        return sortOrder === "asc" ? dateOnlyA - dateOnlyB : dateOnlyB - dateOnlyA;
-      }
-      // same date – compare time
-      return timeSort === "asc" ? dA.getTime() - dB.getTime() : dB.getTime() - dA.getTime();
+      const tA = parseUTC(a.createdAt ?? "").getTime();
+      const tB = parseUTC(b.createdAt ?? "").getTime();
+      return sortOrder === "asc" ? tA - tB : tB - tA;
     });
     return arr;
-  }, [entries, filter, sortOrder, timeSort, artistQuery]);
+  }, [entries, filter, sortOrder, artistQuery]);
 
   return (
     <Card className="max-w-3xl mx-auto mt-10">
@@ -119,26 +112,19 @@ export default function UserEntriesTable() {
                   />
                 </div>
               </TableHead>
-              <TableHead
-                className="text-center cursor-pointer select-none py-2 px-3"
-                onClick={() => setTimeSort((prev) => (prev === "desc" ? "asc" : "desc"))}
-              >
-                <div className="flex items-center justify-center gap-1">
-                  <span>Time</span>
-                  <ArrowUpDown
-                    className={`w-3 h-3 transition-transform ${timeSort === "desc" ? "rotate-180" : ""}`}
-                  />
-                </div>
-              </TableHead>
+              <TableHead className="text-center py-2 px-3">Time</TableHead>
               <TableHead className="text-center py-2 px-3">
                 <div className="flex items-center justify-center gap-2">
                   <span>Artist</span>
-                  <Input
-                    value={artistQuery}
-                    onChange={(e) => setArtistQuery(e.target.value)}
-                    placeholder="Search"
-                    className="h-6 px-2 py-1 text-xs w-24 bg-white border border-gray-300"
-                  />
+                  <div className="relative flex items-center">
+                    <Input
+                      value={artistQuery}
+                      onChange={(e) => setArtistQuery(e.target.value)}
+                      placeholder="Search"
+                      className="h-6 pr-6 pl-2 py-1 text-xs w-24 bg-white border border-gray-300"
+                    />
+                    <SearchIcon className="absolute right-1.5 h-3.5 w-3.5 text-gray-500" strokeWidth={2} />
+                  </div>
                 </div>
               </TableHead>
               <TableHead className="text-center py-2 px-3">
@@ -166,7 +152,9 @@ export default function UserEntriesTable() {
             {processed.length ? (
               (() => {
                 let lastArtist: string | null = null;
-                return processed.map((entry) => {
+                const pageStart = (page - 1) * PER_PAGE;
+                const pageEnd = pageStart + PER_PAGE;
+                return processed.slice(pageStart, pageEnd).map((entry) => {
                   const displayArtist = entry.artistName ?? lastArtist ?? "—";
                   if (entry.artistName) lastArtist = entry.artistName;
                   return (
@@ -207,7 +195,27 @@ export default function UserEntriesTable() {
         </Table>
         </div>
       </CardContent>
-      {/* Pagination removed as all entries loaded */}
+      {processed.length > PER_PAGE && (
+        <div className="flex justify-end items-center gap-4 p-6 pt-0">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Prev
+          </Button>
+          <span className="text-sm">Page {page} of {Math.ceil(processed.length / PER_PAGE)}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= Math.ceil(processed.length / PER_PAGE)}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </Card>
   );
 } 
