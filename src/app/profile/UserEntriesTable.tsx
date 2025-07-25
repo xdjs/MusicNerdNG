@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
@@ -30,15 +31,20 @@ type ApiResponse = {
 
 const PER_PAGE = 10;
 
+const parseUTC = (s: string): Date => {
+  // If string already has timezone info (Z or +/-), keep as is; else assume UTC by appending Z
+  return new Date(/Z|[+-]\d{2}:?\d{2}$/.test(s) ? s : `${s}Z`);
+};
+
 const formatDate = (iso: string | null) => {
   if (!iso) return "";
-  const date = new Date(iso);
+  const date = parseUTC(iso);
   return date.toLocaleDateString();
 };
 
 const formatTime = (iso: string | null) => {
   if (!iso) return "";
-  const date = new Date(iso);
+  const date = parseUTC(iso);
   return date
     .toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })
     .replace(/\s([AP]M)$/i, "\u00A0$1");
@@ -49,6 +55,7 @@ export default function UserEntriesTable() {
   const [page, setPage] = useState(1);
   const [pageCount, setPageCount] = useState(0);
   const [filter, setFilter] = useState<string>("all");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     async function fetchEntries() {
@@ -65,10 +72,18 @@ export default function UserEntriesTable() {
     fetchEntries();
   }, [page]);
 
-  const filtered = useMemo(() => {
-    if (filter === "all") return entries;
-    return entries.filter((e) => e.siteName === filter);
-  }, [entries, filter]);
+  const processed = useMemo(() => {
+    let arr = [...entries];
+    // filter
+    if (filter !== "all") arr = arr.filter((e) => e.siteName === filter);
+    // sort by date
+    arr.sort((a, b) => {
+      const tA = new Date(a.createdAt ?? "").getTime();
+      const tB = new Date(b.createdAt ?? "").getTime();
+      return sortOrder === "asc" ? tA - tB : tB - tA;
+    });
+    return arr;
+  }, [entries, filter, sortOrder]);
 
   return (
     <Card className="max-w-3xl mx-auto mt-10">
@@ -80,9 +95,19 @@ export default function UserEntriesTable() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead>Artist</TableHead>
+              <TableHead
+                className="text-center cursor-pointer select-none"
+                onClick={() => setSortOrder((prev) => (prev === "desc" ? "asc" : "desc"))}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  <span>Date</span>
+                  <ArrowUpDown
+                    className={`w-3 h-3 transition-transform ${sortOrder === "desc" ? "rotate-180" : ""}`}
+                  />
+                </div>
+              </TableHead>
+              <TableHead className="text-center">Time</TableHead>
+              <TableHead className="text-center">Artist</TableHead>
               <TableHead className="text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span>Entry Type</span>
@@ -100,15 +125,15 @@ export default function UserEntriesTable() {
                   </select>
                 </div>
               </TableHead>
-              <TableHead>Site Link</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="text-center">Site Link</TableHead>
+              <TableHead className="text-center">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length ? (
+            {processed.length ? (
               (() => {
                 let lastArtist: string | null = null;
-                return filtered.map((entry) => {
+                return processed.map((entry) => {
                   const displayArtist = entry.artistName ?? lastArtist ?? "—";
                   if (entry.artistName) lastArtist = entry.artistName;
                   return (
