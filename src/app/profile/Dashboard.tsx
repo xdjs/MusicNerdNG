@@ -459,13 +459,13 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             <Button
                                 asChild
                                 variant="outline"
-                                className="py-4 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start"
+                                className="py-4 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start w-64"
                             >
                                 <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
                                     {/* User Rank */}
-                                    <div className="flex text-lg"><span className="font-semibold w-32">User Rank:</span><span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></div>
-                                    <div className="flex text-lg"><span className="font-semibold w-32">UGC Total:</span><span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></div>
-                                    <div className="flex text-lg"><span className="font-semibold w-32">Artists Total:</span><span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">User Rank:</span><span className="font-normal text-right flex-1 truncate">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">UGC Total:</span><span className="font-normal text-right flex-1 truncate">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">Artists Total:</span><span className="font-normal text-right flex-1 truncate">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></div>
                                 </Link>
                             </Button>
                             </div>
