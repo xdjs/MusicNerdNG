@@ -74,20 +74,6 @@ export default function UserEntriesTable() {
     <Card className="max-w-3xl mx-auto mt-10">
       <CardHeader className="text-center">
         <CardTitle className="mb-5">Your Artist Data Entries</CardTitle>
-        <div className="flex justify-center">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="border border-gray-300 rounded-md p-1 text-sm"
-          >
-            <option value="all">All</option>
-            {Array.from(new Set(entries.map((e) => e.siteName).filter(Boolean))).map((site) => (
-              <option key={site as string} value={site as string}>
-                {site as string}
-              </option>
-            ))}
-          </select>
-        </div>
       </CardHeader>
       <CardContent className="p-0">
         <div className="rounded-md border overflow-x-auto">
@@ -97,7 +83,23 @@ export default function UserEntriesTable() {
               <TableHead>Date</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Artist</TableHead>
-              <TableHead>Entry Type</TableHead>
+              <TableHead className="text-center">
+                <div className="flex flex-col items-center">
+                  <span>Entry Type</span>
+                  <select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    className="mt-1 border border-gray-300 rounded-md p-1 text-xs"
+                  >
+                    <option value="all">All</option>
+                    {Array.from(new Set(entries.map((e) => e.siteName).filter(Boolean))).map((site) => (
+                      <option key={site as string} value={site as string}>
+                        {site as string}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </TableHead>
               <TableHead>Site Link</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
