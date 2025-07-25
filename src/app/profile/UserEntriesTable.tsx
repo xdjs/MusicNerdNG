@@ -84,12 +84,12 @@ export default function UserEntriesTable() {
               <TableHead>Time</TableHead>
               <TableHead>Artist</TableHead>
               <TableHead className="text-center">
-                <div className="flex flex-col items-center">
+                <div className="flex items-center justify-center gap-2">
                   <span>Entry Type</span>
                   <select
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    className="mt-1 border border-gray-300 rounded-md p-1 text-xs"
+                    className="border border-gray-300 rounded-md p-1 text-xs"
                   >
                     <option value="all">All</option>
                     {Array.from(new Set(entries.map((e) => e.siteName).filter(Boolean))).map((site) => (
