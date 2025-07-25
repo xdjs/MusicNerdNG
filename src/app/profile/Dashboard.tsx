@@ -470,7 +470,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                         <div className="md:w-1/2 space-y-4 mt-8 md:mt-0 text-left">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
-                                <ul className="space-y-3 flex flex-col items-center">
+                                <ul className="space-y-3">
                                     {recentUGC.map((item) => (
                                         <li key={item.ugcId}>
                                             <Link href={`/artist/${item.artistId ?? ''}`} className="flex items-center gap-3 hover:underline">
