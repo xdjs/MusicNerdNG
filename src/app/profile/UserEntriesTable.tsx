@@ -100,7 +100,7 @@ export default function UserEntriesTable() {
           <TableHeader>
             <TableRow>
               <TableHead
-                className="text-center cursor-pointer select-none"
+                className="text-center cursor-pointer select-none py-2 px-3"
                 onClick={() => setSortOrder((prev) => (prev === "desc" ? "asc" : "desc"))}
               >
                 <div className="flex items-center justify-center gap-1">
@@ -110,19 +110,19 @@ export default function UserEntriesTable() {
                   />
                 </div>
               </TableHead>
-              <TableHead className="text-center">Time</TableHead>
-              <TableHead className="text-center">
+              <TableHead className="text-center py-2 px-3">Time</TableHead>
+              <TableHead className="text-center py-2 px-3">
                 <div className="flex items-center justify-center gap-2">
                   <span>Artist</span>
                   <Input
                     value={artistQuery}
                     onChange={(e) => setArtistQuery(e.target.value)}
                     placeholder="Search"
-                    className="h-6 px-2 py-1 text-xs w-24"
+                    className="h-6 px-2 py-1 text-xs w-24 bg-white border border-gray-300"
                   />
                 </div>
               </TableHead>
-              <TableHead className="text-center">
+              <TableHead className="text-center py-2 px-3">
                 <div className="flex items-center justify-center gap-2">
                   <span>Entry Type</span>
                   <select
@@ -139,8 +139,8 @@ export default function UserEntriesTable() {
                   </select>
                 </div>
               </TableHead>
-              <TableHead className="text-center">Site Link</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center py-2 px-3">Site Link</TableHead>
+              <TableHead className="text-center py-2 px-3">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -151,12 +151,12 @@ export default function UserEntriesTable() {
                   const displayArtist = entry.artistName ?? lastArtist ?? "—";
                   if (entry.artistName) lastArtist = entry.artistName;
                   return (
-                    <TableRow key={entry.id}>
-                      <TableCell className="text-center px-2">{formatDate(entry.createdAt)}</TableCell>
-                      <TableCell className="text-center px-2">{formatTime(entry.createdAt)}</TableCell>
-                      <TableCell className="text-center px-2">{displayArtist}</TableCell>
-                      <TableCell className="text-center px-2">{entry.siteName ?? "—"}</TableCell>
-                      <TableCell className="text-center px-2">
+                    <TableRow key={entry.id} className="bg-gray-50 hover:bg-gray-50">
+                      <TableCell className="text-center px-3 py-2">{formatDate(entry.createdAt)}</TableCell>
+                      <TableCell className="text-center px-3 py-2">{formatTime(entry.createdAt)}</TableCell>
+                      <TableCell className="text-center px-3 py-2">{displayArtist}</TableCell>
+                      <TableCell className="text-center px-3 py-2">{entry.siteName ?? "—"}</TableCell>
+                      <TableCell className="text-center px-3 py-2">
                         {entry.ugcUrl ? (
                           <Link
                             className="text-blue-600 underline"
@@ -170,7 +170,7 @@ export default function UserEntriesTable() {
                           "—"
                         )}
                       </TableCell>
-                      <TableCell className="text-center px-2 text-green-600 font-semibold">
+                      <TableCell className="text-center px-3 py-2 text-green-600 font-semibold">
                         {entry.accepted ? "Approved" : "Pending"}
                       </TableCell>
                     </TableRow>
