@@ -393,7 +393,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 {allowEditUsername && !isGuestUser && (
                                     <Button
                                         size="icon"
-                                        className="bg-gray-200 text-black hover:bg-gray-300 h-6 w-6 sm:h-8 sm:w-8 p-0 flex items-center justify-center"
+                                        className="bg-gray-200 text-black hover:bg-gray-300 w-6 h-6 sm:w-8 sm:h-8"
                                         onClick={() => setIsEditingUsername(true)}
                                     >
                                         <Pencil size={20} />
