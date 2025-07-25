@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     const pageCount = noPaginate ? 1 : Math.ceil(total / PER_PAGE);
     const offset = noPaginate ? 0 : (page - 1) * PER_PAGE;
 
-    let baseQuery = db
+    const baseQuery = db
       .select({
         id: ugcresearch.id,
         createdAt: ugcresearch.createdAt,
@@ -60,11 +60,9 @@ export async function GET(request: Request) {
       .where(conditions)
       .orderBy(desc(ugcresearch.createdAt));
 
-    if (!noPaginate) {
-      baseQuery = baseQuery.limit(PER_PAGE).offset(offset);
-    }
-
-    const rows = await baseQuery;
+    const rows = noPaginate
+      ? await baseQuery
+      : await baseQuery.limit(PER_PAGE).offset(offset);
 
     return NextResponse.json({ entries: rows, total, pageCount }, { status: 200 });
   } catch (e) {
