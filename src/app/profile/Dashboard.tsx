@@ -453,7 +453,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             <Button
                                 asChild
                                 variant="outline"
-                                className="w-full p-4 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto"
+                                className="w-full py-4 px-2 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto"
                             >
                                 <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start w-full space-y-2">
                                     {/* User Rank */}
