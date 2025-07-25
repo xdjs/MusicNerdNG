@@ -407,7 +407,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                         {allowEditUsername && !isGuestUser && isEditingUsername && (
                             <div className="flex flex-col items-center gap-2 w-full">
-                                <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
+                                <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-4 shadow-sm w-64">
                                     <Input
                                         value={usernameInput}
                                         onChange={(e) => setUsernameInput(e.target.value)}
