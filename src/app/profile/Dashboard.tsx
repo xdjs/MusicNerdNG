@@ -364,7 +364,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* Status row */}
                     {showStatus && (
-                    <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
+                    <div className="flex items-center gap-2 text-lg w-full justify-center md:justify-start">
+                        <span className="font-semibold">Role:</span>
+                        <span className="font-normal">{statusString}</span>
+                    </div>
                     )}
 
                     {/* The vertical dynamic stats block has been replaced by the horizontal grid above */}
@@ -385,39 +388,37 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username row no edit button inline */}
                     <div className="flex flex-col items-center gap-2 pb-4 w-full text-center">
                         {!isEditingUsername && (
-                            <p className="text-lg font-semibold">
-                                {displayName}
-                            </p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-lg font-semibold">
+                                    {displayName}
+                                </p>
+                                {allowEditUsername && !isGuestUser && (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="w-8 h-8"
+                                        onClick={() => setIsEditingUsername(true)}
+                                    >
+                                        <Pencil size={16} />
+                                    </Button>
+                                )}
+                            </div>
                         )}
 
-                        {allowEditUsername && (
-                            !isGuestUser && isEditingUsername ? (
-                                <div className="flex flex-col items-center gap-2 w-full">
-                                    <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                                        <Input
-                                            value={usernameInput}
-                                            onChange={(e) => setUsernameInput(e.target.value)}
-                                            className="h-8 w-40 text-sm"
-                                        />
-                                        <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                            {savingUsername ? 'Saving...' : 'Save'}
-                                        </Button>
-                                        <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="pt-2">
-                                    <Button
-                                        size="sm"
-                                        className="bg-gray-200 text-black hover:bg-gray-300"
-                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
-                                        </div>
+                        {allowEditUsername && !isGuestUser && isEditingUsername && (
+                            <div className="flex flex-col items-center gap-2 w-full">
+                                <div className="flex items-center gap-2 border-2 border-gray-300 bg-white rounded-md p-4 shadow-sm w-64">
+                                    <Input
+                                        value={usernameInput}
+                                        onChange={(e) => setUsernameInput(e.target.value)}
+                                        className="h-8 w-40 text-sm"
+                                    />
+                                    <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                        {savingUsername ? 'Saving...' : 'Save'}
                                     </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
                                 </div>
-                            )
+                            </div>
                         )}
                         {/* Fallback login button for views where username editing is not allowed */}
                         {!allowEditUsername && isGuestUser && !hideLogin && (
@@ -444,29 +445,32 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Status row */}
                                 {showStatus && (
-                                <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
+                                <div className="flex items-center gap-2 text-lg w-full justify-center md:justify-start">
+                                    <span className="font-semibold">Role:</span>
+                                    <span className="font-normal">{statusString}</span>
+                                </div>
                                 )}
                                     </div>
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
-                            <div className="space-y-1 text-center md:text-left mt-4">
-                                {/* User Rank */}
-                                <p className="text-lg font-semibold">
-                                    User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
-                                </p>
-                                <Link
-                                    href="/leaderboard"
-                                    className="text-sm text-blue-600 underline hover:text-blue-800 mt-4 mb-8 inline-block"
-                                >
-                                    Go to Leaderboard
+                            <div className="mt-4">
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="py-4 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start w-64"
+                            >
+                                <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
+                                    {/* User Rank */}
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">User Rank:</span><span className="font-normal text-right flex-1 truncate">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">UGC Total:</span><span className="font-normal text-right flex-1 truncate">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">Artists Total:</span><span className="font-normal text-right flex-1 truncate">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></div>
                                 </Link>
-                                <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            </Button>
                             </div>
-                        </div>
+                            </div>
 
                         {/* Right column - recently edited */}
-                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0">
+                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0 flex flex-col items-center md:items-start">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
                                 <ul className="space-y-3">
