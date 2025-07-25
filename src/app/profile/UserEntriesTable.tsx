@@ -16,6 +16,7 @@ import Link from "next/link";
 interface UserEntry {
   id: string;
   createdAt: string | null;
+  artistId: string | null;
   artistName: string | null;
   siteName: string | null;
   ugcUrl: string | null;
@@ -56,7 +57,19 @@ export default function UserEntriesTable() {
         const res = await fetch(`/api/userEntries?page=${page}`);
         if (!res.ok) return;
         const data: ApiResponse = await res.json();
-        setEntries(data.entries);
+        // Ensure artist name repeats instead of blank for same artist
+        const filled = data.entries.map((entry, idx, arr) => {
+          if (!entry.artistName) {
+            // look backward for same artistId or previous non-null name
+            for (let i = idx - 1; i >= 0; i--) {
+              if (arr[i].artistId === entry.artistId && arr[i].artistName) {
+                return { ...entry, artistName: arr[i].artistName };
+              }
+            }
+          }
+          return entry;
+        });
+        setEntries(filled);
         setPageCount(data.pageCount);
       } catch (e) {
         console.error("[UserEntriesTable] failed to fetch entries", e);
