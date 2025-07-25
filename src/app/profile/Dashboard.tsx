@@ -14,6 +14,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import UserEntriesTable from "./UserEntriesTable";
 
 type RecentItem = {
     ugcId: string;
@@ -488,6 +489,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             )}
                         </div>
                     </div>
+
+                    {/* User Artist Data Entries table */}
+                    <UserEntriesTable />
                 </>
             )}
 
