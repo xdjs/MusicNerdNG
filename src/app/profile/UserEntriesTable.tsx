@@ -103,7 +103,7 @@ export default function UserEntriesTable() {
         }
       });
     }
-
+    return arr;
   }, [entries, filter, sortOrder, artistQuery, statusSort]);
 
   return (
