@@ -456,7 +456,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 size="lg"
                                 className="w-full p-4 space-y-1 text-center md:text-left border-gray-300 hover:bg-gray-100"
                             >
-                                <Link href="/leaderboard" className="flex flex-col items-center md:items-start space-y-1 w-full">
+                                <Link href="/leaderboard" className="block w-full text-left space-y-2">
                                     {/* User Rank */}
                                     <p className="text-lg font-semibold">
                                         User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
