@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
@@ -54,6 +55,7 @@ export default function UserEntriesTable() {
   const [entries, setEntries] = useState<UserEntry[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [artistQuery, setArtistQuery] = useState("");
 
   useEffect(() => {
     async function fetchEntries() {
@@ -71,8 +73,13 @@ export default function UserEntriesTable() {
 
   const processed = useMemo(() => {
     let arr = [...entries];
-    // filter
+    // filter by entry type
     if (filter !== "all") arr = arr.filter((e) => e.siteName === filter);
+    // filter by artist query
+    if (artistQuery.trim()) {
+      const q = artistQuery.toLowerCase();
+      arr = arr.filter((e) => (e.artistName ?? "").toLowerCase().includes(q));
+    }
     // sort by date
     arr.sort((a, b) => {
       const tA = new Date(a.createdAt ?? "").getTime();
@@ -80,7 +87,7 @@ export default function UserEntriesTable() {
       return sortOrder === "asc" ? tA - tB : tB - tA;
     });
     return arr;
-  }, [entries, filter, sortOrder]);
+  }, [entries, filter, sortOrder, artistQuery]);
 
   return (
     <Card className="max-w-3xl mx-auto mt-10">
@@ -104,7 +111,17 @@ export default function UserEntriesTable() {
                 </div>
               </TableHead>
               <TableHead className="text-center">Time</TableHead>
-              <TableHead className="text-center">Artist</TableHead>
+              <TableHead className="text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <span>Artist</span>
+                  <Input
+                    value={artistQuery}
+                    onChange={(e) => setArtistQuery(e.target.value)}
+                    placeholder="Search"
+                    className="h-6 px-2 py-1 text-xs w-24"
+                  />
+                </div>
+              </TableHead>
               <TableHead className="text-center">
                 <div className="flex items-center justify-center gap-2">
                   <span>Entry Type</span>
