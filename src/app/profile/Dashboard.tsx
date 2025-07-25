@@ -463,9 +463,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             >
                                 <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
                                     {/* User Rank */}
-                                    <p className="text-lg font-semibold">User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></p>
-                                    <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                    <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                                    <div className="flex text-lg"><span className="font-semibold w-32">User Rank:</span><span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></div>
+                                    <div className="flex text-lg"><span className="font-semibold w-32">UGC Total:</span><span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></div>
+                                    <div className="flex text-lg"><span className="font-semibold w-32">Artists Total:</span><span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></div>
                                 </Link>
                             </Button>
                             </div>
