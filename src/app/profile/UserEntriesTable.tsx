@@ -55,7 +55,7 @@ export default function UserEntriesTable() {
   const [entries, setEntries] = useState<UserEntry[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [timeSort, setTimeSort] = useState<"asc" | "desc">("asc");
+  const [timeSort, setTimeSort] = useState<"asc" | "desc">("desc");
   const [artistQuery, setArtistQuery] = useState("");
 
   useEffect(() => {
