@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Table,
   TableBody,
@@ -59,6 +59,7 @@ export default function UserEntriesTable() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [artistQuery, setArtistQuery] = useState("");
   const [statusSort, setStatusSort] = useState<"default" | "approved" | "pending">("default");
+  const artistInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function fetchEntries() {
@@ -131,11 +132,15 @@ export default function UserEntriesTable() {
               <TableHead className="text-center py-2 px-3">
                 <div className="flex items-center justify-center gap-2">
                   <span>Artist</span>
-                  <div className="relative flex items-center">
+                  <div
+                    className="relative flex items-center cursor-text"
+                    onClick={() => artistInputRef.current?.focus()}
+                  >
                     <Input
                       value={artistQuery}
                       onChange={(e) => setArtistQuery(e.target.value)}
                       placeholder="Search"
+                      ref={artistInputRef}
                       className="h-6 pr-6 pl-2 py-1 text-xs w-24 bg-white border border-gray-300"
                     />
                     <SearchIcon className="absolute right-1.5 h-3.5 w-3.5 text-gray-500" strokeWidth={2} />
