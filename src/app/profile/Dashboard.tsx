@@ -453,9 +453,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             <Button
                                 asChild
                                 variant="outline"
-                                className="w-full py-4 px-2 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto"
+                                className="py-4 px-2 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start"
                             >
-                                <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start w-full space-y-2">
+                                <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
                                     {/* User Rank */}
                                     <p className="text-lg font-semibold">
                                         User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
