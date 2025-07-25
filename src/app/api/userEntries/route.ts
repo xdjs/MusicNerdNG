@@ -34,8 +34,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ entries: [], total: 0, pageCount: 0 }, { status: 200 });
     }
 
-    // Base where conditions
-    let conditions = and(eq(ugcresearch.userId, userId), eq(ugcresearch.accepted, true));
+    // Base where conditions – show both approved and pending entries for the user
+    const uid = userId as string; // after early return above, userId is guaranteed to be set
+    let conditions = eq(ugcresearch.userId, uid) as any;
     if (siteFilter) {
       // narrow to specific entry type
       conditions = and(conditions, eq(ugcresearch.siteName, siteFilter));
