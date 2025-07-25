@@ -16,7 +16,6 @@ import Link from "next/link";
 interface UserEntry {
   id: string;
   createdAt: string | null;
-  artistId: string | null;
   artistName: string | null;
   siteName: string | null;
   ugcUrl: string | null;
@@ -57,19 +56,7 @@ export default function UserEntriesTable() {
         const res = await fetch(`/api/userEntries?page=${page}`);
         if (!res.ok) return;
         const data: ApiResponse = await res.json();
-        // Ensure artist name repeats instead of blank for same artist
-        const filled = data.entries.map((entry, idx, arr) => {
-          if (!entry.artistName) {
-            // look backward for same artistId or previous non-null name
-            for (let i = idx - 1; i >= 0; i--) {
-              if (arr[i].artistId === entry.artistId && arr[i].artistName) {
-                return { ...entry, artistName: arr[i].artistName };
-              }
-            }
-          }
-          return entry;
-        });
-        setEntries(filled);
+        setEntries(data.entries);
         setPageCount(data.pageCount);
       } catch (e) {
         console.error("[UserEntriesTable] failed to fetch entries", e);
@@ -119,31 +106,38 @@ export default function UserEntriesTable() {
           </TableHeader>
           <TableBody>
             {filtered.length ? (
-              filtered.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell>{formatDate(entry.createdAt)}</TableCell>
-                  <TableCell>{formatTime(entry.createdAt)}</TableCell>
-                  <TableCell>{entry.artistName ?? "—"}</TableCell>
-                  <TableCell>{entry.siteName ?? "—"}</TableCell>
-                  <TableCell>
-                    {entry.ugcUrl ? (
-                      <Link
-                        className="text-blue-600 underline"
-                        href={entry.ugcUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        View
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-green-600 font-semibold">
-                    {entry.accepted ? "Approved" : "Pending"}
-                  </TableCell>
-                </TableRow>
-              ))
+              (() => {
+                let lastArtist: string | null = null;
+                return filtered.map((entry) => {
+                  const displayArtist = entry.artistName ?? lastArtist ?? "—";
+                  if (entry.artistName) lastArtist = entry.artistName;
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-center px-2">{formatDate(entry.createdAt)}</TableCell>
+                      <TableCell className="text-center px-2">{formatTime(entry.createdAt)}</TableCell>
+                      <TableCell className="text-center px-2">{displayArtist}</TableCell>
+                      <TableCell className="text-center px-2">{entry.siteName ?? "—"}</TableCell>
+                      <TableCell className="text-center px-2">
+                        {entry.ugcUrl ? (
+                          <Link
+                            className="text-blue-600 underline"
+                            href={entry.ugcUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center px-2 text-green-600 font-semibold">
+                        {entry.accepted ? "Approved" : "Pending"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                });
+              })()
             ) : (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-4">
