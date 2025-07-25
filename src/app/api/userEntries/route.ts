@@ -13,6 +13,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const pageParam = parseInt(searchParams.get("page") ?? "1", 10);
     const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+    const siteFilter = searchParams.get("siteName");
+    const noPaginate = searchParams.get("all") === "true" || siteFilter;
 
     const session = await getServerAuthSession();
     const walletlessEnabled =
@@ -32,16 +34,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ entries: [], total: 0, pageCount: 0 }, { status: 200 });
     }
 
-    // Total count for pagination controls
-    const total = (
-      await db.query.ugcresearch.findMany({
-        where: and(eq(ugcresearch.userId, userId), eq(ugcresearch.accepted, true)),
-      })
-    ).length;
-    const pageCount = Math.ceil(total / PER_PAGE);
-    const offset = (page - 1) * PER_PAGE;
+    // Base where conditions
+    let conditions = and(eq(ugcresearch.userId, userId), eq(ugcresearch.accepted, true));
+    if (siteFilter) {
+      // narrow to specific entry type
+      conditions = and(conditions, eq(ugcresearch.siteName, siteFilter));
+    }
 
-    const rows = await db
+    // Total count
+    const total = (await db.query.ugcresearch.findMany({ where: conditions })).length;
+    const pageCount = noPaginate ? 1 : Math.ceil(total / PER_PAGE);
+    const offset = noPaginate ? 0 : (page - 1) * PER_PAGE;
+
+    let baseQuery = db
       .select({
         id: ugcresearch.id,
         createdAt: ugcresearch.createdAt,
@@ -52,10 +57,14 @@ export async function GET(request: Request) {
       })
       .from(ugcresearch)
       .leftJoin(artists, eq(artists.id, ugcresearch.artistId))
-      .where(and(eq(ugcresearch.userId, userId), eq(ugcresearch.accepted, true)))
-      .orderBy(desc(ugcresearch.createdAt))
-      .limit(PER_PAGE)
-      .offset(offset);
+      .where(conditions)
+      .orderBy(desc(ugcresearch.createdAt));
+
+    if (!noPaginate) {
+      baseQuery = baseQuery.limit(PER_PAGE).offset(offset);
+    }
+
+    const rows = await baseQuery;
 
     return NextResponse.json({ entries: rows, total, pageCount }, { status: 200 });
   } catch (e) {

@@ -52,25 +52,22 @@ const formatTime = (iso: string | null) => {
 
 export default function UserEntriesTable() {
   const [entries, setEntries] = useState<UserEntry[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageCount, setPageCount] = useState(0);
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     async function fetchEntries() {
       try {
-        const res = await fetch(`/api/userEntries?page=${page}`);
+        const res = await fetch(`/api/userEntries?all=true`);
         if (!res.ok) return;
         const data: ApiResponse = await res.json();
         setEntries(data.entries);
-        setPageCount(data.pageCount);
       } catch (e) {
         console.error("[UserEntriesTable] failed to fetch entries", e);
       }
     }
     fetchEntries();
-  }, [page]);
+  }, []);
 
   const processed = useMemo(() => {
     let arr = [...entries];
@@ -174,29 +171,7 @@ export default function UserEntriesTable() {
         </Table>
         </div>
       </CardContent>
-      {pageCount > 1 && (
-        <div className="flex justify-end items-center gap-4 p-6 pt-0">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Prev
-          </Button>
-          <span className="text-sm">
-            Page {page} of {pageCount}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === pageCount}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      {/* Pagination removed as all entries loaded */}
     </Card>
   );
 } 
