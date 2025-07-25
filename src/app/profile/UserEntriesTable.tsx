@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search as SearchIcon, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import Link from "next/link";
 
 interface UserEntry {
@@ -53,26 +53,84 @@ const formatTime = (iso: string | null) => {
 
 export default function UserEntriesTable() {
   const [entries, setEntries] = useState<UserEntry[]>([]);
+  /** Keeps track of which page numbers have been fetched already */
+  const fetchedPages = useRef<Set<number>>(new Set());
+  /** Current page displayed by the table */
   const [page, setPage] = useState(1);
+  /** Total number of pages available according to the server */
+  const [pageCount, setPageCount] = useState(1);
+  /** Total number of entries (for information only) */
+  const [total, setTotal] = useState(0);
+  /** Currently selected site filter */
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [artistQuery, setArtistQuery] = useState("");
   const [statusSort, setStatusSort] = useState<"default" | "approved" | "pending">("default");
+  const [loading, setLoading] = useState(false);
+
   const artistInputRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * Fetches a page of entries from the server and merges them into the existing list.
+   * If the page has already been fetched, this function does nothing.
+   */
+  const fetchPage = async (pageToFetch: number) => {
+    // Skip if we've already fetched this page
+    if (fetchedPages.current.has(pageToFetch)) return;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/userEntries?page=${pageToFetch}`);
+      if (!res.ok) return;
+      const data: ApiResponse = await res.json();
+      fetchedPages.current.add(pageToFetch);
+      // Merge new entries, avoiding duplicates
+      setEntries((prev) => {
+        const existingIds = new Set(prev.map((e) => e.id));
+        const merged = [...prev, ...data.entries.filter((e) => !existingIds.has(e.id))];
+        return merged;
+      });
+      setTotal(data.total);
+      setPageCount(data.pageCount);
+    } catch (e) {
+      console.error("[UserEntriesTable] failed to fetch entries", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch the first page on mount
   useEffect(() => {
-    async function fetchEntries() {
+    fetchPage(1);
+  }, []);
+
+  // Whenever the current page changes, ensure that page has been fetched
+  useEffect(() => {
+    if (filter === "all") {
+      fetchPage(page);
+    }
+  }, [page, filter]);
+
+  // If site filter changes, fetch all entries for that site (no pagination on server)
+  useEffect(() => {
+    async function fetchFiltered() {
+      if (filter === "all") return;
+      setLoading(true);
       try {
-        const res = await fetch(`/api/userEntries?all=true`);
+        const res = await fetch(`/api/userEntries?siteName=${encodeURIComponent(filter)}`);
         if (!res.ok) return;
         const data: ApiResponse = await res.json();
+        // Replace existing entries with filtered result
         setEntries(data.entries);
+        setPage(1);
+        setPageCount(1);
       } catch (e) {
-        console.error("[UserEntriesTable] failed to fetch entries", e);
+        console.error("[UserEntriesTable] failed to fetch filtered entries", e);
+      } finally {
+        setLoading(false);
       }
     }
-    fetchEntries();
-  }, []);
+    fetchFiltered();
+  }, [filter]);
 
   const processed = useMemo(() => {
     let arr = [...entries];
@@ -115,7 +173,7 @@ export default function UserEntriesTable() {
         <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-gray-50">
               <TableHead
                 className="text-center cursor-pointer select-none py-2 px-3"
                 onClick={() => setSortOrder((prev) => (prev === "desc" ? "asc" : "desc"))}
@@ -186,7 +244,13 @@ export default function UserEntriesTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {processed.length ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-4">
+                  Loading...
+                </TableCell>
+              </TableRow>
+            ) : processed.length ? (
               (() => {
                 let lastArtist: string | null = null;
                 const pageStart = (page - 1) * PER_PAGE;
@@ -195,7 +259,7 @@ export default function UserEntriesTable() {
                   const displayArtist = entry.artistName ?? lastArtist ?? "—";
                   if (entry.artistName) lastArtist = entry.artistName;
                   return (
-                    <TableRow key={entry.id} className="bg-gray-50 hover:bg-gray-50">
+                    <TableRow key={entry.id} className="bg-white">
                       <TableCell className="text-center px-3 py-2">{formatDate(entry.createdAt)}</TableCell>
                       <TableCell className="text-center px-3 py-2">{formatTime(entry.createdAt)}</TableCell>
                       <TableCell className="text-center px-3 py-2">{displayArtist}</TableCell>
@@ -232,8 +296,8 @@ export default function UserEntriesTable() {
         </Table>
         </div>
       </CardContent>
-      {processed.length > PER_PAGE && (
-        <div className="flex justify-end items-center gap-4 p-6 pt-0">
+      {pageCount > 1 && (
+        <CardFooter className="bg-gray-50 border-t flex justify-end items-center gap-4 p-3">
           <Button
             variant="outline"
             size="sm"
@@ -242,16 +306,16 @@ export default function UserEntriesTable() {
           >
             Prev
           </Button>
-          <span className="text-sm">Page {page} of {Math.ceil(processed.length / PER_PAGE)}</span>
+          <span className="text-sm">Page {page} of {pageCount}</span>
           <Button
             variant="outline"
             size="sm"
-            disabled={page >= Math.ceil(processed.length / PER_PAGE)}
+            disabled={page >= pageCount}
             onClick={() => setPage((p) => p + 1)}
           >
             Next
           </Button>
-        </div>
+        </CardFooter>
       )}
     </Card>
   );

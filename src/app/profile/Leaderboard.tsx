@@ -143,11 +143,14 @@ function LeaderboardRow({ entry, index, highlightIdentifier }: { entry: Leaderbo
 }
 
 export default function Leaderboard({ highlightIdentifier, onRangeChange }: { highlightIdentifier?: string; onRangeChange?: (range: RangeKey) => void }) {
+    const PER_PAGE = 10;
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showTopBtn, setShowTopBtn] = useState(false);
     const [range, setRange] = useState<RangeKey>("today");
+    const [page, setPage] = useState(1);
+    const [pageCount, setPageCount] = useState(1);
 
     // Notify parent whenever the range changes (including initial mount)
     useEffect(() => {
@@ -174,13 +177,15 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
     }
 
     function buildUrl() {
+        const params = new URLSearchParams();
         const dates = getRangeDates(range);
         if (dates) {
-            const from = dates.from.toISOString();
-            const to = dates.to.toISOString();
-            return `/api/leaderboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+            params.set("from", dates.from.toISOString());
+            params.set("to", dates.to.toISOString());
         }
-        return "/api/leaderboard";
+        params.set("page", page.toString());
+        params.set("perPage", PER_PAGE.toString());
+        return `/api/leaderboard?${params.toString()}`;
     }
 
     useEffect(() => {
@@ -197,7 +202,14 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
                     throw new Error('Failed to fetch leaderboard');
                 }
                 const data = await response.json();
-                setLeaderboard(data);
+                if (Array.isArray(data)) {
+                    // legacy response (no pagination)
+                    setLeaderboard(data);
+                    setPageCount(1);
+                } else {
+                    setLeaderboard(data.entries);
+                    setPageCount(data.pageCount ?? 1);
+                }
             } catch (err) {
                 setError("Failed to load leaderboard");
                 console.error("Error fetching leaderboard:", err);
@@ -207,7 +219,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
         }
 
         fetchLeaderboard();
-    }, [range]);
+    }, [range, page]);
 
     // Show/hide "back to top" button based on scroll position
     useEffect(() => {
@@ -217,6 +229,11 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
         window.addEventListener("scroll", handleScroll);
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
+
+    // Reset to page 1 whenever range changes
+    useEffect(() => {
+        setPage(1);
+    }, [range]);
 
     const headingLabelMap: Record<RangeKey, string> = {
         today: "Today",
@@ -310,7 +327,7 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
 
                 <div className="space-y-2">
                     {leaderboard.map((entry, index) => (
-                        <LeaderboardRow key={entry.userId} entry={entry} index={index} highlightIdentifier={highlightIdentifier} />
+                        <LeaderboardRow key={entry.userId} entry={entry} index={(page - 1) * PER_PAGE + index} highlightIdentifier={highlightIdentifier} />
                     ))}
                     {leaderboard.length === 0 && (
                         <p className="text-center text-muted-foreground py-8">
@@ -319,6 +336,27 @@ export default function Leaderboard({ highlightIdentifier, onRangeChange }: { hi
                     )}
                 </div>
             </CardContent>
+            {pageCount > 1 && (
+                <div className="bg-gray-50 border-t flex justify-end items-center gap-4 p-3">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page === 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                        Prev
+                    </Button>
+                    <span className="text-sm">Page {page} of {pageCount}</span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page >= pageCount}
+                        onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    >
+                        Next
+                    </Button>
+                </div>
+            )}
         </Card>
         {showTopBtn && (
             <Button
