@@ -14,6 +14,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import UserEntriesTable from "./UserEntriesTable";
 
 type RecentItem = {
     ugcId: string;
@@ -436,7 +437,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     </div>
 
                     {/* Two-column section under username */}
-                    <div className="flex flex-col md:flex-row md:gap-6 justify-center max-w-3xl mx-auto text-center md:text-left">
+                    <div className="flex flex-col md:flex-row md:justify-between md:gap-6 max-w-3xl mx-auto text-center md:text-left">
                         {/* Left column - admin controls, status & stats */}
                         <div className="md:w-1/2 flex flex-col">
                             {/* Top area: admin controls and status */}
@@ -470,7 +471,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             </div>
 
                         {/* Right column - recently edited */}
-                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0 flex flex-col items-center md:items-start">
+                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0 flex flex-col items-center md:items-start mx-auto md:ml-auto">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
                                 <ul className="space-y-3">
@@ -488,6 +489,9 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             )}
                         </div>
                     </div>
+
+                    {/* User Artist Data Entries table */}
+                    <UserEntriesTable />
                 </>
             )}
 
