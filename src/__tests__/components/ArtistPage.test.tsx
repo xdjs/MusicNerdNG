@@ -404,6 +404,127 @@ describe('generateMetadata', () => {
         expect(metadata.title).toBe('Test Artist - Music Nerd');
         expect(metadata.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
     });
+
+    describe('Open Graph metadata', () => {
+        beforeEach(() => {
+            // Set up environment variables for testing
+            process.env.NEXT_PUBLIC_BASE_URL = 'https://test.musicnerd.org';
+        });
+
+        afterEach(() => {
+            delete process.env.NEXT_PUBLIC_BASE_URL;
+        });
+
+        it('includes Open Graph metadata with Spotify image', async () => {
+            (getArtistById as jest.Mock)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo);
+            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+            (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'https://spotify.com/test-image.jpg' });
+            (getOpenAIBio as jest.Mock).mockResolvedValue({
+                json: () => Promise.resolve({ bio: 'This is a great artist with amazing music.' })
+            });
+
+            const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+            expect(metadata.openGraph).toEqual({
+                title: 'Test Artist - Music Nerd',
+                description: 'This is a great artist with amazing music.',
+                url: 'https://test.musicnerd.org/artist/test-id',
+                type: 'profile',
+                images: [
+                    {
+                        url: 'https://spotify.com/test-image.jpg',
+                        width: 300,
+                        height: 300,
+                        alt: 'Test Artist profile image',
+                    },
+                ],
+            });
+        });
+
+        it('falls back to default image when Spotify image is not available', async () => {
+            (getArtistById as jest.Mock)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo);
+            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+            (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
+            (getOpenAIBio as jest.Mock).mockResolvedValue({
+                json: () => Promise.resolve({ bio: 'Artist bio content.' })
+            });
+
+            const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+            expect(metadata.openGraph?.images?.[0]).toEqual({
+                url: 'https://test.musicnerd.org/default_pfp_pink.png',
+                width: 300,
+                height: 300,
+                alt: 'Test Artist profile image',
+            });
+        });
+
+        it('uses production URL when NEXT_PUBLIC_BASE_URL is not set', async () => {
+            delete process.env.NEXT_PUBLIC_BASE_URL;
+
+            (getArtistById as jest.Mock)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo);
+            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+            (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+            (getOpenAIBio as jest.Mock).mockResolvedValue({
+                json: () => Promise.resolve({ bio: 'Artist bio content.' })
+            });
+
+            const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+            expect(metadata.openGraph?.url).toBe('https://musicnerd.org/artist/test-id');
+            expect(metadata.openGraph?.images?.[0]?.url).toBe('test-image-url');
+        });
+
+        it('handles special characters in artist names for Open Graph alt text', async () => {
+            const mockArtistSpecialChars = {
+                ...mockArtistWithVitalInfo,
+                name: 'Artist & The Band\'s "Greatest" Hits!',
+            };
+
+            (getArtistById as jest.Mock)
+                .mockResolvedValueOnce(mockArtistSpecialChars)
+                .mockResolvedValueOnce(mockArtistSpecialChars);
+            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+            (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+            (getOpenAIBio as jest.Mock).mockResolvedValue({
+                json: () => Promise.resolve({ bio: 'Great artist bio.' })
+            });
+
+            const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+            expect(metadata.openGraph?.images?.[0]?.alt).toBe('Artist & The Band\'s "Greatest" Hits! profile image');
+        });
+
+        it('includes Open Graph metadata when bio generation fails', async () => {
+            (getArtistById as jest.Mock)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo)
+                .mockResolvedValueOnce(mockArtistWithVitalInfo);
+            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: {} });
+            (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: 'test-image-url' });
+            (getOpenAIBio as jest.Mock).mockRejectedValue(new Error('Network error'));
+
+            const metadata = await generateMetadata({ params: { id: 'test-id' } });
+
+            expect(metadata.openGraph?.title).toBe('Test Artist - Music Nerd');
+            expect(metadata.openGraph?.description).toBe('Discover Test Artist on Music Nerd - social media links, music, and more.');
+            expect(metadata.openGraph?.type).toBe('profile');
+            expect(metadata.openGraph?.url).toBe('https://test.musicnerd.org/artist/test-id');
+        });
+
+        it('does not include Open Graph metadata when artist is not found', async () => {
+            (getArtistById as jest.Mock).mockResolvedValue(null);
+
+            const metadata = await generateMetadata({ params: { id: 'non-existent-id' } });
+
+            expect(metadata.openGraph).toBeUndefined();
+        });
+    });
 });
 
 describe('ArtistPage', () => {

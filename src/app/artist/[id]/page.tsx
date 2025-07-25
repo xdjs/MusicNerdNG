@@ -115,9 +115,30 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
         description = `Discover ${artist.name} on Music Nerd - social media links, music, and more.`;
     }
 
+    // Construct full URL for the artist page
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://musicnerd.org';
+    const artistUrl = `${baseUrl}/artist/${params.id}`;
+    
+    // Use Spotify image or fallback to default
+    const imageUrl = spotifyImg.artistImage || `${baseUrl}/default_pfp_pink.png`;
+
     return {
         title: `${artist.name} - Music Nerd`,
         description,
+        openGraph: {
+            title: `${artist.name} - Music Nerd`,
+            description,
+            url: artistUrl,
+            type: 'profile',
+            images: [
+                {
+                    url: imageUrl,
+                    width: 300,
+                    height: 300,
+                    alt: `${artist.name} profile image`,
+                },
+            ],
+        },
     };
 }
 
