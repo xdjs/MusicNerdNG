@@ -461,7 +461,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 variant="outline"
                                 className="py-4 px-2 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start"
                             >
-                                <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
+                                <Link href="/leaderboard" className="inline-flex flex-row flex-wrap items-center gap-4 justify-start">
                                     {/* User Rank */}
                                     <p className="text-lg font-semibold">User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></p>
                                     <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
