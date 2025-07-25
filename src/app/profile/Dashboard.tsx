@@ -448,21 +448,24 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 )}
                                     </div>
 
-                            {/* Bottom area: UGC / Artists stats (vertical layout) */}
-                            <div className="space-y-1 text-center md:text-left mt-4">
-                                {/* User Rank */}
-                                <p className="text-lg font-semibold">
-                                    User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
-                                </p>
-                                <Link
-                                    href="/leaderboard"
-                                    className="text-sm text-blue-600 underline hover:text-blue-800 mt-4 mb-8 inline-block"
-                                >
-                                    Go to Leaderboard
+                            {/* Bottom area: UGC / Artists stats – now a single clickable button */}
+                            <Button
+                                variant="outline"
+                                className="mt-4 text-left space-y-1 px-4 py-3"
+                                asChild
+                            >
+                                <Link href="/leaderboard" className="flex flex-col">
+                                    <p className="text-lg font-semibold">
+                                        User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
+                                    </p>
+                                    <p className="text-lg font-semibold">
+                                        UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span>
+                                    </p>
+                                    <p className="text-lg font-semibold">
+                                        Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span>
+                                    </p>
                                 </Link>
-                                <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
-                            </div>
+                            </Button>
                         </div>
 
                         {/* Right column - recently edited */}
