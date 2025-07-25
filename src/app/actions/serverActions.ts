@@ -14,6 +14,8 @@ import {
   searchForUsersByWallet as searchForUsersByWalletQuery,
   addUsersToWhitelist as addUsersToWhitelistQuery,
   removeFromWhitelist as removeFromWhitelistQuery,
+  addUsersToAdmin as addUsersToAdminQuery,
+  removeFromAdmin as removeFromAdminQuery,
 } from "@/server/utils/queries/userQueries";
 
 import {
@@ -43,6 +45,14 @@ export async function addUsersToWhitelistAction(wallets: string[]) {
 
 export async function removeFromWhitelistAction(userIds: string[]) {
   return removeFromWhitelistQuery(userIds);
+}
+
+export async function addUsersToAdminAction(wallets: string[]) {
+  return addUsersToAdminQuery(wallets);
+}
+
+export async function removeFromAdminAction(userIds: string[]) {
+  return removeFromAdminQuery(userIds);
 }
 
 export async function getUgcStatsInRangeAction(

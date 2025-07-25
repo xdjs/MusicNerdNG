@@ -31,6 +31,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useConnectModal } from '@rainbow-me/rainbowkit';
+import Link from "next/link";
 
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string }) {
     const { data: session } = useSession();
@@ -142,20 +143,25 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setAddArtistResp(null);
         setIsLoading(true);
-        const isTwitterValid = await validateTwitterLink(values.artistDataUrl);
+        let formattedUrl = values.artistDataUrl.trim();
+        if (!/^https?:\/\//i.test(formattedUrl)) {
+            formattedUrl = `https://${formattedUrl}`;
+        }
+
+        const isTwitterValid = await validateTwitterLink(formattedUrl);
         if (!isTwitterValid) {
             setAddArtistResp({ status: "error", message: "This link is invalid. Please enter a valid Twitter/X profile URL." });
             setIsLoading(false);
             return;
         }
         // Only use regex and backend for YouTube validation
-        const isPlatformValid = await validatePlatformLinkBackend(values.artistDataUrl);
+        const isPlatformValid = await validatePlatformLinkBackend(formattedUrl);
         if (!isPlatformValid) {
             setAddArtistResp({ status: "error", message: "This link is invalid or not supported." });
             setIsLoading(false);
             return;
         }
-        const resp = await addArtistData(values.artistDataUrl, artist);
+        const resp = await addArtistData(formattedUrl, artist);
         if (resp.status === "success") {
             toast({
                 title: `${artist.name}'s ${resp.siteName ?? "data"} added`,
@@ -260,7 +266,12 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                     }
                                 </Button>
                                 {addArtistResp && addArtistResp.status === "success" ?
-                                    <h2 className="text-green-600">{addArtistResp.message}</h2>
+                                    <div className="flex flex-col items-center">
+                                        <h2 className="text-green-600">{addArtistResp.message}</h2>
+                                        <Link href="/leaderboard" className="text-blue-600 underline hover:underline mt-1">
+                                            🏆 View Leaderboard
+                                        </Link>
+                                    </div>
                                     : null
                                 }
                             </DialogFooter>

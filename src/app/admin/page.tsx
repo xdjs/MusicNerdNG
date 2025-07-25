@@ -1,10 +1,11 @@
 import { getServerAuthSession } from "@/server/auth";
-import { getUserById, getWhitelistedUsers } from "@/server/utils/queries/userQueries";
+import { getUserById, getAllUsers } from "@/server/utils/queries/userQueries";
 import { getPendingUGC } from "@/server/utils/queries/artistQueries";
 import UGCDataTable from "./ugc-data-table";        
 import { ugcColumns } from "./columns";
 import { whitelistedColumns } from "./columns";
-import WhitelistedDataTable from "./whitelisted-data-table";
+import UsersDataTable from "./whitelisted-data-table";
+import AdminAutoRefresh from "./AdminAutoRefresh";
 import PleaseLoginPage from "@/app/_components/PleaseLoginPage";
 
 export default async function Admin() {
@@ -19,34 +20,35 @@ export default async function Admin() {
     } else {
         const session = await getServerAuthSession();
         const user = session?.user;
-        if (!user) return <PleaseLoginPage text="Login to access this page" />;
+        if (!user) return <><AdminAutoRefresh /><PleaseLoginPage text="Log in to access this page" /></>;
         userId = user.id;
         const userRecord = await getUserById(userId);
-        if (!userRecord || !userRecord.isAdmin) return <PleaseLoginPage text="You are not authorized to access this page" />;
+        if (!userRecord || !userRecord.isAdmin) return <><AdminAutoRefresh /><PleaseLoginPage text="You are not authorized to access this page" /></>;
         isAuthorized = true;
     }
 
     if (!isAuthorized) {
-        return <PleaseLoginPage text="You are not authorized to access this page" />;
+        return <><AdminAutoRefresh /><PleaseLoginPage text="You are not authorized to access this page" /></>;
     }
 
-    const [pendingUGCData, whitelistedUsers] = await Promise.all([
+    const [pendingUGCData, allUsers] = await Promise.all([
         getPendingUGC(),
-        getWhitelistedUsers(),
+        getAllUsers(),
     ]);
 
     return (
         <section className="px-10 py-5 space-y-6">
+            {/* Silent client-side helper to refresh page after login */}
+            <AdminAutoRefresh />
             <h1 className="text-2xl">Site Management</h1>
             <div>
                 <h2 className="text-xl pb-3">Pending UGC</h2>
                 <UGCDataTable columns={ugcColumns} data={pendingUGCData} />
             </div>
             <div>
-                <h2 className="text-xl pb-3">Whitelisted Users</h2>
-                <WhitelistedDataTable columns={whitelistedColumns} data={whitelistedUsers || []} />
+                <h2 className="text-xl pb-3">Users</h2>
+                <UsersDataTable columns={whitelistedColumns} data={allUsers || []} />
             </div>
-                <h3 className="text-xl pb-3">Artist Blurb Prompt Editing</h3>
         </section>
     );
 }

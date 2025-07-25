@@ -14,6 +14,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import UserEntriesTable from "./UserEntriesTable";
 
 type RecentItem = {
     ugcId: string;
@@ -43,26 +44,39 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
     // Range selection (synced with Leaderboard)
     type RangeKey = "today" | "week" | "month" | "all";
-    const [selectedRange, setSelectedRange] = useState<RangeKey>("all");
+    const [selectedRange, setSelectedRange] = useState<RangeKey>("today");
 
     // (duplicate RangeKey and selectedRange definition removed)
 
     // Fetch leaderboard rank (only in compact layout)
+    const [totalEntries, setTotalEntries] = useState<number | null>(null);
+
+    // Fetch the user's rank on the leaderboard. In the compact leaderboard view we
+    // respect the currently-selected date range. In the full profile view we
+    // always fetch the all-time leaderboard so the stat matches the "UGC Total"
+    // values directly above it.
     useEffect(() => {
-        if (!isCompactLayout) return;
         async function fetchRank() {
             try {
-                const dates = getRangeDates(selectedRange);
-                const url = dates ? `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}` : '/api/leaderboard';
+                let url = '/api/leaderboard';
+                if (isCompactLayout) {
+                    const dates = getRangeDates(selectedRange);
+                    if (dates) {
+                        url = `/api/leaderboard?from=${encodeURIComponent(dates.from.toISOString())}&to=${encodeURIComponent(dates.to.toISOString())}`;
+                    }
+                }
+
                 const resp = await fetch(url);
                 if (!resp.ok) return;
                 const data = await resp.json();
+                setTotalEntries(data.length);
                 const idx = data.findIndex((entry: any) => entry.wallet?.toLowerCase() === user.wallet.toLowerCase());
                 if (idx !== -1) setRank(idx + 1);
             } catch (e) {
                 console.error('Error fetching rank', e);
             }
         }
+
         fetchRank();
     }, [selectedRange, user.wallet, isCompactLayout]);
     const isGuestUser = user.username === 'Guest User' || user.id === '00000000-0000-0000-0000-000000000000';
@@ -162,30 +176,56 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
         }
     }
 
-    // Fetch stats whenever selectedRange or target wallet changes
+    // Fetch all-time stats **once** on mount. These counts remain static and are not affected by leaderboard range filters.
     useEffect(() => {
-        async function fetchStatsForRange() {
+        async function fetchAllTimeStats() {
             try {
-                const dates = getRangeDates(selectedRange);
-                const dateRange: DateRange = dates ?? { from: new Date(0), to: new Date() } as DateRange;
+                const dateRange: DateRange = { from: new Date(0), to: new Date() } as DateRange;
                 const result = await getUgcStatsInRange(dateRange, ugcStatsUserWallet);
                 if (result) setAllTimeStats(result);
             } catch (e) {
-                console.error('Error fetching UGC stats for range', e);
+                console.error('[Dashboard] Error fetching all-time UGC stats', e);
             }
         }
 
-        fetchStatsForRange();
-    }, [selectedRange, ugcStatsUserWallet]);
+        fetchAllTimeStats();
+    }, [ugcStatsUserWallet]);
+
+    // Fetch stats for the currently selected leaderboard range (compact layout only)
+    useEffect(() => {
+        if (!isCompactLayout) return;
+
+        async function fetchRangeStats() {
+            try {
+                let dateRange: DateRange;
+                const dates = getRangeDates(selectedRange);
+                if (dates) {
+                    dateRange = { from: dates.from, to: dates.to } as DateRange;
+                } else {
+                    // "all" range – use epoch to now
+                    dateRange = { from: new Date(0), to: new Date() } as DateRange;
+                }
+
+                const result = await getUgcStatsInRange(dateRange, ugcStatsUserWallet);
+                if (result) {
+                    setUgcStats(result);
+                }
+            } catch (e) {
+                console.error('[Dashboard] Error fetching UGC stats for range', e);
+            }
+        }
+
+        fetchRangeStats();
+    }, [selectedRange, ugcStatsUserWallet, isCompactLayout]);
 
     // Callback from Leaderboard to keep range in sync
     const handleLeaderboardRangeChange = (range: RangeKey) => {
         setSelectedRange(range);
     };
 
-    // Fetch recent edited UGC only for the profile layout (not the compact leaderboard layout)
+    // Fetch recent edited UGC only for the full profile layout (not the compact leaderboard layout)
     useEffect(() => {
-        if (isCompactLayout) {
+        if (!isCompactLayout) {
             fetch('/api/recentEdited')
                 .then(res => res.json())
                 .then((data: RecentItem[]) => setRecentUGC(data))
@@ -195,15 +235,17 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
     // ------------------- RENDER -------------------
 
-    if (isGuestUser) {
+    // Show simplified "please log in" screen only on the full (non-compact) profile view.
+    // In the compact leaderboard view we still want to show the stats box so we can
+    // prompt the user to log in from there.
+    if (isGuestUser && !isCompactLayout) {
         return (
-            <section className="flex flex-col items-center justify-center py-20 space-y-8 text-center">
-                <p className="text-3xl font-bold">User Profile</p>
+            <section className="px-10 py-20 space-y-8 flex items-center justify-center flex-col text-center">
+                <h1 className="text-3xl font-bold">User Profile</h1>
                 {!hideLogin && (
                     <Button
                         size="lg"
-                        variant="secondary"
-                        className="bg-gray-200 text-black hover:bg-gray-300 px-8 py-4 text-xl"
+                        className="bg-pastypink hover:bg-gray-200 text-white px-8 py-4 text-xl"
                         onClick={handleLogin}
                     >
                         Log In
@@ -221,7 +263,18 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username + other controls as before */}
                     <div className="flex flex-col items-center gap-2 pb-1 w-full">
                         {/* Horizontal stats row (User / UGC Added / Artists Added) */}
-                        {!isGuestUser && (
+                        {isGuestUser ? (
+                            // Guest variant – single clickable row that asks the visitor to log in
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={handleLogin}
+                                className="cursor-pointer flex items-center justify-center py-3 px-4 sm:px-6 border rounded-md bg-accent/40 hover:bg-accent/60 hover:ring-2 hover:ring-black w-full gap-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                            >
+                                <span className="text-sm sm:text-lg font-medium underline">Log in to compare your statistics</span>
+                            </div>
+                        ) : (
+                            <>
                             <div
                                 role="button"
                                 tabIndex={0}
@@ -243,11 +296,19 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 </div>
 
                                 {/* Rank */}
-                                <div className="flex flex-row flex-wrap items-center justify-center gap-1 text-xs sm:text-lg whitespace-nowrap">
+                                <div className="flex flex-row items-center justify-center gap-2 text-xs sm:text-lg whitespace-nowrap">
                                     <span className="font-semibold text-xs sm:text-base">Rank:</span>
                                     <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
                                         {rank ?? '—'}
                                     </Badge>
+                                    {totalEntries && (
+                                        <>
+                                            <span className="text-xs sm:text-base">of</span>
+                                            <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary text-base px-4 py-1">
+                                                {totalEntries}
+                                            </Badge>
+                                        </>
+                                    )}
                                     {/* (arrow moved next to name) */}
                                 </div>
 
@@ -267,7 +328,23 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                     </Badge>
                                 </div>
                             </div>
-                        )}
+
+                            {/* Link under stats bar to jump to leaderboard */}
+                            <a
+                                href="#leaderboard-current-user"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    const el = document.getElementById('leaderboard-current-user');
+                                    if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                }}
+                                className="mt-2 text-sm text-blue-600 underline hover:text-blue-800"
+                            >
+                                View leaderboard position
+                            </a>
+                            </>
+                          )}
 
                         {/* Edit username controls removed in leaderboard view */}
                         {/* Show a standalone login button for guests only when username editing is disabled */}
@@ -288,7 +365,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* Status row */}
                     {showStatus && (
-                    <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
+                    <div className="flex items-center gap-2 text-lg w-full justify-center md:justify-start">
+                        <span className="font-semibold">Role:</span>
+                        <span className="font-normal">{statusString}</span>
+                    </div>
                     )}
 
                     {/* The vertical dynamic stats block has been replaced by the horizontal grid above */}
@@ -309,40 +389,37 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     {/* Username row no edit button inline */}
                     <div className="flex flex-col items-center gap-2 pb-4 w-full text-center">
                         {!isEditingUsername && (
-                            <p className="text-lg font-semibold">
-                                {displayName}
-                            </p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-lg font-semibold">
+                                    {displayName}
+                                </p>
+                                {allowEditUsername && !isGuestUser && (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="w-8 h-8"
+                                        onClick={() => setIsEditingUsername(true)}
+                                    >
+                                        <Pencil size={16} />
+                                    </Button>
+                                )}
+                            </div>
                         )}
 
-                        {allowEditUsername && (
-                            !isGuestUser && isEditingUsername ? (
-                                <div className="flex flex-col items-center gap-2 w-full">
-                                    <div className="flex items-center gap-2 border border-gray-300 bg-white rounded-md p-2 shadow-sm">
-                                        <Input
-                                            value={usernameInput}
-                                            onChange={(e) => setUsernameInput(e.target.value)}
-                                            className="h-8 w-40 text-sm"
-                                        />
-                                        <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
-                                            {savingUsername ? 'Saving...' : 'Save'}
-                                        </Button>
-                                        <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="pt-2">
-                                    <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        className="bg-gray-200 text-black hover:bg-gray-300"
-                                        onClick={isGuestUser ? handleLogin : () => setIsEditingUsername(true)}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            {isGuestUser ? 'Log In' : (<><Pencil size={14} /> Edit Username</>)}
-                                        </div>
+                        {allowEditUsername && !isGuestUser && isEditingUsername && (
+                            <div className="flex flex-col items-center gap-2 w-full">
+                                <div className="flex items-center gap-2 border-2 border-gray-300 bg-white rounded-md p-4 shadow-sm w-64">
+                                    <Input
+                                        value={usernameInput}
+                                        onChange={(e) => setUsernameInput(e.target.value)}
+                                        className="h-8 w-40 text-sm"
+                                    />
+                                    <Button size="sm" onClick={saveUsername} disabled={savingUsername || !usernameInput}>
+                                        {savingUsername ? 'Saving...' : 'Save'}
                                     </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setIsEditingUsername(false)}>Cancel</Button>
                                 </div>
-                            )
+                            </div>
                         )}
                         {/* Fallback login button for views where username editing is not allowed */}
                         {!allowEditUsername && isGuestUser && !hideLogin && (
@@ -360,7 +437,7 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                     </div>
 
                     {/* Two-column section under username */}
-                    <div className="flex flex-col md:flex-row md:gap-6 justify-center max-w-3xl mx-auto text-center md:text-left">
+                    <div className="flex flex-col md:flex-row md:justify-between md:gap-6 max-w-3xl mx-auto text-center md:text-left">
                         {/* Left column - admin controls, status & stats */}
                         <div className="md:w-1/2 flex flex-col">
                             {/* Top area: admin controls and status */}
@@ -369,19 +446,32 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Status row */}
                                 {showStatus && (
-                                <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
+                                <div className="flex items-center gap-2 text-lg w-full justify-center md:justify-start">
+                                    <span className="font-semibold">Role:</span>
+                                    <span className="font-normal">{statusString}</span>
+                                </div>
                                 )}
                                     </div>
 
                             {/* Bottom area: UGC / Artists stats (vertical layout) */}
-                            <div className="space-y-1 text-center md:text-left mt-4">
-                                <p className="text-lg font-semibold">UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></p>
-                                <p className="text-lg font-semibold">Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></p>
+                            <div className="mt-4">
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="py-4 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start w-64"
+                            >
+                                <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
+                                    {/* User Rank */}
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">User Rank:</span><span className="font-normal text-right flex-1 truncate">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">UGC Total:</span><span className="font-normal text-right flex-1 truncate">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span></div>
+                                    <div className="flex justify-between text-lg w-full"><span className="font-semibold">Artists Total:</span><span className="font-normal text-right flex-1 truncate">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span></div>
+                                </Link>
+                            </Button>
                             </div>
-                        </div>
+                            </div>
 
                         {/* Right column - recently edited */}
-                        <div className="md:w-1/2 space-y-4 mt-8 md:mt-0">
+                        <div className="md:w-1/2 space-y-4 mt-12 md:mt-0 flex flex-col items-center md:items-start mx-auto md:ml-auto">
                             <h3 className="text-lg font-semibold text-center md:text-left">Recently Edited Artists</h3>
                             {recentUGC.length ? (
                                 <ul className="space-y-3">
@@ -399,12 +489,15 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                             )}
                         </div>
                     </div>
+
+                    {/* User Artist Data Entries table */}
+                    <UserEntriesTable />
                 </>
             )}
 
             {/* Leaderboard Section */}
             {showLeaderboard && (
-            <div className="space-y-4">
+            <div id="leaderboard-section" className="space-y-4">
                 <Leaderboard highlightIdentifier={user.wallet} onRangeChange={handleLeaderboardRangeChange} />
             </div>
             )}

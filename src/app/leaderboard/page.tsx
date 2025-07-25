@@ -1,6 +1,7 @@
 import { getServerAuthSession } from "@/server/auth";
 import Dashboard from "@/app/profile/Dashboard";
 import Leaderboard from "@/app/profile/Leaderboard";
+import LeaderboardAutoRefresh from "./LeaderboardAutoRefresh";
 import { notFound } from "next/navigation";
 import { getUserById } from "@/server/utils/queries/userQueries";
 
@@ -20,7 +21,14 @@ export default async function Page() {
       updatedAt: new Date().toISOString(),
       legacyId: null,
     } as const;
-    return <main className="px-5 sm:px-10 py-10"><Leaderboard /></main>; // show leaderboard only for guest
+    return (
+        <main className="px-5 sm:px-10 py-10">
+            {/* Compact dashboard bar prompting guest users to log in */}
+            <Dashboard user={mockUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
+            <LeaderboardAutoRefresh />
+            <Leaderboard />
+        </main>
+    ); // show leaderboard only for guest
   }
 
   if (!session) {
@@ -35,7 +43,14 @@ export default async function Page() {
       updatedAt: new Date().toISOString(),
       legacyId: null,
     } as const;
-    return <main className="px-5 sm:px-10 py-10"><Leaderboard /></main>; // leaderboard for guest
+    return (
+        <main className="px-5 sm:px-10 py-10">
+            {/* Compact dashboard bar prompting guest users to log in */}
+            <Dashboard user={guestUser} allowEditUsername={false} showLeaderboard={false} showDateRange={false} hideLogin={true} showStatus={false} />
+            <LeaderboardAutoRefresh />
+            <Leaderboard />
+        </main>
+    ); // leaderboard for guest
   }
 
   const user = await getUserById(session.user.id);

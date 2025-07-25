@@ -318,6 +318,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         <Button 
                             ref={ref}
                             id="login-btn" 
+                            title="View leaderboard" 
                             size="lg" 
                                     type="button"
                                     className={`hover:bg-gray-200 transition-colors duration-300 text-black px-0 w-12 h-12 bg-pastypink ${buttonStyles}`}
@@ -357,6 +358,7 @@ const WalletLogin = forwardRef<HTMLButtonElement, LoginProps>(
                         <DropdownMenuTrigger asChild>
                         <Button 
                             ref={ref}
+                            title="View leaderboard" 
                             type="button" 
                                 size="lg"
                             className="relative bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 w-12 h-12 p-0 flex items-center justify-center" 

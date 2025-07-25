@@ -3,6 +3,8 @@ import { getServerAuthSession } from "@/server/auth";
 import { getPendingUGC } from "@/server/utils/queries/artistQueries";
 import { getUserById } from "@/server/utils/queries/userQueries";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const session = await getServerAuthSession();

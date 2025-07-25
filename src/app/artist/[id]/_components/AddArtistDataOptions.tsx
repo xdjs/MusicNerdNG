@@ -14,9 +14,9 @@ export default function AddArtistDataOptions({availableLinks, setOption}: {avail
         <DropdownMenuItem
             key={link.id}
             className="cursor-pointer"
-            onClick={() => setOption(link.example)}
+            onClick={() => setOption(link.example.replace(/^(?:https?:\/\/)?(?:www\.)?/, ''))}
         >
-            {link.example.replace(/^https?:\/\//, '')}
+            {link.example.replace(/^(?:https?:\/\/)?(?:www\.)?/, '')}
         </DropdownMenuItem>
     ));
     return (

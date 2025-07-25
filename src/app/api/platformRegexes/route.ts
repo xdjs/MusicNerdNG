@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { getAllLinks } from '@/server/utils/queries/artistQueries';
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const allLinks = await getAllLinks();
   // Only include platforms that are not 'ens' or 'wallets'

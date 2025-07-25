@@ -1,6 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getLeaderboard, getLeaderboardInRange } from "@/server/utils/queries/leaderboardQueries";
 
+export const dynamic = "force-dynamic";
+
 export const revalidate = 60; // cache for 1 minute
 
 export async function GET(request: NextRequest | Request) {
@@ -23,6 +25,23 @@ export async function GET(request: NextRequest | Request) {
         } else {
             leaderboard = await getLeaderboard();
         }
+
+        // Pagination parameters
+        const pageParam = parseInt(searchParams.get("page") ?? "", 10);
+        const perPageParam = parseInt(searchParams.get("perPage") ?? "10", 10);
+        const perPage = Number.isFinite(perPageParam) && perPageParam > 0 ? perPageParam : 10;
+        const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+
+        const isPaginated = searchParams.has("page") || searchParams.has("perPage");
+
+        if (isPaginated) {
+            const total = leaderboard.length;
+            const pageCount = Math.ceil(total / perPage);
+            const offset = (page - 1) * perPage;
+            const entries = leaderboard.slice(offset, offset + perPage);
+            return NextResponse.json({ entries, total, pageCount }, { status: 200 });
+        }
+
         return NextResponse.json(leaderboard, { status: 200 });
     } catch (error) {
         console.error("Error fetching leaderboard:", error);

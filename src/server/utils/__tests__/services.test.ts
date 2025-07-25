@@ -3,6 +3,7 @@ import {
   getArtistDetailsText,
   isObjKey,
   extractArtistId,
+  artistPlatforms,
 } from "../services";
 
 import type { Artist } from "../../db/DbTypes";
@@ -17,15 +18,50 @@ jest.mock("../queries/queriesTS", () => ({
       cardPlatformName: "Twitter",
     },
     {
-      // Combined regex for YouTube channel IDs and usernames
-      regex: /https?:\/\/www\.youtube\.com\/(?:channel\/([^/?]+)|@?([^/?]+))/,
-      siteName: "youtubechannel",
+      // YouTube channel regex for channel IDs only
+      regex: /^https?:\/\/(www\.)?youtube\.com\/channel\/([^/?]+)$/,
+      siteName: "youtubechannel", 
       cardPlatformName: "YouTube",
+    },
+    {
+      // YouTube username regex for @username and plain username
+      regex: /^https?:\/\/(www\.)?youtube\.com\/(?:@([^/]+)|([^/]+))$/,
+      siteName: "youtube",
+      cardPlatformName: "YouTube", 
     },
   ]),
 }));
 
 describe("utils/services", () => {
+  describe("artistPlatforms array", () => {
+    it("includes both YouTube platform types", () => {
+      expect(artistPlatforms).toContain("youtube");
+      expect(artistPlatforms).toContain("youtubechannel");
+    });
+
+    it("includes all expected social platforms", () => {
+      const expectedSocialPlatforms = [
+        "x", "instagram", "facebook", "tiktok", "soundcloud", 
+        "youtube", "youtubechannel", "lastfm", "audius", "bandisintown"
+      ];
+      
+      expectedSocialPlatforms.forEach(platform => {
+        expect(artistPlatforms).toContain(platform);
+      });
+    });
+
+    it("includes all expected web3 platforms", () => {
+      const expectedWeb3Platforms = [
+        "catalog", "soundxyz", "opensea", "zora", "mintsongs",
+        "supercollector", "wallets", "ens"
+      ];
+      
+      expectedWeb3Platforms.forEach(platform => {
+        expect(artistPlatforms).toContain(platform);
+      });
+    });
+  });
+
   describe("getArtistSplitPlatforms", () => {
     it("splits web3 and social platforms correctly", () => {
       const artist = {
@@ -43,6 +79,42 @@ describe("utils/services", () => {
         "Supercollector",
       ]);
       expect(socialPlatforms).toEqual(["X", "Instagram"]);
+    });
+
+    it("includes both YouTube platform types in social platforms", () => {
+      const artist = {
+        youtube: "@testuser",
+        youtubechannel: "UC1234567890",
+        x: "twitterUser",
+      } as unknown as Artist;
+
+      const { web3Platforms, socialPlatforms } = getArtistSplitPlatforms(artist);
+
+      expect(socialPlatforms).toContain("Youtube");
+      expect(socialPlatforms).toContain("Youtubechannel");
+      expect(socialPlatforms).toContain("X");
+      expect(web3Platforms).toEqual([]);
+    });
+
+    it("handles single YouTube platform type correctly", () => {
+      const artistWithUsername = {
+        youtube: "@testuser",
+        instagram: "instaUser",
+      } as unknown as Artist;
+
+      const artistWithChannel = {
+        youtubechannel: "UC1234567890",
+        instagram: "instaUser",
+      } as unknown as Artist;
+
+      const result1 = getArtistSplitPlatforms(artistWithUsername);
+      const result2 = getArtistSplitPlatforms(artistWithChannel);
+
+      expect(result1.socialPlatforms).toContain("Youtube");
+      expect(result1.socialPlatforms).not.toContain("Youtubechannel");
+      
+      expect(result2.socialPlatforms).toContain("Youtubechannel");
+      expect(result2.socialPlatforms).not.toContain("Youtube");
     });
   });
 
@@ -92,7 +164,8 @@ describe("utils/services", () => {
       });
     });
 
-    it("extracts youtube channel id", async () => {
+    // YouTube Channel ID Tests
+    it("extracts youtube channel id from www.youtube.com", async () => {
       const res = await extractArtistId(
         "https://www.youtube.com/channel/UC1234567890abcdef"
       );
@@ -103,12 +176,62 @@ describe("utils/services", () => {
       });
     });
 
-    it("extracts youtube username and adds @ prefix when missing", async () => {
-      const res = await extractArtistId("https://www.youtube.com/artistname");
+    it("extracts youtube channel id from youtube.com", async () => {
+      const res = await extractArtistId(
+        "https://youtube.com/channel/UC1234567890abcdef"
+      );
       expect(res).toEqual({
         siteName: "youtubechannel",
         cardPlatformName: "YouTube",
+        id: "UC1234567890abcdef",
+      });
+    });
+
+    // YouTube Username Tests (@username format)
+    it("extracts youtube @username from www.youtube.com", async () => {
+      const res = await extractArtistId("https://www.youtube.com/@artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
         id: "@artistname",
+      });
+    });
+
+    it("extracts youtube @username from youtube.com", async () => {
+      const res = await extractArtistId("https://youtube.com/@artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@artistname",
+      });
+    });
+
+    // YouTube Username Tests (plain username format - new feature)
+    it("extracts youtube username from www.youtube.com and adds @ prefix", async () => {
+      const res = await extractArtistId("https://www.youtube.com/artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@artistname",
+      });
+    });
+
+    it("extracts youtube username from youtube.com and adds @ prefix", async () => {
+      const res = await extractArtistId("https://youtube.com/artistname");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@artistname",
+      });
+    });
+
+    // Test the specific failing case from UGC
+    it("extracts youtube username correctly for UGC case (www.youtube.com/@fkj)", async () => {
+      const res = await extractArtistId("https://www.youtube.com/@fkj");
+      expect(res).toEqual({
+        siteName: "youtube",
+        cardPlatformName: "YouTube",
+        id: "@fkj",
       });
     });
 
