@@ -58,6 +58,7 @@ export default function UserEntriesTable() {
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [artistQuery, setArtistQuery] = useState("");
+  const [statusSort, setStatusSort] = useState<"default" | "approved" | "pending">("default");
 
   useEffect(() => {
     async function fetchEntries() {
@@ -82,14 +83,28 @@ export default function UserEntriesTable() {
       const q = artistQuery.toLowerCase();
       arr = arr.filter((e) => (e.artistName ?? "").toLowerCase().includes(q));
     }
-    // sort by full timestamp
+    // sort by full timestamp (most recent first / oldest depending on sortOrder)
     arr.sort((a, b) => {
       const tA = parseUTC(a.createdAt ?? "").getTime();
       const tB = parseUTC(b.createdAt ?? "").getTime();
       return sortOrder === "asc" ? tA - tB : tB - tA;
     });
-    return arr;
-  }, [entries, filter, sortOrder, artistQuery]);
+
+    if (statusSort !== "default") {
+      arr.sort((a, b) => {
+        const aApproved = !!a.accepted;
+        const bApproved = !!b.accepted;
+        if (statusSort === "approved") {
+          // approved first
+          return aApproved === bApproved ? 0 : aApproved ? -1 : 1;
+        } else {
+          // pending first
+          return aApproved === bApproved ? 0 : aApproved ? 1 : -1;
+        }
+      });
+    }
+
+  }, [entries, filter, sortOrder, artistQuery, statusSort]);
 
   return (
     <Card className="max-w-3xl mx-auto mt-10">
@@ -145,7 +160,20 @@ export default function UserEntriesTable() {
                 </div>
               </TableHead>
               <TableHead className="text-center py-2 px-3 whitespace-nowrap">Site Link</TableHead>
-              <TableHead className="text-center py-2 px-3">Status</TableHead>
+              <TableHead className="text-center py-2 px-3">
+                <div className="flex items-center justify-center gap-2">
+                  <span>Status</span>
+                  <select
+                    value={statusSort}
+                    onChange={(e) => setStatusSort(e.target.value as any)}
+                    className="border border-gray-300 rounded-md p-1 text-xs bg-white"
+                  >
+                    <option value="default">Recent</option>
+                    <option value="approved">Approved First</option>
+                    <option value="pending">Pending First</option>
+                  </select>
+                </div>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
