@@ -364,7 +364,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                     {/* Status row */}
                     {showStatus && (
-                    <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
+                    <div className="flex justify-between text-lg w-full">
+                        <span className="font-semibold mr-4">Role:</span>
+                        <span className="font-normal">{statusString}</span>
+                    </div>
                     )}
 
                     {/* The vertical dynamic stats block has been replaced by the horizontal grid above */}
@@ -444,7 +447,10 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
 
                                 {/* Status row */}
                                 {showStatus && (
-                                <p className="text-lg font-semibold">Role: <span className="font-normal">{statusString}</span></p>
+                                <div className="flex justify-between text-lg w-full">
+                                    <span className="font-semibold mr-4">Role:</span>
+                                    <span className="font-normal">{statusString}</span>
+                                </div>
                                 )}
                                     </div>
 
