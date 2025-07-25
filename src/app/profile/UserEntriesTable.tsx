@@ -11,8 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search as SearchIcon } from "lucide-react";
-import { ArrowUpDown } from "lucide-react";
+import { Search as SearchIcon, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
@@ -165,18 +164,23 @@ export default function UserEntriesTable() {
                 </div>
               </TableHead>
               <TableHead className="text-center py-2 px-3 whitespace-nowrap">Site Link</TableHead>
-              <TableHead className="text-center py-2 px-3">
-                <div className="flex items-center justify-center gap-2">
+              <TableHead
+                className="text-center py-2 px-3 cursor-pointer select-none"
+                onClick={() =>
+                  setStatusSort((prev) =>
+                    prev === "default" ? "approved" : prev === "approved" ? "pending" : "default"
+                  )
+                }
+              >
+                <div className="flex items-center justify-center gap-1">
                   <span>Status</span>
-                  <select
-                    value={statusSort}
-                    onChange={(e) => setStatusSort(e.target.value as any)}
-                    className="border border-gray-300 rounded-md p-1 text-xs bg-white"
-                  >
-                    <option value="default">Recent</option>
-                    <option value="approved">Approved First</option>
-                    <option value="pending">Pending First</option>
-                  </select>
+                  {statusSort === "approved" ? (
+                    <ArrowUp className="w-3 h-3" />
+                  ) : statusSort === "pending" ? (
+                    <ArrowDown className="w-3 h-3" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3" />
+                  )}
                 </div>
               </TableHead>
             </TableRow>
