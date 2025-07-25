@@ -55,6 +55,7 @@ export default function UserEntriesTable() {
   const [entries, setEntries] = useState<UserEntry[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [timeSort, setTimeSort] = useState<"asc" | "desc">("asc");
   const [artistQuery, setArtistQuery] = useState("");
 
   useEffect(() => {
@@ -80,19 +81,27 @@ export default function UserEntriesTable() {
       const q = artistQuery.toLowerCase();
       arr = arr.filter((e) => (e.artistName ?? "").toLowerCase().includes(q));
     }
-    // sort by date
+    // sort by date, then time within same date
     arr.sort((a, b) => {
-      const tA = new Date(a.createdAt ?? "").getTime();
-      const tB = new Date(b.createdAt ?? "").getTime();
-      return sortOrder === "asc" ? tA - tB : tB - tA;
+      const dA = parseUTC(a.createdAt ?? "");
+      const dB = parseUTC(b.createdAt ?? "");
+      // compare date (year,month,day)
+      const dateOnlyA = new Date(dA.getFullYear(), dA.getMonth(), dA.getDate()).getTime();
+      const dateOnlyB = new Date(dB.getFullYear(), dB.getMonth(), dB.getDate()).getTime();
+
+      if (dateOnlyA !== dateOnlyB) {
+        return sortOrder === "asc" ? dateOnlyA - dateOnlyB : dateOnlyB - dateOnlyA;
+      }
+      // same date – compare time
+      return timeSort === "asc" ? dA.getTime() - dB.getTime() : dB.getTime() - dA.getTime();
     });
     return arr;
-  }, [entries, filter, sortOrder, artistQuery]);
+  }, [entries, filter, sortOrder, timeSort, artistQuery]);
 
   return (
     <Card className="max-w-3xl mx-auto mt-10">
-      <CardHeader className="text-center">
-        <CardTitle className="mb-5">Your Artist Data Entries</CardTitle>
+      <CardHeader className="text-center pb-2">
+        <CardTitle className="mb-2">Your Artist Data Entries</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <div className="rounded-md border overflow-x-auto">
@@ -110,7 +119,17 @@ export default function UserEntriesTable() {
                   />
                 </div>
               </TableHead>
-              <TableHead className="text-center py-2 px-3">Time</TableHead>
+              <TableHead
+                className="text-center cursor-pointer select-none py-2 px-3"
+                onClick={() => setTimeSort((prev) => (prev === "desc" ? "asc" : "desc"))}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  <span>Time</span>
+                  <ArrowUpDown
+                    className={`w-3 h-3 transition-transform ${timeSort === "desc" ? "rotate-180" : ""}`}
+                  />
+                </div>
+              </TableHead>
               <TableHead className="text-center py-2 px-3">
                 <div className="flex items-center justify-center gap-2">
                   <span>Artist</span>
@@ -124,7 +143,7 @@ export default function UserEntriesTable() {
               </TableHead>
               <TableHead className="text-center py-2 px-3">
                 <div className="flex items-center justify-center gap-2">
-                  <span>Entry Type</span>
+                  <span className="whitespace-nowrap">Entry Type</span>
                   <select
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
@@ -139,7 +158,7 @@ export default function UserEntriesTable() {
                   </select>
                 </div>
               </TableHead>
-              <TableHead className="text-center py-2 px-3">Site Link</TableHead>
+              <TableHead className="text-center py-2 px-3 whitespace-nowrap">Site Link</TableHead>
               <TableHead className="text-center py-2 px-3">Status</TableHead>
             </TableRow>
           </TableHeader>
