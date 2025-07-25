@@ -456,16 +456,19 @@ function UgcStats({ user, showLeaderboard = true, allowEditUsername = false, sho
                                 className="py-4 px-2 space-y-2 text-left border-gray-300 hover:bg-gray-100 h-auto self-start"
                             >
                                 <Link href="/leaderboard" className="inline-flex flex-col items-start justify-start space-y-2">
-                                    {/* User Rank */}
-                                    <p className="text-lg font-semibold">
-                                        User Rank: <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
-                                    </p>
-                                    <p className="text-lg font-semibold">
-                                        UGC Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span>
-                                    </p>
-                                    <p className="text-lg font-semibold">
-                                        Artists Total: <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span>
-                                    </p>
+                                    {/* Stats rows */}
+                                    <div className="flex justify-between text-lg w-full">
+                                        <span className="font-semibold mr-4">User Rank:</span>
+                                        <span className="font-normal">{rank ? `${rank} of ${totalEntries ?? '—'}` : '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between text-lg w-full">
+                                        <span className="font-semibold mr-4">UGC Total:</span>
+                                        <span className="font-normal">{(ugcStats ?? allTimeStats)?.ugcCount ?? '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between text-lg w-full">
+                                        <span className="font-semibold mr-4">Artists Total:</span>
+                                        <span className="font-normal">{(ugcStats ?? allTimeStats)?.artistsCount ?? '—'}</span>
+                                    </div>
                                 </Link>
                             </Button>
                             </div>
