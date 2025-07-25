@@ -14,6 +14,7 @@ import FunFactsMobile from "./_components/FunFactsMobile";
 import FunFactsDesktop from "./_components/FunFactsDesktop";
 import ArtistAutoRefresh from "./ArtistAutoRefresh";
 import { Metadata } from "next";
+import { getOpenAIBio } from "@/server/utils/queries/openAIQuery";
 
 type ArtistProfileProps = {
     params: { id: string };
@@ -21,29 +22,53 @@ type ArtistProfileProps = {
 }
 
 /**
- * Helper function to get artist bio for metadata purposes
- * Uses cached bio if available, otherwise returns fallback text
+ * Helper function to get artist bio for metadata purposes (server-side)
+ * Replicates API route logic but with shorter timeout for metadata generation
  */
 async function getArtistBioForMetadata(artistId: string): Promise<string> {
     try {
-        // Short timeout for metadata generation (5 seconds max)
-        const response = await Promise.race([
-            fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/artistBio/${artistId}`),
-            new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error('Bio fetch timeout')), 5000)
+        // Short timeout for metadata generation (3 seconds max)
+        const bioOperation = async (): Promise<string> => {
+            // Get fresh artist data (may have been updated since initial fetch)
+            const artist = await getArtistById(artistId);
+            if (!artist) {
+                return '';
+            }
+
+            // If artist lacks vital info, return generic message
+            if (!artist.bio && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
+                return "MusicNerd needs artist data to generate a summary. Try adding some to get started!";
+            }
+
+            // If bio already exists in database, return cached version
+            if (artist.bio && artist.bio.trim().length > 0) {
+                return artist.bio;
+            }
+
+            // Generate new bio using OpenAI (this might take time)
+            try {
+                const bioResponse = await getOpenAIBio(artistId);
+                const bioData = await bioResponse.json();
+                return bioData.bio || '';
+            } catch (error) {
+                console.error('Error generating bio for metadata:', error);
+                return '';
+            }
+        };
+
+        // Race against timeout
+        const result = await Promise.race([
+            bioOperation(),
+            new Promise<string>((_, reject) => 
+                setTimeout(() => reject(new Error('Bio generation timeout')), 3000)
             )
         ]);
 
-        if (response.ok) {
-            const data = await response.json();
-            return data.bio || '';
-        }
+        return result;
     } catch (error) {
-        console.error('Error fetching bio for metadata:', error);
+        console.error('Error in bio generation for metadata:', error);
+        return '';
     }
-    
-    // Return empty string if bio fetch fails
-    return '';
 }
 
 /**
@@ -77,9 +102,8 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     const headers = await getSpotifyHeaders();
     const spotifyImg = await getSpotifyImage(artist.spotify ?? "", undefined, headers);
 
-    // Temporarily disable bio fetching to fix timeout issues
-    // TODO: Implement direct server-side bio generation without HTTP calls
-    const artistBio = ''; // Disabled for now
+    // Fetch artist bio for meta description (now using direct server-side calls)
+    const artistBio = await getArtistBioForMetadata(params.id);
     
     // Create meta description
     let description: string;
