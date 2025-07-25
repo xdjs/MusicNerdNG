@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
 interface UserEntry {
@@ -70,23 +71,26 @@ export default function UserEntriesTable() {
   }, [entries, filter]);
 
   return (
-    <div className="space-y-4 mt-10 max-w-full overflow-x-auto">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Your Artist Data Entries</h3>
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="border border-gray-300 rounded-md p-1 text-sm"
-        >
-          <option value="all">All</option>
-          {Array.from(new Set(entries.map((e) => e.siteName).filter(Boolean))).map((site) => (
-            <option key={site as string} value={site as string}>
-              {site as string}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="rounded-md border">
+    <Card className="max-w-3xl mx-auto mt-10">
+      <CardHeader className="text-center">
+        <CardTitle className="mb-5">Your Artist Data Entries</CardTitle>
+        <div className="flex justify-center">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="border border-gray-300 rounded-md p-1 text-sm"
+          >
+            <option value="all">All</option>
+            {Array.from(new Set(entries.map((e) => e.siteName).filter(Boolean))).map((site) => (
+              <option key={site as string} value={site as string}>
+                {site as string}
+              </option>
+            ))}
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -134,9 +138,10 @@ export default function UserEntriesTable() {
             )}
           </TableBody>
         </Table>
-      </div>
+        </div>
+      </CardContent>
       {pageCount > 1 && (
-        <div className="flex justify-end items-center gap-4">
+        <div className="flex justify-end items-center gap-4 p-6 pt-0">
           <Button
             variant="outline"
             size="sm"
@@ -158,6 +163,6 @@ export default function UserEntriesTable() {
           </Button>
         </div>
       )}
-    </div>
+    </Card>
   );
 } 
