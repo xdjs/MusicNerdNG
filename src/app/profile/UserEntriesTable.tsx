@@ -278,7 +278,9 @@ export default function UserEntriesTable() {
                           "—"
                         )}
                       </TableCell>
-                      <TableCell className="text-center px-3 py-2 text-green-600 font-semibold">
+                      <TableCell
+                        className={`text-center px-3 py-2 font-semibold ${entry.accepted ? "text-green-600" : "text-yellow-600"}`}
+                      >
                         {entry.accepted ? "Approved" : "Pending"}
                       </TableCell>
                     </TableRow>
