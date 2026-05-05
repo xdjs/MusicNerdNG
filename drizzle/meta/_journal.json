@@ -36,6 +36,13 @@
       "when": 1774895321429,
       "tag": "0004_wide_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777947858743,
+      "tag": "0005_add_deezer_link",
+      "breakpoints": true
     }
   ]
 }

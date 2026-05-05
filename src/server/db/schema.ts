@@ -136,6 +136,7 @@ export const artists = pgTable("artists", {
 	musicbrainz: text(),
 	wikidata: text(),
 	mixcloud: text(),
+	deezer: text(),
 	facebookId: text("facebookID"),
 	discogs: text(),
 	tiktok: text(),

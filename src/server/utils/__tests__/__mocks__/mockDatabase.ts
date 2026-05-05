@@ -93,6 +93,7 @@ export const createMockArtist = (id: string, name: string, spotify: string): Art
     musicbrainz: null,
     wikidata: null,
     mixcloud: null,
+    deezer: null,
     facebookId: null,
     discogs: null,
     tiktokId: null,

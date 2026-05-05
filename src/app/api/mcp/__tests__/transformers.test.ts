@@ -36,6 +36,7 @@ function createMockArtist(overrides: Partial<Artist> = {}): Artist {
     musicbrainz: null,
     wikidata: null,
     mixcloud: null,
+    deezer: null,
     facebookId: null,
     discogs: null,
     tiktok: null,
