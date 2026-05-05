@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" version="1.1">
+  <title>Deezer</title>
+  <g>
+    <rect x="376" y="118" width="120" height="56" fill="#40AB5D"/>
+    <rect x="376" y="194" width="120" height="56" fill="#FFCD03"/>
+    <rect x="252" y="194" width="120" height="56" fill="#F47820"/>
+    <rect x="376" y="270" width="120" height="56" fill="#F15B40"/>
+    <rect x="252" y="270" width="120" height="56" fill="#BE3D6B"/>
+    <rect x="128" y="270" width="120" height="56" fill="#952F8F"/>
+    <rect x="376" y="346" width="120" height="56" fill="#4F2E7E"/>
+    <rect x="252" y="346" width="120" height="56" fill="#2D6AB4"/>
+    <rect x="128" y="346" width="120" height="56" fill="#1B95C1"/>
+    <rect x="4" y="346" width="120" height="56" fill="#1FB7A4"/>
+  </g>
+</svg>
