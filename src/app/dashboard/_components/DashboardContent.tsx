@@ -246,14 +246,17 @@ export default function DashboardContent({
                         idx === i ? { ...f, status: "done" } : f
                     ));
                 } else {
+                    const message = data.error || "Upload failed";
                     setUploadFiles(prev => prev.map((f, idx) =>
-                        idx === i ? { ...f, status: "error", error: data.error || "Upload failed" } : f
+                        idx === i ? { ...f, status: "error", error: message } : f
                     ));
+                    toast({ title: `Couldn't upload ${file.name}`, description: message, variant: "destructive" });
                 }
             } catch {
                 setUploadFiles(prev => prev.map((f, idx) =>
                     idx === i ? { ...f, status: "error", error: "Network error" } : f
                 ));
+                toast({ title: `Couldn't upload ${file.name}`, description: "Network error", variant: "destructive" });
             }
         }
 
