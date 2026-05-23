@@ -201,6 +201,17 @@ export async function getVaultSourceByIdAndArtist(sourceId: string, artistId: st
     }
 }
 
+export async function getVaultSourceById(sourceId: string) {
+    try {
+        return await db.query.artistVaultSources.findFirst({
+            where: (s, { eq }) => eq(s.id, sourceId),
+        });
+    } catch (e) {
+        console.error("[getVaultSourceById] Error:", e);
+        return undefined;
+    }
+}
+
 export async function updateVaultSourceStatus(sourceId: string, status: "approved" | "rejected") {
     try {
         const [updated] = await db
