@@ -102,7 +102,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
 
                 {/* 1. Hero Section */}
-                <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} />
+                <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} artistId={artist.id} />
 
                 {/* 2. Name + Actions */}
                 <div className="text-center space-y-2">
