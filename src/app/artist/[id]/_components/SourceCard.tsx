@@ -136,6 +136,7 @@ export default function SourceCard({ source, onApprove, onReject, onDelete, onTy
                     )}
                     {onDelete && (
                         <Button
+                            aria-label="Delete"
                             variant="ghost"
                             size="sm"
                             onClick={() => onDelete(source.id)}

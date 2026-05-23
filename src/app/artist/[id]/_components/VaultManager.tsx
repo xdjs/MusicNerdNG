@@ -1,6 +1,7 @@
 "use client";
 
 import { useContext, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { EditModeContext } from "@/app/_components/EditModeContext";
 import SourceCard from "./SourceCard";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ interface VaultManagerProps {
 export default function VaultManager({ artistId, pendingSources, approvedSources }: VaultManagerProps) {
   const { isEditing } = useContext(EditModeContext);
   const { toast } = useToast();
+  const router = useRouter();
   const [pending, setPending] = useState(pendingSources);
   const [approved, setApproved] = useState(approvedSources);
   const [searching, setSearching] = useState(false);
@@ -36,15 +38,20 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
       const moved = pending.find(s => s.id === id);
       setPending(prev => prev.filter(s => s.id !== id));
       if (moved) setApproved(prev => [{ ...moved, status: "approved" }, ...prev]);
+      router.refresh();
     } else {
-      toast({ title: "Couldn't approve source", description: res.error, variant: "destructive" });
+      toast({ title: "Couldn't approve source", description: res.error ?? "Please try again", variant: "destructive" });
     }
   }
 
   async function handleReject(id: string) {
     const res = await updateSourceStatus(id, "rejected");
-    if (res.success) setPending(prev => prev.filter(s => s.id !== id));
-    else toast({ title: "Couldn't reject source", description: res.error, variant: "destructive" });
+    if (res.success) {
+      setPending(prev => prev.filter(s => s.id !== id));
+      router.refresh();
+    } else {
+      toast({ title: "Couldn't reject source", description: res.error ?? "Please try again", variant: "destructive" });
+    }
   }
 
   async function handleDelete(id: string) {
@@ -52,17 +59,20 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
     if (res.success) {
       setPending(prev => prev.filter(s => s.id !== id));
       setApproved(prev => prev.filter(s => s.id !== id));
+      router.refresh();
     } else {
-      toast({ title: "Couldn't delete source", description: res.error, variant: "destructive" });
+      toast({ title: "Couldn't delete source", description: res.error ?? "Please try again", variant: "destructive" });
     }
   }
 
   async function handleTypeChange(id: string, type: string) {
     const res = await updateSourceType(id, type);
-    if (!res.success) toast({ title: "Couldn't update type", description: res.error, variant: "destructive" });
-    else {
+    if (!res.success) {
+      toast({ title: "Couldn't update type", description: res.error ?? "Please try again", variant: "destructive" });
+    } else {
       setPending(prev => prev.map(s => s.id === id ? { ...s, type } : s));
       setApproved(prev => prev.map(s => s.id === id ? { ...s, type } : s));
+      router.refresh();
     }
   }
 
@@ -70,8 +80,16 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
     setSearching(true);
     try {
       const res = await searchWebForSources(artistId);
-      if (res.success) toast({ title: `Found ${res.count ?? 0} source(s)`, description: "Refresh to review them." });
-      else toast({ title: "Search failed", description: res.error, variant: "destructive" });
+      if (res.success) {
+        if (!res.count) {
+          toast({ title: "No new sources found" });
+        } else {
+          toast({ title: `Found ${res.count} source(s)`, description: "Refresh to review them." });
+        }
+        router.refresh();
+      } else {
+        toast({ title: "Search failed", description: res.error ?? "Please try again", variant: "destructive" });
+      }
     } finally {
       setSearching(false);
     }
@@ -86,8 +104,9 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
       const res = await fetch("/api/vault/upload", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.source) {
-        setPending(prev => [data.source, ...prev]);
+        setApproved(prev => [data.source, ...prev]);
         toast({ title: "File uploaded" });
+        router.refresh();
       } else {
         toast({ title: `Couldn't upload ${file.name}`, description: data.error || "Upload failed", variant: "destructive" });
       }
@@ -101,8 +120,18 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        <input ref={fileRef} type="file" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ""; }} />
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept=".pdf,.txt,.md,.csv,.json,.doc,.docx,.png,.jpg,.jpeg,.webp,.mp3,.wav"
+          className="hidden"
+          onChange={async (e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            for (const f of files) await handleUpload(f);
+          }}
+        />
         <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
           {uploading ? "Uploading…" : "Upload file"}
         </Button>
