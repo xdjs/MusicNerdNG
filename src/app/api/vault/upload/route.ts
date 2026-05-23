@@ -47,11 +47,14 @@ export async function POST(req: Request) {
     }
 
     try {
-        const user = await getUserById(session.user.id);
-        const isAdmin = !!user?.isAdmin;
-        const claim = isAdmin ? null : await getApprovedClaimByUserId(session.user.id);
-        if (!isAdmin && !claim) {
-            return NextResponse.json({ error: "No claimed artist profile" }, { status: 403 });
+        const claim = await getApprovedClaimByUserId(session.user.id);
+        let isAdmin = false;
+        if (!claim) {
+            const user = await getUserById(session.user.id);
+            isAdmin = !!user?.isAdmin;
+            if (!isAdmin) {
+                return NextResponse.json({ error: "No claimed artist profile" }, { status: 403 });
+            }
         }
 
         const formData = await req.formData();

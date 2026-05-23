@@ -3,19 +3,34 @@ import { jest } from '@jest/globals';
 
 jest.mock('@/server/auth', () => ({ getServerAuthSession: jest.fn() }));
 jest.mock('@/server/utils/dev-auth', () => ({ getDevSession: jest.fn() }));
-jest.mock('@/server/utils/queries/dashboardQueries', () => ({ getApprovedClaimByUserId: jest.fn() }));
+jest.mock('@/server/utils/queries/dashboardQueries', () => ({
+  getApprovedClaimByUserId: jest.fn(),
+  insertVaultSource: jest.fn(),
+}));
 jest.mock('@/server/utils/queries/userQueries', () => ({ getUserById: jest.fn() }));
 jest.mock('@/server/lib/supabase', () => ({
-  supabaseAdmin: { storage: { from: () => ({ upload: jest.fn().mockResolvedValue({ error: null }), getPublicUrl: () => ({ data: { publicUrl: 'http://x/y.png' } }) }) } },
+  supabaseAdmin: {
+    storage: {
+      from: () => ({
+        upload: jest.fn().mockResolvedValue({ error: null }),
+        getPublicUrl: () => ({ data: { publicUrl: 'http://x/file.png' } }),
+      }),
+    },
+  },
   VAULT_BUCKET: 'vault',
 }));
-jest.mock('@/server/db/drizzle', () => ({ db: { update: () => ({ set: () => ({ where: jest.fn().mockResolvedValue(undefined) }) }) } }));
+jest.mock('@/server/utils/validateMagicBytes', () => ({ validateMagicBytes: jest.fn().mockReturnValue(true) }));
+jest.mock('@/server/utils/extractPdfText', () => ({ extractPdfText: jest.fn().mockResolvedValue(null) }));
 
 if (!('json' in Response)) {
-  Response.json = (data, init) => new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, status: init?.status || 200 });
+  Response.json = (data, init) =>
+    new Response(JSON.stringify(data), {
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      status: init?.status || 200,
+    });
 }
 
-describe('POST /api/artist/profile-image admin path', () => {
+describe('POST /api/vault/upload admin path', () => {
   beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
   it('allows an admin to upload for an artist they have not claimed', async () => {
@@ -25,12 +40,15 @@ describe('POST /api/artist/profile-image admin path', () => {
     (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
     (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
     (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue(null);
+    (claims.insertVaultSource as jest.Mock).mockResolvedValue({ id: 'src-1' });
 
     const { POST } = await import('../route');
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
+    // Full 8-byte PNG magic header: 89 50 4E 47 0D 0A 1A 0A
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     // JSDOM's File doesn't implement arrayBuffer(); provide a minimal mock file
     const mockFile = {
-      name: 'a.png',
+      name: 'photo.png',
       type: 'image/png',
       size: pngBytes.byteLength,
       arrayBuffer: async () => pngBytes.buffer,
@@ -41,6 +59,8 @@ describe('POST /api/artist/profile-image admin path', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
   });
 
   it('rejects a non-admin with no claim', async () => {
@@ -52,9 +72,10 @@ describe('POST /api/artist/profile-image admin path', () => {
     (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue(null);
 
     const { POST } = await import('../route');
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const mockFile = {
-      name: 'a.png',
+      name: 'photo.png',
       type: 'image/png',
       size: pngBytes.byteLength,
       arrayBuffer: async () => pngBytes.buffer,
