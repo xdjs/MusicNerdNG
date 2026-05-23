@@ -63,4 +63,37 @@ describe('vault action authorization', () => {
 
     expect(res.success).toBe(false);
   });
+
+  it('admin can searchWebForSources for an artist they do not own', async () => {
+    const { actions, users } = await setup();
+    const { searchAndPopulateVault } = await import('@/server/utils/queries/vaultWebSearch');
+    (users.getUserById as jest.Mock).mockResolvedValue({ id: 'admin-1', isAdmin: true });
+    (searchAndPopulateVault as jest.Mock).mockResolvedValue(3);
+
+    const res = await actions.searchWebForSources('artist-they-dont-own');
+
+    expect(res.success).toBe(true);
+  });
+
+  it('admin removeVaultSources bypasses ownership filter', async () => {
+    const { actions, users, q } = await setup();
+    (users.getUserById as jest.Mock).mockResolvedValue({ id: 'admin-1', isAdmin: true });
+    (q.deleteVaultSources as jest.Mock).mockResolvedValue([{ id: 's1' }, { id: 's2' }]);
+
+    const res = await actions.removeVaultSources(['s1', 's2']);
+
+    expect(res.success).toBe(true);
+    expect(q.deleteVaultSources).toHaveBeenCalledWith(['s1', 's2']);
+    expect(q.getVaultSourcesByArtistId).not.toHaveBeenCalled();
+  });
+
+  it('admin updateSourceStatus returns failure when source is not found', async () => {
+    const { actions, users, q } = await setup();
+    (users.getUserById as jest.Mock).mockResolvedValue({ id: 'admin-1', isAdmin: true });
+    (q.getVaultSourceById as jest.Mock).mockResolvedValue(undefined);
+
+    const res = await actions.updateSourceStatus('missing', 'approved');
+
+    expect(res.success).toBe(false);
+  });
 });
