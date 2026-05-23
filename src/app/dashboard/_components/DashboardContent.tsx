@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { updateSourceStatus, seedMockSources, addVaultSource, searchWebForSources, removeVaultSource, removeVaultSources, updateSourceType } from "@/app/actions/dashboardActions";
-import SourceCard from "./SourceCard";
+import SourceCard from "@/app/artist/[id]/_components/SourceCard";
 import Link from "next/link";
 import { Plus, Database, Upload, FileText, Globe, CheckCircle2, XCircle, Loader2, Trash2, ExternalLink, Camera } from "lucide-react";
 import { SOURCE_TYPE_COLORS, type SourceType } from "@/lib/sourceTypes";
