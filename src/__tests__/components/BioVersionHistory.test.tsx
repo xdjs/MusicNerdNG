@@ -15,7 +15,7 @@ jest.mock('@/app/actions/dashboardActions', () => ({
   pinBioVersionAction: jest.fn().mockResolvedValue({ success: true }),
   deleteBioVersionAction: jest.fn().mockResolvedValue({ success: true }),
 }));
-import { pinBioVersionAction } from '@/app/actions/dashboardActions';
+import { pinBioVersionAction, deleteBioVersionAction } from '@/app/actions/dashboardActions';
 
 function renderEditing(isEditing = true) {
   return render(
@@ -40,5 +40,15 @@ describe('BioVersionHistory', () => {
     await waitFor(() => expect(screen.getByText('Second bio')).toBeInTheDocument());
     fireEvent.click(screen.getAllByRole('button', { name: /pin/i })[0]);
     await waitFor(() => expect(pinBioVersionAction).toHaveBeenCalledWith('v2', 'a1'));
+  });
+
+  it('deletes a version with the artistId', async () => {
+    renderEditing(true);
+    fireEvent.click(screen.getByText(/version history/i));
+    await waitFor(() => expect(screen.getByText('Second bio')).toBeInTheDocument());
+    // versions render newest-first: v2 (Feb, unpinned) is index 0; v1 (Jan, pinned) is index 1
+    // the pinned version's Delete button is disabled, so index 0 is the enabled one
+    fireEvent.click(screen.getAllByRole('button', { name: /delete/i })[0]);
+    await waitFor(() => expect(deleteBioVersionAction).toHaveBeenCalledWith('v2', 'a1'));
   });
 });

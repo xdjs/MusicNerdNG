@@ -67,6 +67,7 @@ export default function BioVersionHistory({ artistId }: { artistId: string }) {
         <div className="space-y-2">
             <button
                 onClick={() => setOpen(o => !o)}
+                aria-expanded={open}
                 className="text-xs text-muted-foreground hover:text-pastypink"
             >
                 {open ? "Hide" : "Show"} version history ({versions.length})
