@@ -1,7 +1,7 @@
 "use client"
 import { forwardRef } from 'react';
 import Link from 'next/link';
-import { LayoutDashboard, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import PrivyLogin from './PrivyLogin';
 
 interface LoginProps {
@@ -21,14 +21,6 @@ const NoWalletLogin: React.FC<LoginProps> = ({ buttonStyles }) => {
         <div className="flex items-center gap-1.5">
             {isLocalEnvironment && (
                 <>
-                    <Link
-                        href="/dashboard"
-                        title="Dashboard"
-                        aria-label="Dashboard"
-                        className={`flex items-center justify-center w-10 h-10 rounded-lg bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 text-white ${buttonStyles}`}
-                    >
-                        <LayoutDashboard size={18} />
-                    </Link>
                     <Link
                         href="/admin"
                         title="Admin panel"
