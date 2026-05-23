@@ -64,5 +64,57 @@ describe('POST /api/artist/profile-image admin path', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe('No claimed artist profile');
+  });
+
+  it('allows an admin WITH their own claim to upload for a DIFFERENT artist', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-2' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    // Admin has a claim for their own artist, but is uploading for a different one
+    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'their-own-artist' });
+
+    const { POST } = await import('../route');
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const mockFile = {
+      name: 'a.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'different-artist']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a non-admin WITH a claim for a different artist', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'u-3' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: false });
+    // User has a claim, but for a different artist than the upload target
+    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'their-own-artist' });
+
+    const { POST } = await import('../route');
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const mockFile = {
+      name: 'a.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'different-artist']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe('Not authorized for this artist');
   });
 });

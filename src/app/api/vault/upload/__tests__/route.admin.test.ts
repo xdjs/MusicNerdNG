@@ -85,5 +85,62 @@ describe('POST /api/vault/upload admin path', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe('No claimed artist profile');
+  });
+
+  it('allows an admin WITH their own claim to upload for a DIFFERENT artist', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-2' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    // Admin has a claim for their own artist, but is uploading for a different one
+    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'their-own-artist' });
+    (claims.insertVaultSource as jest.Mock).mockResolvedValue({ id: 'src-2' });
+
+    const { POST } = await import('../route');
+
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const mockFile = {
+      name: 'photo.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'different-artist']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  it('rejects a non-admin WITH a claim for a different artist', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'u-3' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: false });
+    // User has a claim, but for a different artist than the upload target
+    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'their-own-artist' });
+
+    const { POST } = await import('../route');
+
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const mockFile = {
+      name: 'photo.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'different-artist']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe('Not authorized for this artist');
   });
 });
