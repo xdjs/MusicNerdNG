@@ -65,37 +65,6 @@ export async function claimArtistProfile(artistId: string): Promise<{ success: b
     }
 }
 
-export async function getArtistDashboardData() {
-    const session = await getServerAuthSession() ?? await getDevSession();
-    if (!session) return { success: false as const, error: "Not authenticated" };
-
-    try {
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim) {
-            return { success: true as const, claim: null, pendingSources: [], approvedSources: [] };
-        }
-
-        const [pendingSources, approvedSources] = await Promise.all([
-            getVaultSourcesByArtistId(claim.artistId, "pending"),
-            getVaultSourcesByArtistId(claim.artistId, "approved"),
-        ]);
-
-        return {
-            success: true as const,
-            claim: {
-                id: claim.id,
-                artistId: claim.artistId,
-                artistName: claim.artist?.name ?? "Unknown Artist",
-            },
-            pendingSources,
-            approvedSources,
-        };
-    } catch (error) {
-        console.error("[getArtistDashboardData] Error:", error);
-        return { success: false as const, error: "Failed to load dashboard data" };
-    }
-}
-
 /** Resolve a source the user may edit: admins can edit any source, owners only their claimed artist's. Returns the source's artistId. */
 async function verifySourceEditable(userId: string, sourceId: string) {
     const user = await getUserById(userId);
