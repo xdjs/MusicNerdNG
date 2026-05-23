@@ -32,4 +32,16 @@ describe('GET /api/user/has-claim', () => {
 
     expect(data).toEqual({ hasClaim: false, artistId: null });
   });
+
+  it('returns hasClaim false and null artistId for authenticated user with no claim', async () => {
+    const { getServerAuthSession } = await import('@/server/auth');
+    const { getApprovedClaimByUserId } = await import('@/server/utils/queries/dashboardQueries');
+    (getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'u1' } });
+    (getApprovedClaimByUserId as jest.Mock).mockResolvedValue(null);
+
+    const { GET } = await import('../route');
+    const data = await (await GET()).json();
+
+    expect(data).toEqual({ hasClaim: false, artistId: null });
+  });
 });
