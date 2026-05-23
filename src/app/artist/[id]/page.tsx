@@ -14,6 +14,7 @@ import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
 import PressAndFeatures from "./_components/PressAndFeatures";
+import VaultManager from "./_components/VaultManager";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
@@ -92,6 +93,8 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const isClaimedByUser = isClaimed && !!session && existingClaim.userId === session.user.id;
     const isPendingByUser = isPending && !!session && existingClaim.userId === session.user.id;
     const canEdit = isClaimedByUser || isAdmin;
+
+    const pendingSources = canEdit ? await getVaultSourcesByArtistId(id, "pending") : [];
 
     const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
 
@@ -179,10 +182,13 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                 </RevealSection>
 
                 {/* 7. Press & Features (vault sources) */}
-                {approvedSources.length > 0 && (
+                {(canEdit || approvedSources.length > 0) && (
                     <RevealSection className="glass p-4 sm:p-5 space-y-3">
                         <h2 className="text-black dark:text-white text-xl font-bold">Artist Vault</h2>
-                        <PressAndFeatures sources={approvedSources} />
+                        {approvedSources.length > 0 && <PressAndFeatures sources={approvedSources} />}
+                        {canEdit && (
+                            <VaultManager artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
+                        )}
                     </RevealSection>
                 )}
 

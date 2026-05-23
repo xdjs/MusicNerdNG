@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useArtistBio } from "@/hooks/useArtistBio";
 import { RefreshCw, ChevronDown, Pin, Check } from "lucide-react";
 import { saveCurrentBio } from "@/app/actions/dashboardActions";
+import BioVersionHistory from "./BioVersionHistory";
 
 interface BlurbSectionProps {
   artistName: string;
@@ -209,6 +210,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
             </Button>
           </div>
         </div>
+        <BioVersionHistory artistId={artistId} />
       </div>
     );
   }
