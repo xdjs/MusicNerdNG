@@ -23,7 +23,7 @@ export default function VaultSection({ artistId, pendingSources, approvedSources
     <RevealSection className="glass p-4 sm:p-5 space-y-3">
       <h2 className="text-black dark:text-white text-xl font-bold">Artist Vault</h2>
       {approvedSources.length > 0 && <PressAndFeatures sources={approvedSources} />}
-      {canEdit && (
+      {canEdit && isEditing && (
         <VaultManager artistId={artistId} pendingSources={pendingSources} approvedSources={approvedSources} />
       )}
     </RevealSection>
