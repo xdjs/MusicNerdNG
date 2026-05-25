@@ -132,10 +132,10 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
             for (const f of files) await handleUpload(f);
           }}
         />
-        <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
+        <Button size="sm" variant="outline" className="text-black dark:text-white" disabled={uploading} onClick={() => fileRef.current?.click()}>
           {uploading ? "Uploading…" : "Upload file"}
         </Button>
-        <Button size="sm" variant="outline" disabled={searching} onClick={handleWebSearch}>
+        <Button size="sm" variant="outline" className="text-black dark:text-white" disabled={searching} onClick={handleWebSearch}>
           {searching ? "Searching…" : "Search web for sources"}
         </Button>
       </div>
