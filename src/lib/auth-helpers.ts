@@ -1,6 +1,7 @@
 import { getServerAuthSession } from '@/server/auth';
 import type { Session } from '@/server/auth';
 import { getUserById } from '@/server/utils/queries/userQueries';
+import { getApprovedClaimByUserId } from '@/server/utils/queries/dashboardQueries';
 
 type AuthSuccess = { authenticated: true; session: Session; userId: string };
 type AuthFailure = { authenticated: false; response: Response };
@@ -38,6 +39,26 @@ export async function requireAdmin(): Promise<AuthResult> {
   }
 
   return authResult;
+}
+
+/**
+ * Require the caller to be an admin OR the approved claimant of `artistId`.
+ * Returns 401 if not authenticated, 403 if neither admin nor the artist's owner.
+ */
+export async function requireArtistEditor(artistId: string): Promise<AuthResult> {
+  const authResult = await requireAuth();
+  if (!authResult.authenticated) return authResult;
+
+  const dbUser = await getUserById(authResult.userId);
+  if (dbUser?.isAdmin) return authResult;
+
+  const claim = await getApprovedClaimByUserId(authResult.userId);
+  if (claim?.artistId === artistId) return authResult;
+
+  return {
+    authenticated: false,
+    response: Response.json({ error: 'Forbidden' }, { status: 403 }),
+  };
 }
 
 /**
