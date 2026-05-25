@@ -385,4 +385,35 @@ describe('BlurbSection', () => {
             });
         });
     });
-}); 
+
+    describe('Edit controls are edit-mode only', () => {
+        beforeEach(() => {
+            mockUseArtistBio.mockReturnValue({
+                bio: 'Some bio',
+                loading: false,
+                error: null,
+                refetch: jest.fn(),
+            });
+        });
+
+        it('does NOT show Regenerate or Save to vault in the read view, even for an editor not in edit mode', () => {
+            render(
+                <EditModeContext.Provider value={{ isEditing: false, canEdit: true, toggle: jest.fn() }}>
+                    <BlurbSection {...defaultProps} />
+                </EditModeContext.Provider>
+            );
+            expect(screen.queryByText('Save to vault')).not.toBeInTheDocument();
+            expect(screen.queryByText('Regenerate')).not.toBeInTheDocument();
+        });
+
+        it('shows Regenerate and Save to vault only in edit mode', () => {
+            render(
+                <EditModeContext.Provider value={{ isEditing: true, canEdit: true, toggle: jest.fn() }}>
+                    <BlurbSection {...defaultProps} />
+                </EditModeContext.Provider>
+            );
+            expect(screen.getByText('Save to vault')).toBeInTheDocument();
+            expect(screen.getByText('Regenerate')).toBeInTheDocument();
+        });
+    });
+});
