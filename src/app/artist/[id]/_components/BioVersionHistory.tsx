@@ -24,7 +24,9 @@ export default function BioVersionHistory({ artistId }: { artistId: string }) {
     const { toast } = useToast();
     const [versions, setVersions] = useState<BioVersion[]>([]);
     const [loading, setLoading] = useState(false);
+    const [loaded, setLoaded] = useState(false);
     const [open, setOpen] = useState(false);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isEditing) return;
@@ -39,7 +41,7 @@ export default function BioVersionHistory({ artistId }: { artistId: string }) {
                     setVersions(sorted as BioVersion[]);
                 }
             })
-            .finally(() => { if (active) setLoading(false); });
+            .finally(() => { if (active) { setLoading(false); setLoaded(true); } });
         return () => { active = false; };
     }, [isEditing, artistId]);
 
@@ -55,6 +57,7 @@ export default function BioVersionHistory({ artistId }: { artistId: string }) {
     }
 
     async function handleDelete(id: string) {
+        setConfirmDeleteId(null);
         const res = await deleteBioVersionAction(id, artistId);
         if (res.success) {
             setVersions(prev => prev.filter(v => v.id !== id));
@@ -70,7 +73,7 @@ export default function BioVersionHistory({ artistId }: { artistId: string }) {
                 aria-expanded={open}
                 className="text-xs text-muted-foreground hover:text-pastypink"
             >
-                {open ? "Hide" : "Show"} version history ({versions.length})
+                {open ? "Hide" : "Show"} version history{loaded ? ` (${versions.length})` : ""}
             </button>
             {open && (
                 <div className="space-y-2">
@@ -93,15 +96,38 @@ export default function BioVersionHistory({ artistId }: { artistId: string }) {
                                 >
                                     <Pin size={13} className={v.isPinned ? "text-pastypink" : ""} />
                                 </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    aria-label="Delete"
-                                    disabled={v.isPinned}
-                                    onClick={() => handleDelete(v.id)}
-                                >
-                                    <Trash2 size={13} />
-                                </Button>
+                                {confirmDeleteId === v.id ? (
+                                    <>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            aria-label="Confirm delete"
+                                            className="text-red-600 dark:text-red-400 text-xs"
+                                            onClick={() => handleDelete(v.id)}
+                                        >
+                                            Confirm
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            aria-label="Cancel delete"
+                                            className="text-xs"
+                                            onClick={() => setConfirmDeleteId(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        aria-label="Delete"
+                                        disabled={v.isPinned}
+                                        onClick={() => setConfirmDeleteId(v.id)}
+                                    >
+                                        <Trash2 size={13} />
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     ))}

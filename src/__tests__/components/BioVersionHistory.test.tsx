@@ -42,13 +42,16 @@ describe('BioVersionHistory', () => {
     await waitFor(() => expect(pinBioVersionAction).toHaveBeenCalledWith('v2', 'a1'));
   });
 
-  it('deletes a version with the artistId', async () => {
+  it('deletes a version with the artistId (after confirmation)', async () => {
     renderEditing(true);
     fireEvent.click(screen.getByText(/version history/i));
     await waitFor(() => expect(screen.getByText('Second bio')).toBeInTheDocument());
     // versions render newest-first: v2 (Feb, unpinned) is index 0; v1 (Jan, pinned) is index 1
     // the pinned version's Delete button is disabled, so index 0 is the enabled one
-    fireEvent.click(screen.getAllByRole('button', { name: /delete/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+    // delete is a two-step confirm — nothing deleted until "Confirm" is clicked
+    expect(deleteBioVersionAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
     await waitFor(() => expect(deleteBioVersionAction).toHaveBeenCalledWith('v2', 'a1'));
   });
 });

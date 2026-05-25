@@ -78,11 +78,14 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     if (!artist) {
         return notFound();
     }
-    const [platformData, urlMapList, existingClaim, approvedSources] = await Promise.all([
+    // Pending sources are fetched in parallel (indexed lookup) to avoid a serial
+    // round-trip for editors; they are only exposed to the client when canEdit.
+    const [platformData, urlMapList, existingClaim, approvedSources, pendingSourcesRaw] = await Promise.all([
         musicPlatformData.getArtist(artist),
         getAllLinks(),
         getClaimByArtistId(id),
         getVaultSourcesByArtistId(id, "approved"),
+        getVaultSourcesByArtistId(id, "pending"),
     ]);
 
     const platformImage = platformData?.imageUrl ?? null;
@@ -93,7 +96,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const isPendingByUser = isPending && !!session && existingClaim.userId === session.user.id;
     const canEdit = isClaimedByUser || isAdmin;
 
-    const pendingSources = canEdit ? await getVaultSourcesByArtistId(id, "pending") : [];
+    const pendingSources = canEdit ? pendingSourcesRaw : [];
 
     const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
 
