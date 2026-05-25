@@ -145,6 +145,14 @@ If you cannot find any results specifically about this artist, return an empty a
             // Resolve vertexaisearch redirect URLs to actual destinations
             result.url = await resolveRedirectUrl(result.url);
 
+            // Reject non-http(s) schemes and private/local hosts. Gemini can return
+            // (or be prompt-injected into returning) javascript:/data:/file: URLs that
+            // would become stored XSS when rendered as <a href> on the public page.
+            if (isUnsafeUrl(result.url)) {
+                console.warn(`[vaultWebSearch] Skipping unsafe URL from Gemini: ${result.url.slice(0, 100)}`);
+                continue;
+            }
+
             const normalized = normalizeUrl(result.url);
             if (existingUrls.has(normalized)) {
                 skipped++;

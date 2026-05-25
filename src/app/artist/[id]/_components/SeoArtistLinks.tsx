@@ -9,12 +9,12 @@ import { getArtistLinks } from "@/server/utils/queries/artistQueries";
 export default async function SeoArtistLinks({ artist }: { artist: Artist }) {
     const artistLinks = await getArtistLinks(artist);
 
-    // Filter to only non-monetized social links (excluding spotify which is handled separately)
+    // Filter to only non-monetized social links (excluding spotify and deezer, which are handled separately)
     const socialLinks = artistLinks.filter(
-        (link) => !link.isMonetized && link.siteName !== "spotify"
+        (link) => !link.isMonetized && link.siteName !== "spotify" && link.siteName !== "deezer"
     );
 
-    if (socialLinks.length === 0 && !artist.spotify) {
+    if (socialLinks.length === 0 && !artist.spotify && !artist.deezer) {
         return null;
     }
 
@@ -25,6 +25,13 @@ export default async function SeoArtistLinks({ artist }: { artist: Artist }) {
                     <li>
                         <a href={`https://open.spotify.com/artist/${artist.spotify}`}>
                             {artist.name} on Spotify
+                        </a>
+                    </li>
+                )}
+                {artist.deezer && (
+                    <li>
+                        <a href={`https://www.deezer.com/artist/${artist.deezer}`}>
+                            {artist.name} on Deezer
                         </a>
                     </li>
                 )}

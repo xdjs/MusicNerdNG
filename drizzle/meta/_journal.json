@@ -57,6 +57,13 @@
       "when": 1775782709272,
       "tag": "0007_confused_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775784854646,
+      "tag": "0008_third_terrax",
+      "breakpoints": true
     }
   ]
 }

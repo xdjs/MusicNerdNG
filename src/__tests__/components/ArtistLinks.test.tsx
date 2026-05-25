@@ -274,6 +274,85 @@ describe('ArtistLinks YouTube Rendering', () => {
         expect(screen.getByText(/this artist has no links in this section yet/i)).toBeInTheDocument();
     });
 
+    it('renders Deezer link with profile URL and icon when artist has deezer id', async () => {
+        const artistWithDeezer = { ...mockArtist, deezer: '4738512' };
+
+        (getArtistLinks as jest.Mock).mockResolvedValue([]);
+
+        const Component = await ArtistLinks({
+            isMonetized: false,
+            artist: artistWithDeezer,
+            spotifyImg: 'test-spotify-image.jpg',
+            availableLinks: mockAvailableLinks,
+            isOpenOnLoad: false,
+            canEdit: false,
+            showAddButton: false,
+        });
+
+        render(Component);
+
+        const deezerLink = screen.getByRole('link', { name: /listen on deezer/i });
+        expect(deezerLink).toBeInTheDocument();
+        expect(deezerLink).toHaveAttribute('href', 'https://www.deezer.com/artist/4738512');
+
+        const deezerIcon = deezerLink.querySelector('img[src="/siteIcons/deezer_icon.svg"]');
+        expect(deezerIcon).toBeInTheDocument();
+    });
+
+    it('does not render Deezer link when artist has no deezer id', async () => {
+        const artistWithoutDeezer = { ...mockArtist, deezer: null };
+
+        (getArtistLinks as jest.Mock).mockResolvedValue([]);
+
+        const Component = await ArtistLinks({
+            isMonetized: false,
+            artist: artistWithoutDeezer,
+            spotifyImg: 'test-spotify-image.jpg',
+            availableLinks: mockAvailableLinks,
+            isOpenOnLoad: false,
+            canEdit: false,
+            showAddButton: false,
+        });
+
+        render(Component);
+
+        expect(screen.queryByRole('link', { name: /listen on deezer/i })).not.toBeInTheDocument();
+    });
+
+    it('skips urlmap-based deezer entries to avoid duplicating the hardcoded link', async () => {
+        const artistWithDeezer = { ...mockArtist, deezer: '4738512' };
+
+        // Simulate a stale/broken urlmap entry for deezer that should be filtered out
+        (getArtistLinks as jest.Mock).mockResolvedValue([
+            {
+                siteName: 'deezer',
+                cardPlatformName: 'Deezer',
+                cardDescription: 'Listen on %@',
+                artistUrl: 'https://example.com/wrong-url',
+                siteImage: '/siteIcons/wrong_icon.svg',
+                colorHex: '#000000',
+                order: 5,
+                isMonetized: false,
+            },
+        ]);
+
+        const Component = await ArtistLinks({
+            isMonetized: false,
+            artist: artistWithDeezer,
+            spotifyImg: 'test-spotify-image.jpg',
+            availableLinks: mockAvailableLinks,
+            isOpenOnLoad: false,
+            canEdit: false,
+            showAddButton: false,
+        });
+
+        render(Component);
+
+        const deezerLinks = screen.getAllByRole('link', { name: /deezer/i });
+        expect(deezerLinks).toHaveLength(1);
+        expect(deezerLinks[0]).toHaveAttribute('href', 'https://www.deezer.com/artist/4738512');
+    });
+
     it('renders YouTube links correctly in monetized section', async () => {
         const mockMonetizedYoutubeData = [
             {

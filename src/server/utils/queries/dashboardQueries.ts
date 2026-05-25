@@ -136,6 +136,52 @@ export async function deleteClaim(claimId: string) {
     }
 }
 
+/**
+ * Revoke an approved claim atomically, wiping all vault sources for the artist
+ * inside the same transaction. Storage objects live outside the DB and must be
+ * purged separately by the caller.
+ *
+ * The DELETE itself is guarded on status='approved' so the atomic check happens
+ * at the row-lock level, not in a separate SELECT. Under Postgres READ COMMITTED
+ * (the default), each statement in a transaction sees the latest committed snapshot
+ * independently, so a SELECT-then-DELETE pattern is racy — another transaction
+ * could reject the claim between the two statements and the DELETE would still
+ * proceed. Putting the status filter on the DELETE makes this race-free.
+ *
+ * Vault sources are deleted by artist_id, not claim_id, because
+ * artist_vault_sources has no claim_id FK and the UNIQUE(artist_id) constraint
+ * on artist_claims guarantees one active claim per artist. If a claim_id FK is
+ * ever added to artist_vault_sources (e.g. to support multi-claimant history),
+ * tighten the WHERE clause here.
+ */
+export async function revokeApprovedClaim(claimId: string) {
+    try {
+        return await db.transaction(async (tx) => {
+            // Atomic: only delete the row if it is still approved right now.
+            // Returns 0 rows (→ undefined) if another transaction changed the status.
+            const [deleted] = await tx
+                .delete(artistClaims)
+                .where(and(
+                    eq(artistClaims.id, claimId),
+                    eq(artistClaims.status, "approved"),
+                ))
+                .returning();
+            if (!deleted) return undefined;
+
+            // Only after we've confirmed we owned the approved claim do we
+            // wipe the vault. Same transaction, so both DELETEs commit together.
+            await tx
+                .delete(artistVaultSources)
+                .where(eq(artistVaultSources.artistId, deleted.artistId));
+
+            return deleted;
+        });
+    } catch (e) {
+        console.error("[revokeApprovedClaim] Error:", e);
+        throw e;
+    }
+}
+
 export async function getApprovedClaimForArtistByUserId(userId: string, artistId: string) {
     try {
         return await db.query.artistClaims.findFirst({
