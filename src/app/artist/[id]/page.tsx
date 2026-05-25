@@ -13,8 +13,7 @@ import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
-import PressAndFeatures from "./_components/PressAndFeatures";
-import VaultManager from "./_components/VaultManager";
+import VaultSection from "./_components/VaultSection";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
@@ -182,15 +181,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                 </RevealSection>
 
                 {/* 7. Press & Features (vault sources) */}
-                {(canEdit || approvedSources.length > 0) && (
-                    <RevealSection className="glass p-4 sm:p-5 space-y-3">
-                        <h2 className="text-black dark:text-white text-xl font-bold">Artist Vault</h2>
-                        {approvedSources.length > 0 && <PressAndFeatures sources={approvedSources} />}
-                        {canEdit && (
-                            <VaultManager artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
-                        )}
-                    </RevealSection>
-                )}
+                <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
 
             </div>
             </EditModeProvider>

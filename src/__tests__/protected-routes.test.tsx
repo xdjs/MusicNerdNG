@@ -62,8 +62,7 @@ jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { 
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return null; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
 jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return null; });
-jest.mock('@/app/artist/[id]/_components/PressAndFeatures', () => function PressAndFeatures() { return null; });
-jest.mock('@/app/artist/[id]/_components/VaultManager', () => function VaultManager() { return <div data-testid="vault-manager" />; });
+jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
 jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return null; });
 jest.mock('@/server/utils/queries/userQueries', () => ({
     getUserById: jest.fn().mockResolvedValue({ id: 'user-uuid', isAdmin: false, isWhiteListed: false }),
