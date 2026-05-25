@@ -12,7 +12,6 @@ import {
     getVaultSourceById,
     updateVaultSourceStatus,
     updateVaultSourceType,
-    seedMockVaultSources,
     insertVaultSource,
     deleteVaultSource,
     deleteVaultSources,
@@ -120,22 +119,6 @@ export async function updateSourceStatus(
     } catch (error) {
         console.error("[updateSourceStatus] Error:", error);
         return { success: false, error: "Failed to update source status" };
-    }
-}
-
-export async function seedMockSources(artistId: string): Promise<{ success: boolean; error?: string }> {
-    const session = await getServerAuthSession() ?? await getDevSession();
-    if (!session) return { success: false, error: "Not authenticated" };
-
-    try {
-        const auth = await verifyArtistEditable(session.user.id, artistId);
-        if (!auth.ok) return { success: false, error: auth.error };
-
-        await seedMockVaultSources(artistId);
-        return { success: true };
-    } catch (error) {
-        console.error("[seedMockSources] Error:", error);
-        return { success: false, error: "Failed to seed mock sources" };
     }
 }
 

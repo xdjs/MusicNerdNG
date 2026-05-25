@@ -336,58 +336,6 @@ export async function updateVaultSourceContent(sourceId: string, data: {
     }
 }
 
-export async function seedMockVaultSources(artistId: string) {
-    const mockSources = [
-        {
-            artistId,
-            url: "https://pitchfork.com/reviews/albums/example-review",
-            title: "Album Review: A Deep Dive Into the Latest Release",
-            snippet: "The artist's newest work pushes creative boundaries while staying true to their roots...",
-            type: "review",
-            status: "pending" as const,
-        },
-        {
-            artistId,
-            url: "https://rollingstone.com/music/interviews/example",
-            title: "Exclusive Interview: On the Road and In the Studio",
-            snippet: "We sat down with the artist to discuss their upcoming tour and creative process...",
-            type: "interview",
-            status: "pending" as const,
-        },
-        {
-            artistId,
-            url: "https://billboard.com/music/chart-beat/example",
-            title: "Chart Analysis: Breaking Down This Week's Surprise Entry",
-            snippet: "The latest single debuted at an impressive position, marking a career milestone...",
-            type: "article",
-            status: "pending" as const,
-        },
-        {
-            artistId,
-            url: "https://stereogum.com/features/example",
-            title: "The Evolution of Sound: A Genre-Defying Journey",
-            snippet: "From early bedroom recordings to sold-out arena shows, we trace the musical evolution...",
-            type: "article",
-            status: "pending" as const,
-        },
-        {
-            artistId,
-            url: "https://thefader.com/music/example",
-            title: "Behind the Scenes: Making of the Viral Music Video",
-            snippet: "The creative team shares insights into the production that captivated millions...",
-            type: "review",
-            status: "pending" as const,
-        },
-    ];
-
-    try {
-        return await db.insert(artistVaultSources).values(mockSources).returning();
-    } catch (e) {
-        console.error("[seedMockVaultSources] Error:", e);
-        throw e;
-    }
-}
-
 // ------ Bio Versions ------
 
 export async function getBioVersionsByArtistId(artistId: string) {

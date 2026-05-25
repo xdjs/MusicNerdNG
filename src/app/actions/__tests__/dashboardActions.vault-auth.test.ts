@@ -15,7 +15,6 @@ jest.mock('@/server/utils/queries/dashboardQueries', () => ({
   deleteVaultSources: jest.fn(),
   updateVaultSourceType: jest.fn(),
   updateVaultSourceContent: jest.fn(),
-  seedMockVaultSources: jest.fn(),
   getClaimByArtistId: jest.fn(),
   createClaim: jest.fn(),
   deleteClaim: jest.fn(),
