@@ -14,16 +14,18 @@ jest.mock('@/app/actions/dashboardActions', () => ({
   updateSourceType: jest.fn().mockResolvedValue({ success: true }),
   searchWebForSources: jest.fn().mockResolvedValue({ success: true, count: 2 }),
   removeVaultSource: jest.fn().mockResolvedValue({ success: true }),
+  removeVaultSources: jest.fn().mockResolvedValue({ success: true, count: 1 }),
+  addVaultSource: jest.fn().mockResolvedValue({ success: true }),
 }));
-import { updateSourceStatus, removeVaultSource } from '@/app/actions/dashboardActions';
+import { updateSourceStatus, removeVaultSource, removeVaultSources, addVaultSource } from '@/app/actions/dashboardActions';
 
 const pending = [{ id: 'p1', artistId: 'a1', url: 'http://e/1', title: 'Pending One', status: 'pending' }];
 const approved = [{ id: 'ap1', artistId: 'a1', url: 'http://e/2', title: 'Approved One', status: 'approved' }];
 
-function renderEditing(isEditing = true) {
+function renderEditing(isEditing = true, approvedSources = approved) {
   return render(
     <EditModeContext.Provider value={{ isEditing, canEdit: true, toggle: jest.fn() }}>
-      <VaultManager artistId="a1" pendingSources={pending} approvedSources={approved} />
+      <VaultManager artistId="a1" pendingSources={pending} approvedSources={approvedSources} />
     </EditModeContext.Provider>
   );
 }
@@ -92,5 +94,45 @@ describe('VaultManager', () => {
     fireEvent.click(deleteButtons[0]);
 
     await waitFor(() => expect(removeVaultSource).toHaveBeenCalledWith('p1'));
+  });
+
+  it('add-by-URL: typing a URL and clicking Add calls addVaultSource', async () => {
+    renderEditing(true);
+
+    const input = screen.getByPlaceholderText(/add a source by url/i);
+    fireEvent.change(input, { target: { value: 'https://pitchfork.com/x' } });
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+    await waitFor(() => expect(addVaultSource).toHaveBeenCalledWith('a1', 'https://pitchfork.com/x'));
+  });
+
+  it('bulk delete: selecting an approved source and deleting calls removeVaultSources', async () => {
+    renderEditing(true);
+
+    // Select-all checkbox is the first checkbox; the per-card checkbox is the source's.
+    const checkboxes = screen.getAllByRole('checkbox');
+    // Last checkbox is the approved source card's select checkbox.
+    fireEvent.click(checkboxes[checkboxes.length - 1]);
+
+    fireEvent.click(screen.getByRole('button', { name: /delete 1 selected/i }));
+
+    await waitFor(() => expect(removeVaultSources).toHaveBeenCalledWith(['ap1']));
+  });
+
+  it('type filter: clicking a type chip hides non-matching approved sources', () => {
+    const approvedTyped = [
+      { id: 'ap1', artistId: 'a1', url: 'http://e/2', title: 'Article Source', status: 'approved', type: 'article' },
+      { id: 'ap2', artistId: 'a1', url: 'http://e/3', title: 'Review Source', status: 'approved', type: 'review' },
+    ];
+    renderEditing(true, approvedTyped);
+
+    expect(screen.getByText('Article Source')).toBeInTheDocument();
+    expect(screen.getByText('Review Source')).toBeInTheDocument();
+
+    // Click the "review" chip (chips render as "review (1)").
+    fireEvent.click(screen.getByRole('button', { name: /^review \(\d+\)$/i }));
+
+    expect(screen.getByText('Review Source')).toBeInTheDocument();
+    expect(screen.queryByText('Article Source')).not.toBeInTheDocument();
   });
 });
