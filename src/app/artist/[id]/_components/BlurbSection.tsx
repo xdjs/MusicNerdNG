@@ -5,8 +5,9 @@ import { EditModeContext } from "@/app/_components/EditModeContext";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useArtistBio } from "@/hooks/useArtistBio";
-import { RefreshCw, ChevronDown, Pin, Check } from "lucide-react";
+import { ChevronDown, Check } from "lucide-react";
 import { saveCurrentBio } from "@/app/actions/dashboardActions";
+import BioVersionHistory from "./BioVersionHistory";
 
 interface BlurbSectionProps {
   artistName: string;
@@ -181,25 +182,45 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
           onChange={(e) => setEditText(e.target.value)}
           placeholder="Enter artist bio..."
         />
-        <div className="flex justify-between items-center">
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRegenerate}
-              disabled={isRegenerating || isSaving}
-              className="text-gray-700"
-            >
-              {isRegenerating ? (
-                <>
-                  <img src="/spinner.svg" className="h-3 w-3 mr-1" alt="regenerating" />
-                  Regenerating...
-                </>
-              ) : (
-                "Regenerate"
-              )}
-            </Button>
-          )}
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={isRegenerating || isSaving}
+                className="text-gray-700 dark:text-gray-200"
+              >
+                {isRegenerating ? (
+                  <>
+                    <img src="/spinner.svg" className="h-3 w-3 mr-1" alt="regenerating" />
+                    Regenerating...
+                  </>
+                ) : (
+                  "Regenerate"
+                )}
+              </Button>
+            )}
+            {canEdit && aiBlurb && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveToVault}
+                disabled={isSavingToVault || savedToVault}
+                className="text-gray-700 dark:text-gray-200"
+              >
+                {savedToVault ? (
+                  <>
+                    <Check size={13} className="mr-1 text-green-500" />
+                    Saved
+                  </>
+                ) : (
+                  isSavingToVault ? "Saving..." : "Save to vault"
+                )}
+              </Button>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={handleDiscard} disabled={isSaving}>
               Discard
@@ -209,6 +230,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
             </Button>
           </div>
         </div>
+        <BioVersionHistory artistId={artistId} />
       </div>
     );
   }
@@ -239,41 +261,9 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
         )}
       </div>
 
-      {/* Controls row */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-3">
-          {canEdit && (
-            <button
-              onClick={handleRegenerate}
-              disabled={isRegenerating}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-pastypink transition-colors"
-            >
-              <RefreshCw size={11} className={isRegenerating ? "animate-spin" : ""} />
-              {isRegenerating ? "Regenerating..." : "Regenerate"}
-            </button>
-          )}
-          {canEdit && aiBlurb && (
-            <button
-              onClick={handleSaveToVault}
-              disabled={isSavingToVault || savedToVault}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-pastypink transition-colors"
-            >
-              {savedToVault ? (
-                <>
-                  <Check size={11} className="text-green-500" />
-                  <span className="text-green-500">Saved</span>
-                </>
-              ) : (
-                <>
-                  <Pin size={11} />
-                  {isSavingToVault ? "Saving..." : "Save to vault"}
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {needsTruncation && (
+      {/* Expand toggle — edit controls live in edit mode only */}
+      {needsTruncation && (
+        <div className="flex items-center justify-end px-1">
           <button
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-pastypink transition-colors"
@@ -284,8 +274,8 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
               className={`transition-transform duration-300 ${expanded ? "rotate-180" : ""}`}
             />
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

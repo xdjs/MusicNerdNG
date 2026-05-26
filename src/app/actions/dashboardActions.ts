@@ -9,9 +9,9 @@ import {
     getApprovedClaimByUserId,
     getVaultSourcesByArtistId,
     getVaultSourceByIdAndArtist,
+    getVaultSourceById,
     updateVaultSourceStatus,
     updateVaultSourceType,
-    seedMockVaultSources,
     insertVaultSource,
     deleteVaultSource,
     deleteVaultSources,
@@ -64,46 +64,28 @@ export async function claimArtistProfile(artistId: string): Promise<{ success: b
     }
 }
 
-export async function getArtistDashboardData() {
-    const session = await getServerAuthSession() ?? await getDevSession();
-    if (!session) return { success: false as const, error: "Not authenticated" };
-
-    try {
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim) {
-            return { success: true as const, claim: null, pendingSources: [], approvedSources: [] };
-        }
-
-        const [pendingSources, approvedSources] = await Promise.all([
-            getVaultSourcesByArtistId(claim.artistId, "pending"),
-            getVaultSourcesByArtistId(claim.artistId, "approved"),
-        ]);
-
-        return {
-            success: true as const,
-            claim: {
-                id: claim.id,
-                artistId: claim.artistId,
-                artistName: claim.artist?.name ?? "Unknown Artist",
-            },
-            pendingSources,
-            approvedSources,
-        };
-    } catch (error) {
-        console.error("[getArtistDashboardData] Error:", error);
-        return { success: false as const, error: "Failed to load dashboard data" };
+/** Resolve a source the user may edit: admins can edit any source, owners only their claimed artist's. Returns the source's artistId. */
+async function verifySourceEditable(userId: string, sourceId: string) {
+    const user = await getUserById(userId);
+    if (user?.isAdmin) {
+        const source = await getVaultSourceById(sourceId);
+        if (!source) return { authorized: false as const, error: "Source not found" };
+        return { authorized: true as const, artistId: source.artistId };
     }
-}
-
-/** Verify a source belongs to the user's claimed artist (single query, O(1)) */
-async function verifySourceOwnership(userId: string, sourceId: string) {
     const claim = await getApprovedClaimByUserId(userId);
     if (!claim) return { authorized: false as const, error: "No claimed artist profile" };
-
     const source = await getVaultSourceByIdAndArtist(sourceId, claim.artistId);
     if (!source) return { authorized: false as const, error: "Source does not belong to your artist" };
+    return { authorized: true as const, artistId: claim.artistId };
+}
 
-    return { authorized: true as const, claim };
+/** Authorize editing a specific artist: admins may edit any, owners only their claimed artist. */
+async function verifyArtistEditable(userId: string, artistId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const user = await getUserById(userId);
+    if (user?.isAdmin) return { ok: true };
+    const claim = await getApprovedClaimByUserId(userId);
+    if (!claim || claim.artistId !== artistId) return { ok: false, error: "Not authorized for this artist" };
+    return { ok: true };
 }
 
 export async function updateSourceStatus(
@@ -114,23 +96,22 @@ export async function updateSourceStatus(
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
-        const ownership = await verifySourceOwnership(session.user.id, sourceId);
+        const ownership = await verifySourceEditable(session.user.id, sourceId);
         if (!ownership.authorized) return { success: false, error: ownership.error };
-        const claim = ownership.claim;
 
         await updateVaultSourceStatus(sourceId, status);
 
         // Regenerate bio in the background when a source is approved (debounced)
-        if (status === "approved" && claim.artistId) {
+        if (status === "approved" && ownership.artistId) {
             const now = Date.now();
-            const lastRegen = bioRegenTimestamps.get(claim.artistId) ?? 0;
+            const lastRegen = bioRegenTimestamps.get(ownership.artistId) ?? 0;
             if (now - lastRegen > BIO_REGEN_DEBOUNCE_MS) {
-                bioRegenTimestamps.set(claim.artistId, now);
-                generateArtistBio(claim.artistId).catch(e =>
+                bioRegenTimestamps.set(ownership.artistId, now);
+                Promise.resolve(generateArtistBio(ownership.artistId)).catch(e =>
                     console.error("[updateSourceStatus] Background bio regeneration failed:", e)
                 );
             } else {
-                console.log(`[updateSourceStatus] Skipping bio regen for ${claim.artistId} — debounced`);
+                console.log(`[updateSourceStatus] Skipping bio regen for ${ownership.artistId} — debounced`);
             }
         }
 
@@ -141,34 +122,13 @@ export async function updateSourceStatus(
     }
 }
 
-export async function seedMockSources(artistId: string): Promise<{ success: boolean; error?: string }> {
-    const session = await getServerAuthSession() ?? await getDevSession();
-    if (!session) return { success: false, error: "Not authenticated" };
-
-    try {
-        // Verify ownership
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim || claim.artistId !== artistId) {
-            return { success: false, error: "Not authorized for this artist" };
-        }
-
-        await seedMockVaultSources(artistId);
-        return { success: true };
-    } catch (error) {
-        console.error("[seedMockSources] Error:", error);
-        return { success: false, error: "Failed to seed mock sources" };
-    }
-}
-
 export async function searchWebForSources(artistId: string): Promise<{ success: boolean; count?: number; error?: string }> {
     const session = await getServerAuthSession() ?? await getDevSession();
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim || claim.artistId !== artistId) {
-            return { success: false, error: "Not authorized for this artist" };
-        }
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
 
         const count = await searchAndPopulateVault(artistId);
         return { success: true, count };
@@ -186,10 +146,8 @@ export async function addVaultSource(
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim || claim.artistId !== artistId) {
-            return { success: false, error: "Not authorized for this artist" };
-        }
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
 
         // Reject non-http(s) schemes (javascript:, data:, file:, etc.) and private/local hosts.
         // URLs are rendered as <a href> on the public artist page — unsafe schemes would be stored XSS.
@@ -245,7 +203,7 @@ export async function updateSourceType(
     }
 
     try {
-        const ownership = await verifySourceOwnership(session.user.id, sourceId);
+        const ownership = await verifySourceEditable(session.user.id, sourceId);
         if (!ownership.authorized) return { success: false, error: ownership.error };
 
         await updateVaultSourceType(sourceId, type);
@@ -263,7 +221,7 @@ export async function removeVaultSource(
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
-        const ownership = await verifySourceOwnership(session.user.id, sourceId);
+        const ownership = await verifySourceEditable(session.user.id, sourceId);
         if (!ownership.authorized) return { success: false, error: ownership.error };
 
         await deleteVaultSource(sourceId);
@@ -281,6 +239,13 @@ export async function removeVaultSources(
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
+        const user = await getUserById(session.user.id);
+        if (user?.isAdmin) {
+            // Admins may delete any sources — skip ownership filter
+            const deleted = await deleteVaultSources(sourceIds);
+            return { success: true, count: deleted.length };
+        }
+
         const claim = await getApprovedClaimByUserId(session.user.id);
         if (!claim) return { success: false, error: "No claimed artist profile" };
 

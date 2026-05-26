@@ -92,7 +92,7 @@ export default function AddArtist() {
     return (
         <>
             <Button
-                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-12 h-12"
+                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-10 h-10 sm:w-12 sm:h-12 shrink-0"
                 onClick={handleAddArtistClick}
                 size="lg"
             >

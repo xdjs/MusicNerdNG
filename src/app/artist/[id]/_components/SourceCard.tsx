@@ -74,9 +74,9 @@ export default function SourceCard({ source, onApprove, onReject, onDelete, onTy
     const isFile = !!source.fileName;
 
     return (
-        <div className={`glass-subtle p-5 transition-all hover:shadow-lg ${selected ? "ring-2 ring-pastypink" : ""}`}>
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div className={`glass-subtle p-4 sm:p-5 transition-all hover:shadow-lg ${selected ? "ring-2 ring-pastypink" : ""}`}>
+            <div className="flex items-start justify-between gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                <div className="flex items-start gap-3 flex-1 min-w-0 basis-full sm:basis-auto">
                     {onSelect && (
                         <input
                             type="checkbox"
@@ -136,6 +136,7 @@ export default function SourceCard({ source, onApprove, onReject, onDelete, onTy
                     )}
                     {onDelete && (
                         <Button
+                            aria-label="Delete"
                             variant="ghost"
                             size="sm"
                             onClick={() => onDelete(source.id)}

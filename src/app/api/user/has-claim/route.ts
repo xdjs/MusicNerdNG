@@ -8,13 +8,13 @@ export async function GET() {
     try {
         const session = await getServerAuthSession();
         if (!session?.user?.id) {
-            return Response.json({ hasClaim: false });
+            return Response.json({ hasClaim: false, artistId: null });
         }
 
         const claim = await getApprovedClaimByUserId(session.user.id);
-        return Response.json({ hasClaim: !!claim });
+        return Response.json({ hasClaim: !!claim, artistId: claim?.artistId ?? null });
     } catch {
-        return Response.json({ hasClaim: false });
+        return Response.json({ hasClaim: false, artistId: null });
     } finally {
         console.debug(`[has-claim] GET took ${performance.now() - start}ms`);
     }

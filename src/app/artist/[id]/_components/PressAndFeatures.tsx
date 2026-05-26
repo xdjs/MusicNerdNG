@@ -15,7 +15,6 @@ interface VaultSource {
 
 interface PressAndFeaturesProps {
     sources: VaultSource[];
-    artistName: string;
 }
 
 function getSourceDomain(url: string): string {
@@ -63,10 +62,10 @@ function SourceCard({ source }: { source: VaultSource }) {
             href={source.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex-shrink-0 w-[320px] h-[320px] glass-subtle overflow-hidden flex flex-col transition-all duration-300 hover:shadow-[0_0_30px_rgba(239,149,255,0.35)]"
+            className="group flex-shrink-0 w-[260px] sm:w-[320px] h-[300px] sm:h-[320px] glass-subtle overflow-hidden flex flex-col transition-all duration-300 hover:shadow-[0_0_30px_rgba(239,149,255,0.35)]"
         >
             {/* Thumbnail — fixed height, gradient always behind as fallback */}
-            <div className="relative w-full h-[180px] shrink-0 overflow-hidden bg-gradient-to-br from-pastypink/10 via-purple-900/20 to-transparent">
+            <div className="relative w-full h-[160px] sm:h-[180px] shrink-0 overflow-hidden bg-gradient-to-br from-pastypink/10 via-purple-900/20 to-transparent">
                 {/* Favicon centered as fallback (visible when no image or image fails) */}
                 {favicon && (
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -123,7 +122,7 @@ function SourceCard({ source }: { source: VaultSource }) {
     );
 }
 
-export default function PressAndFeatures({ sources, artistName }: PressAndFeaturesProps) {
+export default function PressAndFeatures({ sources }: PressAndFeaturesProps) {
     const [activeFilter, setActiveFilter] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -193,10 +192,10 @@ export default function PressAndFeatures({ sources, artistName }: PressAndFeatur
 
             {/* Carousel */}
             <div className="relative group/carousel">
-                {/* Left arrow */}
+                {/* Left arrow — hidden on touch devices where native scroll suffices */}
                 <button
                     onClick={() => scroll("left")}
-                    className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white opacity-60 md:opacity-0 md:group-hover/carousel:opacity-100 transition-opacity hover:bg-black/80 shadow-lg"
+                    className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-black/60 backdrop-blur-md items-center justify-center text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black/80 shadow-lg"
                     aria-label="Scroll left"
                 >
                     <ChevronLeft size={18} />
@@ -215,10 +214,10 @@ export default function PressAndFeatures({ sources, artistName }: PressAndFeatur
                     ))}
                 </div>
 
-                {/* Right arrow */}
+                {/* Right arrow — hidden on touch devices where native scroll suffices */}
                 <button
                     onClick={() => scroll("right")}
-                    className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white opacity-60 md:opacity-0 md:group-hover/carousel:opacity-100 transition-opacity hover:bg-black/80 shadow-lg"
+                    className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-black/60 backdrop-blur-md items-center justify-center text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black/80 shadow-lg"
                     aria-label="Scroll right"
                 >
                     <ChevronRight size={18} />

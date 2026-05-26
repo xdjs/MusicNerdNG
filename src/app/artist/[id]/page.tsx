@@ -3,7 +3,6 @@ import { musicPlatformData } from "@/server/utils/musicPlatform";
 import ArtistLinksGrid from "@/app/_components/ArtistLinksGrid";
 import BookmarkButton from "@/app/_components/BookmarkButton";
 import ClaimButton from "./_components/ClaimButton";
-// import { getArtistDetailsText } from "@/server/utils/services"; // Hidden until discography feature
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
 import { getUserById } from "@/server/utils/queries/userQueries";
@@ -14,7 +13,7 @@ import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
-import PressAndFeatures from "./_components/PressAndFeatures";
+import VaultSection from "./_components/VaultSection";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
@@ -79,15 +78,17 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     if (!artist) {
         return notFound();
     }
-    const [platformData, urlMapList, existingClaim, approvedSources] = await Promise.all([
+    // Pending sources are fetched in parallel (indexed lookup) to avoid a serial
+    // round-trip for editors; they are only exposed to the client when canEdit.
+    const [platformData, urlMapList, existingClaim, approvedSources, pendingSourcesRaw] = await Promise.all([
         musicPlatformData.getArtist(artist),
         getAllLinks(),
         getClaimByArtistId(id),
         getVaultSourcesByArtistId(id, "approved"),
+        getVaultSourcesByArtistId(id, "pending"),
     ]);
 
     const platformImage = platformData?.imageUrl ?? null;
-    // const numReleases = platformData?.albumCount ?? 0; // Hidden until discography feature
 
     const isClaimed = !!existingClaim && existingClaim.status === "approved";
     const isPending = !!existingClaim && existingClaim.status === "pending";
@@ -95,16 +96,18 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const isPendingByUser = isPending && !!session && existingClaim.userId === session.user.id;
     const canEdit = isClaimedByUser || isAdmin;
 
+    const pendingSources = canEdit ? pendingSourcesRaw : [];
+
     const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
 
     return (
         <>
             <EditModeProvider canEdit={canEdit}>
             <AutoRefresh showLoading={false} />
-            <div className="max-w-[800px] mx-auto px-4 py-5 space-y-6">
+            <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
 
                 {/* 1. Hero Section */}
-                <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} />
+                <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} artistId={artist.id} />
 
                 {/* 2. Name + Actions */}
                 <div className="text-center space-y-2">
@@ -112,7 +115,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                         {artist.name}
                     </h1>
                     {/* Release count hidden for now — revisit when discography feature is built */}
-                    <div className="flex justify-center gap-2 pt-1">
+                    <div className="flex flex-wrap justify-center items-center gap-2 pt-1">
                         <ClaimButton
                             artistId={artist.id}
                             isClaimed={isClaimed}
@@ -134,7 +137,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                 </div>
 
                 {/* 3. Bio */}
-                <RevealSection className="glass p-5 space-y-3">
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold">Artist Summary</h2>
                     <BlurbSection
                         key={artist.bio ?? ""}
@@ -145,14 +148,14 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                 </RevealSection>
 
                 {/* 4. Ask About Artist (AI Q&A) */}
-                <RevealSection className="glass p-5 space-y-3">
-                    <h2 className="text-black dark:text-white text-xl font-bold">Ask About {artist.name}</h2>
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <h2 className="text-black dark:text-white text-xl font-bold break-words">Ask About {artist.name}</h2>
                     <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
                 </RevealSection>
 
                 {/* 5. Social Links (icon grid) */}
-                <RevealSection className="glass p-5 space-y-3">
-                    <div className="flex items-center justify-between">
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                         <h2 className="text-black dark:text-white text-xl font-bold">Social Links</h2>
                         <AddArtistData
                             artist={artist}
@@ -166,8 +169,8 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                 </RevealSection>
 
                 {/* 6. Support the Artist (icon grid) */}
-                <RevealSection className="glass p-5 space-y-3">
-                    <div className="flex items-center justify-between">
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                         <h2 className="text-black dark:text-white text-xl font-bold">Support the Artist</h2>
                         <AddArtistData
                             artist={artist}
@@ -181,12 +184,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                 </RevealSection>
 
                 {/* 7. Press & Features (vault sources) */}
-                {approvedSources.length > 0 && (
-                    <RevealSection className="glass p-5 space-y-3">
-                        <h2 className="text-black dark:text-white text-xl font-bold">Artist Vault</h2>
-                        <PressAndFeatures sources={approvedSources} artistName={artist.name ?? ""} />
-                    </RevealSection>
-                )}
+                <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
 
             </div>
             </EditModeProvider>

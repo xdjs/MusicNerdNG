@@ -45,8 +45,8 @@ jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { 
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return <div data-testid="grapevine-iframe" />; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
 jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return <div data-testid="claim-button" />; });
-jest.mock('@/app/artist/[id]/_components/PressAndFeatures', () => function PressAndFeatures() { return <div data-testid="press-features" />; });
 jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return <div data-testid="ask-about-artist" />; });
+jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
 jest.mock('@/server/utils/queries/userQueries', () => ({
     getUserById: jest.fn().mockResolvedValue({ id: 'user-uuid', isAdmin: false, isWhiteListed: false }),
 }));
@@ -161,6 +161,15 @@ describe('ArtistProfile page', () => {
             (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: true, isWhiteListed: true });
             await renderArtistPage();
             expect(screen.getByTestId('edit-mode-toggle')).toBeInTheDocument();
+        });
+
+        it('renders the VaultSection on the profile', async () => {
+            const { getUserById } = await import('@/server/utils/queries/userQueries');
+            const { getVaultSourcesByArtistId } = await import('@/server/utils/queries/dashboardQueries');
+            (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: true, isWhiteListed: true });
+            (getVaultSourcesByArtistId as jest.Mock).mockResolvedValue([]);
+            await renderArtistPage();
+            expect(screen.getByTestId('vault-section')).toBeInTheDocument();
         });
     });
 

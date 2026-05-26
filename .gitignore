@@ -72,3 +72,7 @@ public/artist-images/*
 
 # scratch files
 wikidata_query.py
+.superpowers/
+
+# Claude Code runtime lock (machine-specific)
+.claude/scheduled_tasks.lock

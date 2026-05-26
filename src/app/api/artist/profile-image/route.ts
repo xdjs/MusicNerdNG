@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
 import { getApprovedClaimByUserId } from "@/server/utils/queries/dashboardQueries";
+import { getUserById } from "@/server/utils/queries/userQueries";
 import { supabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
 import { db } from "@/server/db/drizzle";
 import { artists } from "@/server/db/schema";
@@ -19,11 +20,6 @@ export async function POST(req: Request) {
     }
 
     try {
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim) {
-            return NextResponse.json({ error: "No claimed artist profile" }, { status: 403 });
-        }
-
         const formData = await req.formData();
         const file = formData.get("file") as File | null;
         const artistId = formData.get("artistId") as string | null;
@@ -32,8 +28,16 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "File and artistId are required" }, { status: 400 });
         }
 
-        if (claim.artistId !== artistId) {
-            return NextResponse.json({ error: "Not authorized for this artist" }, { status: 403 });
+        const claim = await getApprovedClaimByUserId(session.user.id);
+        const ownsTarget = claim?.artistId === artistId;
+        if (!ownsTarget) {
+            const user = await getUserById(session.user.id);
+            if (!user?.isAdmin) {
+                return NextResponse.json(
+                    { error: claim ? "Not authorized for this artist" : "No claimed artist profile" },
+                    { status: 403 }
+                );
+            }
         }
 
         if (file.size > MAX_FILE_SIZE) {

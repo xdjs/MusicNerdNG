@@ -91,7 +91,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
           model: GEMINI_MODEL_FLASH,
           contents: finalPrompt,
           config: {
-            systemInstruction: "You are an intelligent assistant. Follow the user prompt closely and do not fabricate information.",
+            systemInstruction: "You are a sharp music writer. Follow the user's prompt exactly. Be concrete and specific — name real songs, people, places, and dates. Keep it tight: no filler or hype phrases like \"rising star\", \"eclectic\", or \"undeniable\". Never fabricate or speculate; if you're unsure, leave it out.",
             temperature: 0.8,
           },
         }),

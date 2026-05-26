@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
 import { getApprovedClaimByUserId, insertVaultSource } from "@/server/utils/queries/dashboardQueries";
+import { getUserById } from "@/server/utils/queries/userQueries";
 import { supabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
 import { validateMagicBytes } from "@/server/utils/validateMagicBytes";
+import { extractPdfText } from "@/server/utils/extractPdfText";
 
 export const dynamic = "force-dynamic";
 
@@ -45,11 +47,6 @@ export async function POST(req: Request) {
     }
 
     try {
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim) {
-            return NextResponse.json({ error: "No claimed artist profile" }, { status: 403 });
-        }
-
         const formData = await req.formData();
         const file = formData.get("file") as File | null;
         const artistId = formData.get("artistId") as string | null;
@@ -58,17 +55,30 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "File and artistId are required" }, { status: 400 });
         }
 
-        if (claim.artistId !== artistId) {
-            return NextResponse.json({ error: "Not authorized for this artist" }, { status: 403 });
+        const claim = await getApprovedClaimByUserId(session.user.id);
+        const ownsTarget = claim?.artistId === artistId;
+        if (!ownsTarget) {
+            const user = await getUserById(session.user.id);
+            if (!user?.isAdmin) {
+                return NextResponse.json(
+                    { error: claim ? "Not authorized for this artist" : "No claimed artist profile" },
+                    { status: 403 }
+                );
+            }
         }
 
         if (file.size > MAX_FILE_SIZE) {
-            return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
+            console.error("[vault/upload] rejected:", { name: file.name, type: file.type, size: file.size, reason: "too_large" });
+            return NextResponse.json(
+                { error: `File too large: ${formatFileSize(file.size)} (max 10MB)` },
+                { status: 400 }
+            );
         }
 
         if (!ALLOWED_TYPES.includes(file.type)) {
+            console.error("[vault/upload] rejected:", { name: file.name, type: file.type, size: file.size, reason: "unsupported_type" });
             return NextResponse.json(
-                { error: `File type not supported: ${file.type}. Supported: PDF, TXT, MD, CSV, JSON, DOCX, images, audio.` },
+                { error: `File type not supported: "${file.type || "unknown"}". Supported: PDF, TXT, MD, CSV, JSON, DOCX, images, audio.` },
                 { status: 400 }
             );
         }
@@ -79,6 +89,13 @@ export async function POST(req: Request) {
 
         // Validate magic bytes for binary formats to prevent MIME type spoofing
         if (!validateMagicBytes(buffer, file.type)) {
+            console.error("[vault/upload] rejected:", {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                reason: "magic_byte_mismatch",
+                header: Array.from(buffer.subarray(0, 8)).map(b => b.toString(16).padStart(2, "0")).join(" "),
+            });
             return NextResponse.json(
                 { error: "File content does not match declared type" },
                 { status: 400 }
@@ -106,12 +123,20 @@ export async function POST(req: Request) {
             .getPublicUrl(storagePath);
         const publicUrl = urlData.publicUrl;
 
-        // Extract text content for LLM access
+        // Extract text content for LLM access (bio + funFacts + askArtist context)
         let extractedText: string | undefined;
-        if (file.type === "text/plain" || file.type === "text/markdown" || file.type === "text/csv") {
+        if (
+            file.type === "text/plain" ||
+            file.type === "text/markdown" ||
+            file.type === "text/csv" ||
+            file.type === "application/json"
+        ) {
             extractedText = new TextDecoder().decode(bytes);
-        } else if (file.type === "application/json") {
-            extractedText = new TextDecoder().decode(bytes);
+        } else if (file.type === "application/pdf") {
+            extractedText = (await extractPdfText(buffer)) ?? undefined;
+            if (!extractedText) {
+                console.warn(`[vault/upload] No text extracted from PDF "${file.name}" (image-only or empty?)`);
+            }
         }
 
         // Insert vault source record
