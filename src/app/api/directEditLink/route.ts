@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
         // Authorization: admin can edit any artist, claimed artist can edit own profile only
         if (!(await canEditArtist(authResult.userId, artistId))) {
-            return Response.json({ error: "Not authorized to edit this artist" }, { status: 403 });
+            return Response.json({ error: "Not authorized for this artist" }, { status: 403 });
         }
 
         if (action === "set") {
