@@ -56,4 +56,12 @@ describe('canEditArtist', () => {
 
     expect(await canEditArtist('u2', 'a1')).toBe(false);
   });
+
+  it('returns false when the user record does not exist', async () => {
+    const { canEditArtist, getApprovedClaimForArtistByUserId, getUserById } = await setup();
+    getApprovedClaimForArtistByUserId.mockResolvedValue(undefined);
+    getUserById.mockResolvedValue(undefined);
+
+    expect(await canEditArtist('ghost', 'a1')).toBe(false);
+  });
 });
