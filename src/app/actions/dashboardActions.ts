@@ -8,7 +8,6 @@ import {
     getClaimByArtistId,
     getApprovedClaimByUserId,
     getVaultSourcesByArtistId,
-    getVaultSourceByIdAndArtist,
     getVaultSourceById,
     updateVaultSourceStatus,
     updateVaultSourceType,
@@ -28,6 +27,7 @@ import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { updateVaultSourceContent } from "@/server/utils/queries/dashboardQueries";
 import { generateReferenceCode } from "@/lib/referenceCode";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
+import { canEditArtist } from "@/server/utils/artistEditAuth";
 
 // Best-effort debounce for bio regen (same serverless caveat as rate limiting)
 const bioRegenTimestamps = new Map<string, number>();
@@ -66,26 +66,17 @@ export async function claimArtistProfile(artistId: string): Promise<{ success: b
 
 /** Resolve a source the user may edit: admins can edit any source, owners only their claimed artist's. Returns the source's artistId. */
 async function verifySourceEditable(userId: string, sourceId: string) {
-    const user = await getUserById(userId);
-    if (user?.isAdmin) {
-        const source = await getVaultSourceById(sourceId);
-        if (!source) return { authorized: false as const, error: "Source not found" };
+    const source = await getVaultSourceById(sourceId);
+    if (!source) return { authorized: false as const, error: "Source not found" };
+    if (await canEditArtist(userId, source.artistId)) {
         return { authorized: true as const, artistId: source.artistId };
     }
-    const claim = await getApprovedClaimByUserId(userId);
-    if (!claim) return { authorized: false as const, error: "No claimed artist profile" };
-    const source = await getVaultSourceByIdAndArtist(sourceId, claim.artistId);
-    if (!source) return { authorized: false as const, error: "Source does not belong to your artist" };
-    return { authorized: true as const, artistId: claim.artistId };
+    return { authorized: false as const, error: "Not authorized for this source" };
 }
 
 /** Authorize editing a specific artist: admins may edit any, owners only their claimed artist. */
 async function verifyArtistEditable(userId: string, artistId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-    const user = await getUserById(userId);
-    if (user?.isAdmin) return { ok: true };
-    const claim = await getApprovedClaimByUserId(userId);
-    if (!claim || claim.artistId !== artistId) return { ok: false, error: "Not authorized for this artist" };
-    return { ok: true };
+    return (await canEditArtist(userId, artistId)) ? { ok: true } : { ok: false, error: "Not authorized for this artist" };
 }
 
 export async function updateSourceStatus(
@@ -309,11 +300,8 @@ export async function saveCurrentBio(bioText: string, targetArtistId?: string): 
 /** Resolve the artistId for bio version actions — admin can target any artist via the version's owner */
 async function resolveBioArtistId(userId: string, targetArtistId?: string): Promise<{ artistId: string } | { error: string }> {
     if (targetArtistId) {
-        const user = await getUserById(userId);
-        if (user?.isAdmin) return { artistId: targetArtistId };
-        const claim = await getApprovedClaimByUserId(userId);
-        if (!claim || claim.artistId !== targetArtistId) return { error: "Not authorized for this artist" };
-        return { artistId: claim.artistId };
+        if (await canEditArtist(userId, targetArtistId)) return { artistId: targetArtistId };
+        return { error: "Not authorized for this artist" };
     }
     const claim = await getApprovedClaimByUserId(userId);
     if (!claim) return { error: "No claimed artist profile" };
