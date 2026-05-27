@@ -21,7 +21,7 @@ CREATE TABLE "mcp_audit_log" (
 );
 --> statement-breakpoint
 ALTER TABLE "mcp_audit_log" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "legacy_link_dismissed" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "legacy_link_dismissed" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "mcp_audit_log" ADD CONSTRAINT "mcp_audit_log_artist_id_fkey" FOREIGN KEY ("artist_id") REFERENCES "public"."artists"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_mcp_audit_log_artist_id" ON "mcp_audit_log" USING btree ("artist_id" uuid_ops);--> statement-breakpoint
 CREATE POLICY "mnweb_select_mcp_api_keys" ON "mcp_api_keys" AS PERMISSIVE FOR SELECT TO "mnweb" USING (true);--> statement-breakpoint

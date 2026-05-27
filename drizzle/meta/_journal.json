@@ -40,29 +40,8 @@
     {
       "idx": 5,
       "version": "7",
-      "when": 1775165400000,
-      "tag": "0005_add_claim_rejected_and_reference_code",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1775445241257,
-      "tag": "0006_careless_ravenous",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1775782709272,
-      "tag": "0007_confused_blonde_phantom",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
       "when": 1775784854646,
-      "tag": "0008_third_terrax",
+      "tag": "0005_artist_claims_vault_and_deezer",
       "breakpoints": true
     }
   ]
