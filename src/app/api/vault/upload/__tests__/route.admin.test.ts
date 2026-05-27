@@ -5,6 +5,7 @@ jest.mock('@/server/auth', () => ({ getServerAuthSession: jest.fn() }));
 jest.mock('@/server/utils/dev-auth', () => ({ getDevSession: jest.fn() }));
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({
   getApprovedClaimByUserId: jest.fn(),
+  getApprovedClaimForArtistByUserId: jest.fn(),
   insertVaultSource: jest.fn(),
 }));
 jest.mock('@/server/utils/queries/userQueries', () => ({ getUserById: jest.fn() }));
@@ -39,7 +40,7 @@ describe('POST /api/vault/upload admin path', () => {
     const claims = await import('@/server/utils/queries/dashboardQueries');
     (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
     (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
-    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue(null);
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
     (claims.insertVaultSource as jest.Mock).mockResolvedValue({ id: 'src-1' });
 
     const { POST } = await import('../route');
@@ -69,7 +70,7 @@ describe('POST /api/vault/upload admin path', () => {
     const claims = await import('@/server/utils/queries/dashboardQueries');
     (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'u-2' } });
     (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: false });
-    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue(null);
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
 
     const { POST } = await import('../route');
 
@@ -86,7 +87,7 @@ describe('POST /api/vault/upload admin path', () => {
 
     expect(res.status).toBe(403);
     const body = await res.json();
-    expect(body.error).toBe('No claimed artist profile');
+    expect(body.error).toBe('Not authorized for this artist');
   });
 
   it('allows an admin WITH their own claim to upload for a DIFFERENT artist', async () => {
@@ -95,8 +96,8 @@ describe('POST /api/vault/upload admin path', () => {
     const claims = await import('@/server/utils/queries/dashboardQueries');
     (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-2' } });
     (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
-    // Admin has a claim for their own artist, but is uploading for a different one
-    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'their-own-artist' });
+    // Admin has no claim for THIS (different) artist, but is admin so allowed
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
     (claims.insertVaultSource as jest.Mock).mockResolvedValue({ id: 'src-2' });
 
     const { POST } = await import('../route');
@@ -123,8 +124,8 @@ describe('POST /api/vault/upload admin path', () => {
     const claims = await import('@/server/utils/queries/dashboardQueries');
     (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'u-3' } });
     (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: false });
-    // User has a claim, but for a different artist than the upload target
-    (claims.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'their-own-artist' });
+    // User has no approved claim for THIS artist, and is not admin
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
 
     const { POST } = await import('../route');
 

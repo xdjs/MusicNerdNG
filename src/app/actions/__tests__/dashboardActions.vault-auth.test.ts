@@ -6,7 +6,7 @@ jest.mock('@/server/utils/dev-auth', () => ({ getDevSession: jest.fn() }));
 jest.mock('@/server/utils/queries/userQueries', () => ({ getUserById: jest.fn() }));
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({
   getApprovedClaimByUserId: jest.fn(),
-  getVaultSourceByIdAndArtist: jest.fn(),
+  getApprovedClaimForArtistByUserId: jest.fn(),
   getVaultSourceById: jest.fn(),
   getVaultSourcesByArtistId: jest.fn(),
   updateVaultSourceStatus: jest.fn(),
@@ -55,8 +55,8 @@ describe('vault action authorization', () => {
   it('rejects a non-admin who does not own the source', async () => {
     const { actions, users, q } = await setup();
     (users.getUserById as jest.Mock).mockResolvedValue({ id: 'admin-1', isAdmin: false });
-    (q.getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ artistId: 'artist-owned' });
-    (q.getVaultSourceByIdAndArtist as jest.Mock).mockResolvedValue(undefined);
+    (q.getVaultSourceById as jest.Mock).mockResolvedValue({ id: 'src-1', artistId: 'artist-x' });
+    (q.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
 
     const res = await actions.updateSourceStatus('src-1', 'approved');
 

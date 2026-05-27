@@ -1,6 +1,5 @@
 import { requireAuth } from "@/lib/auth-helpers";
-import { getUserById } from "@/server/utils/queries/userQueries";
-import { getApprovedClaimForArtistByUserId } from "@/server/utils/queries/dashboardQueries";
+import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { extractArtistId } from "@/server/utils/services";
 
@@ -23,14 +22,8 @@ export async function POST(req: Request) {
         }
 
         // Authorization: admin can edit any artist, claimed artist can edit own profile only
-        const user = await getUserById(authResult.userId);
-        const isAdmin = !!user?.isAdmin;
-
-        if (!isAdmin) {
-            const claim = await getApprovedClaimForArtistByUserId(authResult.userId, artistId);
-            if (!claim) {
-                return Response.json({ error: "Not authorized to edit this artist" }, { status: 403 });
-            }
+        if (!(await canEditArtist(authResult.userId, artistId))) {
+            return Response.json({ error: "Not authorized for this artist" }, { status: 403 });
         }
 
         if (action === "set") {

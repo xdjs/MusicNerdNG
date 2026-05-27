@@ -1,7 +1,7 @@
 import { getServerAuthSession } from '@/server/auth';
 import type { Session } from '@/server/auth';
 import { getUserById } from '@/server/utils/queries/userQueries';
-import { getApprovedClaimByUserId } from '@/server/utils/queries/dashboardQueries';
+import { canEditArtist } from '@/server/utils/artistEditAuth';
 
 type AuthSuccess = { authenticated: true; session: Session; userId: string };
 type AuthFailure = { authenticated: false; response: Response };
@@ -49,11 +49,7 @@ export async function requireArtistEditor(artistId: string): Promise<AuthResult>
   const authResult = await requireAuth();
   if (!authResult.authenticated) return authResult;
 
-  const dbUser = await getUserById(authResult.userId);
-  if (dbUser?.isAdmin) return authResult;
-
-  const claim = await getApprovedClaimByUserId(authResult.userId);
-  if (claim?.artistId === artistId) return authResult;
+  if (await canEditArtist(authResult.userId, artistId)) return authResult;
 
   return {
     authenticated: false,

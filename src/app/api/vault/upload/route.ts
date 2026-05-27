@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
-import { getApprovedClaimByUserId, insertVaultSource } from "@/server/utils/queries/dashboardQueries";
-import { getUserById } from "@/server/utils/queries/userQueries";
+import { insertVaultSource } from "@/server/utils/queries/dashboardQueries";
+import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { supabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
 import { validateMagicBytes } from "@/server/utils/validateMagicBytes";
 import { extractPdfText } from "@/server/utils/extractPdfText";
@@ -55,16 +55,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "File and artistId are required" }, { status: 400 });
         }
 
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        const ownsTarget = claim?.artistId === artistId;
-        if (!ownsTarget) {
-            const user = await getUserById(session.user.id);
-            if (!user?.isAdmin) {
-                return NextResponse.json(
-                    { error: claim ? "Not authorized for this artist" : "No claimed artist profile" },
-                    { status: 403 }
-                );
-            }
+        if (!(await canEditArtist(session.user.id, artistId))) {
+            return NextResponse.json({ error: "Not authorized for this artist" }, { status: 403 });
         }
 
         if (file.size > MAX_FILE_SIZE) {

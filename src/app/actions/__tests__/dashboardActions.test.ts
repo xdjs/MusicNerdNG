@@ -14,6 +14,7 @@ jest.mock("@/server/utils/queries/dashboardQueries", () => ({
     createClaim: jest.fn(),
     getClaimByArtistId: jest.fn(),
     getApprovedClaimByUserId: jest.fn(),
+    getApprovedClaimForArtistByUserId: jest.fn(),
     getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
     getVaultSourceByIdAndArtist: jest.fn(),
     updateVaultSourceStatus: jest.fn(),
@@ -54,11 +55,12 @@ describe("dashboardActions.addVaultSource", () => {
 
     async function setup() {
         const { getServerAuthSession } = await import("@/server/auth");
-        const { getApprovedClaimByUserId, insertVaultSource } = await import("@/server/utils/queries/dashboardQueries");
+        const { getApprovedClaimForArtistByUserId, insertVaultSource } = await import("@/server/utils/queries/dashboardQueries");
         const { addVaultSource } = await import("../dashboardActions");
 
         (getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: "user-1", email: "user@test.com" } });
-        (getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ id: "claim-1", artistId: "artist-1" });
+        // canEditArtist authorizes the owner via the per-artist claim lookup
+        (getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue({ id: "claim-1", artistId: "artist-1" });
         (insertVaultSource as jest.Mock).mockResolvedValue({ id: "source-1" });
 
         return {
@@ -133,8 +135,11 @@ describe("dashboardActions.addVaultSource", () => {
 
     it("rejects when the user's claim is for a different artist", async () => {
         const { addVaultSource, insertVaultSource } = await setup();
-        const { getApprovedClaimByUserId } = await import("@/server/utils/queries/dashboardQueries");
-        (getApprovedClaimByUserId as jest.Mock).mockResolvedValue({ id: "claim-1", artistId: "other-artist" });
+        const { getApprovedClaimForArtistByUserId } = await import("@/server/utils/queries/dashboardQueries");
+        const { getUserById } = await import("@/server/utils/queries/userQueries");
+        // No approved claim for THIS artist, and not an admin
+        (getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+        (getUserById as jest.Mock).mockResolvedValue({ id: "user-1", isAdmin: false });
 
         const result = await addVaultSource("artist-1", "https://pitchfork.com/a");
 
