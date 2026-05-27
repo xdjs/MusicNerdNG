@@ -50,9 +50,9 @@ src/
 └── types/                       # TypeScript type definitions
 
 agents/
-└── id-mapping/                  # Codex-powered agent for cross-platform ID mapping
+└── id-mapping/                  # Agent scripts for cross-platform ID mapping
     ├── prompt.md                # Agent prompt template
-    ├── Codex-runner.sh         # Streams Codex API responses
+    ├── claude-runner.sh         # Current runner script used by mapping jobs
     ├── run-full-catalog.sh      # Orchestrates full catalog processing
     ├── start-workers.sh         # Parallel worker launcher
     ├── check-status.sh          # Worker monitoring + failure classification
@@ -351,20 +351,19 @@ Environment variables are validated via `src/env.ts` — review before adding ne
 
 ## Skill routing
 
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
-The skill has specialized workflows that produce better results than ad-hoc answers.
+When a request clearly matches a Codex skill that is available in the current
+session, use that workflow first before falling back to ad-hoc exploration.
 
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke office-hours
-- Bugs, errors, "why is this broken", 500 errors → invoke investigate
-- Ship, deploy, push, create PR → invoke ship
-- QA, test the site, find bugs → invoke qa
-- Code review, check my diff → invoke review
-- Update docs after shipping → invoke document-release
-- Weekly retro → invoke retro
-- Design system, brand → invoke design-consultation
-- Visual audit, design polish → invoke design-review
-- Architecture review → invoke plan-eng-review
-- Save progress, checkpoint, resume → invoke checkpoint
-- Code quality, health check → invoke health
+Common routes in this repo:
+- Product ideas, "is this worth building", brainstorming → `office-hours`
+- Bugs, errors, "why is this broken", 500 errors → `investigate`
+- Ship, deploy, push, create PR → `ship`
+- QA, test the site, find bugs → `qa`
+- Code review, check my diff → `review`
+- Update docs after shipping → `document-release`
+- Weekly retro → `retro`
+- Design system, brand → `design-consultation`
+- Visual audit, design polish → `design-review`
+- Architecture review → `plan-eng-review`
+- Save progress, checkpoint, resume → `checkpoint`
+- Code quality, health check → `health`

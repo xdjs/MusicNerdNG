@@ -29,6 +29,16 @@ CREATE TABLE IF NOT EXISTS "artist_claims" (
 --> statement-breakpoint
 ALTER TABLE "artist_claims" ADD COLUMN IF NOT EXISTS "reference_code" text;
 --> statement-breakpoint
+DO $$ BEGIN
+	IF NOT EXISTS (
+		SELECT 1 FROM pg_constraint
+		WHERE conname = 'artist_claims_artist_id_key'
+			AND conrelid = 'public.artist_claims'::regclass
+	) THEN
+		ALTER TABLE "artist_claims" ADD CONSTRAINT "artist_claims_artist_id_key" UNIQUE("artist_id");
+	END IF;
+END $$;
+--> statement-breakpoint
 ALTER TABLE "artist_claims" ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "artist_vault_sources" (
