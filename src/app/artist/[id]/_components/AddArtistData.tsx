@@ -206,8 +206,10 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
     function handleClick() {
         if (!session) {
-            // Logged out — prompt login via the nav login button (matches ClaimButton)
-            document.getElementById("login-btn")?.click();
+            // prompt login via nav button — same approach as ClaimButton
+            const loginBtn = document.getElementById("login-btn");
+            if (loginBtn) loginBtn.click();
+            else if (process.env.NODE_ENV !== "production") console.warn("[AddArtistData] #login-btn not found — cannot prompt login");
             return;
         }
         setIsModalOpen(true);

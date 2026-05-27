@@ -2,9 +2,9 @@
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AddArtistData from '@/app/artist/[id]/_components/AddArtistData';
+import { useSession } from 'next-auth/react';
 
 jest.mock('next-auth/react', () => ({ useSession: jest.fn() }));
-import { useSession } from 'next-auth/react';
 
 const baseProps = {
   // Partial artist fixture is sufficient for exercising the trigger.
@@ -33,6 +33,21 @@ describe('AddArtistData "+" trigger', () => {
     expect(screen.queryByText('Add Artist Data')).not.toBeInTheDocument();
 
     getByIdSpy.mockRestore();
+  });
+
+  it('warns in dev and does not open the modal when login button is absent', () => {
+    (useSession as jest.Mock).mockReturnValue({ data: null });
+    const getByIdSpy = jest.spyOn(document, 'getElementById').mockReturnValue(null);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    render(<AddArtistData {...baseProps} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(screen.queryByText('Add Artist Data')).not.toBeInTheDocument();
+
+    getByIdSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it('opens the submit modal when logged in', () => {
