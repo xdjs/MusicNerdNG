@@ -205,9 +205,12 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     }
 
     function handleClick() {
-        if (session) {
-            setIsModalOpen(true);
+        if (!session) {
+            // Logged out — prompt login via the nav login button (matches ClaimButton)
+            document.getElementById("login-btn")?.click();
+            return;
         }
+        setIsModalOpen(true);
     }
 
     return (
