@@ -5,7 +5,7 @@ import { EditModeContext } from "@/app/_components/EditModeContext";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useArtistBio } from "@/hooks/useArtistBio";
-import { ChevronDown, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { saveCurrentBio } from "@/app/actions/dashboardActions";
 import BioVersionHistory from "./BioVersionHistory";
 
@@ -22,17 +22,10 @@ function renderMarkdown(text: string): string {
     .replace(/\*(.+?)\*/g, "<em>$1</em>");
 }
 
-/** Height (px) of the collapsed bio box */
-const COLLAPSED_HEIGHT = 112;
-
 export default function BlurbSection({ artistName, artistId, initialBio }: BlurbSectionProps) {
   const { isEditing, canEdit } = useContext(EditModeContext);
   const { toast } = useToast();
   const { bio: aiBlurb, loading: loadingAi, refetch } = useArtistBio(artistId, initialBio);
-
-  const [expanded, setExpanded] = useState(false);
-  const [needsTruncation, setNeedsTruncation] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   const [editText, setEditText] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -57,16 +50,6 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
       setOriginalBio(aiBlurb ?? "");
     }
   }, [isEditing, aiBlurb]);
-
-  // Measure content to decide if truncation is needed
-  useEffect(() => {
-    if (contentRef.current && contentRef.current.scrollHeight > 0) {
-      setNeedsTruncation(contentRef.current.scrollHeight > COLLAPSED_HEIGHT);
-    } else if (aiBlurb && aiBlurb.length > 200) {
-      // Fallback for environments without layout (e.g. JSDOM)
-      setNeedsTruncation(true);
-    }
-  }, [aiBlurb]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -167,7 +150,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
 
   if (loadingAi) {
     return (
-      <div className="glass-subtle p-3" style={{ height: COLLAPSED_HEIGHT }}>
+      <div className="glass-subtle p-3 min-h-[80px]">
         <p className="text-gray-500 dark:text-gray-400 italic">Loading summary...</p>
       </div>
     );
@@ -235,46 +218,16 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
     );
   }
 
-  // Non-editing view — smooth expand/collapse
+  // Non-editing view — show the full bio (no truncation)
   return (
-    <div className="space-y-1.5">
-      <div className="glass-subtle p-3 relative">
-        {/* Expandable content wrapper */}
-        <div
-          ref={contentRef}
-          className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
-          style={{ maxHeight: expanded ? contentRef.current?.scrollHeight ?? "none" : COLLAPSED_HEIGHT }}
-        >
-          {aiBlurb ? (
-            <p
-              className="text-black dark:text-white text-sm leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(aiBlurb) }}
-            />
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400 italic">No summary is available</p>
-          )}
-        </div>
-
-        {/* Fade gradient when collapsed */}
-        {needsTruncation && !expanded && (
-          <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white/80 dark:from-[#1a1a1a]/80 to-transparent rounded-b-xl pointer-events-none" />
-        )}
-      </div>
-
-      {/* Expand toggle — edit controls live in edit mode only */}
-      {needsTruncation && (
-        <div className="flex items-center justify-end px-1">
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-pastypink transition-colors"
-          >
-            {expanded ? "Show less" : "Read more"}
-            <ChevronDown
-              size={13}
-              className={`transition-transform duration-300 ${expanded ? "rotate-180" : ""}`}
-            />
-          </button>
-        </div>
+    <div className="glass-subtle p-3">
+      {aiBlurb ? (
+        <p
+          className="text-black dark:text-white text-sm leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(aiBlurb) }}
+        />
+      ) : (
+        <p className="text-gray-500 dark:text-gray-400 italic">No summary is available</p>
       )}
     </div>
   );
