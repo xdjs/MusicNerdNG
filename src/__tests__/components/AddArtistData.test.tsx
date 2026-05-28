@@ -17,8 +17,21 @@ const baseProps = {
 describe('AddArtistData "+" trigger', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it('does nothing while the session is still loading', () => {
+    (useSession as jest.Mock).mockReturnValue({ data: null, status: 'loading' });
+    const getByIdSpy = jest.spyOn(document, 'getElementById');
+
+    render(<AddArtistData {...baseProps} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(getByIdSpy).not.toHaveBeenCalledWith('login-btn'); // no spurious login prompt
+    expect(screen.queryByText('Add Artist Data')).not.toBeInTheDocument(); // modal not opened
+
+    getByIdSpy.mockRestore();
+  });
+
   it('prompts login (clicks #login-btn) and does not open the modal when logged out', () => {
-    (useSession as jest.Mock).mockReturnValue({ data: null });
+    (useSession as jest.Mock).mockReturnValue({ data: null, status: 'unauthenticated' });
     const loginClick = jest.fn();
     const getByIdSpy = jest
       .spyOn(document, 'getElementById')
@@ -36,7 +49,7 @@ describe('AddArtistData "+" trigger', () => {
   });
 
   it('warns in dev and does not open the modal when login button is absent', () => {
-    (useSession as jest.Mock).mockReturnValue({ data: null });
+    (useSession as jest.Mock).mockReturnValue({ data: null, status: 'unauthenticated' });
     const getByIdSpy = jest.spyOn(document, 'getElementById').mockReturnValue(null);
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -51,7 +64,7 @@ describe('AddArtistData "+" trigger', () => {
   });
 
   it('opens the submit modal when logged in', () => {
-    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } } });
+    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
 
     render(<AddArtistData {...baseProps} />);
     fireEvent.click(screen.getByRole('button'));

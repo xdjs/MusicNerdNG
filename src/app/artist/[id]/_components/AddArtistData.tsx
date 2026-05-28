@@ -33,7 +33,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean }) {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -205,6 +205,8 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     }
 
     function handleClick() {
+        // Session still resolving — don't flash a spurious login prompt at an authed user
+        if (status === "loading") return;
         if (!session) {
             // prompt login via nav button — same approach as ClaimButton
             const loginBtn = document.getElementById("login-btn");
