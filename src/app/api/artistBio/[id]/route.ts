@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { requireArtistEditor } from "@/lib/auth-helpers";
+import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
 
 // CORS configuration for this route
 const ALLOWED_ORIGIN = process.env.NEXT_PUBLIC_ALLOWED_ORIGIN || "*";
@@ -103,6 +104,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // For regeneration, bio can be empty
     if (!regenerate && (!bio || typeof bio !== "string" || bio.trim().length === 0)) {
       return NextResponse.json({ message: "Invalid bio" }, { status: 400, headers: CORS_HEADERS });
+    }
+
+    // Enforce the same character cap as saveCurrentBio so the Save and Save-to-vault paths agree.
+    if (!regenerate && bio.length > MAX_BIO_LENGTH) {
+      return NextResponse.json(
+        { message: `Bio must be ${MAX_BIO_LENGTH} characters or fewer` },
+        { status: 400, headers: CORS_HEADERS }
+      );
     }
 
     const { updateArtistBio } = await import("@/server/utils/queries/artistQueries");

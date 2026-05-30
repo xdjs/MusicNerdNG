@@ -28,6 +28,7 @@ import { updateVaultSourceContent } from "@/server/utils/queries/dashboardQuerie
 import { generateReferenceCode } from "@/lib/referenceCode";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
+import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
 
 // Best-effort debounce for bio regen (same serverless caveat as rate limiting)
 const bioRegenTimestamps = new Map<string, number>();
@@ -273,8 +274,6 @@ export async function getArtistBioVersions(targetArtistId?: string): Promise<{ s
         return { success: false, error: "Failed to load bio versions" };
     }
 }
-
-const MAX_BIO_LENGTH = 10_000;
 
 export async function saveCurrentBio(bioText: string, targetArtistId?: string): Promise<{ success: boolean; error?: string }> {
     const session = await getServerAuthSession() ?? await getDevSession();
