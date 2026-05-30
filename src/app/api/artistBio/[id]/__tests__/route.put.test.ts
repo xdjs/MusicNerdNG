@@ -57,6 +57,8 @@ describe('PUT /api/artistBio/[id]', () => {
     const res = await PUT(req, { params: Promise.resolve({ id: 'artist-1' }) });
 
     expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.message).toBe(`Bio must be ${MAX_BIO_LENGTH} characters or fewer`);
     expect(aq.updateArtistBio).not.toHaveBeenCalled();
   });
 

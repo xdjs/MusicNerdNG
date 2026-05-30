@@ -106,7 +106,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ message: "Invalid bio" }, { status: 400, headers: CORS_HEADERS });
     }
 
-    // Enforce the same character cap as saveCurrentBio so the Save and Save-to-vault paths agree.
     if (!regenerate && bio.length > MAX_BIO_LENGTH) {
       return NextResponse.json(
         { message: `Bio must be ${MAX_BIO_LENGTH} characters or fewer` },
