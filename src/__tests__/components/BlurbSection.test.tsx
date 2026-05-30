@@ -90,9 +90,9 @@ describe('BlurbSection', () => {
 
             await waitFor(() => {
                 expect(screen.getByText(longContent)).toBeInTheDocument();
+                expect(screen.queryByText('Read more')).not.toBeInTheDocument();
+                expect(screen.queryByText('Show less')).not.toBeInTheDocument();
             });
-            expect(screen.queryByText('Read more')).not.toBeInTheDocument();
-            expect(screen.queryByText('Show less')).not.toBeInTheDocument();
         });
     });
 
