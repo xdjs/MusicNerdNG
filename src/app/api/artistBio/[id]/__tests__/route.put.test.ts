@@ -41,6 +41,27 @@ describe('PUT /api/artistBio/[id]', () => {
     expect(aq.updateArtistBio).toHaveBeenCalledWith('artist-1', 'New bio', false);
   });
 
+  it('rejects a bio that exceeds the character cap with a 400', async () => {
+    const { requireArtistEditor } = await import('@/lib/auth-helpers');
+    const aq = await import('@/server/utils/queries/artistQueries');
+    const { MAX_BIO_LENGTH } = await import('@/lib/bioConstants');
+    (requireArtistEditor as jest.Mock).mockResolvedValue({ authenticated: true, session: {}, userId: 'u1' });
+
+    const tooLong = 'a'.repeat(MAX_BIO_LENGTH + 1);
+    const { PUT } = await import('../route');
+    const req = new Request('http://t/', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bio: tooLong }),
+    });
+    const res = await PUT(req, { params: Promise.resolve({ id: 'artist-1' }) });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.message).toBe(`Bio must be ${MAX_BIO_LENGTH} characters or fewer`);
+    expect(aq.updateArtistBio).not.toHaveBeenCalled();
+  });
+
   it('returns the guard failure (403) when not an authorized editor', async () => {
     const { requireArtistEditor } = await import('@/lib/auth-helpers');
     (requireArtistEditor as jest.Mock).mockResolvedValue({
