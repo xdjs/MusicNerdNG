@@ -77,8 +77,8 @@ describe('BlurbSection', () => {
         });
     });
 
-    describe('Read more Functionality', () => {
-        it('shows Read more button for long content', async () => {
+    describe('Full bio (no truncation)', () => {
+        it('renders the full bio with no Read more / Show less control', async () => {
             mockUseArtistBio.mockReturnValue({
                 bio: longContent,
                 loading: false,
@@ -87,72 +87,11 @@ describe('BlurbSection', () => {
             });
 
             render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.getByText('Read more')).toBeInTheDocument();
-            });
-        });
 
-        it('does not show Read more button for short content', async () => {
-            mockUseArtistBio.mockReturnValue({
-                bio: 'Short content',
-                loading: false,
-                error: null,
-                refetch: jest.fn()
-            });
-
-            render(<BlurbSection {...defaultProps} />);
-            
             await waitFor(() => {
+                expect(screen.getByText(longContent)).toBeInTheDocument();
                 expect(screen.queryByText('Read more')).not.toBeInTheDocument();
-            });
-        });
-
-        it('expands when Read more is clicked', async () => {
-            mockUseArtistBio.mockReturnValue({
-                bio: longContent,
-                loading: false,
-                error: null,
-                refetch: jest.fn()
-            });
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.getByText('Read more')).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByText('Read more'));
-
-            await waitFor(() => {
-                expect(screen.getByText('Show less')).toBeInTheDocument();
-            });
-        });
-
-        it('collapses when Show less is clicked', async () => {
-            mockUseArtistBio.mockReturnValue({
-                bio: longContent,
-                loading: false,
-                error: null,
-                refetch: jest.fn()
-            });
-
-            render(<BlurbSection {...defaultProps} />);
-
-            await waitFor(() => {
-                expect(screen.getByText('Read more')).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByText('Read more'));
-
-            await waitFor(() => {
-                expect(screen.getByText('Show less')).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByText('Show less'));
-
-            await waitFor(() => {
-                expect(screen.getByText('Read more')).toBeInTheDocument();
+                expect(screen.queryByText('Show less')).not.toBeInTheDocument();
             });
         });
     });
