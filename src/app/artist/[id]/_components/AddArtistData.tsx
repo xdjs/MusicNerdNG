@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { useState, useEffect } from "react";
 import { Artist } from "@/server/db/DbTypes";
+import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Label } from "@radix-ui/react-label";
 import { useSession } from "next-auth/react";
 import { UrlMap } from "@/server/db/DbTypes";
@@ -230,27 +231,23 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                 {label ? <span className="whitespace-nowrap">{label}</span> : <Plus color="white" size={24} />}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
-                <DialogContent className="sm:max-w-[440px] max-h-screen overflow-auto scrollbar-hide">
-                    <DialogHeader>
-                        <div className="flex items-center gap-3">
-                            {spotifyImg && (
-                                <img
-                                    src={spotifyImg}
-                                    alt=""
-                                    className="w-10 h-10 rounded-full object-cover shrink-0"
-                                />
-                            )}
-                            <div className="space-y-0.5 min-w-0">
-                                <DialogTitle className="text-black dark:text-white text-lg font-bold">
-                                    {directEdit ? "Add a link" : "Suggest a link"}
-                                </DialogTitle>
-                                <DialogDescription className="text-xs text-muted-foreground">
-                                    {directEdit
-                                        ? `Save a link to ${artist.name}'s profile.`
-                                        : `Suggest a link for ${artist.name} — an admin will review it.`}
-                                </DialogDescription>
-                            </div>
-                        </div>
+                <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide">
+                    {spotifyImg && (
+                        <AspectRatio ratio={1 / 1} className="bg-muted rounded-md overflow-hidden">
+                            <img src={spotifyImg} alt={artist.name ?? "Artist"} className="object-cover w-full h-full" />
+                        </AspectRatio>
+                    )}
+                    <DialogHeader className="space-y-1">
+                        <DialogTitle className="text-black dark:text-white text-lg font-bold">
+                            {directEdit
+                                ? `Add a link for ${artist.name}`
+                                : `Suggest a link for ${artist.name}`}
+                        </DialogTitle>
+                        {!directEdit && (
+                            <DialogDescription className="text-xs text-muted-foreground">
+                                An admin will review it before it&apos;s added.
+                            </DialogDescription>
+                        )}
                     </DialogHeader>
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
@@ -263,24 +260,31 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                             <FormControl>
                                                 <div className="flex-grow glass-subtle rounded-lg flex items-center h-11 px-3">
                                                     <Input
-                                                        placeholder={selectedOption || "Paste a profile link…"}
+                                                        placeholder="Paste a profile link…"
                                                         onClick={checkInput}
                                                         id="name"
-                                                        className="w-full p-0 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm text-black dark:text-white placeholder:text-muted-foreground"
+                                                        className="w-full p-0 bg-transparent border-0 outline-none focus:outline-none focus-visible:outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 text-sm text-black dark:text-white placeholder:text-muted-foreground"
                                                         {...field}
                                                     />
                                                 </div>
                                             </FormControl>
-                                            <AddArtistDataOptions availableLinks={displayLinks} setOption={(option) => setSelectedOption(option)} />
+                                            <AddArtistDataOptions
+                                                availableLinks={displayLinks}
+                                                setOption={(option) => {
+                                                    // Fill the input with the example so the user can edit it (replace USERNAME, etc.).
+                                                    form.setValue("artistDataUrl", option, { shouldDirty: true, shouldValidate: false });
+                                                    setSelectedOption(option);
+                                                }}
+                                            />
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            Need ideas? Tap <strong>{TIPS_BUTTON_LABEL}</strong> for the platforms we currently accept.
+                                            Tap <strong>{TIPS_BUTTON_LABEL}</strong> for the platforms we currently accept.
                                         </p>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
-                            <DialogFooter className="flex sm:flex-col gap-3 pt-1">
+                            <DialogFooter className="flex sm:flex-col gap-2">
                                 {addArtistResp && addArtistResp.status === "error" ? (
                                     <Label className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
                                         {addArtistResp.message}

@@ -26,7 +26,7 @@ export default function AddArtistDataOptions({ availableLinks, setOption }: { av
     const dataOptions = sortedLinks.map(link => (
         <DropdownMenuItem
             key={link.id}
-            className="cursor-pointer"
+            className="cursor-pointer text-xs text-black dark:text-white focus:bg-pastypink/15 focus:text-pastypink"
             onClick={() => setOption(link.example.replace(/^(?:https?:\/\/)?(?:www\.)?/, ''))}
         >
             {link.example.replace(/^(?:https?:\/\/)?(?:www\.)?/, '')}
@@ -44,7 +44,12 @@ export default function AddArtistDataOptions({ availableLinks, setOption }: { av
                     {TIPS_BUTTON_LABEL}
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-56 overflow-auto" align="end">
+            <DropdownMenuContent
+                side="top"
+                align="end"
+                sideOffset={6}
+                className="glass-subtle scrollbar-glass max-h-44 overflow-auto p-1 border-0 shadow-lg"
+            >
                 {dataOptions}
             </DropdownMenuContent>
         </DropdownMenu>

@@ -26,7 +26,7 @@ describe('AddArtistData "+" trigger', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(getByIdSpy).not.toHaveBeenCalledWith('login-btn'); // no spurious login prompt
-    expect(screen.queryByText('Suggest a link')).not.toBeInTheDocument(); // modal not opened
+    expect(screen.queryByText(/Suggest a link/i)).not.toBeInTheDocument(); // modal not opened
 
     getByIdSpy.mockRestore();
   });
@@ -43,7 +43,7 @@ describe('AddArtistData "+" trigger', () => {
 
     expect(getByIdSpy).toHaveBeenCalledWith('login-btn');
     expect(loginClick).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText('Suggest a link')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Suggest a link/i)).not.toBeInTheDocument();
 
     getByIdSpy.mockRestore();
   });
@@ -57,7 +57,7 @@ describe('AddArtistData "+" trigger', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(warnSpy).toHaveBeenCalled();
-    expect(screen.queryByText('Suggest a link')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Suggest a link/i)).not.toBeInTheDocument();
 
     getByIdSpy.mockRestore();
     warnSpy.mockRestore();
@@ -69,8 +69,8 @@ describe('AddArtistData "+" trigger', () => {
     render(<AddArtistData {...baseProps} />);
     fireEvent.click(screen.getByRole('button'));
 
-    // UGC users see "Suggest a link" header and a Submit button
-    expect(screen.getByRole('heading', { name: 'Suggest a link' })).toBeInTheDocument();
+    // UGC users see "Suggest a link for {artist}" header and a Submit button
+    expect(screen.getByRole('heading', { name: /Suggest a link for Test Artist/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
   });
 
@@ -80,7 +80,7 @@ describe('AddArtistData "+" trigger', () => {
     render(<AddArtistData {...baseProps} directEdit />);
     fireEvent.click(screen.getByRole('button'));
 
-    expect(screen.getByRole('heading', { name: 'Add a link' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Add a link for Test Artist/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save Link' })).toBeInTheDocument();
   });
 
