@@ -37,7 +37,6 @@ import { LINK_NOT_SUPPORTED, LINK_TWITTER_INVALID, TIPS_BUTTON_LABEL } from "@/l
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean }) {
     const { data: session, status } = useSession();
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
-    const [selectedOption, setSelectedOption] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
     const router = useRouter();
@@ -193,7 +192,6 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         }
         if (!isOpen) {
             setAddArtistResp(null);
-            setSelectedOption("");
         }
         setIsModalOpen(isOpen);
         form.reset();
@@ -273,7 +271,6 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                                 setOption={(option) => {
                                                     // Fill the input with the example so the user can edit it (replace USERNAME, etc.).
                                                     form.setValue("artistDataUrl", option, { shouldDirty: true, shouldValidate: false });
-                                                    setSelectedOption(option);
                                                 }}
                                             />
                                         </div>
