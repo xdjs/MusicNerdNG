@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogFooter,
     DialogHeader,
     DialogTitle,
@@ -10,7 +11,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { useState, useEffect } from "react";
 import { Artist } from "@/server/db/DbTypes";
-import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Label } from "@radix-ui/react-label";
 import { useSession } from "next-auth/react";
 import { UrlMap } from "@/server/db/DbTypes";
@@ -31,6 +31,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { LINK_NOT_SUPPORTED, TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
 
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean }) {
     const { data: session, status } = useSession();
@@ -145,13 +146,13 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
         const isTwitterValid = await validateTwitterLink(formattedUrl);
         if (!isTwitterValid) {
-            setAddArtistResp({ status: "error", message: "This link is invalid. Please enter a valid Twitter/X profile URL." });
+            setAddArtistResp({ status: "error", message: "That Twitter/X profile link doesn't look valid. Double-check the URL and try again." });
             setIsLoading(false);
             return;
         }
         const isPlatformValid = await validatePlatformLinkBackend(formattedUrl);
         if (!isPlatformValid) {
-            setAddArtistResp({ status: "error", message: "This link is invalid or not supported." });
+            setAddArtistResp({ status: "error", message: LINK_NOT_SUPPORTED });
             setIsLoading(false);
             return;
         }
@@ -229,72 +230,79 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                 {label ? <span className="whitespace-nowrap">{label}</span> : <Plus color="white" size={24} />}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
-                <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide text-black">
-                    <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                            <div>
-                                <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full">
-                                    {(spotifyImg) &&
-                                        <img src={spotifyImg} alt="Artist Image" className="object-cover" />
-                                    }
-                                </AspectRatio>
-                            </div>
-                            <DialogHeader>
-                                <DialogTitle>
-                                    <p>
-                                        Add a place where {artist.name} can be found
-                                    </p>
-                                </DialogTitle>
-                            </DialogHeader>
-                            <div className="grid gap-4 text-black">
-                                <FormField
-                                    control={form.control}
-                                    name="artistDataUrl"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <div className="flex gap-4">
-                                                <FormControl>
-                                                    <div className="flex-grow px-3 py-0 bg-gray-100 rounded-lg flex items-center gap-2 h-12 hover:bg-gray-200 transition-colors duration-300">
-                                                        <Input
-                                                            placeholder={selectedOption}
-                                                            onClick={checkInput}
-                                                            id="name"
-                                                            className="w-full p-0 bg-transparent focus:outline-none text-md"
-                                                            {...field}
-                                                        />
-                                                    </div>
-                                                </FormControl>
-                                                <AddArtistDataOptions availableLinks={displayLinks} setOption={(option) => setSelectedOption(option)} />
-                                            </div>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
+                <DialogContent className="sm:max-w-[440px] max-h-screen overflow-auto scrollbar-hide">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            {spotifyImg && (
+                                <img
+                                    src={spotifyImg}
+                                    alt=""
+                                    className="w-10 h-10 rounded-full object-cover shrink-0"
                                 />
-                            </div>
-                            {!directEdit && (
-                                <p>
-                                    Once you submit the link we&apos;ll look it over to make sure it all checks out!
-                                </p>
                             )}
-                            <DialogFooter className="flex sm:flex-col gap-4">
-                                {addArtistResp && addArtistResp.status === "error" ?
-                                    <Label className="text-red-600">{addArtistResp.message}</Label> : null
-                                }
-                                <Button type="submit" className="bg-pastyblue hover:bg-gray-400 text-white">
-                                    {isLoading ?
-                                        <img className="max-h-6" src="/spinner.svg" alt="whyyyyy" />
-                                        : <span>{directEdit ? "Save Link" : "Add Artist Data"}</span>
-                                    }
+                            <div className="space-y-0.5 min-w-0">
+                                <DialogTitle className="text-black dark:text-white text-lg font-bold">
+                                    {directEdit ? "Add a link" : "Suggest a link"}
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-muted-foreground">
+                                    {directEdit
+                                        ? `Save a link to ${artist.name}'s profile.`
+                                        : `Suggest a link for ${artist.name} — an admin will review it.`}
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+                            <FormField
+                                control={form.control}
+                                name="artistDataUrl"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-2">
+                                        <div className="flex gap-2">
+                                            <FormControl>
+                                                <div className="flex-grow glass-subtle rounded-lg flex items-center h-11 px-3">
+                                                    <Input
+                                                        placeholder={selectedOption || "Paste a profile link…"}
+                                                        onClick={checkInput}
+                                                        id="name"
+                                                        className="w-full p-0 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm text-black dark:text-white placeholder:text-muted-foreground"
+                                                        {...field}
+                                                    />
+                                                </div>
+                                            </FormControl>
+                                            <AddArtistDataOptions availableLinks={displayLinks} setOption={(option) => setSelectedOption(option)} />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Need ideas? Tap <strong>{TIPS_BUTTON_LABEL}</strong> for the platforms we currently accept.
+                                        </p>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <DialogFooter className="flex sm:flex-col gap-3 pt-1">
+                                {addArtistResp && addArtistResp.status === "error" ? (
+                                    <Label className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                                        {addArtistResp.message}
+                                    </Label>
+                                ) : null}
+                                <Button type="submit" className="bg-pastypink hover:bg-pastypink/90 text-white">
+                                    {isLoading ? (
+                                        <img className="max-h-6" src="/spinner.svg" alt="submitting" />
+                                    ) : (
+                                        <span>{directEdit ? "Save Link" : "Submit"}</span>
+                                    )}
                                 </Button>
-                                {addArtistResp && addArtistResp.status === "success" ?
-                                    <div className="flex flex-col items-center">
-                                        <h2 className="text-green-600">{addArtistResp.message}</h2>
-                                        <Link href="/leaderboard" className="text-blue-600 underline hover:underline mt-1">
+                                {addArtistResp && addArtistResp.status === "success" ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                        <h2 className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                            {addArtistResp.message}
+                                        </h2>
+                                        <Link href="/leaderboard" className="text-xs text-pastypink hover:underline">
                                             View Leaderboard
                                         </Link>
                                     </div>
-                                    : null
-                                }
+                                ) : null}
                             </DialogFooter>
                         </form>
                     </Form>

@@ -7,9 +7,18 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UrlMap } from "@/server/db/DbTypes";
+import { TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
 
-export default function AddArtistDataOptions({availableLinks, setOption}: {availableLinks: UrlMap[], setOption: (option: string) => void}) {
-    const sortedLinks = [...availableLinks].sort((a, b) => (a.example || "").localeCompare(b.example || ""));
+/** Wallet/ENS examples in the urlmap aren't actually link-paste targets — exclude them from the picker. */
+export function isWalletExample(example: string | null | undefined): boolean {
+    if (!example) return false;
+    return /0x[0-9a-f]+/i.test(example);
+}
+
+export default function AddArtistDataOptions({ availableLinks, setOption }: { availableLinks: UrlMap[], setOption: (option: string) => void }) {
+    const sortedLinks = [...availableLinks]
+        .filter(link => !isWalletExample(link.example))
+        .sort((a, b) => (a.example || "").localeCompare(b.example || ""));
     const dataOptions = sortedLinks.map(link => (
         <DropdownMenuItem
             key={link.id}
@@ -22,11 +31,16 @@ export default function AddArtistDataOptions({availableLinks, setOption}: {avail
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button className="bg-pastypink text-white h-12 hover:bg-gray-400">
-                    Tips
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-11 text-black dark:text-white whitespace-nowrap"
+                >
+                    {TIPS_BUTTON_LABEL}
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-48 overflow-auto" align="end">
+            <DropdownMenuContent className="max-h-56 overflow-auto" align="end">
                 {dataOptions}
             </DropdownMenuContent>
         </DropdownMenu>
