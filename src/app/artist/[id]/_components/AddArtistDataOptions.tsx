@@ -9,10 +9,14 @@ import {
 import { UrlMap } from "@/server/db/DbTypes";
 import { TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
 
-/** Wallet/ENS examples in the urlmap aren't actually link-paste targets — exclude them from the picker. */
+/**
+ * Wallet/ENS examples in the urlmap aren't actually link-paste targets — exclude them from the picker.
+ * Anchored on word boundaries + a 6-char minimum so a hypothetical platform whose example
+ * coincidentally contains "0x" (e.g. "0xtracks.com/...") isn't false-positive-filtered.
+ */
 export function isWalletExample(example: string | null | undefined): boolean {
     if (!example) return false;
-    return /0x[0-9a-f]+/i.test(example);
+    return /\b0x[0-9a-f]{6,}\b/i.test(example);
 }
 
 export default function AddArtistDataOptions({ availableLinks, setOption }: { availableLinks: UrlMap[], setOption: (option: string) => void }) {

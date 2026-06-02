@@ -1,8 +1,9 @@
 /// <reference types="@testing-library/jest-dom" />
 import '@testing-library/jest-dom';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AddArtistData from '@/app/artist/[id]/_components/AddArtistData';
 import { useSession } from 'next-auth/react';
+import { LINK_NOT_SUPPORTED } from '@/lib/linkSubmissionMessages';
 
 jest.mock('next-auth/react', () => ({ useSession: jest.fn() }));
 
@@ -81,6 +82,31 @@ describe('AddArtistData "+" trigger', () => {
 
     expect(screen.getByRole('heading', { name: 'Add a link' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save Link' })).toBeInTheDocument();
+  });
+
+  it('shows the friendly LINK_NOT_SUPPORTED error when a URL matches no platform', async () => {
+    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
+    const originalFetch = global.fetch;
+    // /api/platformRegexes returns no regexes → validatePlatformLinkBackend will reject any URL.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }) as unknown as typeof fetch;
+
+    try {
+      render(<AddArtistData {...baseProps} />);
+      fireEvent.click(screen.getByRole('button')); // open the modal
+
+      const input = screen.getByPlaceholderText(/Paste a profile link/i);
+      fireEvent.change(input, { target: { value: 'https://example.com/foo' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(LINK_NOT_SUPPORTED)).toBeInTheDocument();
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it('shows the "Supported links" trigger inside the modal', () => {

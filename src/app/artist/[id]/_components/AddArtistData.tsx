@@ -31,7 +31,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { LINK_NOT_SUPPORTED, TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
+import { LINK_NOT_SUPPORTED, LINK_TWITTER_INVALID, TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
 
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean }) {
     const { data: session, status } = useSession();
@@ -146,7 +146,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
         const isTwitterValid = await validateTwitterLink(formattedUrl);
         if (!isTwitterValid) {
-            setAddArtistResp({ status: "error", message: "That Twitter/X profile link doesn't look valid. Double-check the URL and try again." });
+            setAddArtistResp({ status: "error", message: LINK_TWITTER_INVALID });
             setIsLoading(false);
             return;
         }
