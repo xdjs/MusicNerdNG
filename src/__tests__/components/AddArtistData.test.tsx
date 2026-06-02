@@ -1,8 +1,9 @@
 /// <reference types="@testing-library/jest-dom" />
 import '@testing-library/jest-dom';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AddArtistData from '@/app/artist/[id]/_components/AddArtistData';
 import { useSession } from 'next-auth/react';
+import { LINK_NOT_SUPPORTED } from '@/lib/linkSubmissionMessages';
 
 jest.mock('next-auth/react', () => ({ useSession: jest.fn() }));
 
@@ -25,7 +26,7 @@ describe('AddArtistData "+" trigger', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(getByIdSpy).not.toHaveBeenCalledWith('login-btn'); // no spurious login prompt
-    expect(screen.queryByText('Add Artist Data')).not.toBeInTheDocument(); // modal not opened
+    expect(screen.queryByText(/Suggest a link/i)).not.toBeInTheDocument(); // modal not opened
 
     getByIdSpy.mockRestore();
   });
@@ -42,8 +43,7 @@ describe('AddArtistData "+" trigger', () => {
 
     expect(getByIdSpy).toHaveBeenCalledWith('login-btn');
     expect(loginClick).toHaveBeenCalledTimes(1);
-    // submit-modal content (the "Add Artist Data" button label) should NOT be present
-    expect(screen.queryByText('Add Artist Data')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Suggest a link/i)).not.toBeInTheDocument();
 
     getByIdSpy.mockRestore();
   });
@@ -57,7 +57,7 @@ describe('AddArtistData "+" trigger', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(warnSpy).toHaveBeenCalled();
-    expect(screen.queryByText('Add Artist Data')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Suggest a link/i)).not.toBeInTheDocument();
 
     getByIdSpy.mockRestore();
     warnSpy.mockRestore();
@@ -69,6 +69,74 @@ describe('AddArtistData "+" trigger', () => {
     render(<AddArtistData {...baseProps} />);
     fireEvent.click(screen.getByRole('button'));
 
-    expect(screen.getByText('Add Artist Data')).toBeInTheDocument();
+    // UGC users see "Suggest a link for {artist}" header and a Submit button
+    expect(screen.getByRole('heading', { name: /Suggest a link for Test Artist/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
+  });
+
+  it('uses "Save Link" submit label for direct-edit (owner / admin)', () => {
+    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
+
+    render(<AddArtistData {...baseProps} directEdit />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(screen.getByRole('heading', { name: /Add a link for Test Artist/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Link' })).toBeInTheDocument();
+  });
+
+  it('shows the friendly LINK_NOT_SUPPORTED error when a URL matches no platform', async () => {
+    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
+    const originalFetch = global.fetch;
+    // /api/platformRegexes returns no regexes → validatePlatformLinkBackend will reject any URL.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }) as unknown as typeof fetch;
+
+    try {
+      render(<AddArtistData {...baseProps} />);
+      fireEvent.click(screen.getByRole('button')); // open the modal
+
+      const input = screen.getByPlaceholderText(/Paste a profile link/i);
+      fireEvent.change(input, { target: { value: 'https://example.com/foo' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(LINK_NOT_SUPPORTED)).toBeInTheDocument();
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('shows the "Supported links" trigger inside the modal', () => {
+    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
+
+    render(<AddArtistData {...baseProps} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(screen.getByRole('button', { name: 'Supported links' })).toBeInTheDocument();
+  });
+
+});
+
+describe('isWalletExample', () => {
+  // The helper that keeps "Example Wallet: 0x000000..." (and any other wallet-shaped
+  // entry from the urlmap) out of the "Supported links" dropdown.
+  // Eslint disable: the dynamic import keeps this independent from the modal's render path.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { isWalletExample } = require('@/app/artist/[id]/_components/AddArtistDataOptions');
+
+  it.each([
+    ['Example Wallet: 0x000000000000', true],
+    ['0xABCDEF1234', true],
+    ['Send to 0x1234abcd…', true],
+    ['https://ARTIST_NAME.bandcamp.com', false],
+    ['spotify.com/artist/…', false],
+    ['', false],
+    [null, false],
+    [undefined, false],
+  ])('isWalletExample(%p) → %p', (input, expected) => {
+    expect(isWalletExample(input)).toBe(expected);
   });
 });

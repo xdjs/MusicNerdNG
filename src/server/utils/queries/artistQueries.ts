@@ -15,6 +15,7 @@ import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { regenerateArtistBio } from "@/server/utils/queries/artistBioQuery";
+import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
 
 // ----------------------------------
 // Types
@@ -486,7 +487,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) {
         console.debug("[addArtistData] URL did not match any approved link regex:", artistUrl);
-        return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
+        return { status: "error", message: LINK_NOT_SUPPORTED_LONG };
     }
 
     try {

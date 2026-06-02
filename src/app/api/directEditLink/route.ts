@@ -2,6 +2,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { extractArtistId } from "@/server/utils/services";
+import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
 
             const extracted = await extractArtistId(url);
             if (!extracted?.siteName || !extracted?.id) {
-                return Response.json({ error: "Could not identify platform from URL" }, { status: 400 });
+                return Response.json({ error: LINK_NOT_SUPPORTED_LONG }, { status: 400 });
             }
 
             await setArtistLink(artistId, extracted.siteName, extracted.id);
