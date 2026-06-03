@@ -4,10 +4,12 @@ import { artistClaims, artistVaultSources, artistBioVersions, artists } from "@/
 
 /**
  * Returns the artist's **active** claim (pending or approved), if any.
- * Rejected claims are intentionally ignored — they persist for audit history
- * (migration 0007 replaced the hard UNIQUE on artist_id with a partial unique
- * index scoped to active statuses), but they should never affect "is this
- * artist claimed?" UI decisions or block re-claim attempts.
+ *
+ * Invariant: rejected claims persist in the table for audit history but are
+ * NEVER considered "the claim for this artist." UI badges and re-claim
+ * blocking logic both read through this function and so naturally inherit
+ * the right behavior — a rejected user must be able to claim again, and a
+ * profile showing one previously-rejected attempt must not look claimed.
  */
 export async function getClaimByArtistId(artistId: string) {
     try {

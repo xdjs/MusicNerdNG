@@ -95,6 +95,8 @@ export async function POST(req: Request) {
         // row is updated so a purge failure can't leave the user with a deleted
         // image but the DB still pointing at it.
         try {
+            // storagePath always starts with "profile-images/" (constructed above),
+            // so this strips to the bare filename Supabase list() returns.
             const filename = storagePath.replace(/^profile-images\//, "");
             const { data: files } = await supabaseAdmin.storage
                 .from(VAULT_BUCKET)
@@ -109,11 +111,16 @@ export async function POST(req: Request) {
                 .filter(f => {
                     if (!f.name.startsWith(`${artistId}_`)) return false;
                     if (f.name === filename) return false;
-                    // Supabase list() returns ISO `created_at`. If absent, be conservative
-                    // and skip — we can purge it on the next save.
-                    const createdAt = (f as { created_at?: string }).created_at;
+                    // Supabase FileObject exposes `created_at` (ISO 8601) — type-guard
+                    // it explicitly so a future shape change drops to the safe "skip"
+                    // branch instead of silently bypassing the grace check.
+                    const createdAt = "created_at" in f && typeof f.created_at === "string"
+                        ? f.created_at
+                        : null;
                     if (!createdAt) return false;
-                    return Date.parse(createdAt) < ageCutoff;
+                    const parsed = Date.parse(createdAt);
+                    if (Number.isNaN(parsed)) return false;
+                    return parsed < ageCutoff;
                 })
                 .map(f => `profile-images/${f.name}`);
             if (stale.length > 0) {
