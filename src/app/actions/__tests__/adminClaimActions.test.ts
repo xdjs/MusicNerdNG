@@ -226,6 +226,24 @@ describe("adminClaimActions", () => {
             expect(result.success).toBe(true);
         });
 
+        it("still succeeds when ONLY profile-images list errors (vault pass already done)", async () => {
+            const m = await setup();
+            mockAdmin(m);
+            m.getClaimById.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
+            m.revokeApprovedClaim.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
+            // Vault: succeeds with one file. Profile-images: list errors out.
+            m.storageList
+                .mockResolvedValueOnce({ data: [{ name: "doc.pdf" }], error: null })
+                .mockResolvedValueOnce({ data: null, error: { message: "profile-images list timed out" } });
+            m.storageRemove.mockResolvedValue({ error: null });
+
+            const result = await m.revokeClaimAction("c1");
+            expect(result.success).toBe(true);
+            // Vault remove ran; profile-images remove did NOT (list errored).
+            expect(m.storageRemove).toHaveBeenCalledTimes(1);
+            expect(m.storageRemove).toHaveBeenCalledWith(["a1/doc.pdf"]);
+        });
+
         it("rejects revoking a pending claim", async () => {
             const m = await setup();
             mockAdmin(m);

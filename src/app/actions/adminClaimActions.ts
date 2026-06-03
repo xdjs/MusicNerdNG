@@ -142,7 +142,17 @@ export async function revokeClaimAction(claimId: string): Promise<{ success: boo
                 // so an artist whose UUID happens to appear inside another file's name can't
                 // cross-delete. (UUID collisions in mid-name are vanishingly unlikely, but cheap.)
                 const ownFiles = files.filter(f => f.name.startsWith(profilePrefix));
-                if (ownFiles.length === 0) break;
+                if (ownFiles.length === 0) {
+                    // All search hits were substring-collisions, not real matches. Bail out —
+                    // if there really is an own-prefix file on a later page, we won't find it
+                    // here (we'd need to advance offset past this page), but that scenario
+                    // would require 1000+ unrelated names embedding this artist's UUID, which
+                    // is effectively impossible. Logged for observability if it ever happens.
+                    if (files.length === PAGE_SIZE) {
+                        console.warn(`[revokeClaimAction] Profile-images search page had ${files.length} substring-only hits for ${claim.artistId} — bailing without checking subsequent pages`);
+                    }
+                    break;
+                }
 
                 const paths = ownFiles.map(f => `profile-images/${f.name}`);
                 const { error: removeError } = await supa.storage
