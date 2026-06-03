@@ -1,11 +1,24 @@
 import { db } from "@/server/db/drizzle";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { artistClaims, artistVaultSources, artistBioVersions, artists } from "@/server/db/schema";
 
+/**
+ * Returns the artist's **active** claim (pending or approved), if any.
+ * Rejected claims are intentionally ignored — they persist for audit history
+ * (migration 0007 replaced the hard UNIQUE on artist_id with a partial unique
+ * index scoped to active statuses), but they should never affect "is this
+ * artist claimed?" UI decisions or block re-claim attempts.
+ */
 export async function getClaimByArtistId(artistId: string) {
     try {
         return await db.query.artistClaims.findFirst({
-            where: eq(artistClaims.artistId, artistId),
+            where: and(
+                eq(artistClaims.artistId, artistId),
+                or(
+                    eq(artistClaims.status, "pending"),
+                    eq(artistClaims.status, "approved"),
+                ),
+            ),
         });
     } catch (e) {
         console.error("[getClaimByArtistId] Error:", e);

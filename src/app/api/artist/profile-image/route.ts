@@ -89,6 +89,47 @@ export async function POST(req: Request) {
             .set({ customImage: publicUrl })
             .where(eq(artists.id, artistId));
 
+        // Best-effort: purge older profile images for this artist now that the new
+        // one is live. Without this, every save accumulates an orphaned object
+        // (revokeClaimAction is the only other purge path). Runs AFTER the artist
+        // row is updated so a purge failure can't leave the user with a deleted
+        // image but the DB still pointing at it.
+        try {
+            const filename = storagePath.replace(/^profile-images\//, "");
+            const { data: files } = await supabaseAdmin.storage
+                .from(VAULT_BUCKET)
+                .list("profile-images", { limit: 1000, offset: 0, search: `${artistId}_` });
+            // Defense in depth: `search` is substring match — re-anchor with startsWith.
+            // Exclude the file we just uploaded AND anything uploaded in the last 30s,
+            // so two concurrent uploads from the same owner can't have one nuke the
+            // other's just-uploaded storage object before its DB update lands.
+            const concurrentGraceMs = 30_000;
+            const ageCutoff = Date.now() - concurrentGraceMs;
+            const stale = (files ?? [])
+                .filter(f => {
+                    if (!f.name.startsWith(`${artistId}_`)) return false;
+                    if (f.name === filename) return false;
+                    // Supabase list() returns ISO `created_at`. If absent, be conservative
+                    // and skip — we can purge it on the next save.
+                    const createdAt = (f as { created_at?: string }).created_at;
+                    if (!createdAt) return false;
+                    return Date.parse(createdAt) < ageCutoff;
+                })
+                .map(f => `profile-images/${f.name}`);
+            if (stale.length > 0) {
+                const { error: removeError } = await supabaseAdmin.storage
+                    .from(VAULT_BUCKET)
+                    .remove(stale);
+                if (removeError) {
+                    console.error("[artist/profile-image] Stale image purge failed:", removeError);
+                } else {
+                    console.log(`[artist/profile-image] Purged ${stale.length} stale image(s) for artist ${artistId}`);
+                }
+            }
+        } catch (e) {
+            console.error("[artist/profile-image] Stale image cleanup error:", e);
+        }
+
         return NextResponse.json({ success: true, imagePath: publicUrl });
     } catch (error) {
         console.error("[artist/profile-image] Error:", error);
