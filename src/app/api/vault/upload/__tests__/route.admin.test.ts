@@ -118,7 +118,7 @@ describe('POST /api/vault/upload admin path', () => {
     expect(body.success).toBe(true);
   });
 
-  it('persists filePath as the storage key, NOT the public URL (regression: #1126 forward-only change)', async () => {
+  it('persists filePath as the storage key, not the public URL', async () => {
     const auth = await import('@/server/auth');
     const users = await import('@/server/utils/queries/userQueries');
     const claims = await import('@/server/utils/queries/dashboardQueries');
