@@ -2,7 +2,6 @@
 
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
-import { getUserById } from "@/server/utils/queries/userQueries";
 import {
     createClaim,
     getClaimByArtistId,
@@ -14,7 +13,6 @@ import {
     insertVaultSource,
     deleteVaultSource,
     deleteVaultSources,
-    deleteClaim,
     getBioVersionsByArtistId,
     saveBioVersion,
     pinBioVersion,
@@ -30,24 +28,37 @@ import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
 
-// Best-effort debounce for bio regen (same serverless caveat as rate limiting)
+// Best-effort debounce for bio regen (same serverless caveat as rate limiting).
+// Map is module-level — on long-lived workers (e.g. self-hosted Node) it would
+// grow unbounded without the prune below. Soft-cap + TTL drop keeps it bounded.
 const bioRegenTimestamps = new Map<string, number>();
 const BIO_REGEN_DEBOUNCE_MS = 30_000;
+const BIO_REGEN_MAP_SOFT_CAP = 5_000;
+function pruneBioRegenTimestamps(now: number): void {
+    if (bioRegenTimestamps.size <= BIO_REGEN_MAP_SOFT_CAP) return;
+    // First pass: drop entries older than 2× the debounce window — those can't
+    // possibly affect a debounce decision anymore.
+    const cutoff = now - BIO_REGEN_DEBOUNCE_MS * 2;
+    for (const [k, t] of bioRegenTimestamps) {
+        if (t < cutoff) bioRegenTimestamps.delete(k);
+    }
+    // Belt and suspenders: if a worker somehow racked up 5k regenerations inside
+    // a single debounce window, nuke the whole map. Worst case is one extra regen
+    // per artist on the next request — best-effort debounce, by design.
+    if (bioRegenTimestamps.size > BIO_REGEN_MAP_SOFT_CAP) bioRegenTimestamps.clear();
+}
 
 export async function claimArtistProfile(artistId: string): Promise<{ success: boolean; error?: string; alreadyClaimed?: boolean; referenceCode?: string }> {
     const session = await getServerAuthSession() ?? await getDevSession();
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
+        // getClaimByArtistId is scoped to ACTIVE claims (pending|approved) since
+        // migration 0007 — rejected claims persist for audit but never block
+        // re-claim. No need to delete-then-insert anymore.
         const existing = await getClaimByArtistId(artistId);
         if (existing) {
-            if (existing.status === "rejected") {
-                // Rejected claims are dead — remove to allow new claim (UNIQUE constraint on artistId)
-                await deleteClaim(existing.id);
-            } else {
-                // Pending or approved — block new claims
-                return { success: false, alreadyClaimed: true, error: "This artist profile has already been claimed" };
-            }
+            return { success: false, alreadyClaimed: true, error: "This artist profile has already been claimed" };
         }
 
         const referenceCode = generateReferenceCode();
@@ -98,6 +109,7 @@ export async function updateSourceStatus(
             const now = Date.now();
             const lastRegen = bioRegenTimestamps.get(ownership.artistId) ?? 0;
             if (now - lastRegen > BIO_REGEN_DEBOUNCE_MS) {
+                pruneBioRegenTimestamps(now);
                 bioRegenTimestamps.set(ownership.artistId, now);
                 Promise.resolve(generateArtistBio(ownership.artistId)).catch(e =>
                     console.error("[updateSourceStatus] Background bio regeneration failed:", e)
@@ -231,22 +243,29 @@ export async function removeVaultSources(
     if (!session) return { success: false, error: "Not authenticated" };
 
     try {
-        const user = await getUserById(session.user.id);
-        if (user?.isAdmin) {
-            // Admins may delete any sources — skip ownership filter
-            const deleted = await deleteVaultSources(sourceIds);
-            return { success: true, count: deleted.length };
+        if (sourceIds.length === 0) return { success: true, count: 0 };
+
+        // Multi-claim-safe: resolve each source's artist directly, then verify the
+        // user may edit THAT specific artist (admin or claimant). Previously this
+        // path used getApprovedClaimByUserId (single-claim) which would silently
+        // misbehave if a user ever held two approved claims — sources for the
+        // "wrong" artist would either be rejected or, worse, operated on under
+        // an unrelated claim.
+        const sources = await Promise.all(
+            sourceIds.map(id => getVaultSourceById(id))
+        );
+
+        const missing = sources.findIndex(s => !s);
+        if (missing >= 0) {
+            return { success: false, error: "One or more sources not found" };
         }
 
-        const claim = await getApprovedClaimByUserId(session.user.id);
-        if (!claim) return { success: false, error: "No claimed artist profile" };
-
-        // Verify all sources belong to this artist
-        const sources = await getVaultSourcesByArtistId(claim.artistId);
-        const ownedIds = new Set(sources.map(s => s.id));
-        const unauthorized = sourceIds.filter(id => !ownedIds.has(id));
-        if (unauthorized.length > 0) {
-            return { success: false, error: "Some sources do not belong to your artist" };
+        const artistIds = [...new Set(sources.map(s => s!.artistId))];
+        const authz = await Promise.all(
+            artistIds.map(id => canEditArtist(session.user.id, id))
+        );
+        if (authz.some(ok => !ok)) {
+            return { success: false, error: "Not authorized for one or more sources" };
         }
 
         const deleted = await deleteVaultSources(sourceIds);

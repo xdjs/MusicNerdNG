@@ -50,6 +50,13 @@
       "when": 1780504318584,
       "tag": "0006_vault_sources_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780511811930,
+      "tag": "0007_artist_claims_partial_unique",
+      "breakpoints": true
     }
   ]
 }

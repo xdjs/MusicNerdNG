@@ -337,7 +337,11 @@ export const artistClaims = pgTable("artist_claims", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [
-	unique("artist_claims_artist_id_key").on(table.artistId),
+	// Partial unique index: only one active (pending or approved) claim per artist at a time.
+	// Rejected claims are preserved for audit history (and may coexist freely).
+	uniqueIndex("artist_claims_artist_id_active_uniq")
+		.using("btree", table.artistId.asc().nullsLast().op("uuid_ops"))
+		.where(sql`status IN ('pending', 'approved')`),
 	index("idx_artist_claims_user_id").using("btree", table.userId.asc().nullsLast().op("uuid_ops")),
 	index("idx_artist_claims_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({

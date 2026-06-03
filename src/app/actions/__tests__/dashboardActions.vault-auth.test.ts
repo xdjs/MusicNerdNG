@@ -74,8 +74,14 @@ describe('vault action authorization', () => {
     expect(res.success).toBe(true);
   });
 
-  it('admin removeVaultSources bypasses ownership filter', async () => {
+  it('admin removeVaultSources is allowed across artists (per-source canEditArtist)', async () => {
     const { actions, users, q } = await setup();
+    // Two sources owned by two different artists — admin is allowed for both.
+    (q.getVaultSourceById as jest.Mock)
+      .mockResolvedValueOnce({ id: 's1', artistId: 'artist-a' })
+      .mockResolvedValueOnce({ id: 's2', artistId: 'artist-b' });
+    // canEditArtist resolution: admin has no claim for either, but isAdmin → true.
+    (q.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
     (users.getUserById as jest.Mock).mockResolvedValue({ id: 'admin-1', isAdmin: true });
     (q.deleteVaultSources as jest.Mock).mockResolvedValue([{ id: 's1' }, { id: 's2' }]);
 
@@ -83,7 +89,40 @@ describe('vault action authorization', () => {
 
     expect(res.success).toBe(true);
     expect(q.deleteVaultSources).toHaveBeenCalledWith(['s1', 's2']);
+    // No longer goes through the single-claim path:
+    expect(q.getApprovedClaimByUserId).not.toHaveBeenCalled();
     expect(q.getVaultSourcesByArtistId).not.toHaveBeenCalled();
+  });
+
+  it('non-admin removeVaultSources rejects when user cannot edit one of the source artists', async () => {
+    const { actions, users, q } = await setup();
+    // Source s1 belongs to artist-a (user CAN edit), s2 to artist-b (user CANNOT).
+    (q.getVaultSourceById as jest.Mock)
+      .mockResolvedValueOnce({ id: 's1', artistId: 'artist-a' })
+      .mockResolvedValueOnce({ id: 's2', artistId: 'artist-b' });
+    (users.getUserById as jest.Mock).mockResolvedValue({ id: 'user-1', isAdmin: false });
+    (q.getApprovedClaimForArtistByUserId as jest.Mock).mockImplementation(async (_uid: string, artistId: string) =>
+      artistId === 'artist-a' ? { id: 'claim-a', userId: 'user-1', artistId: 'artist-a', status: 'approved' } : undefined
+    );
+
+    const res = await actions.removeVaultSources(['s1', 's2']);
+
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/not authorized/i);
+    expect(q.deleteVaultSources).not.toHaveBeenCalled();
+  });
+
+  it('removeVaultSources rejects when one of the sourceIds is unknown', async () => {
+    const { actions, q } = await setup();
+    (q.getVaultSourceById as jest.Mock)
+      .mockResolvedValueOnce({ id: 's1', artistId: 'artist-a' })
+      .mockResolvedValueOnce(undefined);
+
+    const res = await actions.removeVaultSources(['s1', 'unknown']);
+
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/not found/i);
+    expect(q.deleteVaultSources).not.toHaveBeenCalled();
   });
 
   it('admin updateSourceStatus returns failure when source is not found', async () => {

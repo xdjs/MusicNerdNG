@@ -5,10 +5,18 @@ jest.mock('@/server/auth', () => ({ getServerAuthSession: jest.fn() }));
 jest.mock('@/server/utils/dev-auth', () => ({ getDevSession: jest.fn() }));
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({ getApprovedClaimByUserId: jest.fn(), getApprovedClaimForArtistByUserId: jest.fn() }));
 jest.mock('@/server/utils/queries/userQueries', () => ({ getUserById: jest.fn() }));
-jest.mock('@/server/lib/supabase', () => ({
-  supabaseAdmin: { storage: { from: () => ({ upload: jest.fn().mockResolvedValue({ error: null }), getPublicUrl: () => ({ data: { publicUrl: 'http://x/y.png' } }) }) } },
-  VAULT_BUCKET: 'vault',
-}));
+jest.mock('@/server/lib/supabase', () => {
+  const upload = jest.fn().mockResolvedValue({ error: null });
+  const list = jest.fn().mockResolvedValue({ data: [], error: null });
+  const remove = jest.fn().mockResolvedValue({ error: null });
+  const getPublicUrl = jest.fn(() => ({ data: { publicUrl: 'http://x/y.png' } }));
+  const from = jest.fn(() => ({ upload, list, remove, getPublicUrl }));
+  return {
+    supabaseAdmin: { storage: { from } },
+    VAULT_BUCKET: 'vault',
+    __storageMocks: { upload, list, remove, getPublicUrl, from },
+  };
+});
 jest.mock('@/server/db/drizzle', () => ({ db: { update: () => ({ set: () => ({ where: jest.fn().mockResolvedValue(undefined) }) }) } }));
 
 if (!('json' in Response)) {
@@ -90,6 +98,47 @@ describe('POST /api/artist/profile-image admin path', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(200);
+  });
+
+  it('purges stale profile-images after a successful upload (own-prefix, older than grace)', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    const supa = await import('@/server/lib/supabase');
+    const storage = (supa as { __storageMocks: { list: jest.Mock; remove: jest.Mock } }).__storageMocks;
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+    // Three files surface from list():
+    //   - own-prefix + old      → purge
+    //   - own-prefix + fresh    → spare (concurrent-upload race guard)
+    //   - other-artist substring → spare (defense-in-depth startsWith filter)
+    const oldIso = new Date(Date.now() - 60_000).toISOString();
+    const freshIso = new Date(Date.now() - 1_000).toISOString();
+    storage.list.mockResolvedValueOnce({
+      data: [
+        { name: 'artist-x_1700000000.png', created_at: oldIso },
+        { name: 'artist-x_1799999000.png', created_at: freshIso },
+        { name: 'other-artist-x_5.png', created_at: oldIso },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import('../route');
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const mockFile = {
+      name: 'a.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'artist-x']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    expect(storage.remove).toHaveBeenCalledTimes(1);
+    expect(storage.remove).toHaveBeenCalledWith(['profile-images/artist-x_1700000000.png']);
   });
 
   it('rejects an image whose magic bytes do not match the declared type', async () => {
