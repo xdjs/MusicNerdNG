@@ -1,6 +1,7 @@
 "use client";
 
-import { useContext, useState, useRef, useMemo } from "react";
+import { useContext, useState, useRef, useMemo, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { EditModeContext } from "@/app/_components/EditModeContext";
 import SourceCard from "./SourceCard";
@@ -31,6 +32,7 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
   const [pending, setPending] = useState(pendingSources);
   const [approved, setApproved] = useState(approvedSources);
   const [searching, setSearching] = useState(false);
+  const [searchPhraseIdx, setSearchPhraseIdx] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [addingUrl, setAddingUrl] = useState(false);
@@ -55,6 +57,22 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
     () => (typeFilter ? approved.filter(s => (s.type ?? "article") === typeFilter) : approved),
     [approved, typeFilter]
   );
+
+  // Rotating status phrases for the web-search button so a 10–30s wait feels alive.
+  const SEARCH_PHRASES = useMemo(
+    () => ["Searching the web…", "Reading sources…", "Finding press mentions…", "Almost there…"],
+    []
+  );
+  useEffect(() => {
+    if (!searching) {
+      setSearchPhraseIdx(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setSearchPhraseIdx((i) => (i + 1) % SEARCH_PHRASES.length);
+    }, 2500);
+    return () => clearInterval(id);
+  }, [searching, SEARCH_PHRASES.length]);
 
   if (!isEditing) return null;
 
@@ -259,7 +277,14 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
             {uploading ? "Uploading…" : "Upload file"}
           </Button>
           <Button size="sm" variant="outline" className="text-black dark:text-white" disabled={searching} onClick={handleWebSearch}>
-            {searching ? "Searching…" : "Search web for sources"}
+            {searching ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
+                <span aria-live="polite">{SEARCH_PHRASES[searchPhraseIdx]}</span>
+              </>
+            ) : (
+              "Search web for sources"
+            )}
           </Button>
         </div>
       </div>
