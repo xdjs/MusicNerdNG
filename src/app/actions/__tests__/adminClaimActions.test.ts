@@ -133,20 +133,50 @@ describe("adminClaimActions", () => {
     });
 
     describe("revokeClaimAction", () => {
-        it("hard-deletes an approved claim + purges vault storage when admin", async () => {
+        it("hard-deletes an approved claim + purges vault + profile-image storage when admin", async () => {
             const m = await setup();
             mockAdmin(m);
             m.getClaimById.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
             m.revokeApprovedClaim.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
-            m.storageList.mockResolvedValue({ data: [{ name: "123_file.pdf" }, { name: "456_image.png" }], error: null });
+            // 1st list: vault folder; 2nd list: profile-images folder
+            m.storageList
+                .mockResolvedValueOnce({ data: [{ name: "123_file.pdf" }, { name: "456_image.png" }], error: null })
+                .mockResolvedValueOnce({ data: [{ name: "a1_1735000000.png" }], error: null });
             m.storageRemove.mockResolvedValue({ error: null });
 
             const result = await m.revokeClaimAction("c1");
             expect(result.success).toBe(true);
             expect(m.getClaimById).toHaveBeenCalledWith("c1");
             expect(m.revokeApprovedClaim).toHaveBeenCalledWith("c1");
-            expect(m.storageList).toHaveBeenCalledWith("a1", { limit: 1000, offset: 0 });
-            expect(m.storageRemove).toHaveBeenCalledWith(["a1/123_file.pdf", "a1/456_image.png"]);
+            // Vault pass: list under artistId, remove with artistId/ prefix
+            expect(m.storageList).toHaveBeenNthCalledWith(1, "a1", { limit: 1000, offset: 0 });
+            expect(m.storageRemove).toHaveBeenNthCalledWith(1, ["a1/123_file.pdf", "a1/456_image.png"]);
+            // Profile-images pass: list "profile-images" with artist-prefix search, remove under profile-images/
+            expect(m.storageList).toHaveBeenNthCalledWith(2, "profile-images", { limit: 1000, offset: 0, search: "a1_" });
+            expect(m.storageRemove).toHaveBeenNthCalledWith(2, ["profile-images/a1_1735000000.png"]);
+        });
+
+        it("ignores other artists' profile images even if the search prefix collides", async () => {
+            const m = await setup();
+            mockAdmin(m);
+            m.getClaimById.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
+            m.revokeApprovedClaim.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
+            // Vault is empty; profile-images search returns one file that legit belongs to this
+            // artist and one that just happens to contain "a1_" mid-name (defense-in-depth check
+            // protects against supabase `search` being a substring match).
+            m.storageList
+                .mockResolvedValueOnce({ data: [], error: null })
+                .mockResolvedValueOnce({ data: [
+                    { name: "a1_1735000000.png" },
+                    { name: "b2_xa1_999.png" },
+                ], error: null });
+            m.storageRemove.mockResolvedValue({ error: null });
+
+            const result = await m.revokeClaimAction("c1");
+            expect(result.success).toBe(true);
+            // Only a1's own file should be removed; the b2 file is filtered out client-side.
+            expect(m.storageRemove).toHaveBeenCalledTimes(1);
+            expect(m.storageRemove).toHaveBeenCalledWith(["profile-images/a1_1735000000.png"]);
         });
 
         it("paginates storage purge for artists with >1000 files", async () => {
@@ -155,18 +185,20 @@ describe("adminClaimActions", () => {
             m.getClaimById.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
             m.revokeApprovedClaim.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
 
-            // First list() returns 1000 files (full page → another page may exist),
-            // second returns 3 files (short page → done).
+            // Vault: 1st list() returns 1000 files (full page → another page may exist),
+            // 2nd returns 3 files (short page → done). 3rd list is profile-images, return empty.
             const firstPage = Array.from({ length: 1000 }, (_, i) => ({ name: `file_${i}.pdf` }));
             const secondPage = [{ name: "final_a.pdf" }, { name: "final_b.pdf" }, { name: "final_c.pdf" }];
             m.storageList
                 .mockResolvedValueOnce({ data: firstPage, error: null })
-                .mockResolvedValueOnce({ data: secondPage, error: null });
+                .mockResolvedValueOnce({ data: secondPage, error: null })
+                .mockResolvedValueOnce({ data: [], error: null });
             m.storageRemove.mockResolvedValue({ error: null });
 
             const result = await m.revokeClaimAction("c1");
             expect(result.success).toBe(true);
-            expect(m.storageList).toHaveBeenCalledTimes(2);
+            // 2 vault list calls + 1 profile-images list call
+            expect(m.storageList).toHaveBeenCalledTimes(3);
             expect(m.storageRemove).toHaveBeenCalledTimes(2);
             expect(m.storageRemove).toHaveBeenNthCalledWith(2, ["a1/final_a.pdf", "a1/final_b.pdf", "a1/final_c.pdf"]);
         });
@@ -192,6 +224,24 @@ describe("adminClaimActions", () => {
 
             const result = await m.revokeClaimAction("c1");
             expect(result.success).toBe(true);
+        });
+
+        it("still succeeds when ONLY profile-images list errors (vault pass already done)", async () => {
+            const m = await setup();
+            mockAdmin(m);
+            m.getClaimById.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
+            m.revokeApprovedClaim.mockResolvedValue({ id: "c1", artistId: "a1", status: "approved", referenceCode: "MN-REVK" });
+            // Vault: succeeds with one file. Profile-images: list errors out.
+            m.storageList
+                .mockResolvedValueOnce({ data: [{ name: "doc.pdf" }], error: null })
+                .mockResolvedValueOnce({ data: null, error: { message: "profile-images list timed out" } });
+            m.storageRemove.mockResolvedValue({ error: null });
+
+            const result = await m.revokeClaimAction("c1");
+            expect(result.success).toBe(true);
+            // Vault remove ran; profile-images remove did NOT (list errored).
+            expect(m.storageRemove).toHaveBeenCalledTimes(1);
+            expect(m.storageRemove).toHaveBeenCalledWith(["a1/doc.pdf"]);
         });
 
         it("rejects revoking a pending claim", async () => {

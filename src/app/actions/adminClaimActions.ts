@@ -83,20 +83,24 @@ export async function revokeClaimAction(claimId: string): Promise<{ success: boo
         const claim = await revokeApprovedClaim(claimId);
         if (!claim) return { success: false, error: "Claim is no longer approved" };
 
-        // Best-effort: purge uploaded files from Supabase Storage under the artist's folder.
-        // Runs after the DB tx commits — orphaned storage objects beat a failed revoke.
+        // Best-effort: purge uploaded files from Supabase Storage. Runs after the DB tx
+        // commits — orphaned storage objects beat a failed revoke. Two prefixes to clean:
+        //   1. `${artistId}/...`              — vault uploads (vault/upload route)
+        //   2. `profile-images/${artistId}_*` — claim profile image (artist/profile-image route)
         // Paginated so artists with >100 files (supabase-js list default limit) are fully purged.
         try {
             const supa = getSupabaseAdmin();
             const PAGE_SIZE = 1000;
             const MAX_ITERATIONS = 100; // safety ceiling — 100k files would be absurd
-            let totalRemoved = 0;
+
+            // Pass 1: vault folder (everything under `${artistId}/`)
+            let vaultRemoved = 0;
             for (let i = 0; i < MAX_ITERATIONS; i++) {
                 const { data: files, error: listError } = await supa.storage
                     .from(VAULT_BUCKET)
                     .list(claim.artistId, { limit: PAGE_SIZE, offset: 0 });
                 if (listError) {
-                    console.error("[revokeClaimAction] Storage list failed:", listError);
+                    console.error("[revokeClaimAction] Vault list failed:", listError);
                     break;
                 }
                 if (!files || files.length === 0) break;
@@ -106,21 +110,69 @@ export async function revokeClaimAction(claimId: string): Promise<{ success: boo
                     .from(VAULT_BUCKET)
                     .remove(paths);
                 if (removeError) {
-                    console.error("[revokeClaimAction] Storage remove failed:", removeError);
+                    console.error("[revokeClaimAction] Vault remove failed:", removeError);
                     break;
                 }
-                totalRemoved += files.length;
+                vaultRemoved += files.length;
 
                 // Short page → no more results. remove() shifted the listing, so we
                 // always re-read from offset 0; no offset advance needed.
                 if (files.length < PAGE_SIZE) break;
 
                 if (i === MAX_ITERATIONS - 1) {
-                    console.error(`[revokeClaimAction] Storage purge hit iteration ceiling (${MAX_ITERATIONS}) for artist ${claim.artistId} — remaining files orphaned`);
+                    console.error(`[revokeClaimAction] Vault purge hit iteration ceiling (${MAX_ITERATIONS}) for artist ${claim.artistId} — remaining files orphaned`);
                 }
             }
-            if (totalRemoved > 0) {
-                console.log(`[revokeClaimAction] Purged ${totalRemoved} storage objects for artist ${claim.artistId}`);
+
+            // Pass 2: profile-images folder, filtered to this artist's prefix only
+            // (profile-images/ is shared across all artists — must NOT remove others').
+            const profilePrefix = `${claim.artistId}_`;
+            let profileRemoved = 0;
+            for (let i = 0; i < MAX_ITERATIONS; i++) {
+                const { data: files, error: listError } = await supa.storage
+                    .from(VAULT_BUCKET)
+                    .list("profile-images", { limit: PAGE_SIZE, offset: 0, search: profilePrefix });
+                if (listError) {
+                    console.error("[revokeClaimAction] Profile-images list failed:", listError);
+                    break;
+                }
+                if (!files || files.length === 0) break;
+
+                // Defense in depth: `search` is a substring match — re-filter on the prefix
+                // so an artist whose UUID happens to appear inside another file's name can't
+                // cross-delete. (UUID collisions in mid-name are vanishingly unlikely, but cheap.)
+                const ownFiles = files.filter(f => f.name.startsWith(profilePrefix));
+                if (ownFiles.length === 0) {
+                    // All search hits were substring-collisions, not real matches. Bail out —
+                    // if there really is an own-prefix file on a later page, we won't find it
+                    // here (we'd need to advance offset past this page), but that scenario
+                    // would require 1000+ unrelated names embedding this artist's UUID, which
+                    // is effectively impossible. Logged for observability if it ever happens.
+                    if (files.length === PAGE_SIZE) {
+                        console.warn(`[revokeClaimAction] Profile-images search page had ${files.length} substring-only hits for ${claim.artistId} — bailing without checking subsequent pages`);
+                    }
+                    break;
+                }
+
+                const paths = ownFiles.map(f => `profile-images/${f.name}`);
+                const { error: removeError } = await supa.storage
+                    .from(VAULT_BUCKET)
+                    .remove(paths);
+                if (removeError) {
+                    console.error("[revokeClaimAction] Profile-images remove failed:", removeError);
+                    break;
+                }
+                profileRemoved += ownFiles.length;
+
+                if (files.length < PAGE_SIZE) break;
+
+                if (i === MAX_ITERATIONS - 1) {
+                    console.error(`[revokeClaimAction] Profile-images purge hit iteration ceiling (${MAX_ITERATIONS}) for artist ${claim.artistId} — remaining files orphaned`);
+                }
+            }
+
+            if (vaultRemoved + profileRemoved > 0) {
+                console.log(`[revokeClaimAction] Purged ${vaultRemoved} vault + ${profileRemoved} profile-image objects for artist ${claim.artistId}`);
             }
         } catch (e) {
             console.error("[revokeClaimAction] Storage cleanup error:", e);

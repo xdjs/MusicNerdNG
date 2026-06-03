@@ -43,6 +43,13 @@
       "when": 1775784854646,
       "tag": "0005_artist_claims_vault_and_deezer",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780504318584,
+      "tag": "0006_vault_sources_cascade",
+      "breakpoints": true
     }
   ]
 }

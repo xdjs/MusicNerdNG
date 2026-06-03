@@ -131,7 +131,12 @@ export async function POST(req: Request) {
             }
         }
 
-        // Insert vault source record
+        // Insert vault source record.
+        // `filePath` stores the Supabase Storage key (artistId/timestamp_name.ext), NOT the
+        // public URL — so per-file deletion can call `.remove([filePath])` directly without
+        // URL-parsing. `url` holds the publicly-served URL for browsers. Legacy rows from
+        // before this change store the public URL in both; revokeClaimAction handles those
+        // via prefix listing instead.
         const source = await insertVaultSource({
             artistId,
             url: publicUrl,
@@ -141,7 +146,7 @@ export async function POST(req: Request) {
             status: "approved",
             fileName: file.name,
             fileSize: file.size,
-            filePath: publicUrl,
+            filePath: storagePath,
             contentType: file.type,
             extractedText: extractedText ?? null,
         });
