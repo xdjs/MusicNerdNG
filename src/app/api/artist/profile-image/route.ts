@@ -13,6 +13,14 @@ export const dynamic = "force-dynamic";
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
+// Stale profile-image purge: don't delete anything younger than this. The exact-filename
+// guard (`f.name === filename` below) is the primary safety net — it makes the new
+// upload unkillable regardless of clock skew. This window catches OTHER same-artist
+// concurrent uploads (e.g. two browser tabs racing), where the second upload's
+// list() would otherwise find the first upload's storage object and nuke it before
+// the first one's DB update lands.
+const STALE_PROFILE_IMAGE_GRACE_MS = 30_000;
+
 export async function POST(req: Request) {
     const session = await getServerAuthSession() ?? await getDevSession();
     if (!session) {
@@ -102,11 +110,9 @@ export async function POST(req: Request) {
                 .from(VAULT_BUCKET)
                 .list("profile-images", { limit: 1000, offset: 0, search: `${artistId}_` });
             // Defense in depth: `search` is substring match — re-anchor with startsWith.
-            // Exclude the file we just uploaded AND anything uploaded in the last 30s,
-            // so two concurrent uploads from the same owner can't have one nuke the
-            // other's just-uploaded storage object before its DB update lands.
-            const concurrentGraceMs = 30_000;
-            const ageCutoff = Date.now() - concurrentGraceMs;
+            // Exclude the file we just uploaded AND anything within the grace window
+            // (see STALE_PROFILE_IMAGE_GRACE_MS docs above).
+            const ageCutoff = Date.now() - STALE_PROFILE_IMAGE_GRACE_MS;
             const stale = (files ?? [])
                 .filter(f => {
                     if (!f.name.startsWith(`${artistId}_`)) return false;
