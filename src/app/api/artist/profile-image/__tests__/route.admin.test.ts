@@ -92,6 +92,32 @@ describe('POST /api/artist/profile-image admin path', () => {
     expect(res.status).toBe(200);
   });
 
+  it('rejects an image whose magic bytes do not match the declared type', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+
+    const { POST } = await import('../route');
+    // Bytes declare image/png but actually carry a PDF header (%PDF) — magic byte mismatch.
+    const fakeBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
+    const mockFile = {
+      name: 'bad.png',
+      type: 'image/png',
+      size: fakeBytes.byteLength,
+      arrayBuffer: async () => fakeBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'artist-x']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/does not match declared type/i);
+  });
+
   it('rejects a non-admin WITH a claim for a different artist', async () => {
     const auth = await import('@/server/auth');
     const users = await import('@/server/utils/queries/userQueries');

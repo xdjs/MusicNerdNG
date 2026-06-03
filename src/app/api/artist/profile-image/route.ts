@@ -3,6 +3,7 @@ import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { supabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
+import { validateMagicBytes } from "@/server/utils/validateMagicBytes";
 import { db } from "@/server/db/drizzle";
 import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
@@ -44,6 +45,23 @@ export async function POST(req: Request) {
 
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
+
+        // Validate magic bytes — a client can declare image/png on a non-PNG payload.
+        // This URL ends up in artists.customImage and is served publicly, so consistency
+        // with the vault/upload path matters.
+        if (!validateMagicBytes(buffer, file.type)) {
+            console.error("[artist/profile-image] rejected:", {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                reason: "magic_byte_mismatch",
+                header: Array.from(buffer.subarray(0, 8)).map(b => b.toString(16).padStart(2, "0")).join(" "),
+            });
+            return NextResponse.json(
+                { error: "Image content does not match declared type" },
+                { status: 400 }
+            );
+        }
 
         const extByMime: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp" };
         const ext = extByMime[file.type] ?? ".bin";

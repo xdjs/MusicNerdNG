@@ -2,6 +2,15 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 
+// PUBLIC ENDPOINT — intentionally unauthenticated (rate-limited via middleware STRICT tier).
+//
+// Approved vault sources are treated as PUBLIC content for Q&A — their snippets and the
+// first 2000 chars of extractedText flow into the answer context that any visitor can see.
+//
+// ⚠️ When approving a vault source in admin, treat it as public the moment it's approved.
+//   Do NOT approve press kits, contracts, drafts, or anything else meant to stay internal.
+//   If we ever need to store internal-only sources, add an isPublic flag on vault sources
+//   and filter on it here instead of adding auth (which would break the Q&A feature).
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
