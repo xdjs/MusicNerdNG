@@ -118,6 +118,38 @@ describe('POST /api/vault/upload admin path', () => {
     expect(body.success).toBe(true);
   });
 
+  it('persists filePath as the storage key, not the public URL', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+    (claims.insertVaultSource as jest.Mock).mockResolvedValue({ id: 'src-1' });
+
+    const { POST } = await import('../route');
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const mockFile = {
+      name: 'press-photo.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'artist-x']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    await POST(req);
+
+    expect(claims.insertVaultSource).toHaveBeenCalledTimes(1);
+    const callArg = (claims.insertVaultSource as jest.Mock).mock.calls[0][0];
+    // url stays as the publicly-served URL (used by browsers to render the asset)
+    expect(callArg.url).toBe('http://x/file.png');
+    // filePath holds the Supabase storage KEY — `${artistId}/${timestamp}_${safeName}${ext}` —
+    // so per-file deletion can call .remove([filePath]) without URL-parsing.
+    expect(callArg.filePath).not.toBe(callArg.url);
+    expect(callArg.filePath).not.toMatch(/^https?:\/\//);
+    expect(callArg.filePath).toMatch(/^artist-x\/\d+_press-photo\.png$/);
+  });
+
   it('rejects a non-admin WITH a claim for a different artist', async () => {
     const auth = await import('@/server/auth');
     const users = await import('@/server/utils/queries/userQueries');

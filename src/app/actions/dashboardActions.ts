@@ -31,6 +31,13 @@ import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
 // Best-effort debounce for bio regen (same serverless caveat as rate limiting).
 // Map is module-level — on long-lived workers (e.g. self-hosted Node) it would
 // grow unbounded without the prune below. Soft-cap + TTL drop keeps it bounded.
+//
+// Prune fires only on the WRITE path (right before set()), not on read. On a quiet
+// worker that always hits the debounce for the same small set of artists, the map
+// is small and prune is unnecessary. On a busy worker, every new artist write goes
+// through this prune, so growth is naturally rate-limited. A separate timer/sweeper
+// would just burn cycles on idle workers and add coordination overhead — write-time
+// prune is the right shape for best-effort serverless state.
 const bioRegenTimestamps = new Map<string, number>();
 const BIO_REGEN_DEBOUNCE_MS = 30_000;
 const BIO_REGEN_MAP_SOFT_CAP = 5_000;
