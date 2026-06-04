@@ -1,48 +1,10 @@
 import { searchForArtistByName } from "@/server/utils/queries/artistQueries";
-import { getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
-import axios from "axios";
+import { musicPlatformData } from "@/server/utils/musicPlatform";
+import type { Artist } from "@/server/db/DbTypes";
 
 // Simple in-memory cache for search results (5 minute TTL)
 const searchCache = new Map<string, { results: any[], timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-// Defines the structure of a Spotify artist's image metadata
-interface SpotifyArtistImage {
-  url: string;
-  height: number;
-  width: number;
-}
-
-// Defines the complete structure of a Spotify artist object from their API
-interface SpotifyArtist {
-  id: string;
-  name: string;
-  images: Array<{
-    url: string;
-    height: number;
-    width: number;
-  }>;
-  followers: {
-    total: number;
-  };
-  genres: string[];
-  type: string;
-  uri: string;
-  external_urls: {
-    spotify: string;
-  };
-}
-
-// Defines the structure of the Spotify search API response
-interface SpotifySearchResponse {
-  artists: {
-    items: SpotifyArtist[];
-  };
-}
-
-interface SpotifyArtistsResponse {
-  artists: SpotifyArtist[];
-}
 
 // ----------------------------------
 // Helper to calculate how much content an artist has
@@ -89,27 +51,23 @@ function getMatchScore(name: string, query: string) {
 
   // Exact match gets highest priority (0)
   if (nameLower === queryLower) return 0;
-  
+
   // Starts with match gets second priority (1)
   if (nameLower.startsWith(queryLower)) return 1;
-  
+
   // Contains match gets third priority (2)
   if (nameLower.includes(queryLower)) return 2;
-  
+
   // No direct match, will be sorted by similarity (3)
   return 3;
 }
 
-// POST endpoint handler for combined artist search across local database and Spotify
-// Params:
-//      req: Request object containing search query in the body
-// Returns:
-//      Response with combined and sorted search results or error message
+// POST endpoint handler for combined artist search across local database and external platform
 export async function POST(req: Request) {
   const start = performance.now();
   try {
     const { query, bookmarkedArtistIds = [] } = await req.json();
-    
+
     if (!query || typeof query !== 'string') {
       return Response.json(
         { error: "Invalid query parameter" },
@@ -128,93 +86,63 @@ export async function POST(req: Request) {
     }
 
     // Set a timeout for the entire operation to prevent Vercel timeouts
-    const timeoutPromise = new Promise<Response>((_, reject) => 
+    const timeoutPromise = new Promise<Response>((_, reject) =>
       setTimeout(() => reject(new Error('Search timeout')), 12000) // 12 second timeout
     );
 
     const searchOperation = async (): Promise<Response> => {
-      // Parallel execution of database search and Spotify headers
-      const [dbResults, spotifyHeaders] = await Promise.all([
+      // Parallel execution of database search and external platform search
+      const [dbResults, externalResults] = await Promise.all([
         searchForArtistByName(query),
-        getSpotifyHeaders()
+        musicPlatformData.searchArtists(query, 10).catch((err) => {
+          console.error('External platform search failed:', err);
+          return [];
+        }),
       ]);
 
-      // Search Spotify's API for matching artists first (faster than fetching individual artists)
-      let spotifyArtists: any[] = [];
+      // Dedup: filter out external results that already exist in DB
+      // Check both deezer ID and normalized name to prevent visible duplicates
+      // (only ~1% of artists have deezer populated, so name-matching is essential)
+      const existingDeezerIds = new Set(
+        (dbResults ?? []).map(artist => (artist as any).deezer).filter(Boolean)
+      );
+      const existingNames = new Set(
+        (dbResults ?? []).map(artist => (artist.name || '').toLowerCase()).filter(Boolean)
+      );
+
+      const newExternalResults = externalResults
+        .filter(ext => !existingDeezerIds.has(ext.platformId) && !existingNames.has(ext.name.toLowerCase()))
+        .map(ext => ({
+          id: null,
+          name: ext.name,
+          platformId: ext.platformId,
+          platform: ext.platform,
+          imageUrl: ext.imageUrl,
+          profileUrl: ext.profileUrl,
+          isExternalOnly: true,
+          matchScore: getMatchScore(ext.name, query),
+          linkCount: 0,
+        }));
+
+      // Fetch platform images for database artists
+      const dbArtistsTyped = (dbResults ?? []) as Artist[];
+      let imageMap = new Map<string, string>();
       try {
-        const spotifyResponse = await axios.get<SpotifySearchResponse>(
-          `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=10`,
-          spotifyHeaders
-        );
-        
-        // Create a Set of existing Spotify IDs from DB results for fast filtering
-        const existingSpotifyIds = new Set(
-          dbResults.map(artist => artist.spotify).filter(Boolean)
-        );
-
-        // Filter out existing artists from Spotify results
-        spotifyArtists = spotifyResponse.data.artists.items
-          .filter((spotifyArtist: SpotifyArtist) => !existingSpotifyIds.has(spotifyArtist.id))
-          .map((artist: SpotifyArtist) => ({
-            id: null,
-            name: artist.name,
-            spotify: artist.id,
-            images: artist.images,
-            isSpotifyOnly: true,
-            matchScore: getMatchScore(artist.name, query),
-            linkCount: 0
-          }));
+        imageMap = await musicPlatformData.getArtistImages(dbArtistsTyped);
       } catch (error) {
-        console.error('Spotify search failed:', error);
-        // Continue without Spotify results rather than failing entirely
+        console.error('Failed to fetch platform images:', error);
       }
 
-      // Fetch Spotify data for database artists in batches
-      const dbSpotifyIds = dbResults.map(a => a.spotify).filter(Boolean) as string[];
-      const idChunks: string[][] = [];
-      for (let i = 0; i < dbSpotifyIds.length; i += 50) {
-        idChunks.push(dbSpotifyIds.slice(i, i + 50));
-      }
-
-      let spotifyArtistMap: Record<string, SpotifyArtist> = {};
-      try {
-        const responses = await Promise.all(
-          idChunks.map(ids =>
-            axios.get<SpotifyArtistsResponse>(
-              `https://api.spotify.com/v1/artists?ids=${ids.join(',')}`,
-              { ...spotifyHeaders, timeout: 3000 }
-            )
-          )
-        );
-        spotifyArtistMap = Object.fromEntries(
-          responses.flatMap(res =>
-            (res.data?.artists ?? [])
-              .filter(Boolean)
-              .map(artist => [artist.id, artist])
-          )
-        );
-      } catch (error) {
-        console.error('Failed to fetch Spotify artist batch:', error);
-      }
-
-      const dbArtistsWithImages = dbResults.map((artist) => {
-        const baseArtist = {
-          ...artist,
-          isSpotifyOnly: false,
-          matchScore: getMatchScore(artist.name || "", query),
-          linkCount: getLinkCount(artist)
-        };
-        if (artist.spotify && spotifyArtistMap[artist.spotify]) {
-          return {
-            ...baseArtist,
-            images: spotifyArtistMap[artist.spotify].images,
-          };
-        }
-        return baseArtist;
-      });
+      const dbArtistsWithImages = (dbResults ?? []).map((artist) => ({
+        ...artist,
+        isExternalOnly: false,
+        imageUrl: imageMap.get(artist.id) ?? null,
+        matchScore: getMatchScore(artist.name || "", query),
+        linkCount: getLinkCount(artist),
+      }));
 
       // Combine all results and sort them by match score, bookmark status, link count, and name
-      const combinedResults = [...dbArtistsWithImages, ...spotifyArtists]
+      const combinedResults = [...dbArtistsWithImages, ...newExternalResults]
         .sort((a, b) => {
           // First sort by match score (most important for relevance)
           if (a.matchScore !== b.matchScore) {
@@ -248,14 +176,14 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error('Error in search artists:', error);
-    
+
     if (error instanceof Error && error.message === 'Search timeout') {
       return Response.json(
         { error: "Search timed out. Please try a more specific search term." },
         { status: 408 }
       );
     }
-    
+
     return Response.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -30,16 +30,9 @@ export const getArtistSplitPlatforms = (artist: Artist) => {
     return { web3Platforms, socialPlatforms };
 }
 
-type SpotifyDataType = {
-    releases: number
-}
-
-export const getArtistDetailsText = (artist: Artist, spotifyData: SpotifyDataType) => {
-    const numSpotifyReleases = (spotifyData != null && spotifyData.releases != null) ? spotifyData.releases : 0;
-    if (numSpotifyReleases <= 0) return "";
-
-    if (numSpotifyReleases > 0) return `${numSpotifyReleases} releases on Spotify`;
-    return `${numSpotifyReleases} releases on Spotify`;
+export const getArtistDetailsText = (artist: Artist, releaseCount: number) => {
+    if (!releaseCount || releaseCount <= 0) return "";
+    return `${releaseCount} releases`;
 }
 
 export function isObjKey<T extends object>(key: PropertyKey, obj: T): key is keyof T {

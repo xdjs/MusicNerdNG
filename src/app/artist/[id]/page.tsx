@@ -1,18 +1,22 @@
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
-import { getSpotifyImage, getSpotifyHeaders, getNumberOfSpotifyReleases } from "@/server/utils/queries/externalApiQueries";
-import { AspectRatio } from "@radix-ui/react-aspect-ratio";
-import ArtistLinks from "@/app/_components/ArtistLinks";
+import { musicPlatformData } from "@/server/utils/musicPlatform";
+import ArtistLinksGrid from "@/app/_components/ArtistLinksGrid";
 import BookmarkButton from "@/app/_components/BookmarkButton";
-import { getArtistDetailsText } from "@/server/utils/services";
+import ClaimButton from "./_components/ClaimButton";
 import { getServerAuthSession } from "@/server/auth";
+import { getDevSession } from "@/server/utils/dev-auth";
+import { getUserById } from "@/server/utils/queries/userQueries";
+import { getClaimByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { notFound } from "next/navigation";
 import { EditModeProvider } from "@/app/_components/EditModeContext";
 import EditModeToggle from "@/app/_components/EditModeToggle";
 import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
-import FunFactsMobile from "./_components/FunFactsMobile";
-import FunFactsDesktop from "./_components/FunFactsDesktop";
-import GrapevineIframe from "./_components/GrapevineIframe";
+import HeroSection from "./_components/HeroSection";
+import VaultSection from "./_components/VaultSection";
+import AskAboutArtist from "./_components/AskAboutArtist";
+import RevealSection from "./_components/RevealSection";
+import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
@@ -32,9 +36,10 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
         };
     }
 
-    const headers = await getSpotifyHeaders();
-    const spotifyImg = await getSpotifyImage(artist.spotify ?? "", undefined, headers);
-    const imageUrl = spotifyImg.artistImage || "https://www.musicnerd.xyz/default_pfp_pink.png";
+    const platformData = await musicPlatformData.getArtist(artist);
+    const imageUrl = artist.customImage
+        ? `https://www.musicnerd.xyz${artist.customImage}`
+        : platformData?.imageUrl || "https://www.musicnerd.xyz/default_pfp_pink.png";
     const artistName = artist.name ?? "Unknown Artist";
 
     return {
@@ -65,136 +70,124 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
 
 export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const { id } = await params;
-    const session = await getServerAuthSession();
-    const canEdit = !!session;
+    const session = await getServerAuthSession() ?? await getDevSession();
+    const dbUser = session ? await getUserById(session.user.id) : null;
+    const isAdmin = !!dbUser?.isAdmin;
 
     const artist = await getArtistById(id);
     if (!artist) {
         return notFound();
     }
-    const headers = await getSpotifyHeaders();
-
-    const [spotifyImg, numReleases, urlMapList] = await Promise.all([
-        getSpotifyImage(artist.spotify ?? "", undefined, headers),
-        getNumberOfSpotifyReleases(artist.spotify ?? "", headers),
+    // Pending sources are fetched in parallel (indexed lookup) to avoid a serial
+    // round-trip for editors; they are only exposed to the client when canEdit.
+    const [platformData, urlMapList, existingClaim, approvedSources, pendingSourcesRaw] = await Promise.all([
+        musicPlatformData.getArtist(artist),
         getAllLinks(),
+        getClaimByArtistId(id),
+        getVaultSourcesByArtistId(id, "approved"),
+        getVaultSourcesByArtistId(id, "pending"),
     ]);
 
+    const platformImage = platformData?.imageUrl ?? null;
 
+    const isClaimed = !!existingClaim && existingClaim.status === "approved";
+    const isPending = !!existingClaim && existingClaim.status === "pending";
+    const isClaimedByUser = isClaimed && !!session && existingClaim.userId === session.user.id;
+    const isPendingByUser = isPending && !!session && existingClaim.userId === session.user.id;
+    const canEdit = isClaimedByUser || isAdmin;
+
+    const pendingSources = canEdit ? pendingSourcesRaw : [];
+
+    const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
 
     return (
         <>
             <EditModeProvider canEdit={canEdit}>
             <AutoRefresh showLoading={false} />
-            <div className="gap-4 px-4 flex flex-col md:flex-row max-w-[1000px] mx-auto">
-                {/* Artist Info Box */}
-                <div className="bg-white rounded-lg md:w-2/3 gap-y-4 shadow-2xl px-5 py-5 md:py-10 md:px-10 space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                        {/* Left Column: Image and Song */}
-                        <div className="flex flex-col items-center md:items-end">
-                            <AspectRatio ratio={1 / 1} className="flex items-center place-content-center bg-muted rounded-md overflow-hidden w-full mb-4">
-                                <img src={spotifyImg.artistImage || "/default_pfp_pink.png"} alt="Artist Image" className="object-cover w-full h-full" />
-                            </AspectRatio>
-                        </div>
-                        {/* Right Column: Name and Description */}
-                        <div className="flex flex-col justify-start md:col-span-2 pl-0 md:pl-4">
-                            <div className="mb-2 flex items-center justify-between">
-                                <strong className="text-black text-2xl mr-2">
-                                    {artist.name}
-                                </strong>
-                                <div className="flex items-center gap-2">
-                                    {session && (
-                                        <BookmarkButton
-                                            artistId={artist.id}
-                                            artistName={artist.name ?? ''}
-                                            imageUrl={spotifyImg.artistImage ?? ''}
-                                            userId={session.user.id}
-                                        />
-                                    )}
-                                    {canEdit && <EditModeToggle />}
-                                </div>
-                            </div>
-                            <div className="text-black pt-0 mb-4">
-                                {(artist) && getArtistDetailsText(artist, numReleases)}
-                            </div>
-                            <BlurbSection
-                                key={artist.bio ?? ""}
-                                artistName={artist.name ?? ""}
+            <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
+
+                {/* 1. Hero Section */}
+                <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} artistId={artist.id} />
+
+                {/* 2. Name + Actions */}
+                <div className="text-center space-y-2">
+                    <h1 className="text-black dark:text-white text-2xl font-bold">
+                        {artist.name}
+                    </h1>
+                    {/* Release count hidden for now — revisit when discography feature is built */}
+                    <div className="flex flex-wrap justify-center items-center gap-2 pt-1">
+                        <ClaimButton
+                            artistId={artist.id}
+                            isClaimed={isClaimed}
+                            isClaimedByUser={isClaimedByUser}
+                            isPending={isPending}
+                            isPendingByUser={isPendingByUser}
+                            artistInstagram={artist.instagram}
+                        />
+                        {session && (
+                            <BookmarkButton
                                 artistId={artist.id}
-                                initialBio={artist.bio ?? null}
-                                />
-                        </div>
+                                artistName={artist.name ?? ''}
+                                imageUrl={platformImage ?? ''}
+                                userId={session.user.id}
+                            />
+                        )}
+                        {canEdit && <EditModeToggle />}
                     </div>
-                    <div className="space-y-4 mt-6 md:mt-6">
-                        {/* Grid layout for Check out and Support sections */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* Check out section */}
-                            <div className="space-y-6">
-                                <div className="flex flex-row items-center justify-between">
-                                    <strong className="text-black text-2xl">
-                                        Social Media Links
-                                    </strong>
-                                    <div className="mt-2 md:mt-0 md:ml-2">
-                                        <AddArtistData
-                                            artist={artist}
-                                            spotifyImg={spotifyImg.artistImage ?? ""}
-                                            availableLinks={urlMapList}
-                                            isOpenOnLoad={false}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-4">
-                                    {(artist) &&
-                                        <ArtistLinks canEdit={canEdit} isMonetized={false} artist={artist} spotifyImg={spotifyImg.artistImage} availableLinks={urlMapList} isOpenOnLoad={false} showAddButton={false} />
-                                    }
-                                </div>
-                            </div>
+                </div>
 
-                            {/* Support section */}
-                            <div className="space-y-6">
-                                <div className="flex flex-row items-center justify-between">
-                                    <strong className="text-black text-2xl">
-                                        Support the Artist
-                                    </strong>
-                                    <div className="mt-2 md:mt-0 md:ml-2">
-                                        <AddArtistData
-                                            artist={artist}
-                                            spotifyImg={spotifyImg.artistImage ?? ""}
-                                            availableLinks={urlMapList}
-                                            isOpenOnLoad={false}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-4">
-                                    {(artist) &&
-                                        <ArtistLinks isMonetized={true} artist={artist} spotifyImg={spotifyImg.artistImage} availableLinks={urlMapList} isOpenOnLoad={false} canEdit={canEdit} />
-                                    }
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {/* Sidebar: Fun Facts (desktop) */}
-                <div className="flex flex-col md:w-1/3 space-y-4">
-                    {/* Fun Facts section - visible on md and up */}
-                    <FunFactsDesktop artistId={artist.id} />
-                    {/* Empty Collaborators box */}
-                    <div className="hidden md:block bg-white rounded-lg shadow-2xl p-6 space-y-4 overflow-x-hidden">
-                        <h2 className="text-2xl font-bold text-black">Grapevine</h2>
-                        <GrapevineIframe artistId={artist.id} />
-                    </div>
-                </div>
-                {/* Insert Fun Facts section for mobile only */}
-                <FunFactsMobile artistId={artist.id} />
+                {/* 3. Bio */}
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <h2 className="text-black dark:text-white text-xl font-bold">Artist Summary</h2>
+                    <BlurbSection
+                        key={artist.bio ?? ""}
+                        artistName={artist.name ?? ""}
+                        artistId={artist.id}
+                        initialBio={artist.bio ?? null}
+                    />
+                </RevealSection>
 
-                {/* Mobile-only Collaborators box displayed below Fun Facts */}
-                <div className="block md:hidden bg-white rounded-lg shadow-2xl mt-4 p-6 space-y-4 overflow-x-hidden">
-                    <h2 className="text-2xl font-bold text-black">Grapevine</h2>
-                    <GrapevineIframe artistId={artist.id} />
-                </div>
+                {/* 4. Ask About Artist (AI Q&A) */}
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <h2 className="text-black dark:text-white text-xl font-bold break-words">Ask About {artist.name}</h2>
+                    <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
+                </RevealSection>
+
+                {/* 5. Social Links (icon grid) */}
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="text-black dark:text-white text-xl font-bold">Social Links</h2>
+                        <AddArtistData
+                            artist={artist}
+                            spotifyImg={platformImage ?? ""}
+                            availableLinks={urlMapList}
+                            isOpenOnLoad={false}
+                            directEdit={canEdit}
+                        />
+                    </div>
+                    <ArtistLinksGrid isMonetized={false} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
+                </RevealSection>
+
+                {/* 6. Support the Artist (icon grid) */}
+                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="text-black dark:text-white text-xl font-bold">Support the Artist</h2>
+                        <AddArtistData
+                            artist={artist}
+                            spotifyImg={platformImage ?? ""}
+                            availableLinks={urlMapList}
+                            isOpenOnLoad={false}
+                            directEdit={canEdit}
+                        />
+                    </div>
+                    <ArtistLinksGrid isMonetized={true} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
+                </RevealSection>
+
+                {/* 7. Press & Features (vault sources) */}
+                <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
+
             </div>
             </EditModeProvider>
-            {/* SEO-only links rendered outside client boundary for crawler visibility */}
             <SeoArtistLinks artist={artist} />
         </>
     );

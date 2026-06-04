@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, ReactNode } from "react";
+import { createContext, useState, ReactNode } from "react";
 
 export type EditModeContextType = {
     isEditing: boolean;
@@ -14,11 +14,16 @@ export const EditModeContext = createContext<EditModeContextType>({
     canEdit: false,
 });
 
-export function EditModeProvider({ children }: { children: ReactNode; canEdit?: boolean }) {
-    // Authentication disabled - always read-only mode
+export function EditModeProvider({ children, canEdit = false }: { children: ReactNode; canEdit?: boolean }) {
+    const [isEditing, setIsEditing] = useState(false);
+
     return (
-        <EditModeContext.Provider value={{ isEditing: false, toggle: () => {}, canEdit: false }}>
+        <EditModeContext.Provider value={{
+            isEditing: canEdit ? isEditing : false,
+            toggle: () => canEdit && setIsEditing(prev => !prev),
+            canEdit,
+        }}>
             {children}
         </EditModeContext.Provider>
     );
-} 
+}

@@ -1,6 +1,15 @@
 // @ts-nocheck
 import { jest } from "@jest/globals";
 
+// Polyfill Response.json (JSDOM doesn't have it)
+if (!('json' in Response)) {
+  Response.json = (data, init) =>
+    new Response(JSON.stringify(data), {
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      status: init?.status || 200,
+    });
+}
+
 // Static mocks BEFORE dynamic imports
 jest.mock("@/server/utils/queries/artistQueries", () => ({
   getArtistById: jest.fn(),
@@ -13,9 +22,26 @@ jest.mock("@/server/utils/queries/externalApiQueries", () => ({
   getNumberOfSpotifyReleases: jest.fn(),
 }));
 
+jest.mock("@/server/utils/queries/dashboardQueries", () => ({
+  getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+}));
+
+const mockGenerateContent = jest.fn().mockResolvedValue({ text: "mocked gemini response" });
+jest.mock("@/server/lib/gemini", () => ({
+  getGemini: jest.fn(() => ({
+    models: {
+      generateContent: mockGenerateContent,
+    },
+  })),
+  GEMINI_MODEL_PRO: "gemini-2.5-pro",
+  GEMINI_MODEL_FLASH: "gemini-2.5-flash",
+}));
+
 describe("artistBioQuery", () => {
   beforeEach(() => {
     jest.resetModules();
+    mockGenerateContent.mockClear();
+    mockGenerateContent.mockResolvedValue({ text: "mocked gemini response" });
   });
 
   async function setup() {
@@ -23,50 +49,42 @@ describe("artistBioQuery", () => {
     const { getArtistById } = await import(
       "@/server/utils/queries/artistQueries"
     );
-    const { openai } = await import("@/server/lib/openai");
+    const { getVaultSourcesByArtistId } = await import(
+      "@/server/utils/queries/dashboardQueries"
+    );
 
     // Wire up db mocks
-    (db as any).query.aiprompts = { findFirst: jest.fn() };
     db.update = jest.fn().mockReturnValue({
       set: jest.fn().mockReturnValue({
         where: jest.fn().mockResolvedValue([]),
       }),
     });
 
-    const { generateArtistBio, getActivePrompt, setActivePrompt } =
+    const { generateArtistBio, regenerateArtistBio } =
       await import("../artistBioQuery");
 
     return {
       db,
       getArtistById: getArtistById as jest.Mock,
-      openai,
+      getVaultSourcesByArtistId: getVaultSourcesByArtistId as jest.Mock,
       generateArtistBio,
-      getActivePrompt,
-      setActivePrompt,
+      regenerateArtistBio,
     };
   }
 
   // ------- generateArtistBio -------
 
-  it("returns null if artist not found", async () => {
+  it("returns 404 if artist not found", async () => {
     const { generateArtistBio, getArtistById } = await setup();
     getArtistById.mockResolvedValue(null);
 
     const result = await generateArtistBio("nonexistent-id");
-    expect(result).toBeNull();
+    const data = await result.json();
+    expect(data.error).toBe("Artist not found");
   });
 
-  it("returns null if no active prompt", async () => {
-    const { generateArtistBio, getArtistById, db } = await setup();
-    getArtistById.mockResolvedValue({ id: "artist-1", name: "Test Artist" });
-    (db as any).query.aiprompts.findFirst.mockResolvedValue(null);
-
-    const result = await generateArtistBio("artist-1");
-    expect(result).toBeNull();
-  });
-
-  it("calls OpenAI with constructed prompt and returns bio", async () => {
-    const { generateArtistBio, getArtistById, db, openai } = await setup();
+  it("calls Gemini with constructed prompt and returns bio", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
 
     getArtistById.mockResolvedValue({
       id: "artist-1",
@@ -77,32 +95,22 @@ describe("artistBioQuery", () => {
       soundcloud: null,
       youtube: null,
       youtubechannel: null,
-    });
-    (db as any).query.aiprompts.findFirst.mockResolvedValue({
-      isActive: true,
-      promptBeforeName: "Write a bio for ",
-      promptAfterName: " the musician.",
+      wikipedia: null,
     });
 
     const result = await generateArtistBio("artist-1");
+    const data = await result.json();
 
-    // The global mock returns 'mocked response'
-    expect(result).toBe("mocked response");
+    expect(data.bio).toBe("mocked gemini response");
 
-    // Verify OpenAI was called
-    expect(openai.chat.completions.create).toHaveBeenCalledTimes(1);
-    const callArgs = (openai.chat.completions.create as jest.Mock).mock
-      .calls[0][0];
-    expect(callArgs.model).toBe("gpt-4o");
-    expect(callArgs.messages[0].role).toBe("system");
-    // Prompt should include artist social links
-    expect(callArgs.messages[0].content).toContain("Spotify ID: spotify-123");
-    expect(callArgs.messages[0].content).toContain(
-      "Instagram: https://instagram.com/testinsta"
-    );
-    expect(callArgs.messages[0].content).toContain(
-      "Twitter: https://twitter.com/testx"
-    );
+    // Verify Gemini was called
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    expect(callArgs.model).toBe("gemini-2.5-pro");
+    expect(callArgs.contents).toContain("Test Artist");
+    expect(callArgs.contents).toContain("Spotify ID: spotify-123");
+    expect(callArgs.contents).toContain("Instagram: https://instagram.com/testinsta");
+    expect(callArgs.contents).toContain("X: https://x.com/testx");
   });
 
   it("saves bio to DB on success", async () => {
@@ -117,22 +125,18 @@ describe("artistBioQuery", () => {
       soundcloud: null,
       youtube: null,
       youtubechannel: null,
-    });
-    (db as any).query.aiprompts.findFirst.mockResolvedValue({
-      isActive: true,
-      promptBeforeName: "Bio for ",
-      promptAfterName: ".",
+      wikipedia: null,
     });
 
     await generateArtistBio("artist-1");
 
     expect(db.update).toHaveBeenCalled();
     const setMock = db.update.mock.results[0].value.set;
-    expect(setMock).toHaveBeenCalledWith({ bio: "mocked response" });
+    expect(setMock).toHaveBeenCalledWith({ bio: "mocked gemini response" });
   });
 
-  it("returns null on OpenAI error", async () => {
-    const { generateArtistBio, getArtistById, db, openai } = await setup();
+  it("returns error on Gemini failure", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
 
     getArtistById.mockResolvedValue({
       id: "artist-1",
@@ -143,33 +147,26 @@ describe("artistBioQuery", () => {
       soundcloud: null,
       youtube: null,
       youtubechannel: null,
-    });
-    (db as any).query.aiprompts.findFirst.mockResolvedValue({
-      isActive: true,
-      promptBeforeName: "Bio for ",
-      promptAfterName: ".",
+      wikipedia: null,
     });
 
-    // Override the global mock to throw
-    (openai.chat.completions.create as jest.Mock).mockRejectedValueOnce(
-      new Error("OpenAI API error")
+    // Override the mock to throw
+    (mockGenerateContent as jest.Mock).mockRejectedValueOnce(
+      new Error("Gemini API error")
     );
 
     const consoleSpy = jest
       .spyOn(console, "error")
       .mockImplementation(() => {});
     const result = await generateArtistBio("artist-1");
+    const data = await result.json();
 
-    expect(result).toBeNull();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "[generateArtistBio] Error generating bio",
-      expect.any(Error)
-    );
+    expect(data.error).toBe("Failed to generate bio");
     consoleSpy.mockRestore();
   });
 
   it("includes YouTube with @ prefix stripped in prompt", async () => {
-    const { generateArtistBio, getArtistById, db, openai } = await setup();
+    const { generateArtistBio, getArtistById } = await setup();
 
     getArtistById.mockResolvedValue({
       id: "artist-1",
@@ -180,27 +177,18 @@ describe("artistBioQuery", () => {
       soundcloud: null,
       youtube: "@TestChannel",
       youtubechannel: null,
-    });
-    (db as any).query.aiprompts.findFirst.mockResolvedValue({
-      isActive: true,
-      promptBeforeName: "Bio for ",
-      promptAfterName: ".",
+      wikipedia: null,
     });
 
     await generateArtistBio("artist-1");
 
-    const callArgs = (openai.chat.completions.create as jest.Mock).mock
-      .calls[0][0];
-    // Should strip the leading @ from the youtube handle
-    expect(callArgs.messages[0].content).toContain(
-      "YouTube: https://youtube.com/@TestChannel"
-    );
-    // Should NOT contain double @
-    expect(callArgs.messages[0].content).not.toContain("@@");
+    const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    expect(callArgs.contents).toContain("YouTube: https://youtube.com/@TestChannel");
+    expect(callArgs.contents).not.toContain("@@");
   });
 
   it("includes prompt parts in correct order", async () => {
-    const { generateArtistBio, getArtistById, db, openai } = await setup();
+    const { generateArtistBio, getArtistById } = await setup();
 
     getArtistById.mockResolvedValue({
       id: "artist-1",
@@ -211,59 +199,68 @@ describe("artistBioQuery", () => {
       soundcloud: "sc-link",
       youtube: null,
       youtubechannel: "yt-channel-id",
-    });
-    (db as any).query.aiprompts.findFirst.mockResolvedValue({
-      isActive: true,
-      promptBeforeName: "Generate bio: ",
-      promptAfterName: " end.",
+      wikipedia: null,
     });
 
     await generateArtistBio("artist-1");
 
-    const callArgs = (openai.chat.completions.create as jest.Mock).mock
-      .calls[0][0];
-    const content = callArgs.messages[0].content;
-    expect(content).toContain("Generate bio: ");
-    expect(content).toContain("Cool Band");
-    expect(content).toContain(" end.");
-    expect(content).toContain("SoundCloud: sc-link");
-    expect(content).toContain("YouTube Channel: yt-channel-id");
-    expect(content).toContain(
-      "Focus on genre, key achievements, and unique traits; avoid speculation."
-    );
+    const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    expect(callArgs.contents).toContain("Cool Band");
+    expect(callArgs.contents).toContain("SoundCloud: sc-link");
+    expect(callArgs.contents).toContain("YouTube Channel: yt-channel-id");
   });
 
-  // ------- getActivePrompt -------
+  it("uses Google Search grounding when vault sources exist", async () => {
+    const { generateArtistBio, getArtistById, gemini, getVaultSourcesByArtistId } = await setup();
 
-  it("queries aiprompts table for active prompt", async () => {
-    const { getActivePrompt, db } = await setup();
-    const mockPrompt = {
-      id: "prompt-1",
-      isActive: true,
-      promptBeforeName: "Before",
-      promptAfterName: "After",
-    };
-    (db as any).query.aiprompts.findFirst.mockResolvedValue(mockPrompt);
+    getArtistById.mockResolvedValue({
+      id: "artist-1",
+      name: "Test Artist",
+      spotify: null,
+      instagram: null,
+      x: null,
+      soundcloud: null,
+      youtube: null,
+      youtubechannel: null,
+      wikipedia: null,
+    });
+    getVaultSourcesByArtistId.mockResolvedValue([
+      { url: "https://example.com/article", title: "Test Article", snippet: "A snippet", extractedText: "Some text" },
+    ]);
 
-    const result = await getActivePrompt();
+    await generateArtistBio("artist-1");
 
-    expect((db as any).query.aiprompts.findFirst).toHaveBeenCalled();
-    expect(result).toEqual(mockPrompt);
+    const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    expect(callArgs.config.tools).toEqual([{ googleSearch: {} }]);
+    expect(callArgs.contents).toContain("VAULT CONTEXT");
   });
 
-  it("returns undefined when no active prompt exists", async () => {
-    const { getActivePrompt, db } = await setup();
-    (db as any).query.aiprompts.findFirst.mockResolvedValue(undefined);
+  // ------- regenerateArtistBio -------
 
-    const result = await getActivePrompt();
-    expect(result).toBeUndefined();
+  it("regenerateArtistBio returns bio string on success", async () => {
+    const { regenerateArtistBio, getArtistById } = await setup();
+
+    getArtistById.mockResolvedValue({
+      id: "artist-1",
+      name: "Test Artist",
+      spotify: null,
+      instagram: null,
+      x: null,
+      soundcloud: null,
+      youtube: null,
+      youtubechannel: null,
+      wikipedia: null,
+    });
+
+    const result = await regenerateArtistBio("artist-1");
+    expect(result).toBe("mocked gemini response");
   });
 
-  // ------- setActivePrompt -------
+  it("regenerateArtistBio returns null when artist not found", async () => {
+    const { regenerateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue(null);
 
-  it("exists and does not throw", async () => {
-    const { setActivePrompt } = await setup();
-    expect(typeof setActivePrompt).toBe("function");
-    await expect(setActivePrompt()).resolves.toBeUndefined();
+    const result = await regenerateArtistBio("nonexistent-id");
+    expect(result).toBeNull();
   });
 });

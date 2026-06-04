@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
-import { openai } from "@/server/lib/openai";
+import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { funfacts } from "@/server/db/schema";
 import { db } from "@/server/db/drizzle";
 import { eq } from "drizzle-orm";
+import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 
 async function getPrompts() {
   try {
@@ -65,42 +66,45 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
       finalPrompt = finalPrompt.replace("SPOTIFY_ID", artist.spotify);
     }
 
-    // Check if OpenAI API key is configured
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("OPENAI_API_KEY is not configured");
-      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+    // Append approved vault sources as additional context
+    try {
+      const vaultSources = await getVaultSourcesByArtistId(id, "approved");
+      if (vaultSources.length > 0) {
+        const vaultContext = vaultSources.map(s => {
+          const parts = [`Source: ${s.title ?? s.url}`];
+          if (s.snippet) parts.push(s.snippet);
+          if (s.extractedText) parts.push(s.extractedText.slice(0, 1000));
+          return parts.join(" — ");
+        }).join("\n");
+        finalPrompt += `\n\nAdditional context provided by the artist:\n${vaultContext}`;
+      }
+    } catch (e) {
+      console.error("Error fetching vault sources for fun facts:", e);
     }
 
     try {
-      // Set timeout for OpenAI API call
-      const openaiTimeout = 15000; // 15 seconds
-      
-      const completion = await Promise.race([
-        openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are an intelligent assistant. Follow the user prompt closely and do not fabricate information.",
-            },
-            {
-              role: "user",
-              content: finalPrompt,
-            },
-          ],
-          temperature: 0.8,
+      // Set timeout for Gemini API call
+      const geminiTimeout = 15000; // 15 seconds
+
+      const response = await Promise.race([
+        getGemini().models.generateContent({
+          model: GEMINI_MODEL_FLASH,
+          contents: finalPrompt,
+          config: {
+            systemInstruction: "You are a sharp music writer. Follow the user's prompt exactly. Be concrete and specific — name real songs, people, places, and dates. Keep it tight: no filler or hype phrases like \"rising star\", \"eclectic\", or \"undeniable\". Never fabricate or speculate; if you're unsure, leave it out.",
+            temperature: 0.8,
+          },
         }),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('OpenAI timeout')), openaiTimeout)
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Gemini timeout')), geminiTimeout)
         )
       ]);
-      
-      const text = completion.choices[0]?.message?.content?.trim() ?? "";
+
+      const text = response.text ?? "";
       return NextResponse.json({ text });
     } catch (err: any) {
-      console.error("OpenAI error generating fun fact", err);
-      if (err.message === 'OpenAI timeout') {
+      console.error("Gemini error generating fun fact", err);
+      if (err.message === 'Gemini timeout') {
         return NextResponse.json({ error: "Fun fact generation timed out" }, { status: 408 });
       }
       return NextResponse.json({ error: "Failed to generate fun fact" }, { status: 500 });
@@ -112,14 +116,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
     return await Promise.race([funFactOperation(), timeoutPromise]);
   } catch (error: any) {
     console.error('Error in fun fact generation:', error);
-    
+
     if (error instanceof Error && error.message === 'Fun fact generation timeout') {
       return NextResponse.json(
         { error: "Fun fact generation timed out. Please try again later." },
         { status: 408 }
       );
     }
-    
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

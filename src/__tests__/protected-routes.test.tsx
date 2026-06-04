@@ -13,6 +13,15 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getNumberOfSpotifyReleases: jest.fn(),
 }));
 
+jest.mock('@/server/utils/musicPlatform', () => ({
+    musicPlatformData: {
+        getArtist: jest.fn().mockResolvedValue(null),
+        getArtistImage: jest.fn().mockResolvedValue(null),
+    },
+    deezerProvider: { getArtist: jest.fn() },
+    spotifyProvider: { getArtist: jest.fn() },
+}));
+
 jest.mock('@/server/utils/queries/artistQueries', () => ({
     getArtistById: jest.fn(),
     getAllLinks: jest.fn(),
@@ -39,7 +48,7 @@ jest.mock('@/app/add-artist/_components/AddArtistContent', () =>
 );
 
 // Mocks for ArtistProfile child components
-jest.mock('@/app/_components/ArtistLinks', () => function ArtistLinks() { return <div data-testid="artist-links" />; });
+jest.mock('@/app/_components/ArtistLinksGrid', () => function ArtistLinksGrid() { return <div data-testid="artist-links" />; });
 jest.mock('@/app/_components/BookmarkButton', () => function BookmarkButton() { return <div data-testid="bookmark-button" />; });
 jest.mock('@/app/_components/EditModeContext', () => ({
     EditModeProvider: function EditModeProvider({ children }: { children: React.ReactNode }) { return <>{children}</>; },
@@ -48,19 +57,30 @@ jest.mock('@/app/_components/EditModeToggle', () => function EditModeToggle() { 
 jest.mock('@/app/_components/AutoRefresh', () => function AutoRefresh() { return null; });
 jest.mock('@/app/artist/[id]/_components/BlurbSection', () => function BlurbSection() { return <div data-testid="blurb" />; });
 jest.mock('@/app/artist/[id]/_components/AddArtistData', () => function AddArtistData() { return <div data-testid="add-data" />; });
-jest.mock('@/app/artist/[id]/_components/FunFactsMobile', () => function FunFactsMobile() { return null; });
-jest.mock('@/app/artist/[id]/_components/FunFactsDesktop', () => function FunFactsDesktop() { return null; });
+jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSection() { return <div data-testid="hero-section" />; });
+jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return null; });
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return null; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
-jest.mock('@radix-ui/react-aspect-ratio', () => ({
-    AspectRatio: function AspectRatio({ children }: { children: React.ReactNode }) { return <div>{children}</div>; },
+jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return null; });
+jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
+jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return null; });
+jest.mock('@/server/utils/queries/userQueries', () => ({
+    getUserById: jest.fn().mockResolvedValue({ id: 'user-uuid', isAdmin: false, isWhiteListed: false }),
+    getAllUsers: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('@/server/utils/queries/dashboardQueries', () => ({
+    getClaimByArtistId: jest.fn().mockResolvedValue(null),
+    getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('@/server/utils/dev-auth', () => ({
+    getDevSession: jest.fn().mockResolvedValue(null),
 }));
 
 import AddArtistPage from '@/app/add-artist/page';
 import ArtistProfile from '@/app/artist/[id]/page';
 import { getServerAuthSession } from '@/server/auth';
-import { getSpotifyHeaders, getSpotifyArtist, getSpotifyImage, getNumberOfSpotifyReleases } from '@/server/utils/queries/externalApiQueries';
 import { getArtistById, getAllLinks } from '@/server/utils/queries/artistQueries';
+import { spotifyProvider, musicPlatformData } from '@/server/utils/musicPlatform';
 
 const mockSession = {
     user: { id: 'user-uuid', email: 'test@test.com', isAdmin: false, isWhiteListed: true },
@@ -82,10 +102,10 @@ describe('Protected routes', () => {
 
     describe('/add-artist (requires authentication)', () => {
         beforeEach(() => {
-            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: { Authorization: 'Bearer token' } });
-            (getSpotifyArtist as jest.Mock).mockResolvedValue({
-                data: { name: 'New Artist', id: 'new-artist-id', images: [] },
-                error: null,
+            (spotifyProvider.getArtist as jest.Mock).mockResolvedValue({
+                platform: 'spotify', platformId: 'some-id', name: 'New Artist',
+                imageUrl: null, followerCount: 0, albumCount: 0, genres: [],
+                profileUrl: '', topTrackName: null,
             });
         });
 
@@ -110,11 +130,11 @@ describe('Protected routes', () => {
             expect(mockRedirect).not.toHaveBeenCalled();
         });
 
-        it('shows an error page (not a redirect) when spotify param is missing, even if authenticated', async () => {
+        it('shows an error page (not a redirect) when no platform param is present, even if authenticated', async () => {
             (getServerAuthSession as jest.Mock).mockResolvedValue(mockSession);
             const jsx = await AddArtistPage({ searchParams: Promise.resolve({}) });
             render(jsx as React.ReactElement);
-            expect(screen.getByText('No Spotify ID provided')).toBeInTheDocument();
+            expect(screen.getByText('No artist ID provided')).toBeInTheDocument();
             expect(mockRedirect).not.toHaveBeenCalled();
         });
     });
@@ -122,9 +142,12 @@ describe('Protected routes', () => {
     describe('/artist/[id] (publicly accessible)', () => {
         beforeEach(() => {
             (getArtistById as jest.Mock).mockResolvedValue(mockArtist);
-            (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: { Authorization: 'Bearer token' } });
-            (getSpotifyImage as jest.Mock).mockResolvedValue({ artistImage: null });
-            (getNumberOfSpotifyReleases as jest.Mock).mockResolvedValue(3);
+            (musicPlatformData.getArtist as jest.Mock).mockResolvedValue({
+                platform: 'spotify', platformId: 'spotify123', name: 'Test Artist',
+                imageUrl: null, followerCount: 0, albumCount: 3, genres: [],
+                profileUrl: '', topTrackName: null,
+            });
+            (musicPlatformData.getArtistImage as jest.Mock).mockResolvedValue(null);
             (getAllLinks as jest.Mock).mockResolvedValue([]);
         });
 
@@ -136,7 +159,9 @@ describe('Protected routes', () => {
             expect(mockRedirect).not.toHaveBeenCalled();
         });
 
-        it('shows edit controls only when authenticated', async () => {
+        it('shows edit controls only when admin', async () => {
+            const { getUserById } = await import('@/server/utils/queries/userQueries');
+            (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: true, isWhiteListed: true });
             (getServerAuthSession as jest.Mock).mockResolvedValue(mockSession);
             const jsx = await ArtistProfile({ params: Promise.resolve({ id: 'artist-uuid' }) });
             render(jsx as React.ReactElement);

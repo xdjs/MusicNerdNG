@@ -17,7 +17,7 @@ describe('BlurbSection', () => {
         artistId: 'test-artist-id'
     };
 
-    const longContent = 'This is a very long content that should be more than 200 characters to trigger the Read More functionality. It needs to be long enough to test the character limit check. This should definitely be over 200 characters now.';
+    const longContent = 'This is a very long content that should be more than 200 characters to trigger the Read more functionality. It needs to be long enough to test the character limit check. This should definitely be over 200 characters now.';
 
     const mockUseArtistBio = useArtistBio as jest.Mock;
 
@@ -77,8 +77,8 @@ describe('BlurbSection', () => {
         });
     });
 
-    describe('Read More Functionality', () => {
-        it('shows Read More button for long content', async () => {
+    describe('Full bio (no truncation)', () => {
+        it('renders the full bio with no Read more / Show less control', async () => {
             mockUseArtistBio.mockReturnValue({
                 bio: longContent,
                 loading: false,
@@ -87,71 +87,10 @@ describe('BlurbSection', () => {
             });
 
             render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.getByText('Read More')).toBeInTheDocument();
-            });
-        });
-
-        it('does not show Read More button for short content', async () => {
-            mockUseArtistBio.mockReturnValue({
-                bio: 'Short content',
-                loading: false,
-                error: null,
-                refetch: jest.fn()
-            });
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.queryByText('Read More')).not.toBeInTheDocument();
-            });
-        });
-
-        it('opens modal when Read More is clicked', async () => {
-            mockUseArtistBio.mockReturnValue({
-                bio: longContent,
-                loading: false,
-                error: null,
-                refetch: jest.fn()
-            });
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.getByText('Read More')).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByText('Read More'));
 
             await waitFor(() => {
-                expect(screen.getByText('Show less')).toBeInTheDocument();
-            });
-        });
-
-        it('closes modal when Show less is clicked', async () => {
-            mockUseArtistBio.mockReturnValue({
-                bio: longContent,
-                loading: false,
-                error: null,
-                refetch: jest.fn()
-            });
-
-            render(<BlurbSection {...defaultProps} />);
-            
-            await waitFor(() => {
-                expect(screen.getByText('Read More')).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByText('Read More'));
-
-            await waitFor(() => {
-                expect(screen.getByText('Show less')).toBeInTheDocument();
-            });
-
-            fireEvent.click(screen.getByText('Show less'));
-
-            await waitFor(() => {
+                expect(screen.getByText(longContent)).toBeInTheDocument();
+                expect(screen.queryByText('Read more')).not.toBeInTheDocument();
                 expect(screen.queryByText('Show less')).not.toBeInTheDocument();
             });
         });
@@ -385,4 +324,35 @@ describe('BlurbSection', () => {
             });
         });
     });
-}); 
+
+    describe('Edit controls are edit-mode only', () => {
+        beforeEach(() => {
+            mockUseArtistBio.mockReturnValue({
+                bio: 'Some bio',
+                loading: false,
+                error: null,
+                refetch: jest.fn(),
+            });
+        });
+
+        it('does NOT show Regenerate or Save to vault in the read view, even for an editor not in edit mode', () => {
+            render(
+                <EditModeContext.Provider value={{ isEditing: false, canEdit: true, toggle: jest.fn() }}>
+                    <BlurbSection {...defaultProps} />
+                </EditModeContext.Provider>
+            );
+            expect(screen.queryByText('Save to vault')).not.toBeInTheDocument();
+            expect(screen.queryByText('Regenerate')).not.toBeInTheDocument();
+        });
+
+        it('shows Regenerate and Save to vault only in edit mode', () => {
+            render(
+                <EditModeContext.Provider value={{ isEditing: true, canEdit: true, toggle: jest.fn() }}>
+                    <BlurbSection {...defaultProps} />
+                </EditModeContext.Provider>
+            );
+            expect(screen.getByText('Save to vault')).toBeInTheDocument();
+            expect(screen.getByText('Regenerate')).toBeInTheDocument();
+        });
+    });
+});

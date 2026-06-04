@@ -1,6 +1,7 @@
 "use client"
 import { forwardRef } from 'react';
 import Link from 'next/link';
+import { Settings } from 'lucide-react';
 import PrivyLogin from './PrivyLogin';
 
 interface LoginProps {
@@ -16,18 +17,19 @@ const isLocalEnvironment = typeof window === 'undefined'
     : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 const NoWalletLogin: React.FC<LoginProps> = ({ buttonStyles }) => {
-    // Keep original footprint (w-12 h-12). When local, render admin link inside.
     return (
-        <div className="w-12 h-12 flex items-center justify-center">
+        <div className="flex items-center gap-1.5">
             {isLocalEnvironment && (
-                <Link
-                    href="/admin"
-                    title="Admin panel"
-                    aria-label="Admin panel"
-                    className={`flex items-center justify-center w-full h-full bg-pastypink hover:bg-gray-200 transition-colors duration-300 text-white ${buttonStyles}`}
-                >
-                    Settings
-                </Link>
+                <>
+                    <Link
+                        href="/admin"
+                        title="Admin panel"
+                        aria-label="Admin panel"
+                        className={`flex items-center justify-center w-10 h-10 rounded-lg bg-pastypink hover:bg-pastypink/80 transition-colors duration-300 text-white ${buttonStyles}`}
+                    >
+                        <Settings size={18} />
+                    </Link>
+                </>
             )}
         </div>
     );

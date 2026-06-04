@@ -45,25 +45,30 @@ function mockSearchResults(results: object[]) {
     });
 }
 
-const spotifyOnlyResult = {
+const externalResult = {
     name: 'New Artist',
-    spotify: '6abc123',
-    isSpotifyOnly: true,
-    images: [{ url: 'https://img.spotify.com/test.jpg', height: 64, width: 64 }],
+    platformId: 'dz123',
+    platform: 'deezer',
+    isExternalOnly: true,
+    imageUrl: 'https://cdn-images.dzcdn.net/test.jpg',
+    profileUrl: 'https://www.deezer.com/artist/dz123',
 };
 
-const spotifyOnlyResult2 = {
+const externalResult2 = {
     name: 'Other Artist',
-    spotify: '6def456',
-    isSpotifyOnly: true,
-    images: [{ url: 'https://img.spotify.com/test2.jpg', height: 64, width: 64 }],
+    platformId: 'dz456',
+    platform: 'deezer',
+    isExternalOnly: true,
+    imageUrl: 'https://cdn-images.dzcdn.net/test2.jpg',
+    profileUrl: 'https://www.deezer.com/artist/dz456',
 };
 
 const dbResult = {
     id: '42',
     name: 'Existing Artist',
     spotify: '6xyz789',
-    isSpotifyOnly: false,
+    isExternalOnly: false,
+    imageUrl: 'https://cdn-images.dzcdn.net/existing.jpg',
     bandcamp: 'existingartist',
 };
 
@@ -96,37 +101,47 @@ describe('SearchBar Add Artist Flow', () => {
         });
     }
 
-    it('shows "Add to MusicNerd | View on Spotify" for Spotify-only results', async () => {
-        await renderAndSearch([spotifyOnlyResult]);
+    it('shows "Add to MusicNerd | View on Deezer" for external results', async () => {
+        await renderAndSearch([externalResult]);
 
         expect(screen.getByText('Add to MusicNerd')).toBeInTheDocument();
-        expect(screen.getByText('View on Spotify')).toBeInTheDocument();
+        expect(screen.getByText('View on Deezer')).toBeInTheDocument();
         expect(screen.getByText('|')).toBeInTheDocument();
     });
 
-    it('renders "View on Spotify" as an <a> tag with correct href', async () => {
-        await renderAndSearch([spotifyOnlyResult]);
+    it('renders "View on Deezer" as an <a> tag with correct href', async () => {
+        await renderAndSearch([externalResult]);
 
-        const link = screen.getByText('View on Spotify').closest('a');
-        expect(link).toHaveAttribute('href', 'https://open.spotify.com/artist/6abc123');
+        const link = screen.getByText('View on Deezer').closest('a');
+        expect(link).toHaveAttribute('href', 'https://www.deezer.com/artist/dz123');
         expect(link).toHaveAttribute('target', '_blank');
         expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     });
 
-    it('calls login() and stores pending ID + timestamp when unauthenticated user clicks a Spotify-only result', async () => {
-        await renderAndSearch([spotifyOnlyResult]);
+    it('triggers login and stores pending ID + platform + timestamp when unauthenticated user clicks external result', async () => {
+        const loginBtn = document.createElement('button');
+        loginBtn.id = 'login-btn';
+        const loginClickSpy = jest.fn();
+        loginBtn.addEventListener('click', loginClickSpy);
+        document.body.appendChild(loginBtn);
+
+        await renderAndSearch([externalResult]);
 
         fireEvent.click(screen.getByText('New Artist'));
 
-        expect(mockLogin).toHaveBeenCalled();
+        expect(loginClickSpy).toHaveBeenCalled();
         expect(mockAddArtist).not.toHaveBeenCalled();
-        expect(mockSessionStorage['pendingAddArtistSpotifyId']).toBe('6abc123');
+        expect(mockSessionStorage['pendingAddArtistPlatformId']).toBe('dz123');
+        expect(mockSessionStorage['pendingAddArtistPlatform']).toBe('deezer');
         expect(mockSessionStorage['pendingAddArtistTimestamp']).toBeDefined();
+
+        document.body.removeChild(loginBtn);
     });
 
     it('completes pending add on mount when session exists and pending ID is fresh', async () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
-        mockSessionStorage['pendingAddArtistSpotifyId'] = '6abc123';
+        mockSessionStorage['pendingAddArtistPlatformId'] = 'dz123';
+        mockSessionStorage['pendingAddArtistPlatform'] = 'deezer';
         mockSessionStorage['pendingAddArtistTimestamp'] = String(Date.now());
         mockAddArtist.mockResolvedValue({ status: 'success', artistId: '99', artistName: 'New Artist' });
 
@@ -136,16 +151,18 @@ describe('SearchBar Add Artist Flow', () => {
         });
 
         await waitFor(() => {
-            expect(mockAddArtist).toHaveBeenCalledWith('6abc123');
+            expect(mockAddArtist).toHaveBeenCalledWith('dz123', 'deezer');
             expect(mockPush).toHaveBeenCalledWith('/artist/99');
         });
-        expect(mockSessionStorage['pendingAddArtistSpotifyId']).toBeUndefined();
+        expect(mockSessionStorage['pendingAddArtistPlatformId']).toBeUndefined();
+        expect(mockSessionStorage['pendingAddArtistPlatform']).toBeUndefined();
         expect(mockSessionStorage['pendingAddArtistTimestamp']).toBeUndefined();
     });
 
     it('discards stale pending add (older than 5 minutes)', async () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
-        mockSessionStorage['pendingAddArtistSpotifyId'] = '6abc123';
+        mockSessionStorage['pendingAddArtistPlatformId'] = 'dz123';
+        mockSessionStorage['pendingAddArtistPlatform'] = 'deezer';
         mockSessionStorage['pendingAddArtistTimestamp'] = String(Date.now() - 6 * 60 * 1000);
 
         mockSearchResults([]);
@@ -156,12 +173,12 @@ describe('SearchBar Add Artist Flow', () => {
         await act(async () => {});
 
         expect(mockAddArtist).not.toHaveBeenCalled();
-        // Keys should still be cleaned up even if expired
-        expect(mockSessionStorage['pendingAddArtistSpotifyId']).toBeUndefined();
+        expect(mockSessionStorage['pendingAddArtistPlatformId']).toBeUndefined();
     });
 
     it('does not trigger pending add when there is no session', async () => {
-        mockSessionStorage['pendingAddArtistSpotifyId'] = '6abc123';
+        mockSessionStorage['pendingAddArtistPlatformId'] = 'dz123';
+        mockSessionStorage['pendingAddArtistPlatform'] = 'deezer';
         mockSessionStorage['pendingAddArtistTimestamp'] = String(Date.now());
 
         mockSearchResults([]);
@@ -170,19 +187,18 @@ describe('SearchBar Add Artist Flow', () => {
         await act(async () => {});
 
         expect(mockAddArtist).not.toHaveBeenCalled();
-        // Pending ID should still be in storage (waiting for session)
-        expect(mockSessionStorage['pendingAddArtistSpotifyId']).toBe('6abc123');
+        expect(mockSessionStorage['pendingAddArtistPlatformId']).toBe('dz123');
     });
 
-    it('calls addArtist and navigates on success when authenticated', async () => {
+    it('calls addArtist with platform args and navigates on success when authenticated', async () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
         mockAddArtist.mockResolvedValue({ status: 'success', artistId: '99', artistName: 'New Artist' });
 
-        await renderAndSearch([spotifyOnlyResult]);
+        await renderAndSearch([externalResult]);
         fireEvent.click(screen.getByText('New Artist'));
 
         await waitFor(() => {
-            expect(mockAddArtist).toHaveBeenCalledWith('6abc123');
+            expect(mockAddArtist).toHaveBeenCalledWith('dz123', 'deezer');
             expect(mockPush).toHaveBeenCalledWith('/artist/99');
         });
     });
@@ -191,7 +207,7 @@ describe('SearchBar Add Artist Flow', () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
         mockAddArtist.mockResolvedValue({ status: 'exists', artistId: '42', artistName: 'New Artist' });
 
-        await renderAndSearch([spotifyOnlyResult]);
+        await renderAndSearch([externalResult]);
         fireEvent.click(screen.getByText('New Artist'));
 
         await waitFor(() => {
@@ -201,19 +217,18 @@ describe('SearchBar Add Artist Flow', () => {
 
     it('shows error toast when addArtist fails and keeps dropdown open', async () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
-        mockAddArtist.mockResolvedValue({ status: 'error', message: 'Spotify API down' });
+        mockAddArtist.mockResolvedValue({ status: 'error', message: 'Platform API down' });
 
-        await renderAndSearch([spotifyOnlyResult]);
+        await renderAndSearch([externalResult]);
         fireEvent.click(screen.getByText('New Artist'));
 
         await waitFor(() => {
             expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({
                 variant: 'destructive',
-                description: 'Spotify API down',
+                description: 'Platform API down',
             }));
         });
         expect(mockPush).not.toHaveBeenCalled();
-        // Dropdown should still be visible on error
         expect(screen.getByText('Add to MusicNerd')).toBeInTheDocument();
     });
 
@@ -221,7 +236,7 @@ describe('SearchBar Add Artist Flow', () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
         mockAddArtist.mockRejectedValue(new Error('Network error'));
 
-        await renderAndSearch([spotifyOnlyResult]);
+        await renderAndSearch([externalResult]);
         fireEvent.click(screen.getByText('New Artist'));
 
         await waitFor(() => {
@@ -230,7 +245,6 @@ describe('SearchBar Add Artist Flow', () => {
                 description: 'Failed to add artist - please try again',
             }));
         });
-        // Dropdown should still be visible on error
         expect(screen.getByText('Add to MusicNerd')).toBeInTheDocument();
     });
 
@@ -248,27 +262,22 @@ describe('SearchBar Add Artist Flow', () => {
         let resolveAdd!: (val: unknown) => void;
         mockAddArtist.mockReturnValue(new Promise(r => { resolveAdd = r; }));
 
-        await renderAndSearch([spotifyOnlyResult, spotifyOnlyResult2, dbResult]);
+        await renderAndSearch([externalResult, externalResult2, dbResult]);
 
-        // Click the first Spotify-only result
         fireEvent.click(screen.getByText('New Artist'));
 
         await waitFor(() => {
-            // The clicked result shows "Adding..." and is disabled
             expect(screen.getByText('Adding...')).toBeInTheDocument();
             const addingButton = screen.getByText('Adding...').closest('button');
             expect(addingButton).toBeDisabled();
 
-            // The other Spotify result is NOT disabled
             const otherButton = screen.getByText('Other Artist').closest('button');
             expect(otherButton).not.toBeDisabled();
 
-            // The DB result is NOT disabled
             const dbButton = screen.getByText('Existing Artist').closest('button');
             expect(dbButton).not.toBeDisabled();
         });
 
-        // Resolve to clean up
         resolveAdd({ status: 'success', artistId: '99' });
     });
 
@@ -276,10 +285,9 @@ describe('SearchBar Add Artist Flow', () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
         mockAddArtist.mockResolvedValue({ status: 'success', artistId: '99', artistName: 'New Artist' });
 
-        await renderAndSearch([spotifyOnlyResult]);
+        await renderAndSearch([externalResult]);
         fireEvent.click(screen.getByText('New Artist'));
 
-        // After success, dropdown should close
         await waitFor(() => {
             expect(mockPush).toHaveBeenCalledWith('/artist/99');
             expect(screen.queryByText('Add to MusicNerd')).not.toBeInTheDocument();

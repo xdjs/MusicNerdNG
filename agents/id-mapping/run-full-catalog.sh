@@ -103,15 +103,15 @@ report_run() {
     local resolved excluded skipped errors
     local high medium conflicts mismatches ambiguous
     # Note: session report uses variable whitespace for alignment, so [[:space:]]+ not literal space
-    resolved=$(grep -ohE 'Resolved:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    excluded=$(grep -ohE 'Excluded:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    skipped=$(grep -ohE 'Skipped/Unresolved[^:]*:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+$' || echo "0")
-    errors=$(grep -ohE 'Errors:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    high=$(grep -ohE 'High:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    medium=$(grep -ohE 'Medium:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    conflicts=$(grep -ohE 'Conflicts:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    mismatches=$(grep -ohE 'Name mismatches:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
-    ambiguous=$(grep -ohE 'Too ambiguous:[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    resolved=$(grep -ohE '\*?\*?Resolved\*?\*?:\*?\*?[[:space:]]+\*?\*?[0-9]+\*?\*?[[:space:]]+total' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    excluded=$(grep -ohE '\*?\*?Excluded\*?\*?:\*?\*?[[:space:]]+\*?\*?[0-9]+\*?\*?[[:space:]]+total' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    skipped=$(grep -ohE '\*?\*?Skipped/Unresolved[^:]*\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+$' || echo "0")
+    errors=$(grep -ohE '\*?\*?Errors\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    high=$(grep -ohE '\*?\*?High\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    medium=$(grep -ohE '\*?\*?Medium\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    conflicts=$(grep -ohE '\*?\*?Conflicts[^:]*\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    mismatches=$(grep -ohE '\*?\*?Name mismatches\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
+    ambiguous=$(grep -ohE '\*?\*?Too ambiguous\*?\*?:\*?\*?[[:space:]]+[0-9]+' "$logfile" 2>/dev/null | tail -1 | grep -oE '[0-9]+' || echo "0")
 
     payload="$payload,
     \"endedAt\": \"$ended_iso\""
@@ -245,7 +245,7 @@ classify_failure() {
   fi
 
   # No session report (agent started but didn't finish)
-  if [[ $exit_code -eq 0 ]] && ! grep -q '=== ID Mapping Session Report ===' "$logfile" 2>/dev/null; then
+  if [[ $exit_code -eq 0 ]] && ! grep -q 'ID Mapping Session Report' "$logfile" 2>/dev/null; then
     fail_reason="no session report in output (agent didn't complete workflow)"
     fail_category="transient"
     return
@@ -288,7 +288,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   # Check for success first — exit 0 + session report = success, skip failure classification
   # This prevents agent output text (e.g. "unauthenticated MCP initialization request failed")
   # from being misclassified as an auth error by the log content patterns.
-  if [[ $exit_code -eq 0 ]] && grep -q '=== ID Mapping Session Report ===' "$logfile" 2>/dev/null; then
+  if [[ $exit_code -eq 0 ]] && grep -q 'ID Mapping Session Report' "$logfile" 2>/dev/null; then
     fail_reason=""
     fail_category=""
     # Success

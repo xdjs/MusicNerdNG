@@ -19,7 +19,7 @@ function StaticPlatformLink({ link, descriptor, image }: { link: string; descrip
 
 export default async function ArtistLinks({ isMonetized, artist, spotifyImg, availableLinks, isOpenOnLoad = false, canEdit = false, showAddButton = true }: { isMonetized: boolean; artist: Artist; spotifyImg: string; availableLinks: UrlMap[]; isOpenOnLoad: boolean; canEdit?: boolean; showAddButton?: boolean }) {
     let artistLinks = await getArtistLinks(artist);
-    artistLinks = artistLinks.filter((el) => el.isMonetized === isMonetized && el.siteName !== 'spotify');
+    artistLinks = artistLinks.filter((el) => el.isMonetized === isMonetized && el.siteName !== 'spotify' && el.siteName !== 'deezer');
     
     // Render differently depending on monetization flag
     if (isMonetized) {
@@ -71,6 +71,15 @@ export default async function ArtistLinks({ isMonetized, artist, spotifyImg, ava
                     descriptor="Listen on Spotify"
                     link={`https://open.spotify.com/artist/${artist.spotify}`}
                     image="/siteIcons/spotify_icon.svg"
+                />
+            )}
+
+            {artist.deezer && artist.deezer.trim() !== "" && (
+                <StaticPlatformLink
+                    key="deezer"
+                    descriptor="Listen on Deezer"
+                    link={`https://www.deezer.com/artist/${artist.deezer}`}
+                    image="/siteIcons/deezer_icon.svg"
                 />
             )}
 

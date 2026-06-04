@@ -5,27 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addArtist } from "../../actions/addArtist";
 import { useSession } from "next-auth/react";
+import type { MusicPlatformArtist } from "@/server/utils/musicPlatform";
 
-interface SpotifyArtist {
-    id: string;
-    name: string;
-    images: Array<{
-        url: string;
-        height: number;
-        width: number;
-    }>;
-    followers: {
-        total: number;
-    };
-    genres: string[];
-    type: string;
-    uri: string;
-    external_urls: {
-        spotify: string;
-    };
-}
-
-export default function AddArtistContent({ initialArtist }: { initialArtist: SpotifyArtist }) {
+export default function AddArtistContent({ initialArtist }: { initialArtist: MusicPlatformArtist }) {
     const router = useRouter();
     const [adding, setAdding] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -48,7 +30,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
         setError(null);
 
         try {
-            const result = await addArtist(initialArtist.id);
+            const result = await addArtist(initialArtist.platformId, initialArtist.platform);
 
             if (result.status === "success" && result.artistId) {
                 router.push(`/artist/${result.artistId}`);
@@ -90,9 +72,9 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
                     </div>
                 )}
                 <div className="flex flex-col md:flex-row gap-8 items-center">
-                    {initialArtist.images?.[0] && (
+                    {initialArtist.imageUrl && (
                         <img
-                            src={initialArtist.images[0].url}
+                            src={initialArtist.imageUrl}
                             alt={initialArtist.name}
                             className="w-48 h-48 object-cover rounded-lg"
                         />
@@ -100,9 +82,11 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Spo
                     <div className="flex-1">
                         <h1 className="text-3xl font-bold mb-4">{initialArtist.name}</h1>
                         <div className="space-y-2 mb-6">
-                            <p className="text-gray-600">
-                                {initialArtist.followers.total.toLocaleString()} followers on Spotify
-                            </p>
+                            {initialArtist.followerCount != null && initialArtist.followerCount > 0 && (
+                                <p className="text-gray-600">
+                                    {initialArtist.followerCount.toLocaleString()} followers
+                                </p>
+                            )}
                             {initialArtist.genres.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                     {initialArtist.genres.map(genre => (

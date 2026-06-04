@@ -41,7 +41,30 @@ const PrivyLogin = forwardRef<HTMLButtonElement, PrivyLoginProps>(
     const [hasNewUGC, setHasNewUGC] = useState(false);
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [pendingNextAuthLogin, setPendingNextAuthLogin] = useState(false);
+    const [hasDashboardClaim, setHasDashboardClaim] = useState(false);
+    const [claimedArtistId, setClaimedArtistId] = useState<string | null>(null);
     const reloadingRef = useRef(false);
+
+    // Check for approved claim via API (replaces unreliable localStorage check)
+    useEffect(() => {
+      if (!session) {
+        setHasDashboardClaim(false);
+        setClaimedArtistId(null);
+        return;
+      }
+      const controller = new AbortController();
+      fetch("/api/user/has-claim", { signal: controller.signal })
+        .then(r => r.json())
+        .then(d => {
+          setHasDashboardClaim(!!d.hasClaim);
+          setClaimedArtistId(d.artistId ?? null);
+        })
+        .catch(() => {
+          setHasDashboardClaim(false);
+          setClaimedArtistId(null);
+        });
+      return () => controller.abort();
+    }, [session]);
 
     const { login } = useLogin({
       onComplete: async (params) => {
@@ -425,6 +448,13 @@ const PrivyLogin = forwardRef<HTMLButtonElement, PrivyLoginProps>(
                 )}
               </Link>
             </DropdownMenuItem>
+            {hasDashboardClaim && claimedArtistId && (
+              <DropdownMenuItem asChild>
+                <Link href={`/artist/${claimedArtistId}`} prefetch>
+                  My Artist Profile
+                </Link>
+              </DropdownMenuItem>
+            )}
             {session?.user?.isAdmin && (
               <DropdownMenuItem asChild className="flex items-center gap-2">
                 <Link href="/admin" prefetch>

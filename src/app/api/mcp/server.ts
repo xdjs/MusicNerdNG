@@ -327,21 +327,23 @@ server.registerTool(
   "get_unmapped_artists",
   {
     title: "Get Unmapped Artists",
-    description: "Get artists that have a Spotify ID but no mapping for a given platform. Use this to find artists that need cross-platform ID resolution.",
+    description: "Get artists that have a platform ID but no mapping for a given target platform. Use basePlatform to select the source (default: spotify, use 'deezer' for Deezer-primary workflows).",
     inputSchema: {
       platform: z.string().describe("The target platform to check for missing mappings (e.g. deezer, apple_music, musicbrainz, wikidata, tidal, amazon_music, youtube_music)"),
       limit: z.number().optional().default(50).describe("Maximum number of results to return (default 50, max 200)"),
       offset: z.number().optional().default(0).describe("Offset for pagination (default 0)"),
+      basePlatform: z.enum(["spotify", "deezer"]).optional().default("spotify").describe("Which platform ID to require on source artists (default: spotify). Use 'deezer' to find artists with Deezer IDs that lack mappings."),
     },
   },
-  async ({ platform, limit, offset }) => {
-    console.log(`[MCP] get_unmapped_artists called with platform="${platform}", limit=${limit}, offset=${offset}`);
+  async ({ platform, limit, offset, basePlatform }) => {
+    console.log(`[MCP] get_unmapped_artists called with platform="${platform}", basePlatform="${basePlatform}", limit=${limit}, offset=${offset}`);
 
     try {
       const effectiveLimit = Math.min(Math.max(limit ?? 50, 1), 200);
       const effectiveOffset = Math.max(offset ?? 0, 0);
 
-      const result = await getUnmappedArtists(platform, effectiveLimit, effectiveOffset);
+      const effectiveBasePlatform = (basePlatform === 'deezer' ? 'deezer' : 'spotify') as 'spotify' | 'deezer';
+      const result = await getUnmappedArtists(platform, effectiveLimit, effectiveOffset, effectiveBasePlatform);
 
       return {
         content: [{

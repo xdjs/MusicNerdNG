@@ -21,6 +21,13 @@ export const OPENAI_API_KEY = validateEnv(process.env.OPENAI_API_KEY, 'OPENAI_AP
 export const OPENAI_TIMEOUT_MS = parseInt(process.env.OPENAI_TIMEOUT_MS || '60000', 10);
 export const OPENAI_MODEL = process.env.OPENAI_MODEL;
 
+// Supabase Storage
+export const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+// Gemini
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
+
 // Privy Configuration
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 export const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET ?? "";

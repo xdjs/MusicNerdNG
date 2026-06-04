@@ -2,6 +2,8 @@ import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, jsonb, numer
 import { relations, sql } from "drizzle-orm"
 
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
+export const claimStatus = pgEnum("claim_status", ['pending', 'approved', 'rejected'])
+export const sourceStatus = pgEnum("source_status", ['pending', 'approved', 'rejected'])
 
 
 export const funfacts = pgTable("funfacts", {
@@ -172,8 +174,10 @@ export const artists = pgTable("artists", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	supercollector: text(),
 	bio: text(),
+	customImage: text("custom_image"),
 	webmapdata: jsonb(),
 	nodePfp: jsonb("node_pfp"),
+	deezer: text(),
 }, (table) => [
 	index("artists_added_by_created_at_idx").using("btree", table.addedBy.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("artists_lcname_btree_idx").using("btree", table.lcname.asc().nullsLast().op("text_ops")),
@@ -181,6 +185,7 @@ export const artists = pgTable("artists", {
 	index("artists_lcname_trgm_idx").using("gist", table.lcname.asc().nullsLast().op("gist_trgm_ops")),
 	index("artists_name_trgm_idx").using("gist", table.name.asc().nullsLast().op("gist_trgm_ops")),
 	uniqueIndex("artists_spotify_uniq").using("btree", table.spotify.asc().nullsLast().op("text_ops")).where(sql`(spotify IS NOT NULL)`),
+	uniqueIndex("artists_deezer_uniq").using("btree", table.deezer.asc().nullsLast().op("text_ops")).where(sql`(deezer IS NOT NULL)`),
 	index("idx_artists_added_by").using("btree", table.addedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_artists_name").using("btree", table.name.asc().nullsLast().op("text_ops")),
 	index("idx_artists_name_gin").using("gin", sql`to_tsvector('english'::regconfig, name)`),
@@ -323,6 +328,86 @@ export const mcpAuditLog = pgTable("mcp_audit_log", {
 	pgPolicy("mnweb_insert_mcp_audit_log", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
 ]);
 
+export const artistClaims = pgTable("artist_claims", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	userId: uuid("user_id").notNull(),
+	artistId: uuid("artist_id").notNull(),
+	status: claimStatus().default('pending').notNull(),
+	referenceCode: text("reference_code"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	// Partial unique index: only one active (pending or approved) claim per artist at a time.
+	// Rejected claims are preserved for audit history (and may coexist freely).
+	uniqueIndex("artist_claims_artist_id_active_uniq")
+		.using("btree", table.artistId.asc().nullsLast().op("uuid_ops"))
+		.where(sql`status IN ('pending', 'approved')`),
+	index("idx_artist_claims_user_id").using("btree", table.userId.asc().nullsLast().op("uuid_ops")),
+	index("idx_artist_claims_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.userId],
+		foreignColumns: [users.id],
+		name: "artist_claims_user_id_fkey"
+	}),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_claims_artist_id_fkey"
+	}),
+	pgPolicy("mnweb_delete_artist_claims", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_claims", { as: "permissive", for: "insert", to: ["mnweb"] }),
+	pgPolicy("mnweb_select_artist_claims", { as: "permissive", for: "select", to: ["mnweb"] }),
+	pgPolicy("mnweb_update_artist_claims", { as: "permissive", for: "update", to: ["mnweb"] }),
+]);
+
+export const artistVaultSources = pgTable("artist_vault_sources", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	url: text().notNull(),
+	title: text(),
+	snippet: text(),
+	type: text(),
+	status: sourceStatus().default('pending').notNull(),
+	fileName: text("file_name"),
+	fileSize: integer("file_size"),
+	filePath: text("file_path"),
+	contentType: text("content_type"),
+	extractedText: text("extracted_text"),
+	ogImage: text("og_image"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("idx_artist_vault_sources_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_vault_sources_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_delete_artist_vault_sources", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_vault_sources", { as: "permissive", for: "insert", to: ["mnweb"] }),
+	pgPolicy("mnweb_select_artist_vault_sources", { as: "permissive", for: "select", to: ["mnweb"] }),
+	pgPolicy("mnweb_update_artist_vault_sources", { as: "permissive", for: "update", to: ["mnweb"] }),
+]);
+
+export const artistBioVersions = pgTable("artist_bio_versions", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	bioText: text("bio_text").notNull(),
+	isPinned: boolean("is_pinned").default(false).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("idx_artist_bio_versions_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_bio_versions_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_bio_versions", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_bio_versions", { as: "permissive", for: "insert", to: ["mnweb"] }),
+	pgPolicy("mnweb_update_artist_bio_versions", { as: "permissive", for: "update", to: ["mnweb"] }),
+	pgPolicy("mnweb_delete_artist_bio_versions", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
 export const exclusionReason = pgEnum("exclusion_reason", [
   "conflict",       // platform ID already mapped to different artist
   "name_mismatch",  // Deezer name doesn't match MusicNerd name
@@ -424,7 +509,7 @@ export const agentRuns = pgTable("agent_runs", {
 	pgPolicy("mnweb_select_agent_runs", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
 	pgPolicy("mnweb_insert_agent_runs", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
 	pgPolicy("mnweb_update_agent_runs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true` }),
-]);
+])
 
 // Relations
 export const artistsRelations = relations(artists, ({one, many}) => ({
@@ -441,11 +526,22 @@ export const artistsRelations = relations(artists, ({one, many}) => ({
 	featureds_featuredCollector: many(featured, {
 		relationName: "featured_featuredCollector_artists_id"
 	}),
+	artistClaims: many(artistClaims),
+	artistVaultSources: many(artistVaultSources),
+	artistBioVersions: many(artistBioVersions),
+}));
+
+export const artistBioVersionsRelations = relations(artistBioVersions, ({one}) => ({
+	artist: one(artists, {
+		fields: [artistBioVersions.artistId],
+		references: [artists.id]
+	}),
 }));
 
 export const usersRelations = relations(users, ({many}) => ({
 	artists: many(artists),
 	ugcresearches: many(ugcresearch),
+	artistClaims: many(artistClaims),
 }));
 
 export const ugcresearchRelations = relations(ugcresearch, ({one}) => ({
@@ -469,6 +565,24 @@ export const featuredRelations = relations(featured, ({one}) => ({
 		fields: [featured.featuredCollector],
 		references: [artists.id],
 		relationName: "featured_featuredCollector_artists_id"
+	}),
+}));
+
+export const artistClaimsRelations = relations(artistClaims, ({one}) => ({
+	user: one(users, {
+		fields: [artistClaims.userId],
+		references: [users.id]
+	}),
+	artist: one(artists, {
+		fields: [artistClaims.artistId],
+		references: [artists.id]
+	}),
+}));
+
+export const artistVaultSourcesRelations = relations(artistVaultSources, ({one}) => ({
+	artist: one(artists, {
+		fields: [artistVaultSources.artistId],
+		references: [artists.id]
 	}),
 }));
 

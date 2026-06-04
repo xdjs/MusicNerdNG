@@ -5,7 +5,7 @@ import { jest } from "@jest/globals";
 jest.mock("@/server/utils/idMappingService", () => ({
   getUnmappedArtists: jest.fn(),
   resolveArtistMapping: jest.fn(),
-  getMappingStats: jest.fn().mockResolvedValue({ totalArtistsWithSpotify: 0, platformStats: [] }),
+  getMappingStats: jest.fn().mockResolvedValue({ totalArtistsWithSpotify: 0, totalArtistsWithDeezer: 0, platformStats: [] }),
   getArtistMappings: jest.fn(),
   VALID_MAPPING_PLATFORMS: new Set(["deezer", "apple_music", "musicbrainz", "wikidata", "tidal", "amazon_music", "youtube_music"]),
   VALID_SOURCES: new Set(["wikidata", "musicbrainz", "name_search", "manual"]),
@@ -49,6 +49,7 @@ describe("get_mapping_stats MCP tool", () => {
     const s = await setup();
     (s.getMappingStats as jest.Mock).mockResolvedValue({
       totalArtistsWithSpotify: 1000,
+      totalArtistsWithDeezer: 390,
       platformStats: [
         { platform: "deezer", mappedCount: 500, percentage: 50 },
         { platform: "apple_music", mappedCount: 300, percentage: 30 },
@@ -58,6 +59,7 @@ describe("get_mapping_stats MCP tool", () => {
     const result = await callTool(s);
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.totalArtistsWithSpotify).toBe(1000);
+    expect(parsed.totalArtistsWithDeezer).toBe(390);
     expect(parsed.platformStats).toHaveLength(2);
     expect(parsed.platformStats[0].platform).toBe("deezer");
     expect(parsed.platformStats[0].mappedCount).toBe(500);

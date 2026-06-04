@@ -13,6 +13,7 @@ export interface ArtistDetail {
   name: string;
   bio: string | null;
   spotifyId: string | null;
+  deezerId: string | null;
   socialLinks: Record<string, SocialLink>;
 }
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { NextResponse } from 'next/server';
 
@@ -14,12 +15,15 @@ jest.mock('next/server', () => ({
 }));
 
 // Mock dependencies
-jest.mock('@/server/lib/openai', () => ({
-  openai: {
-    responses: {
-      create: jest.fn()
-    }
-  }
+const mockGenerateContent = jest.fn();
+jest.mock('@/server/lib/gemini', () => ({
+  getGemini: jest.fn(() => ({
+    models: {
+      generateContent: mockGenerateContent,
+    },
+  })),
+  GEMINI_MODEL_PRO: 'gemini-2.5-pro',
+  GEMINI_MODEL_FLASH: 'gemini-2.5-flash',
 }));
 
 jest.mock('@/server/utils/queries/artistQueries', () => ({
@@ -30,7 +34,6 @@ jest.mock('@/server/db/drizzle', () => ({
   db: {
     update: jest.fn().mockReturnValue({
       set: jest.fn().mockReturnValue({
-        // Ensure the mocked function resolves to void without type errors
         where: jest.fn(() => Promise.resolve()),
       }),
     }),
@@ -52,28 +55,25 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
   getSpotifyHeaders: jest.fn()
 }));
 
-describe('artistBioQuery - OPENAI_MODEL usage', () => {
+jest.mock('@/server/utils/queries/dashboardQueries', () => ({
+  getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+}));
+
+describe('artistBioQuery - Gemini bio generation', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
     mockNextResponseJson.mockClear();
+    mockGenerateContent.mockClear();
   });
 
   afterEach(() => {
     process.env = originalEnv;
   });
 
-  it('should use OPENAI_MODEL environment variable in OpenAI API call', async () => {
-    // Set custom model in environment
-    process.env = { 
-      ...originalEnv, 
-      OPENAI_MODEL: 'gpt-4-custom',
-      OPENAI_API_KEY: 'test-key',
-      OPENAI_TIMEOUT_MS: '60000'
-    };
-
+  it('should generate a bio using Gemini', async () => {
     // Mock the artist data
     const mockArtist = {
       id: 'test-id',
@@ -87,51 +87,38 @@ describe('artistBioQuery - OPENAI_MODEL usage', () => {
       wikipedia: null
     } as any;
 
-    // Mock the OpenAI response
-    const mockOpenAIResponse = {
-      output_text: 'Generated bio text'
+    // Mock the Gemini response
+    const mockGeminiResponse = {
+      text: 'Generated bio text from Gemini'
     } as any;
 
     // Import mocked modules
-    const { openai } = await import('@/server/lib/openai');
     const { getArtistById } = await import('@/server/utils/queries/artistQueries');
-    
+
     // Setup mocks
     (getArtistById as any).mockResolvedValue(mockArtist);
-    (openai.responses.create as any).mockResolvedValue(mockOpenAIResponse);
+    mockGenerateContent.mockResolvedValue(mockGeminiResponse);
 
     // Import and call the function
-    const { getOpenAIBio } = await import('@/server/utils/queries/artistBioQuery');
-    const result = await getOpenAIBio('test-id');
+    const { generateArtistBio } = await import('@/server/utils/queries/artistBioQuery');
+    await generateArtistBio('test-id');
 
-    // Verify the OpenAI call was made with the correct model
-    expect(openai.responses.create).toHaveBeenCalledWith(
+    // Verify Gemini was called
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gpt-4-custom',
-        prompt: expect.objectContaining({
-          id: expect.any(String),
-          variables: expect.objectContaining({
-            artist_name: 'Test Artist',
-            artist_data: expect.any(String)
-          })
-        })
+        model: 'gemini-2.5-pro',
+        contents: expect.stringContaining('Test Artist'),
+        config: expect.objectContaining({
+          systemInstruction: expect.any(String),
+        }),
       })
     );
 
     // Verify NextResponse.json was called with the bio
-    expect(mockNextResponseJson).toHaveBeenCalledWith({ bio: 'Generated bio text' });
+    expect(mockNextResponseJson).toHaveBeenCalledWith({ bio: 'Generated bio text from Gemini' });
   });
 
-  it('should not include model parameter when OPENAI_MODEL is not set', async () => {
-    // Remove OPENAI_MODEL from environment
-    process.env = { 
-      ...originalEnv,
-      OPENAI_API_KEY: 'test-key',
-      OPENAI_TIMEOUT_MS: '60000'
-    };
-    delete process.env.OPENAI_MODEL;
-
-    // Mock the artist data
+  it('should use Google Search grounding when vault sources exist', async () => {
     const mockArtist = {
       id: 'test-id',
       name: 'Test Artist',
@@ -144,101 +131,42 @@ describe('artistBioQuery - OPENAI_MODEL usage', () => {
       wikipedia: null
     } as any;
 
-    // Mock the OpenAI response
-    const mockOpenAIResponse = {
-      output_text: 'Generated bio text'
+    const mockGeminiResponse = {
+      text: 'Bio with vault context'
     } as any;
 
-    // Import mocked modules
-    const { openai } = await import('@/server/lib/openai');
     const { getArtistById } = await import('@/server/utils/queries/artistQueries');
-    
-    // Setup mocks
+    const { getVaultSourcesByArtistId } = await import('@/server/utils/queries/dashboardQueries');
+
     (getArtistById as any).mockResolvedValue(mockArtist);
-    (openai.responses.create as any).mockResolvedValue(mockOpenAIResponse);
+    mockGenerateContent.mockResolvedValue(mockGeminiResponse);
+    (getVaultSourcesByArtistId as any).mockResolvedValue([
+      { url: 'https://example.com/article', title: 'Test Article', snippet: 'A snippet', extractedText: 'Some text' },
+    ]);
 
-    // Import and call the function
-    const { getOpenAIBio } = await import('@/server/utils/queries/artistBioQuery');
-    const result = await getOpenAIBio('test-id');
+    const { generateArtistBio } = await import('@/server/utils/queries/artistBioQuery');
+    await generateArtistBio('test-id');
 
-    // Verify the OpenAI call was made WITHOUT a model parameter
-    expect(openai.responses.create).toHaveBeenCalledWith(
+    // Verify Gemini was called with google search tool
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.objectContaining({
-          id: expect.any(String),
-          variables: expect.objectContaining({
-            artist_name: 'Test Artist',
-            artist_data: expect.any(String)
-          })
-        })
+        config: expect.objectContaining({
+          tools: [{ googleSearch: {} }],
+        }),
       })
     );
-
-    // Verify that the call does NOT contain a model property
-    const callArgs = (openai.responses.create as any).mock.calls[0][0];
-    expect(callArgs).not.toHaveProperty('model');
-
-    // Verify NextResponse.json was called with the bio
-    expect(mockNextResponseJson).toHaveBeenCalledWith({ bio: 'Generated bio text' });
   });
 
-  it('should not include model parameter when OPENAI_MODEL is empty string', async () => {
-    // Set empty OPENAI_MODEL value
-    process.env = { 
-      ...originalEnv,
-      OPENAI_API_KEY: 'test-key',
-      OPENAI_TIMEOUT_MS: '60000',
-      OPENAI_MODEL: ''
-    };
-
-    // Mock the artist data
-    const mockArtist = {
-      id: 'test-id',
-      name: 'Test Artist',
-      spotify: null,
-      instagram: null,
-      x: null,
-      soundcloud: null,
-      youtube: null,
-      youtubechannel: null,
-      wikipedia: null
-    } as any;
-
-    // Mock the OpenAI response
-    const mockOpenAIResponse = {
-      output_text: 'Generated bio text'
-    } as any;
-
-    // Import mocked modules
-    const { openai } = await import('@/server/lib/openai');
+  it('should return 404 when artist not found', async () => {
     const { getArtistById } = await import('@/server/utils/queries/artistQueries');
-    
-    // Setup mocks
-    (getArtistById as any).mockResolvedValue(mockArtist);
-    (openai.responses.create as any).mockResolvedValue(mockOpenAIResponse);
+    (getArtistById as any).mockResolvedValue(null);
 
-    // Import and call the function
-    const { getOpenAIBio } = await import('@/server/utils/queries/artistBioQuery');
-    const result = await getOpenAIBio('test-id');
+    const { generateArtistBio } = await import('@/server/utils/queries/artistBioQuery');
+    await generateArtistBio('nonexistent-id');
 
-    // Verify the OpenAI call was made WITHOUT a model parameter
-    expect(openai.responses.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.objectContaining({
-          id: expect.any(String),
-          variables: expect.objectContaining({
-            artist_name: 'Test Artist',
-            artist_data: expect.any(String)
-          })
-        })
-      })
+    expect(mockNextResponseJson).toHaveBeenCalledWith(
+      { error: "Artist not found" },
+      { status: 404 }
     );
-
-    // Verify that the call does NOT contain a model property (empty string is falsy)
-    const callArgs = (openai.responses.create as jest.MockedFunction<typeof openai.responses.create>).mock.calls[0][0];
-    expect(callArgs).not.toHaveProperty('model');
-
-    // Verify NextResponse.json was called with the bio
-    expect(mockNextResponseJson).toHaveBeenCalledWith({ bio: 'Generated bio text' });
   });
 });

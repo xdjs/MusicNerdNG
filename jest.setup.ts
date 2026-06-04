@@ -36,36 +36,38 @@ configure({
     testIdAttribute: 'data-testid',
 });
 
-// Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: jest.fn().mockImplementation(query => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: jest.fn(),
-        removeListener: jest.fn(),
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-        dispatchEvent: jest.fn(),
-    })),
-});
+// Mock window.matchMedia (skip in node environment, e.g. API smoke tests)
+if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: jest.fn().mockImplementation(query => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addListener: jest.fn(),
+            removeListener: jest.fn(),
+            addEventListener: jest.fn(),
+            removeEventListener: jest.fn(),
+            dispatchEvent: jest.fn(),
+        })),
+    });
 
-// Mock IntersectionObserver
-const mockIntersectionObserver = jest.fn();
-mockIntersectionObserver.mockReturnValue({
-    observe: () => null,
-    unobserve: () => null,
-    disconnect: () => null
-});
-window.IntersectionObserver = mockIntersectionObserver;
+    // Mock IntersectionObserver
+    const mockIntersectionObserver = jest.fn();
+    mockIntersectionObserver.mockReturnValue({
+        observe: () => null,
+        unobserve: () => null,
+        disconnect: () => null
+    });
+    window.IntersectionObserver = mockIntersectionObserver;
 
-// Mock ResizeObserver
-window.ResizeObserver = jest.fn().mockImplementation(() => ({
-    observe: jest.fn(),
-    unobserve: jest.fn(),
-    disconnect: jest.fn(),
-}));
+    // Mock ResizeObserver
+    window.ResizeObserver = jest.fn().mockImplementation(() => ({
+        observe: jest.fn(),
+        unobserve: jest.fn(),
+        disconnect: jest.fn(),
+    }));
+}
 
 // Mock window.fetch
 global.fetch = jest.fn(() =>
@@ -129,6 +131,9 @@ jest.mock('@/server/db/drizzle', () => {
             artists: makeTable(),
             users: makeTable(),
             ugcresearch: makeTable(),
+            artistClaims: makeTable(),
+            artistVaultSources: makeTable(),
+            artistIdMappings: makeTable(),
         },
         insert: jest.fn(),
         update: jest.fn(),
@@ -156,7 +161,7 @@ try {
         // top-level functions
         ['insert', 'update', 'delete', 'select', 'from', 'where', 'limit', 'execute'].forEach(k => ensureFn(db, k));
 
-        const tables = ['urlmap', 'artists', 'users', 'ugcresearch', 'artistIdMappings'];
+        const tables = ['urlmap', 'artists', 'users', 'ugcresearch', 'artistClaims', 'artistVaultSources', 'artistIdMappings'];
         tables.forEach(t => {
             if (!db.query[t]) db.query[t] = {};
             ['findFirst', 'findMany', 'update', 'insert', 'delete'].forEach(k => ensureFn(db.query[t], k));
@@ -210,6 +215,32 @@ jest.mock('openai', () => {
         }
     };
 });
+
+// Mock the Google GenAI SDK to avoid real API calls
+jest.mock('@google/genai', () => ({
+    GoogleGenAI: class {
+        models = {
+            generateContent: jest.fn().mockResolvedValue({ text: 'mocked gemini response' })
+        };
+    }
+}));
+
+// Mock musicPlatformData to prevent ESM p-limit import chain in consumer tests.
+// Tests for the providers themselves (spotifyProvider.test.ts, deezerProvider.test.ts,
+// artistMusicPlatformDataProvider.test.ts) mock p-limit directly and use jest.resetModules().
+jest.mock('@/server/utils/musicPlatform', () => ({
+    musicPlatformData: {
+        getArtist: jest.fn().mockResolvedValue(null),
+        getArtistImage: jest.fn().mockResolvedValue(null),
+        getTopTrackName: jest.fn().mockResolvedValue(null),
+        searchArtists: jest.fn().mockResolvedValue([]),
+        getArtistImages: jest.fn().mockResolvedValue(new Map()),
+        getActivePlatform: jest.fn().mockReturnValue(null),
+    },
+    SpotifyProvider: jest.fn(),
+    DeezerProvider: jest.fn(),
+    ArtistMusicPlatformDataProvider: jest.fn(),
+}));
 
 // Mock server actions to prevent function not found errors
 jest.mock('@/app/actions/serverActions', () => ({

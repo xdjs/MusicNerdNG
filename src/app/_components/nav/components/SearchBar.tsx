@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Search, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSession } from "next-auth/react";
-import { useLogin } from "@privy-io/react-auth";
 import { addArtist } from "@/app/actions/addArtist";
+import { isDevMode } from "@/lib/dev-mode";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -22,22 +22,20 @@ const queryClient = new QueryClient({
     },
 })
 
-interface SpotifyArtistImage {
-  url: string;
-  height: number;
-  width: number;
-}
-
 interface SearchResult extends Artist {
-  isSpotifyOnly?: boolean;
-  images?: SpotifyArtistImage[];
+  isExternalOnly?: boolean;
+  imageUrl?: string | null;
+  platformId?: string;
+  platform?: string;
+  profileUrl?: string;
 }
 
 interface SearchBarProps {
     isTopSide?: boolean;
 }
 
-const PENDING_ADD_KEY = 'pendingAddArtistSpotifyId';
+const PENDING_ADD_KEY = 'pendingAddArtistPlatformId';
+const PENDING_ADD_PLATFORM_KEY = 'pendingAddArtistPlatform';
 const PENDING_ADD_TS_KEY = 'pendingAddArtistTimestamp';
 const PENDING_ADD_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -52,13 +50,12 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     const search = searchParams.get('search');
     const blurTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
     const { data: session } = useSession();
-    const { login } = useLogin();
-    const [addingSpotifyId, setAddingSpotifyId] = useState<string | null>(null);
+    const [addingPlatformId, setAddingPlatformId] = useState<string | null>(null);
 
-    const handleAddArtist = useCallback(async (spotifyId: string) => {
+    const handleAddArtist = useCallback(async (platformId: string, platform: string = 'deezer') => {
         try {
-            setAddingSpotifyId(spotifyId);
-            const addResult = await addArtist(spotifyId);
+            setAddingPlatformId(platformId);
+            const addResult = await addArtist(platformId, platform as 'deezer' | 'spotify');
 
             if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
                 setShowResults(false);
@@ -79,7 +76,7 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                 description: "Failed to add artist - please try again"
             });
         } finally {
-            setAddingSpotifyId(null);
+            setAddingPlatformId(null);
         }
     }, [router, toast]);
 
@@ -89,14 +86,16 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
         const pendingId = sessionStorage.getItem(PENDING_ADD_KEY);
         if (!pendingId) return;
 
+        const pendingPlatform = sessionStorage.getItem(PENDING_ADD_PLATFORM_KEY) || 'deezer';
         const timestamp = Number(sessionStorage.getItem(PENDING_ADD_TS_KEY) || '0');
         sessionStorage.removeItem(PENDING_ADD_KEY);
+        sessionStorage.removeItem(PENDING_ADD_PLATFORM_KEY);
         sessionStorage.removeItem(PENDING_ADD_TS_KEY);
 
         // Discard stale pending adds (e.g. user dismissed login, logged in later)
         if (Date.now() - timestamp > PENDING_ADD_TTL_MS) return;
 
-        handleAddArtist(pendingId);
+        handleAddArtist(pendingId, pendingPlatform);
     }, [session, handleAddArtist]);
 
     useEffect(() => {
@@ -163,17 +162,23 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     }, []);
 
     const handleResultClick = async (result: SearchResult) => {
-        if (result.isSpotifyOnly) {
-            if (!result.spotify) return;
+        if (result.isExternalOnly) {
+            if (!result.platformId) return;
 
-            if (!session) {
-                sessionStorage.setItem(PENDING_ADD_KEY, result.spotify);
-                sessionStorage.setItem(PENDING_ADD_TS_KEY, String(Date.now()));
-                login();
+            if (!session && !isDevMode) {
+                try {
+                    sessionStorage.setItem(PENDING_ADD_KEY, result.platformId);
+                    sessionStorage.setItem(PENDING_ADD_PLATFORM_KEY, result.platform || 'deezer');
+                    sessionStorage.setItem(PENDING_ADD_TS_KEY, String(Date.now()));
+                    const loginBtn = document.getElementById('login-btn');
+                    loginBtn?.click();
+                } catch (e) {
+                    console.error("[SearchBar] Login trigger failed:", e);
+                }
                 return;
             }
 
-            await handleAddArtist(result.spotify);
+            await handleAddArtist(result.platformId, result.platform || 'deezer');
             return;
         }
 
@@ -183,6 +188,11 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
         if (result.id) {
             router.push(`/artist/${result.id}`);
         }
+    };
+
+    const getPlatformLabel = (platform?: string) => {
+        if (!platform) return 'Deezer';
+        return platform.charAt(0).toUpperCase() + platform.slice(1);
     };
 
     return (
@@ -206,17 +216,17 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                     className="absolute w-full mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50"
                 >
                     {results.map((result) => {
-                        const spotifyImage = result.images?.[0]?.url;
+                        const resultImage = result.imageUrl;
                         const hasSocialLinks = result.bandcamp || result.youtube || result.youtubechannel || result.instagram || result.x || result.facebook || result.tiktok;
-                        const isThisAdding = result.isSpotifyOnly && addingSpotifyId === result.spotify;
+                        const isThisAdding = result.isExternalOnly && addingPlatformId === result.platformId;
 
                         return (
                             <button
-                                key={result.isSpotifyOnly ? `spotify-${result.spotify}` : result.id}
+                                key={result.isExternalOnly ? `ext-${result.platformId}` : result.id}
                                 disabled={isThisAdding}
                                 onClick={() => handleResultClick(result)}
                                 className={`w-full p-3 flex items-center gap-3 text-left disabled:opacity-50 ${
-                                    result.isSpotifyOnly
+                                    result.isExternalOnly
                                         ? 'hover:bg-gray-50 dark:hover:bg-gray-700'
                                         : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                                 }`}
@@ -224,29 +234,29 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                                 <div className="flex items-center justify-center w-10 h-10">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
-                                        src={spotifyImage || "/default_pfp_pink.png"}
+                                        src={resultImage || "/default_pfp_pink.png"}
                                         alt={result.name ?? "Artist"}
-                                        className={`object-cover rounded-full ${result.isSpotifyOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
+                                        className={`object-cover rounded-full ${result.isExternalOnly ? 'w-8 h-8' : 'w-10 h-10'}`}
                                     />
                                 </div>
                                 <div className="flex-1">
-                                    <div className={`font-medium ${result.isSpotifyOnly ? 'text-sm text-gray-500 dark:text-gray-400' : 'text-base text-gray-900 dark:text-white'}`}>
+                                    <div className={`font-medium ${result.isExternalOnly ? 'text-sm text-gray-500 dark:text-gray-400' : 'text-base text-gray-900 dark:text-white'}`}>
                                         {result.name}
                                     </div>
-                                    {result.isSpotifyOnly && result.spotify ? (
+                                    {result.isExternalOnly && result.platformId ? (
                                         <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                                             <span className="hover:text-gray-600 hover:underline">
                                                 {isThisAdding ? 'Adding...' : 'Add to MusicNerd'}
                                             </span>
                                             <span className="text-pink-400">|</span>
                                             <a
-                                                href={`https://open.spotify.com/artist/${result.spotify}`}
+                                                href={result.profileUrl || '#'}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 onClick={(e) => e.stopPropagation()}
                                                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-600 hover:underline"
                                             >
-                                                <span>View on Spotify</span>
+                                                <span>View on {getPlatformLabel(result.platform)}</span>
                                                 <ExternalLink size={12} className="text-gray-500" />
                                             </a>
                                         </div>

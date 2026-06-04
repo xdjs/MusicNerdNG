@@ -11,10 +11,11 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({
     getAllLinks: jest.fn(),
 }));
 
-jest.mock('@/server/utils/queries/externalApiQueries', () => ({
-    getSpotifyImage: jest.fn(),
-    getSpotifyHeaders: jest.fn(),
-    getNumberOfSpotifyReleases: jest.fn(),
+jest.mock('@/server/utils/musicPlatform', () => ({
+    musicPlatformData: {
+        getArtist: jest.fn(),
+        getArtistImage: jest.fn(),
+    },
 }));
 
 jest.mock('@/server/utils/services', () => ({
@@ -30,7 +31,7 @@ jest.mock('next/navigation', () => ({
     useSearchParams: () => new URLSearchParams(),
 }));
 
-jest.mock('@/app/_components/ArtistLinks', () => function ArtistLinks() { return <div data-testid="artist-links" />; });
+jest.mock('@/app/_components/ArtistLinksGrid', () => function ArtistLinksGrid() { return <div data-testid="artist-links" />; });
 jest.mock('@/app/_components/BookmarkButton', () => function BookmarkButton() { return <div data-testid="bookmark-button" />; });
 jest.mock('@/app/_components/EditModeContext', () => ({
     EditModeProvider: function EditModeProvider({ children }: { children: React.ReactNode }) { return <>{children}</>; },
@@ -39,18 +40,28 @@ jest.mock('@/app/_components/EditModeToggle', () => function EditModeToggle() { 
 jest.mock('@/app/_components/AutoRefresh', () => function AutoRefresh() { return null; });
 jest.mock('@/app/artist/[id]/_components/BlurbSection', () => function BlurbSection() { return <div data-testid="blurb-section" />; });
 jest.mock('@/app/artist/[id]/_components/AddArtistData', () => function AddArtistData() { return <div data-testid="add-artist-data" />; });
-jest.mock('@/app/artist/[id]/_components/FunFactsMobile', () => function FunFactsMobile() { return <div data-testid="fun-facts-mobile" />; });
-jest.mock('@/app/artist/[id]/_components/FunFactsDesktop', () => function FunFactsDesktop() { return <div data-testid="fun-facts-desktop" />; });
+jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSection({ artistName }: { artistName: string }) { return <div data-testid="hero-section"><img alt={artistName} src="test.jpg" /></div>; });
+jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return <div data-testid="fun-facts" />; });
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return <div data-testid="grapevine-iframe" />; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
-jest.mock('@radix-ui/react-aspect-ratio', () => ({
-    AspectRatio: function AspectRatio({ children }: { children: React.ReactNode }) { return <div>{children}</div>; },
+jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return <div data-testid="claim-button" />; });
+jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return <div data-testid="ask-about-artist" />; });
+jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
+jest.mock('@/server/utils/queries/userQueries', () => ({
+    getUserById: jest.fn().mockResolvedValue({ id: 'user-uuid', isAdmin: false, isWhiteListed: false }),
+}));
+jest.mock('@/server/utils/queries/dashboardQueries', () => ({
+    getClaimByArtistId: jest.fn().mockResolvedValue(null),
+    getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('@/server/utils/dev-auth', () => ({
+    getDevSession: jest.fn().mockResolvedValue(null),
 }));
 
 import ArtistProfile, { generateMetadata } from '@/app/artist/[id]/page';
 import { getServerAuthSession } from '@/server/auth';
 import { getArtistById, getAllLinks } from '@/server/utils/queries/artistQueries';
-import { getSpotifyImage, getSpotifyHeaders, getNumberOfSpotifyReleases } from '@/server/utils/queries/externalApiQueries';
+import { musicPlatformData } from '@/server/utils/musicPlatform';
 
 const mockArtist = {
     id: 'artist-uuid',
@@ -62,15 +73,23 @@ const mockArtist = {
     twitter: null,
 };
 
-const mockSpotifyImg = { artistImage: 'https://img.spotify.com/artist.jpg' };
-const mockHeaders = { headers: { Authorization: 'Bearer token' } };
+const mockPlatformArtist = {
+    platform: 'deezer',
+    platformId: '12345',
+    name: 'Test Artist',
+    imageUrl: 'https://cdn.deezer.com/artist.jpg',
+    followerCount: 10000,
+    albumCount: 5,
+    genres: [],
+    profileUrl: 'https://www.deezer.com/artist/12345',
+    topTrackName: 'Hit Song',
+};
 
-function setupMocks({ session = null, artist = mockArtist, spotifyImg = mockSpotifyImg } = {}) {
+function setupMocks({ session = null, artist = mockArtist } = {}) {
     (getServerAuthSession as jest.Mock).mockResolvedValue(session);
     (getArtistById as jest.Mock).mockResolvedValue(artist);
-    (getSpotifyHeaders as jest.Mock).mockResolvedValue(mockHeaders);
-    (getSpotifyImage as jest.Mock).mockResolvedValue(spotifyImg);
-    (getNumberOfSpotifyReleases as jest.Mock).mockResolvedValue(5);
+    (musicPlatformData.getArtist as jest.Mock).mockResolvedValue(mockPlatformArtist);
+    (musicPlatformData.getArtistImage as jest.Mock).mockResolvedValue('https://cdn.deezer.com/artist.jpg');
     (getAllLinks as jest.Mock).mockResolvedValue([]);
 }
 
@@ -91,17 +110,9 @@ describe('ArtistProfile page', () => {
             expect(screen.getByText('Test Artist')).toBeInTheDocument();
         });
 
-        it('renders artist image with correct src', async () => {
+        it('renders hero section', async () => {
             await renderArtistPage();
-            const img = screen.getByAltText('Artist Image');
-            expect(img).toHaveAttribute('src', 'https://img.spotify.com/artist.jpg');
-        });
-
-        it('falls back to default image when Spotify returns no image', async () => {
-            setupMocks({ spotifyImg: { artistImage: null } });
-            await renderArtistPage();
-            const img = screen.getByAltText('Artist Image');
-            expect(img).toHaveAttribute('src', '/default_pfp_pink.png');
+            expect(screen.getByTestId('hero-section')).toBeInTheDocument();
         });
 
         it('renders artist links section', async () => {
@@ -114,10 +125,9 @@ describe('ArtistProfile page', () => {
             expect(screen.getByTestId('blurb-section')).toBeInTheDocument();
         });
 
-        it('renders fun facts on both mobile and desktop', async () => {
+        it('renders ask about artist section', async () => {
             await renderArtistPage();
-            expect(screen.getByTestId('fun-facts-desktop')).toBeInTheDocument();
-            expect(screen.getByTestId('fun-facts-mobile')).toBeInTheDocument();
+            expect(screen.getByTestId('ask-about-artist')).toBeInTheDocument();
         });
 
         it('does not render bookmark button when not authenticated', async () => {
@@ -146,9 +156,20 @@ describe('ArtistProfile page', () => {
             expect(screen.getByTestId('bookmark-button')).toBeInTheDocument();
         });
 
-        it('renders edit mode toggle when authenticated', async () => {
+        it('renders edit mode toggle when admin', async () => {
+            const { getUserById } = await import('@/server/utils/queries/userQueries');
+            (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: true, isWhiteListed: true });
             await renderArtistPage();
             expect(screen.getByTestId('edit-mode-toggle')).toBeInTheDocument();
+        });
+
+        it('renders the VaultSection on the profile', async () => {
+            const { getUserById } = await import('@/server/utils/queries/userQueries');
+            const { getVaultSourcesByArtistId } = await import('@/server/utils/queries/dashboardQueries');
+            (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: true, isWhiteListed: true });
+            (getVaultSourcesByArtistId as jest.Mock).mockResolvedValue([]);
+            await renderArtistPage();
+            expect(screen.getByTestId('vault-section')).toBeInTheDocument();
         });
     });
 
@@ -174,10 +195,10 @@ describe('ArtistProfile page', () => {
             expect(metadata.title).toBe('Artist Not Found | Music Nerd');
         });
 
-        it('includes OpenGraph image from Spotify', async () => {
+        it('includes OpenGraph image from platform provider', async () => {
             const metadata = await generateMetadata({ params: Promise.resolve({ id: 'artist-uuid' }) });
             expect(metadata.openGraph?.images?.[0]).toMatchObject({
-                url: 'https://img.spotify.com/artist.jpg',
+                url: 'https://cdn.deezer.com/artist.jpg',
             });
         });
     });

@@ -111,6 +111,8 @@ import AddArtist from '@/app/_components/nav/components/AddArtist';
 
 const VALID_SPOTIFY_URL = 'https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb';
 const VALID_SPOTIFY_ID = '4Z8W4fKeB5YxbusRsdQVPb';
+const VALID_DEEZER_URL = 'https://www.deezer.com/artist/123456';
+const VALID_DEEZER_ID = '123456';
 
 describe('AddArtist', () => {
     beforeEach(() => {
@@ -158,18 +160,24 @@ describe('AddArtist', () => {
         });
 
         describe('Form submission', () => {
-            async function openModalAndSubmit(spotifyUrl: string) {
+            async function openModalAndSubmit(url: string) {
                 render(<AddArtist />);
                 fireEvent.click(screen.getByRole('button'));
                 // Trigger submit by calling the captured handleSubmit fn directly
                 await waitFor(() => expect(capturedSubmitFn).not.toBeNull());
-                await capturedSubmitFn!({ artistSpotifyUrl: spotifyUrl });
+                await capturedSubmitFn!({ artistUrl: url });
             }
 
-            it('calls addArtist with the extracted Spotify ID on valid URL', async () => {
+            it('calls addArtist with the extracted Spotify ID on valid Spotify URL', async () => {
                 mockAddArtist.mockResolvedValue({ status: 'success', artistId: 'new-id', artistName: 'Radiohead', message: 'Added!' });
                 await openModalAndSubmit(VALID_SPOTIFY_URL);
-                expect(mockAddArtist).toHaveBeenCalledWith(VALID_SPOTIFY_ID);
+                expect(mockAddArtist).toHaveBeenCalledWith(VALID_SPOTIFY_ID, 'spotify');
+            });
+
+            it('calls addArtist with the extracted Deezer ID on valid Deezer URL', async () => {
+                mockAddArtist.mockResolvedValue({ status: 'success', artistId: 'new-id', artistName: 'FKJ', message: 'Added!' });
+                await openModalAndSubmit(VALID_DEEZER_URL);
+                expect(mockAddArtist).toHaveBeenCalledWith(VALID_DEEZER_ID, 'deezer');
             });
 
             it('shows success links after artist is added', async () => {

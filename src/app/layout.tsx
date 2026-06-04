@@ -1,9 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Nav from "./_components/nav";
 import { Toaster } from "@/components/ui/toaster";
 import Footer from "./_components/Footer";
 import Providers from "./_components/Providers";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   title: "Music Nerd",
@@ -44,7 +49,7 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col">
         <Providers>
           <Nav />
-          <main className="flex-grow flex flex-col min-h-0">
+          <main className="flex-grow flex flex-col min-h-0 w-full">
             {children}
           </main>
           <Toaster />

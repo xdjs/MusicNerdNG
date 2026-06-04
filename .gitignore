@@ -37,6 +37,7 @@ yarn-error.log*
 .env.test
 start.sh
 .env*
+local.env
 
 # vercel
 .vercel
@@ -60,8 +61,21 @@ certificates
 # claude code local settings
 .claude/settings.local.json
 
+# codex local settings
+.codex/
+
+# vault uploaded files (keep directory, ignore contents)
+public/vault-uploads/*
+!public/vault-uploads/.gitkeep
+public/artist-images/*
+!public/artist-images/.gitkeep
+
 # mcp config
 .mcp.json
 
 # scratch files
 wikidata_query.py
+.superpowers/
+
+# Claude Code runtime lock (machine-specific)
+.claude/scheduled_tasks.lock

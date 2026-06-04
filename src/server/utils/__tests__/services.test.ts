@@ -132,23 +132,23 @@ describe("utils/services", () => {
     } as unknown as Artist;
 
     it("returns empty string when no data", () => {
-      const text = getArtistDetailsText({} as unknown as Artist, { releases: 0 });
+      const text = getArtistDetailsText({} as unknown as Artist, 0);
       expect(text).toBe("");
     });
 
-    it("returns spotify release text when only releases present", () => {
-      const text = getArtistDetailsText({} as unknown as Artist, { releases: 3 });
-      expect(text).toBe("3 releases on Spotify");
+    it("returns release text when releases present", () => {
+      const text = getArtistDetailsText({} as unknown as Artist, 3);
+      expect(text).toBe("3 releases");
     });
 
-    it("returns empty string when only web3 platform and zero releases", () => {
-      const text = getArtistDetailsText({ catalog: "cat" } as unknown as Artist, { releases: 0 });
+    it("returns empty string when zero releases", () => {
+      const text = getArtistDetailsText({ catalog: "cat" } as unknown as Artist, 0);
       expect(text).toBe("");
     });
 
-    it("returns spotify release text when releases present and platforms available", () => {
-      const text = getArtistDetailsText(baseArtist, { releases: 5 });
-      expect(text).toBe("5 releases on Spotify");
+    it("returns release text when releases present and platforms available", () => {
+      const text = getArtistDetailsText(baseArtist, 5);
+      expect(text).toBe("5 releases");
     });
   });
 

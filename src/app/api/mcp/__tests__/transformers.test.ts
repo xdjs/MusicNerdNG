@@ -73,6 +73,8 @@ function createMockArtist(overrides: Partial<Artist> = {}): Artist {
     supercollector: null,
     webmapdata: null,
     nodePfp: null,
+    customImage: null,
+    deezer: null,
     ...overrides,
   };
 }
@@ -205,6 +207,7 @@ describe("toArtistDetail", () => {
       expect(result.name).toBe("Social Artist");
       expect(result.bio).toBe("Artist biography here");
       expect(result.spotifyId).toBe("spotify456");
+      expect(result.deezerId).toBeNull();
 
       expect(result.socialLinks).toHaveProperty("spotify");
       expect(result.socialLinks.spotify).toEqual({
@@ -362,6 +365,36 @@ describe("toArtistDetail", () => {
       const result = await toArtistDetail(artist);
 
       expect(result.spotifyId).toBeNull();
+    });
+  });
+
+  describe("maps deezerId from artist.deezer", () => {
+    it("returns deezerId from the deezer column", async () => {
+      const artist = createMockArtist({
+        id: "deezer-artist",
+        name: "Deezer Artist",
+        deezer: "11600",
+      });
+
+      mockedGetArtistLinks.mockResolvedValue([]);
+
+      const result = await toArtistDetail(artist);
+
+      expect(result.deezerId).toBe("11600");
+    });
+
+    it("returns null for deezerId when artist.deezer is null", async () => {
+      const artist = createMockArtist({
+        id: "no-deezer-artist",
+        name: "No Deezer Artist",
+        deezer: null,
+      });
+
+      mockedGetArtistLinks.mockResolvedValue([]);
+
+      const result = await toArtistDetail(artist);
+
+      expect(result.deezerId).toBeNull();
     });
   });
 });

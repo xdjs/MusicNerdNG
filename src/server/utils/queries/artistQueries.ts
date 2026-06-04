@@ -1,5 +1,7 @@
 import { db } from "@/server/db/drizzle";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
+import { deezerProvider, spotifyProvider } from "@/server/utils/musicPlatform";
+import type { MusicPlatform } from "@/server/utils/musicPlatform";
 import { eq, sql, inArray, and, arrayContains } from "drizzle-orm";
 import { artists, ugcresearch } from "@/server/db/schema";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
@@ -12,7 +14,8 @@ import { getUserById, getUserDisplayName } from "@/server/utils/queries/userQuer
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
-import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
+import { regenerateArtistBio } from "@/server/utils/queries/artistBioQuery";
+import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
 
 // ----------------------------------
 // Types
@@ -148,7 +151,7 @@ export async function searchForArtistByName(name: string) {
         }
         const result = await db.execute<Artist>(sql`
             SELECT
-            id, name, spotify, bandcamp, youtube, youtubechannel,
+            id, name, spotify, deezer, bandcamp, youtube, youtubechannel,
             instagram, x, facebook, tiktok,
             CASE WHEN lcname LIKE '%' || ${normalisedQuery} || '%' THEN 0 ELSE 1 END AS match_type
             FROM artists
@@ -301,9 +304,12 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
 // Artist creation & mutation
 // ----------------------------------
 
-export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
+export async function addArtist(platformId: string, platform: MusicPlatform = 'spotify'): Promise<AddArtistResp> {
+    if (platform !== 'deezer' && platform !== 'spotify') {
+        return { status: "error", message: "Invalid platform" };
+    }
     try {
-        console.debug("[Server] Starting addArtist for spotifyId:", spotifyId);
+        console.debug(`[Server] Starting addArtist for ${platform}Id:`, platformId);
 
         const headersList = await headers();
         console.debug("[Server] Request headers:", {
@@ -322,29 +328,20 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             throw new Error("Not authenticated");
         }
 
-        console.debug("[Server] Getting Spotify headers...");
-        const spotifyHeaders = await getSpotifyHeaders();
-        if (!spotifyHeaders?.headers?.Authorization) {
-            console.error("[Server] Failed to get Spotify headers");
-            return { status: "error", message: "Failed to authenticate with Spotify" };
+        // Validate via platform provider
+        const provider = platform === 'deezer' ? deezerProvider : spotifyProvider;
+        console.debug(`[Server] Validating ${platform} artist...`);
+        const platformArtist = await provider.getArtist(platformId);
+
+        if (!platformArtist?.name) {
+            console.error(`[Server] Invalid artist data from ${platform}`);
+            return { status: "error", message: `Could not find artist on ${platform}` };
         }
 
-        console.debug("[Server] Fetching Spotify artist data...");
-        const spotifyArtist = await getSpotifyArtist(spotifyId, spotifyHeaders);
-        console.debug("[Server] Spotify artist response:", spotifyArtist);
-
-        if (spotifyArtist.error) {
-            console.error("[Server] Spotify artist error:", spotifyArtist.error);
-            return { status: "error", message: spotifyArtist.error };
-        }
-
-        if (!spotifyArtist.data?.name) {
-            console.error("[Server] Invalid artist data received from Spotify");
-            return { status: "error", message: "Invalid artist data received from Spotify" };
-        }
-
+        // Dedup check on the appropriate column
+        const column = platform === 'deezer' ? artists.deezer : artists.spotify;
         console.debug("[Server] Checking if artist exists in database...");
-        const artist = await db.query.artists.findFirst({ where: eq(artists.spotify, spotifyId) });
+        const artist = await db.query.artists.findFirst({ where: eq(column, platformId) });
         if (artist) {
             console.debug("[Server] Artist already exists:", artist);
             return {
@@ -357,9 +354,9 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
 
         console.debug("[Server] Inserting new artist into database...");
         const artistData = {
-            spotify: spotifyId,
-            lcname: normaliseText(spotifyArtist.data.name),
-            name: spotifyArtist.data.name,
+            [platform]: platformId,
+            lcname: normaliseText(platformArtist.name),
+            name: platformArtist.name,
             addedBy: session?.user?.id || undefined,
         };
 
@@ -370,7 +367,7 @@ export async function addArtist(spotifyId: string): Promise<AddArtistResp> {
             const user = await getUserById(session.user.id);
             if (user) {
                 await sendDiscordMessage(
-                    `${getUserDisplayName(user)} added new artist named: ${newArtist.name} (Submitted SpotifyId: ${spotifyId}) ${newArtist.createdAt}`
+                    `${getUserDisplayName(user)} added new artist named: ${newArtist.name} (Submitted ${platform}Id: ${platformId}) ${newArtist.createdAt}`
                 );
             }
         }
@@ -490,7 +487,7 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
     const artistIdFromUrl = await extractArtistId(artistUrl);
     if (!artistIdFromUrl) {
         console.debug("[addArtistData] URL did not match any approved link regex:", artistUrl);
-        return { status: "error", message: "The data you're trying to add isn't in our list of approved links" };
+        return { status: "error", message: LINK_NOT_SUPPORTED_LONG };
     }
 
     try {
@@ -651,8 +648,8 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
 export async function updateArtistBio(artistId: string, bio: string, regenerate: boolean = false): Promise<RemoveArtistDataResp> {
     try {
         if (regenerate) {
-            // Generate new bio using OpenAI
-            const generatedBio = await generateArtistBio(artistId);
+            // Generate new bio using Gemini
+            const generatedBio = await regenerateArtistBio(artistId);
             if (generatedBio) {
                 return { status: "success", message: "Bio regenerated", data: generatedBio };
             } else {

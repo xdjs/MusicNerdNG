@@ -1,11 +1,16 @@
-import { POST } from '@/app/api/searchArtists/route';
-import { searchForArtistByName, getAllSpotifyIds } from '@/server/utils/queries/artistQueries';
-import { getSpotifyHeaders } from '@/server/utils/queries/externalApiQueries';
-import axios from 'axios';
+// @ts-nocheck
+import { jest } from '@jest/globals';
 
-jest.mock('@/server/utils/queries/artistQueries');
-jest.mock('@/server/utils/queries/externalApiQueries');
-jest.mock('axios');
+jest.mock('@/server/utils/queries/artistQueries', () => ({
+  searchForArtistByName: jest.fn(),
+}));
+
+jest.mock('@/server/utils/musicPlatform', () => ({
+  musicPlatformData: {
+    searchArtists: jest.fn(),
+    getArtistImages: jest.fn(),
+  },
+}));
 
 // Polyfill Response.json for the test environment
 if (!(Response as any).json) {
@@ -21,14 +26,25 @@ if (!(Response as any).json) {
 
 const createTestRequest = (url: string, init?: RequestInit) => new Request(url, init);
 
-const mockedAxios = axios as jest.Mocked<typeof axios>;
-
 describe('searchArtists API route', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetModules();
   });
 
+  async function setup() {
+    const { searchForArtistByName } = await import('@/server/utils/queries/artistQueries');
+    const { musicPlatformData } = await import('@/server/utils/musicPlatform');
+    const { POST } = await import('@/app/api/searchArtists/route');
+    return {
+      POST,
+      mockSearchDB: searchForArtistByName as jest.Mock,
+      mockSearchExternal: musicPlatformData.searchArtists as jest.Mock,
+      mockGetImages: musicPlatformData.getArtistImages as jest.Mock,
+    };
+  }
+
   it('returns 400 for invalid query', async () => {
+    const { POST } = await setup();
     const response = await POST(
       createTestRequest('http://localhost/api/searchArtists', {
         method: 'POST',
@@ -42,29 +58,20 @@ describe('searchArtists API route', () => {
     expect(data.error).toBe('Invalid query parameter');
   });
 
-  it('combines and sorts search results', async () => {
-    (searchForArtistByName as jest.Mock).mockResolvedValue([
-      { id: '1', name: 'Alpha', spotify: 'spotify1' },
-      { id: '2', name: 'Beta', spotify: null },
+  it('combines DB and external results, deduplicates, and sorts', async () => {
+    const { POST, mockSearchDB, mockSearchExternal, mockGetImages } = await setup();
+
+    mockSearchDB.mockResolvedValue([
+      { id: '1', name: 'Alpha', spotify: 'spotify1', deezer: 'dz1' },
+      { id: '2', name: 'Beta', spotify: null, deezer: null },
     ]);
 
-    (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: { Authorization: 'Bearer token' } });
-    (getAllSpotifyIds as jest.Mock).mockResolvedValue(['spotify1']);
+    mockSearchExternal.mockResolvedValue([
+      { platformId: 'dz1', platform: 'deezer', name: 'Alpha', imageUrl: 'https://cdn.deezer.com/1.jpg', profileUrl: 'https://deezer.com/artist/dz1', followerCount: 1000, albumCount: 5, genres: [], topTrackName: null },
+      { platformId: 'dz-new', platform: 'deezer', name: 'AlphaBeta', imageUrl: 'https://cdn.deezer.com/2.jpg', profileUrl: 'https://deezer.com/artist/dz-new', followerCount: 500, albumCount: 3, genres: [], topTrackName: null },
+    ]);
 
-    // Mock order must match API call order:
-    // 1. Spotify search API call first
-    // 2. Individual artist data calls second
-    mockedAxios.get.mockResolvedValueOnce({
-      data: {
-        artists: {
-          items: [
-            { id: 'spotify1', name: 'Alpha', images: [{ url: 'img1', height: 1, width: 1 }] },
-            { id: 'new1', name: 'AlphaBeta', images: [{ url: 'img2', height: 1, width: 1 }] },
-          ],
-        },
-      },
-    });
-    mockedAxios.get.mockResolvedValueOnce({ data: { images: [{ url: 'img1', height: 1, width: 1 }] } });
+    mockGetImages.mockResolvedValue(new Map([['1', 'https://cdn.deezer.com/1.jpg']]));
 
     const response = await POST(
       createTestRequest('http://localhost/api/searchArtists', {
@@ -77,9 +84,14 @@ describe('searchArtists API route', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
 
+    // Alpha (DB, exact match), AlphaBeta (external, deduped dz1 removed), Beta (DB, no match)
     expect(body.results).toHaveLength(3);
     expect(body.results[0].name).toBe('Alpha');
+    expect(body.results[0].isExternalOnly).toBe(false);
+    expect(body.results[0].imageUrl).toBe('https://cdn.deezer.com/1.jpg');
     expect(body.results[1].name).toBe('AlphaBeta');
+    expect(body.results[1].isExternalOnly).toBe(true);
+    expect(body.results[1].platformId).toBe('dz-new');
     expect(body.results[2].name).toBe('Beta');
   });
 });

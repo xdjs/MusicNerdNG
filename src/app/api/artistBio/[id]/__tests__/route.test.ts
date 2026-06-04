@@ -17,7 +17,7 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({
 }));
 
 jest.mock('@/server/utils/queries/artistBioQuery', () => ({
-  getOpenAIBio: jest.fn(),
+  generateArtistBio: jest.fn(),
 }));
 
 // Polyfill Response.json for test environment
@@ -62,7 +62,7 @@ describe('/api/artistBio/[id]', () => {
     const { getArtistById, updateArtistBio } = await import(
       '@/server/utils/queries/artistQueries'
     );
-    const { getOpenAIBio } = await import('@/server/utils/queries/artistBioQuery');
+    const { generateArtistBio } = await import('@/server/utils/queries/artistBioQuery');
     const { GET, PUT } = await import('../route');
 
     return {
@@ -72,7 +72,7 @@ describe('/api/artistBio/[id]', () => {
       mockGetUserById: getUserById as jest.Mock,
       mockGetArtistById: getArtistById as jest.Mock,
       mockUpdateArtistBio: updateArtistBio as jest.Mock,
-      mockGetOpenAIBio: getOpenAIBio as jest.Mock,
+      mockGenerateArtistBio: generateArtistBio as jest.Mock,
     };
   }
 

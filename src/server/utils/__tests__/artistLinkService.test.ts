@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { jest } from "@jest/globals";
 
-// Mock generateArtistBio before any dynamic imports
+// Mock regenerateArtistBio before any dynamic imports
 jest.mock("@/server/utils/queries/artistBioQuery", () => ({
-  generateArtistBio: jest.fn().mockResolvedValue("mocked bio"),
+  regenerateArtistBio: jest.fn().mockResolvedValue("mocked bio"),
 }));
 
 describe("artistLinkService", () => {
@@ -16,9 +16,9 @@ describe("artistLinkService", () => {
     db.execute = jest.fn().mockResolvedValue([]);
     // Mock artist existence check - return a found artist by default
     (db as any).query.artists.findFirst = jest.fn().mockResolvedValue({ id: "artist-123" });
-    const { generateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
+    const { regenerateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
     const { setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS } = await import("../artistLinkService");
-    return { db, setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS, generateArtistBio };
+    return { db, setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS, regenerateArtistBio };
   }
 
   // 1. sanitizeColumnName strips non-alphanumeric/underscore
@@ -44,27 +44,27 @@ describe("artistLinkService", () => {
 
   // 4. setArtistLink sets ens directly
   it("setArtistLink sets ens directly", async () => {
-    const { db, setArtistLink, generateArtistBio } = await setup();
+    const { db, setArtistLink, regenerateArtistBio } = await setup();
     const result = await setArtistLink("artist-123", "ens", "vitalik.eth");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(generateArtistBio).not.toHaveBeenCalled();
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
     expect(result).toEqual({ oldValue: null });
   });
 
   // 5. setArtistLink triggers bio regen for prompt-relevant column
   it("setArtistLink triggers bio regeneration for prompt-relevant column", async () => {
-    const { db, setArtistLink, generateArtistBio } = await setup();
+    const { db, setArtistLink, regenerateArtistBio } = await setup();
     await setArtistLink("artist-123", "instagram", "testuser");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(generateArtistBio).toHaveBeenCalledWith("artist-123");
+    expect(regenerateArtistBio).toHaveBeenCalledWith("artist-123");
   });
 
   // 6. setArtistLink does NOT trigger bio regen for non-relevant column
   it("setArtistLink does NOT trigger bio regeneration for non-relevant column", async () => {
-    const { db, setArtistLink, generateArtistBio } = await setup();
+    const { db, setArtistLink, regenerateArtistBio } = await setup();
     await setArtistLink("artist-123", "tiktok", "testuser");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(generateArtistBio).not.toHaveBeenCalled();
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
   });
 
   // 7. setArtistLink throws for wallets
@@ -97,18 +97,18 @@ describe("artistLinkService", () => {
 
   // 11. clearArtistLink triggers bio regen for prompt-relevant column
   it("clearArtistLink triggers bio regeneration for prompt-relevant column", async () => {
-    const { db, clearArtistLink, generateArtistBio } = await setup();
+    const { db, clearArtistLink, regenerateArtistBio } = await setup();
     await clearArtistLink("artist-123", "x");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(generateArtistBio).toHaveBeenCalledWith("artist-123");
+    expect(regenerateArtistBio).toHaveBeenCalledWith("artist-123");
   });
 
   // 12. clearArtistLink does NOT trigger bio regen for non-relevant column
   it("clearArtistLink does NOT trigger bio regeneration for non-relevant column", async () => {
-    const { db, clearArtistLink, generateArtistBio } = await setup();
+    const { db, clearArtistLink, regenerateArtistBio } = await setup();
     await clearArtistLink("artist-123", "tiktok");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(generateArtistBio).not.toHaveBeenCalled();
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
   });
 
   // 13. clearArtistLink throws for wallets

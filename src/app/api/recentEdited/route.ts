@@ -3,7 +3,8 @@ import { getServerAuthSession } from "@/server/auth";
 import { db } from "@/server/db/drizzle";
 import { ugcresearch, artists } from "@/server/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { getSpotifyHeaders, getSpotifyImage } from "@/server/utils/queries/externalApiQueries";
+import { musicPlatformData } from "@/server/utils/musicPlatform";
+import type { Artist } from "@/server/db/DbTypes";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
         updatedAt: ugcresearch.updatedAt,
         artistName: artists.name,
         spotifyId: artists.spotify,
+      deezerId: artists.deezer,
       })
       .from(ugcresearch)
       .leftJoin(artists, eq(artists.id, ugcresearch.artistId))
@@ -47,17 +49,16 @@ export async function GET(request: NextRequest) {
       if (Object.keys(unique).length === 3) break;
     }
 
-    // Enrich with Spotify images
-    const headers = await getSpotifyHeaders();
+    // Enrich with platform images
     const enriched = await Promise.all(
       Object.values(unique).map(async (row) => {
         let imageUrl: string | null = null;
-        if (row.spotifyId) {
+        if (row.deezerId || row.spotifyId) {
           try {
-            const img = await getSpotifyImage(row.spotifyId, row.artistId ?? "", headers);
-            imageUrl = img.artistImage ?? null;
+            const partialArtist = { deezer: row.deezerId, spotify: row.spotifyId } as Artist;
+            imageUrl = await musicPlatformData.getArtistImage(partialArtist);
           } catch {
-            // ignore Spotify image errors
+            // ignore platform image errors
           }
         }
         return { ...row, imageUrl };

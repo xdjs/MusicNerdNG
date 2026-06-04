@@ -36,9 +36,9 @@ const customJestConfig: Config = {
         '\\.(gif|ttf|eot|svg|png|jpg|jpeg)$': '<rootDir>/__mocks__/fileMock.js',
     },
     transformIgnorePatterns: [
-        'node_modules/(?!(jose|@radix-ui|@panva|@tanstack|@tanstack/react-query|@tanstack/query-core)/)'
+        'node_modules/(?!(jose|@radix-ui|@panva|@tanstack|@tanstack/react-query|@tanstack/query-core|p-limit|yocto-queue)/)'
     ],
-    testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/', '<rootDir>/e2e/'],
+    testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/', '<rootDir>/e2e/', '.*\\.smoke\\.test\\.ts$'],
     moduleDirectories: ['node_modules', '<rootDir>/'],
     testMatch: [
         '**/__tests__/**/*.[jt]s?(x)',

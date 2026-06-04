@@ -31,11 +31,21 @@ import { useSession } from "next-auth/react";
 import { useLogin } from "@privy-io/react-auth";
 
 const spotifyArtistUrlRegex = /https:\/\/open\.spotify\.com\/artist\/([a-zA-Z0-9]+)/;
+const deezerArtistUrlRegex = /https?:\/\/(www\.)?deezer\.com\/([\w-]+\/)?artist\/(\d+)/;
+
+function parseArtistUrl(url: string): { id: string; platform: 'deezer' | 'spotify' } | null {
+    const deezerMatch = url.match(deezerArtistUrlRegex);
+    if (deezerMatch) return { id: deezerMatch[3], platform: 'deezer' };
+    const spotifyMatch = url.match(spotifyArtistUrlRegex);
+    if (spotifyMatch) return { id: spotifyMatch[1], platform: 'spotify' };
+    return null;
+}
 
 const formSchema = z.object({
-    artistSpotifyUrl: z.string().regex(spotifyArtistUrlRegex, {
-        message: "Artist Spotify url must be in the format https://open.spotify.com/artist/YOURARTISTID",
-    }),
+    artistUrl: z.string().refine(
+        (val) => spotifyArtistUrlRegex.test(val) || deezerArtistUrlRegex.test(val),
+        { message: "Enter a Spotify or Deezer artist URL (e.g. https://open.spotify.com/artist/... or https://www.deezer.com/artist/...)" },
+    ),
 })
 
 export default function AddArtist() {
@@ -50,16 +60,15 @@ export default function AddArtist() {
         resolver: zodResolver(formSchema),
         mode: "onSubmit",
         defaultValues: {
-            artistSpotifyUrl: "",
+            artistUrl: "",
         },
     })
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        const match = values.artistSpotifyUrl.match(spotifyArtistUrlRegex);
-        if (!match) return null;
-        const artistId = match[1]
+        const parsed = parseArtistUrl(values.artistUrl);
+        if (!parsed) return null;
         setIsLoading(true);
-        const resp = await addArtist(artistId);
+        const resp = await addArtist(parsed.id, parsed.platform);
         setAddArtistStatus(resp);
         setIsLoading(false);
         if (resp.status === "success" || resp.status === "exists") setAddedArtist({ artistId: resp.artistId, artistName: resp.artistName });
@@ -83,7 +92,7 @@ export default function AddArtist() {
     return (
         <>
             <Button
-                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-12 h-12"
+                className="text-black p-3 bg-pastyblue rounded-lg border-none hover:bg-gray-200 transition-colors duration-300 w-10 h-10 sm:w-12 sm:h-12 shrink-0"
                 onClick={handleAddArtistClick}
                 size="lg"
             >
@@ -95,22 +104,22 @@ export default function AddArtist() {
                     <DialogHeader>
                         <DialogTitle>Add Artist</DialogTitle>
                         <DialogDescription>
-                            Add an artist by pasting their Spotify URL
+                            Add an artist by pasting their Spotify or Deezer URL
                         </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                         <div className="space-y-8">
                             <FormField
                                 control={form.control}
-                                name="artistSpotifyUrl"
+                                name="artistUrl"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Spotify URL</FormLabel>
+                                        <FormLabel>Artist URL</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="https://open.spotify.com/artist/..." {...field} />
+                                            <Input placeholder="Paste a Spotify or Deezer artist URL" {...field} />
                                         </FormControl>
                                         <FormDescription>
-                                            Copy the URL from the artist&apos;s Spotify page
+                                            Copy the URL from the artist&apos;s Spotify or Deezer page
                                         </FormDescription>
                                         <FormMessage />
                                     </FormItem>

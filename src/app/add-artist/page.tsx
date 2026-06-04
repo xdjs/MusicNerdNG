@@ -1,6 +1,6 @@
 import { getServerAuthSession } from "@/server/auth";
 import { redirect } from "next/navigation";
-import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
+import { deezerProvider, spotifyProvider } from "@/server/utils/musicPlatform";
 import AddArtistContent from "./_components/AddArtistContent";
 
 export default async function AddArtistPage({
@@ -14,26 +14,29 @@ export default async function AddArtistPage({
     }
 
     const params = await searchParams;
+    const deezerId = params.deezer;
     const spotifyId = params.spotify;
+    const platform = deezerId ? 'deezer' : spotifyId ? 'spotify' : null;
+    const platformId = deezerId || spotifyId;
 
-    if (!spotifyId) {
+    if (!platform || !platformId) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-                <div className="text-xl">No Spotify ID provided</div>
+                <div className="text-xl">No artist ID provided</div>
             </div>
         );
     }
 
-    const headers = await getSpotifyHeaders();
-    const response = await getSpotifyArtist(spotifyId, headers);
+    const provider = platform === 'deezer' ? deezerProvider : spotifyProvider;
+    const artistData = await provider.getArtist(platformId);
 
-    if (response.error || !response.data) {
+    if (!artistData) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-                <div className="text-red-500 text-xl">{response.error || "Failed to fetch artist data"}</div>
+                <div className="text-red-500 text-xl">Could not find artist on {platform}</div>
             </div>
         );
     }
 
-    return <AddArtistContent initialArtist={response.data} />;
+    return <AddArtistContent initialArtist={artistData} />;
 }

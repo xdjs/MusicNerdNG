@@ -1,10 +1,13 @@
 "use client"
 
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useRef } from "react";
 import { EditModeContext } from "@/app/_components/EditModeContext";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useArtistBio } from "@/hooks/useArtistBio";
+import { Check } from "lucide-react";
+import { saveCurrentBio } from "@/app/actions/dashboardActions";
+import BioVersionHistory from "./BioVersionHistory";
 
 interface BlurbSectionProps {
   artistName: string;
@@ -12,15 +15,24 @@ interface BlurbSectionProps {
   initialBio?: string | null;
 }
 
+/** Convert **bold** and *italic* markdown to HTML. Input is AI-generated so only these two patterns occur. */
+function renderMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>");
+}
+
 export default function BlurbSection({ artistName, artistId, initialBio }: BlurbSectionProps) {
   const { isEditing, canEdit } = useContext(EditModeContext);
   const { toast } = useToast();
   const { bio: aiBlurb, loading: loadingAi, refetch } = useArtistBio(artistId, initialBio);
 
-  const [openModal, setOpenModal] = useState<boolean>(false);
   const [editText, setEditText] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isSavingToVault, setIsSavingToVault] = useState(false);
+  const [savedToVault, setSavedToVault] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [originalBio, setOriginalBio] = useState<string>("");
 
   // Update edit text when bio changes
@@ -38,6 +50,11 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
       setOriginalBio(aiBlurb ?? "");
     }
   }, [isEditing, aiBlurb]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => { if (savedTimerRef.current) clearTimeout(savedTimerRef.current); };
+  }, []);
 
   async function handleSave() {
     // Prevent saving empty bios – restore original text instead
@@ -76,24 +93,52 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
     setEditText(originalBio);
   }
 
+  async function handleSaveToVault() {
+    if (!aiBlurb || isSavingToVault) return;
+    setIsSavingToVault(true);
+    try {
+      const result = await saveCurrentBio(aiBlurb, artistId);
+      if (result.success) {
+        setSavedToVault(true);
+        toast({ title: "Bio saved to vault" });
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = setTimeout(() => setSavedToVault(false), 3000);
+      } else {
+        toast({ title: "Error", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to save bio", variant: "destructive" });
+    } finally {
+      setIsSavingToVault(false);
+    }
+  }
+
   async function handleRegenerate() {
     if (isRegenerating) return;
     setIsRegenerating(true);
     try {
+      // First try PUT (admin regeneration) - falls back to GET with regenerate param
       const resp = await fetch(`/api/artistBio/${artistId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate: true }),
       });
-      const data = await resp.json();
       if (resp.ok) {
+        const data = await resp.json();
         setEditText(data.bio);
-        // Don't update aiBlurb or originalBio - keep them so Discard can restore the previous bio
+        refetch(); // Update the hook's displayed bio
         toast({ title: "Bio regenerated" });
       } else {
-        toast({ title: "Error regenerating bio", description: data?.message ?? "Please try again." });
+        // PUT failed (not admin) — use GET with force-regenerate param
+        const getResp = await fetch(`/api/artistBio/${artistId}?regenerate=true`);
+        const getData = await getResp.json();
+        if (getResp.ok && getData.bio) {
+          setEditText(getData.bio);
+          refetch(); // Update the hook's displayed bio
+          toast({ title: "Bio regenerated" });
+        } else {
+          toast({ title: "Error regenerating bio", description: getData?.error ?? "Please try again." });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -105,7 +150,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
 
   if (loadingAi) {
     return (
-      <div className="h-28 relative border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 p-3 overflow-hidden">
+      <div className="glass-subtle p-3 min-h-[80px]">
         <p className="text-gray-500 dark:text-gray-400 italic">Loading summary...</p>
       </div>
     );
@@ -113,84 +158,77 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
 
   if (isEditing) {
     return (
-      <div className="mb-4">
+      <div className="space-y-2">
         <textarea
-          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-black dark:text-white bg-white dark:bg-gray-800 h-40"
+          className="w-full glass-subtle p-3 text-black dark:text-white h-40"
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
           placeholder="Enter artist bio..."
         />
-                 <div className="flex justify-between items-center mt-2">
-           {canEdit && (
-             <Button
-               variant="outline"
-               size="sm"
-               onClick={handleRegenerate}
-               disabled={isRegenerating || isSaving}
-               className="text-gray-700"
-             >
-               {isRegenerating ? (
-                 <>
-                   <img src="/spinner.svg" className="h-3 w-3 mr-1" alt="regenerating" />
-                   Regenerating...
-                 </>
-               ) : (
-                 "Regenerate"
-               )}
-             </Button>
-           )}
-           <div className="flex gap-2">
-             <Button variant="secondary" onClick={handleDiscard} disabled={isSaving}>
-               Discard
-             </Button>
-             <Button onClick={handleSave} disabled={isSaving || (editText?.trim() ?? "") === (originalBio?.trim() ?? "")}>
-               {isSaving ? <img src="/spinner.svg" className="h-4 w-4" alt="saving" /> : "Save"}
-             </Button>
-           </div>
-         </div>
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={isRegenerating || isSaving}
+                className="text-gray-700 dark:text-gray-200"
+              >
+                {isRegenerating ? (
+                  <>
+                    <img src="/spinner.svg" className="h-3 w-3 mr-1" alt="regenerating" />
+                    Regenerating...
+                  </>
+                ) : (
+                  "Regenerate"
+                )}
+              </Button>
+            )}
+            {canEdit && aiBlurb && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveToVault}
+                disabled={isSavingToVault || savedToVault}
+                className="text-gray-700 dark:text-gray-200"
+              >
+                {savedToVault ? (
+                  <>
+                    <Check size={13} className="mr-1 text-green-500" />
+                    Saved
+                  </>
+                ) : (
+                  isSavingToVault ? "Saving..." : "Save to vault"
+                )}
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleDiscard} disabled={isSaving}>
+              Discard
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving || (editText?.trim() ?? "") === (originalBio?.trim() ?? "")}>
+              {isSaving ? <img src="/spinner.svg" className="h-4 w-4" alt="saving" /> : "Save"}
+            </Button>
+          </div>
+        </div>
+        <BioVersionHistory artistId={artistId} />
       </div>
     );
   }
 
-  // Non-editing view
+  // Non-editing view — show the full bio (no truncation)
   return (
-    <div className="mb-4">
-      <div className="relative">
-        {/* Initial text box */}
-        <div className="h-28 relative border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 p-3 overflow-hidden">
-          {aiBlurb ? (
-            <>
-              <p className="text-black dark:text-white">{aiBlurb}</p>
-              {aiBlurb && aiBlurb.length > 200 && (
-                <>
-                  {/* Gradient overlay - dark mode compatible */}
-                  <div className="absolute bottom-0 right-2 w-32 h-8 bg-gradient-to-l from-white via-white/100 to-transparent dark:from-gray-800 dark:via-gray-800/100 dark:to-transparent pointer-events-none"></div>
-                  <button
-                    className="absolute bottom-1 right-2 bg-transparent text-blue-600 dark:text-blue-400 text-sm underline z-10"
-                    onClick={() => setOpenModal(true)}
-                  >
-                    Read More
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400 italic">No summary is available</p>
-          )}
-        </div>
-        {/* Expanded box */}
-        {openModal && (
-          <div className="absolute top-0 left-0 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-30 p-3 max-h-96 overflow-y-auto">
-            <p className="text-black dark:text-white mb-4">{aiBlurb}</p>
-            <button
-              className="absolute right-2 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 text-sm underline"
-              onClick={() => setOpenModal(false)}
-            >
-              Show less
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="glass-subtle p-3">
+      {aiBlurb ? (
+        <p
+          className="text-black dark:text-white text-sm leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(aiBlurb) }}
+        />
+      ) : (
+        <p className="text-gray-500 dark:text-gray-400 italic">No summary is available</p>
+      )}
     </div>
   );
 }

@@ -74,16 +74,21 @@ export async function getUnmappedArtists(
   platform: string,
   limit: number,
   offset: number,
-): Promise<{ artists: { id: string; name: string | null; spotify: string | null }[]; totalUnmapped: number }> {
+  basePlatform: 'spotify' | 'deezer' = 'spotify',
+): Promise<{ artists: { id: string; name: string | null; spotify: string | null; deezer: string | null }[]; totalUnmapped: number }> {
   if (!VALID_MAPPING_PLATFORMS.has(platform)) {
     throw new MappingValidationError(`Invalid platform: ${platform}`);
   }
+
+  const baseFilter = basePlatform === 'deezer'
+    ? sql`a.deezer IS NOT NULL`
+    : sql`a.spotify IS NOT NULL`;
 
   const [countResult, result] = await Promise.all([
     db.execute<{ total: number }>(sql`
       SELECT COUNT(*)::int AS total
       FROM artists a
-      WHERE a.spotify IS NOT NULL
+      WHERE ${baseFilter}
         AND NOT EXISTS (
           SELECT 1 FROM artist_id_mappings m
           WHERE m.artist_id = a.id AND m.platform = ${platform}
@@ -93,10 +98,10 @@ export async function getUnmappedArtists(
           WHERE e.artist_id = a.id AND e.platform = ${platform}
         )
     `),
-    db.execute<{ id: string; name: string | null; spotify: string | null }>(sql`
-      SELECT a.id, a.name, a.spotify
+    db.execute<{ id: string; name: string | null; spotify: string | null; deezer: string | null }>(sql`
+      SELECT a.id, a.name, a.spotify, a.deezer
       FROM artists a
-      WHERE a.spotify IS NOT NULL
+      WHERE ${baseFilter}
         AND NOT EXISTS (
           SELECT 1 FROM artist_id_mappings m
           WHERE m.artist_id = a.id AND m.platform = ${platform}
@@ -206,11 +211,15 @@ export async function resolveArtistMapping(params: {
 
 export async function getMappingStats(): Promise<{
   totalArtistsWithSpotify: number;
+  totalArtistsWithDeezer: number;
   platformStats: { platform: string; mappedCount: number; percentage: number }[];
 }> {
-  const [totalResult, statsResult] = await Promise.all([
+  const [totalResult, totalDeezerResult, statsResult] = await Promise.all([
     db.execute<{ total: number }>(sql`
       SELECT COUNT(*)::int AS total FROM artists WHERE spotify IS NOT NULL
+    `),
+    db.execute<{ total: number }>(sql`
+      SELECT COUNT(*)::int AS total FROM artists WHERE deezer IS NOT NULL
     `),
     db.execute<{ platform: string; mapped_count: number }>(sql`
       SELECT platform, COUNT(*)::int AS mapped_count
@@ -221,6 +230,7 @@ export async function getMappingStats(): Promise<{
   ]);
 
   const totalArtistsWithSpotify = totalResult[0]?.total ?? 0;
+  const totalArtistsWithDeezer = totalDeezerResult[0]?.total ?? 0;
 
   // Build a map of DB results, then ensure all valid platforms are represented
   const dbStats = new Map([...statsResult].map(row => [row.platform, row.mapped_count]));
@@ -235,7 +245,7 @@ export async function getMappingStats(): Promise<{
     };
   });
 
-  return { totalArtistsWithSpotify, platformStats };
+  return { totalArtistsWithSpotify, totalArtistsWithDeezer, platformStats };
 }
 
 export async function getArtistMappings(artistId: string) {

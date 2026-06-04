@@ -4,8 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 // not shared across worker instances. This provides best-effort protection for a
 // low-traffic site. For stronger guarantees, swap to @upstash/ratelimit + @upstash/redis.
 
-const STRICT_PATHS = ['/api/funFacts', '/api/artistBio'];
-const MEDIUM_PATHS = ['/api/validateLink'];
+const STRICT_PATHS = ['/api/funFacts', '/api/artistBio', '/api/askArtist'];
+const MEDIUM_PATHS = ['/api/validateLink', '/api/directEditLink'];
 
 type Tier = 'strict' | 'medium' | 'default';
 

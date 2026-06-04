@@ -225,10 +225,12 @@ describe("idMappingService", () => {
     const { db, getMappingStats } = await setup();
     (db as any).execute = jest.fn()
       .mockResolvedValueOnce([{ total: 100 }])
+      .mockResolvedValueOnce([{ total: 390 }])
       .mockResolvedValueOnce([{ platform: "deezer", mapped_count: 50 }]);
 
     const stats = await getMappingStats();
     expect(stats.totalArtistsWithSpotify).toBe(100);
+    expect(stats.totalArtistsWithDeezer).toBe(390);
     // All valid platforms should be present
     expect(stats.platformStats).toHaveLength(11);
     const deezer = stats.platformStats.find(s => s.platform === "deezer");

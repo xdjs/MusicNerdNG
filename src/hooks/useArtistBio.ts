@@ -111,7 +111,7 @@ export function useArtistBio(artistId: string, initialBio?: string | null): UseA
   };
 
   useEffect(() => {
-    // Skip fetch if we have a server-provided initialBio (use != null to allow empty strings)
+    // If the server already provided a bio, use it directly — no API call needed
     if (initialBio != null) {
       setLoading(false);
       return;

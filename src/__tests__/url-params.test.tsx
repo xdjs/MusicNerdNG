@@ -6,9 +6,9 @@ jest.mock('@/server/auth', () => ({
     getServerAuthSession: jest.fn(),
 }));
 
-jest.mock('@/server/utils/queries/externalApiQueries', () => ({
-    getSpotifyHeaders: jest.fn(),
-    getSpotifyArtist: jest.fn(),
+jest.mock('@/server/utils/musicPlatform', () => ({
+    deezerProvider: { getArtist: jest.fn() },
+    spotifyProvider: { getArtist: jest.fn() },
 }));
 
 const mockRedirect = jest.fn();
@@ -28,21 +28,35 @@ jest.mock('@/app/add-artist/_components/AddArtistContent', () =>
 
 import AddArtistPage from '@/app/add-artist/page';
 import { getServerAuthSession } from '@/server/auth';
-import { getSpotifyHeaders, getSpotifyArtist } from '@/server/utils/queries/externalApiQueries';
+import { deezerProvider, spotifyProvider } from '@/server/utils/musicPlatform';
 
 const mockSession = {
     user: { id: 'user-uuid', email: 'test@test.com' },
     expires: '2026-12-31',
 };
 
+const mockPlatformArtist = {
+    platform: 'spotify',
+    platformId: 'ts-id',
+    name: 'Taylor Swift',
+    imageUrl: 'https://example.com/ts.jpg',
+    followerCount: 1000000,
+    albumCount: 10,
+    genres: ['pop'],
+    profileUrl: 'https://open.spotify.com/artist/ts-id',
+    topTrackName: 'Anti-Hero',
+};
+
 describe('AddArtistPage URL parameter handling', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (getServerAuthSession as jest.Mock).mockResolvedValue(mockSession);
-        (getSpotifyHeaders as jest.Mock).mockResolvedValue({ headers: { Authorization: 'Bearer token' } });
-        (getSpotifyArtist as jest.Mock).mockResolvedValue({
-            data: { name: 'Taylor Swift', id: 'ts-id', images: [] },
-            error: null,
+        (spotifyProvider.getArtist as jest.Mock).mockResolvedValue(mockPlatformArtist);
+        (deezerProvider.getArtist as jest.Mock).mockResolvedValue({
+            ...mockPlatformArtist,
+            platform: 'deezer',
+            platformId: '12345',
+            profileUrl: 'https://www.deezer.com/artist/12345',
         });
     });
 
@@ -53,39 +67,38 @@ describe('AddArtistPage URL parameter handling', () => {
         expect(screen.getByText('Taylor Swift')).toBeInTheDocument();
     });
 
-    it('calls getSpotifyArtist with the correct ID from the URL param', async () => {
+    it('calls spotifyProvider.getArtist with the correct ID', async () => {
         await AddArtistPage({ searchParams: Promise.resolve({ spotify: 'ts-id' }) });
-        expect(getSpotifyArtist).toHaveBeenCalledWith('ts-id', expect.anything());
+        expect(spotifyProvider.getArtist).toHaveBeenCalledWith('ts-id');
     });
 
-    it('shows "No Spotify ID provided" when spotify param is missing', async () => {
+    it('renders AddArtistContent when deezer param is present', async () => {
+        const jsx = await AddArtistPage({ searchParams: Promise.resolve({ deezer: '12345' }) });
+        render(jsx as React.ReactElement);
+        expect(screen.getByTestId('add-artist-content')).toBeInTheDocument();
+    });
+
+    it('calls deezerProvider.getArtist with the correct ID', async () => {
+        await AddArtistPage({ searchParams: Promise.resolve({ deezer: '12345' }) });
+        expect(deezerProvider.getArtist).toHaveBeenCalledWith('12345');
+    });
+
+    it('shows "No artist ID provided" when no platform param is present', async () => {
         const jsx = await AddArtistPage({ searchParams: Promise.resolve({}) });
         render(jsx as React.ReactElement);
-        expect(screen.getByText('No Spotify ID provided')).toBeInTheDocument();
+        expect(screen.getByText('No artist ID provided')).toBeInTheDocument();
     });
 
-    it('shows "No Spotify ID provided" when spotify param is undefined', async () => {
-        const jsx = await AddArtistPage({ searchParams: Promise.resolve({ spotify: undefined }) });
+    it('shows error when provider returns null', async () => {
+        (spotifyProvider.getArtist as jest.Mock).mockResolvedValue(null);
+        const jsx = await AddArtistPage({ searchParams: Promise.resolve({ spotify: 'bad-id' }) });
         render(jsx as React.ReactElement);
-        expect(screen.getByText('No Spotify ID provided')).toBeInTheDocument();
+        expect(screen.getByText('Could not find artist on spotify')).toBeInTheDocument();
     });
 
-    it('does not call getSpotifyArtist when spotify param is absent', async () => {
+    it('does not call providers when no params present', async () => {
         await AddArtistPage({ searchParams: Promise.resolve({}) });
-        expect(getSpotifyArtist).not.toHaveBeenCalled();
-    });
-
-    it('shows error from Spotify API', async () => {
-        (getSpotifyArtist as jest.Mock).mockResolvedValue({ data: null, error: 'Artist not found on Spotify' });
-        const jsx = await AddArtistPage({ searchParams: Promise.resolve({ spotify: 'bad-id' }) });
-        render(jsx as React.ReactElement);
-        expect(screen.getByText('Artist not found on Spotify')).toBeInTheDocument();
-    });
-
-    it('shows fallback error when Spotify returns no data and no error message', async () => {
-        (getSpotifyArtist as jest.Mock).mockResolvedValue({ data: null, error: null });
-        const jsx = await AddArtistPage({ searchParams: Promise.resolve({ spotify: 'bad-id' }) });
-        render(jsx as React.ReactElement);
-        expect(screen.getByText('Failed to fetch artist data')).toBeInTheDocument();
+        expect(spotifyProvider.getArtist).not.toHaveBeenCalled();
+        expect(deezerProvider.getArtist).not.toHaveBeenCalled();
     });
 });

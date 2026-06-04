@@ -31,6 +31,7 @@ export async function toArtistDetail(artist: Artist): Promise<ArtistDetail> {
     name: artist.name ?? "",
     bio: artist.bio ?? null,
     spotifyId: artist.spotify ?? null,
+    deezerId: artist.deezer ?? null,
     socialLinks,
   };
 }
