@@ -151,7 +151,23 @@ describe("artistLinkService", () => {
     expect(result).toEqual({ oldValue: "old-user", artistName: "Test Artist" });
   });
 
-  // 19. clearArtistLink returns old value when column has existing data
+  // 19. setArtistLink reads the aliased facebookID property
+  it("setArtistLink returns the old value for facebookID", async () => {
+    const { db, setArtistLink } = await setup();
+    (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", name: "Test Artist", facebookId: "old-facebook-id" });
+    const result = await setArtistLink("artist-123", "facebookID", "old-facebook-id");
+    expect(result).toEqual({ oldValue: "old-facebook-id", artistName: "Test Artist" });
+  });
+
+  // 20. setArtistLink reads the aliased tiktokID property
+  it("setArtistLink returns the old value for tiktokID", async () => {
+    const { db, setArtistLink } = await setup();
+    (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", name: "Test Artist", tiktokId: "old-tiktok-id" });
+    const result = await setArtistLink("artist-123", "tiktokID", "old-tiktok-id");
+    expect(result).toEqual({ oldValue: "old-tiktok-id", artistName: "Test Artist" });
+  });
+
+  // 21. clearArtistLink returns old value when column has existing data
   it("clearArtistLink returns old value when clearing", async () => {
     const { db, clearArtistLink } = await setup();
     (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", x: "old-handle" });
