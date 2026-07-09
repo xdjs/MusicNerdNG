@@ -23,6 +23,12 @@ const WRITABLE_LINK_COLUMNS = new Set([
   "supercollector", "ens",
 ]);
 
+// Drizzle row properties can differ from the physical column names used in SQL.
+const ARTIST_ROW_PROPERTY_BY_COLUMN: Record<string, string> = {
+  facebookID: "facebookId",
+  tiktokID: "tiktokId",
+};
+
 export function sanitizeColumnName(siteName: string): string {
   return siteName.replace(/[^a-zA-Z0-9_]/g, "");
 }
@@ -39,11 +45,16 @@ function assertWritable(columnName: string): void {
   }
 }
 
+function getArtistLinkValue(artist: object, columnName: string): string | null {
+  const propertyName = ARTIST_ROW_PROPERTY_BY_COLUMN[columnName] ?? columnName;
+  return ((artist as Record<string, unknown>)[propertyName] as string | null | undefined) ?? null;
+}
+
 export async function setArtistLink(
   artistId: string,
   siteName: string,
   value: string
-): Promise<{ oldValue: string | null }> {
+): Promise<{ oldValue: string | null; artistName: string | null }> {
   const columnName = sanitizeColumnName(siteName);
   assertWritable(columnName);
 
@@ -60,7 +71,7 @@ export async function setArtistLink(
   }
 
   // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
-  const oldValue = (artist as Record<string, unknown>)[columnName] as string | null ?? null;
+  const oldValue = getArtistLinkValue(artist, columnName);
 
   // For bio-relevant columns, set value and null bio in a single statement
   if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
@@ -70,7 +81,7 @@ export async function setArtistLink(
     await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
   }
 
-  return { oldValue };
+  return { oldValue, artistName: artist.name ?? null };
 }
 
 export async function clearArtistLink(
@@ -89,7 +100,7 @@ export async function clearArtistLink(
   }
 
   // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
-  const oldValue = (artist as Record<string, unknown>)[columnName] as string | null ?? null;
+  const oldValue = getArtistLinkValue(artist, columnName);
 
   if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
     await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL, bio = NULL WHERE id = ${artistId}`);
