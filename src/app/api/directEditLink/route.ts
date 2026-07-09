@@ -1,6 +1,8 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
+import { notifyDiscordOfArtistLinkAdded } from "@/server/utils/artistLinkDiscordNotifier";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
+import { getUserById } from "@/server/utils/queries/userQueries";
 import { extractArtistId } from "@/server/utils/services";
 import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
 
@@ -37,7 +39,15 @@ export async function POST(req: Request) {
                 return Response.json({ error: LINK_NOT_SUPPORTED_LONG }, { status: 400 });
             }
 
-            await setArtistLink(artistId, extracted.siteName, extracted.id);
+            const user = await getUserById(authResult.userId);
+            const { artistName } = await setArtistLink(artistId, extracted.siteName, extracted.id);
+            await notifyDiscordOfArtistLinkAdded({
+                user: user ?? {},
+                artistName: artistName ?? artistId,
+                platformName: extracted.cardPlatformName ?? extracted.siteName,
+                platformId: extracted.id,
+                submittedUrl: url,
+            });
             return Response.json({ success: true, siteName: extracted.siteName, platformName: extracted.cardPlatformName });
         }
 

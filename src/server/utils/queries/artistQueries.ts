@@ -13,6 +13,7 @@ import { headers } from "next/headers";
 import { getUserById, getUserDisplayName } from "@/server/utils/queries/userQueries";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
+import { notifyDiscordOfArtistLinkAdded } from "@/server/utils/artistLinkDiscordNotifier";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { regenerateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
@@ -537,9 +538,14 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         }
 
         if (user) {
-            await sendDiscordMessage(
-                `${getUserDisplayName(user)} added ${artist.name}'s ${artistIdFromUrl.cardPlatformName}: ${artistIdFromUrl.id} (Submitted URL: ${artistUrl}) ${newUGC.createdAt}`
-            );
+            await notifyDiscordOfArtistLinkAdded({
+                user,
+                artistName: artist.name ?? artist.id,
+                platformName: artistIdFromUrl.cardPlatformName ?? artistIdFromUrl.siteName,
+                platformId: artistIdFromUrl.id,
+                submittedUrl: artistUrl,
+                createdAt: newUGC.createdAt ?? undefined,
+            });
         }
 
         return {

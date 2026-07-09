@@ -43,7 +43,7 @@ export async function setArtistLink(
   artistId: string,
   siteName: string,
   value: string
-): Promise<{ oldValue: string | null }> {
+): Promise<{ oldValue: string | null; artistName: string | null }> {
   const columnName = sanitizeColumnName(siteName);
   assertWritable(columnName);
 
@@ -70,7 +70,7 @@ export async function setArtistLink(
     await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
   }
 
-  return { oldValue };
+  return { oldValue, artistName: artist.name ?? null };
 }
 
 export async function clearArtistLink(

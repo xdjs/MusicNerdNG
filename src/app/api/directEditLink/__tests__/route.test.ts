@@ -5,7 +5,11 @@ jest.mock("@/lib/auth-helpers", () => ({
     requireAuth: jest.fn(),
 }));
 jest.mock("@/server/utils/queries/userQueries", () => ({
+    getUserDisplayName: jest.requireActual("@/server/utils/queries/userQueries").getUserDisplayName,
     getUserById: jest.fn(),
+}));
+jest.mock("@/server/utils/queries/discord", () => ({
+    sendDiscordMessage: jest.fn(),
 }));
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
     getApprovedClaimForArtistByUserId: jest.fn(),
@@ -34,6 +38,7 @@ describe("POST /api/directEditLink", () => {
     async function setup() {
         const { requireAuth } = await import("@/lib/auth-helpers");
         const { getUserById } = await import("@/server/utils/queries/userQueries");
+        const { sendDiscordMessage } = await import("@/server/utils/queries/discord");
         const { getApprovedClaimForArtistByUserId } = await import("@/server/utils/queries/dashboardQueries");
         const { setArtistLink, clearArtistLink } = await import("@/server/utils/artistLinkService");
         const { extractArtistId } = await import("@/server/utils/services");
@@ -42,6 +47,7 @@ describe("POST /api/directEditLink", () => {
             POST,
             requireAuth: requireAuth as jest.Mock,
             getUserById: getUserById as jest.Mock,
+            sendDiscordMessage: sendDiscordMessage as jest.Mock,
             getApprovedClaimForArtistByUserId: getApprovedClaimForArtistByUserId as jest.Mock,
             setArtistLink: setArtistLink as jest.Mock,
             clearArtistLink: clearArtistLink as jest.Mock,
@@ -88,36 +94,46 @@ describe("POST /api/directEditLink", () => {
         expect(res.status).toBe(403);
     });
 
-    it("allows admin to edit any artist", async () => {
-        const { POST, requireAuth, getUserById, extractArtistId, setArtistLink } = await setup();
+    it("allows admin to edit any artist and notifies Discord", async () => {
+        const { POST, requireAuth, getUserById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
-        getUserById.mockResolvedValue({ id: "u1", isAdmin: true });
+        getUserById.mockResolvedValue({ id: "u1", username: "admin-user", isAdmin: true });
         extractArtistId.mockResolvedValue({ siteName: "x", id: "testuser", cardPlatformName: "X" });
-        setArtistLink.mockResolvedValue(undefined);
+        setArtistLink.mockResolvedValue({ oldValue: null, artistName: "Test Artist" });
 
         const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://x.com/testuser" }));
         const data = await res.json();
         expect(res.status).toBe(200);
         expect(data.success).toBe(true);
         expect(setArtistLink).toHaveBeenCalledWith("a1", "x", "testuser");
+        expect(sendDiscordMessage).toHaveBeenCalledWith(
+            expect.stringMatching(
+                /^admin-user added Test Artist's X: testuser \(Submitted URL: https:\/\/x\.com\/testuser\) \d{4}-\d{2}-\d{2}T/
+            )
+        );
     });
 
     it("allows claimed artist to edit own profile", async () => {
-        const { POST, requireAuth, getUserById, getApprovedClaimForArtistByUserId, extractArtistId, setArtistLink } = await setup();
+        const { POST, requireAuth, getUserById, sendDiscordMessage, getApprovedClaimForArtistByUserId, extractArtistId, setArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
-        getUserById.mockResolvedValue({ id: "u1", isAdmin: false });
+        getUserById.mockResolvedValue({ id: "u1", username: "claimed-artist", isAdmin: false });
         getApprovedClaimForArtistByUserId.mockResolvedValue({ id: "c1", artistId: "a1", userId: "u1" });
         extractArtistId.mockResolvedValue({ siteName: "instagram", id: "artist", cardPlatformName: "Instagram" });
-        setArtistLink.mockResolvedValue(undefined);
+        setArtistLink.mockResolvedValue({ oldValue: null, artistName: "Claimed Artist" });
 
         const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://instagram.com/artist" }));
         const data = await res.json();
         expect(res.status).toBe(200);
         expect(data.success).toBe(true);
+        expect(sendDiscordMessage).toHaveBeenCalledWith(
+            expect.stringMatching(
+                /^claimed-artist added Claimed Artist's Instagram: artist \(Submitted URL: https:\/\/instagram\.com\/artist\) \d{4}-\d{2}-\d{2}T/
+            )
+        );
     });
 
     it("clears a link successfully", async () => {
-        const { POST, requireAuth, getUserById, clearArtistLink } = await setup();
+        const { POST, requireAuth, getUserById, sendDiscordMessage, clearArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
         getUserById.mockResolvedValue({ id: "u1", isAdmin: true });
         clearArtistLink.mockResolvedValue(undefined);
@@ -127,6 +143,20 @@ describe("POST /api/directEditLink", () => {
         expect(res.status).toBe(200);
         expect(data.success).toBe(true);
         expect(clearArtistLink).toHaveBeenCalledWith("a1", "instagram");
+        expect(sendDiscordMessage).not.toHaveBeenCalled();
+    });
+
+    it("does not notify Discord when setting the link fails", async () => {
+        const { POST, requireAuth, getUserById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
+        requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
+        getUserById.mockResolvedValue({ id: "u1", username: "admin-user", isAdmin: true });
+        extractArtistId.mockResolvedValue({ siteName: "x", id: "testuser", cardPlatformName: "X" });
+        setArtistLink.mockRejectedValue(new Error("Database write failed"));
+
+        const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://x.com/testuser" }));
+
+        expect(res.status).toBe(500);
+        expect(sendDiscordMessage).not.toHaveBeenCalled();
     });
 
     it("returns 400 when url missing for set action", async () => {

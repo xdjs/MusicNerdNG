@@ -15,7 +15,7 @@ describe("artistLinkService", () => {
     const { db } = await import("@/server/db/drizzle");
     db.execute = jest.fn().mockResolvedValue([]);
     // Mock artist existence check - return a found artist by default
-    (db as any).query.artists.findFirst = jest.fn().mockResolvedValue({ id: "artist-123" });
+    (db as any).query.artists.findFirst = jest.fn().mockResolvedValue({ id: "artist-123", name: "Test Artist" });
     const { regenerateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
     const { setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS } = await import("../artistLinkService");
     return { db, setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS, regenerateArtistBio };
@@ -34,12 +34,12 @@ describe("artistLinkService", () => {
     expect(sanitizeColumnName("youtube_channel")).toBe("youtube_channel");
   });
 
-  // 3. setArtistLink sets a generic text column and returns oldValue
+  // 3. setArtistLink sets a generic text column and returns artist context
   it("setArtistLink sets a generic text column via sql.identifier", async () => {
     const { db, setArtistLink } = await setup();
     const result = await setArtistLink("artist-123", "instagram", "testuser");
     expect(db.execute).toHaveBeenCalled();
-    expect(result).toEqual({ oldValue: null });
+    expect(result).toEqual({ oldValue: null, artistName: "Test Artist" });
   });
 
   // 4. setArtistLink sets ens directly
@@ -48,7 +48,7 @@ describe("artistLinkService", () => {
     const result = await setArtistLink("artist-123", "ens", "vitalik.eth");
     expect(db.execute).toHaveBeenCalledTimes(1);
     expect(regenerateArtistBio).not.toHaveBeenCalled();
-    expect(result).toEqual({ oldValue: null });
+    expect(result).toEqual({ oldValue: null, artistName: "Test Artist" });
   });
 
   // 5. setArtistLink triggers bio regen for prompt-relevant column
@@ -146,9 +146,9 @@ describe("artistLinkService", () => {
   // 18. setArtistLink returns old value when column has existing data
   it("setArtistLink returns old value when overwriting", async () => {
     const { db, setArtistLink } = await setup();
-    (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", instagram: "old-user" });
+    (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", name: "Test Artist", instagram: "old-user" });
     const result = await setArtistLink("artist-123", "instagram", "new-user");
-    expect(result).toEqual({ oldValue: "old-user" });
+    expect(result).toEqual({ oldValue: "old-user", artistName: "Test Artist" });
   });
 
   // 19. clearArtistLink returns old value when column has existing data
