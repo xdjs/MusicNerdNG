@@ -40,14 +40,16 @@ export async function POST(req: Request) {
             }
 
             const user = await getUserById(authResult.userId);
-            const { artistName } = await setArtistLink(artistId, extracted.siteName, extracted.id);
-            await notifyDiscordOfArtistLinkAdded({
-                user: user ?? {},
-                artistName: artistName ?? artistId,
-                platformName: extracted.cardPlatformName ?? extracted.siteName,
-                platformId: extracted.id,
-                submittedUrl: url,
-            });
+            const { oldValue, artistName } = await setArtistLink(artistId, extracted.siteName, extracted.id);
+            if (oldValue !== extracted.id) {
+                await notifyDiscordOfArtistLinkAdded({
+                    user: user ?? {},
+                    artistName: artistName ?? artistId,
+                    platformName: extracted.cardPlatformName ?? extracted.siteName,
+                    platformId: extracted.id,
+                    submittedUrl: url,
+                });
+            }
             return Response.json({ success: true, siteName: extracted.siteName, platformName: extracted.cardPlatformName });
         }
 

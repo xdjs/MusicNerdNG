@@ -23,6 +23,12 @@ const WRITABLE_LINK_COLUMNS = new Set([
   "supercollector", "ens",
 ]);
 
+// Drizzle row properties can differ from the physical column names used in SQL.
+const ARTIST_ROW_PROPERTY_BY_COLUMN: Record<string, string> = {
+  facebookID: "facebookId",
+  tiktokID: "tiktokId",
+};
+
 export function sanitizeColumnName(siteName: string): string {
   return siteName.replace(/[^a-zA-Z0-9_]/g, "");
 }
@@ -37,6 +43,11 @@ function assertWritable(columnName: string): void {
   if (!WRITABLE_LINK_COLUMNS.has(columnName)) {
     throw new Error(`Column not in writable whitelist: ${columnName}`);
   }
+}
+
+function getArtistLinkValue(artist: object, columnName: string): string | null {
+  const propertyName = ARTIST_ROW_PROPERTY_BY_COLUMN[columnName] ?? columnName;
+  return ((artist as Record<string, unknown>)[propertyName] as string | null | undefined) ?? null;
 }
 
 export async function setArtistLink(
@@ -60,7 +71,7 @@ export async function setArtistLink(
   }
 
   // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
-  const oldValue = (artist as Record<string, unknown>)[columnName] as string | null ?? null;
+  const oldValue = getArtistLinkValue(artist, columnName);
 
   // For bio-relevant columns, set value and null bio in a single statement
   if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
@@ -89,7 +100,7 @@ export async function clearArtistLink(
   }
 
   // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
-  const oldValue = (artist as Record<string, unknown>)[columnName] as string | null ?? null;
+  const oldValue = getArtistLinkValue(artist, columnName);
 
   if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
     await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL, bio = NULL WHERE id = ${artistId}`);

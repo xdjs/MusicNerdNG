@@ -132,6 +132,19 @@ describe("POST /api/directEditLink", () => {
         );
     });
 
+    it("does not notify Discord when the link value is unchanged", async () => {
+        const { POST, requireAuth, getUserById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
+        requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
+        getUserById.mockResolvedValue({ id: "u1", username: "admin-user", isAdmin: true });
+        extractArtistId.mockResolvedValue({ siteName: "x", id: "testuser", cardPlatformName: "X" });
+        setArtistLink.mockResolvedValue({ oldValue: "testuser", artistName: "Test Artist" });
+
+        const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://x.com/testuser" }));
+
+        expect(res.status).toBe(200);
+        expect(sendDiscordMessage).not.toHaveBeenCalled();
+    });
+
     it("clears a link successfully", async () => {
         const { POST, requireAuth, getUserById, sendDiscordMessage, clearArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
