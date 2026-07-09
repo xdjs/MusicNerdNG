@@ -8,9 +8,6 @@ jest.mock("@/server/utils/queries/userQueries", () => ({
     getUserDisplayName: jest.requireActual("@/server/utils/queries/userQueries").getUserDisplayName,
     getUserById: jest.fn(),
 }));
-jest.mock("@/server/utils/queries/artistQueries", () => ({
-    getArtistById: jest.fn(),
-}));
 jest.mock("@/server/utils/queries/discord", () => ({
     sendDiscordMessage: jest.fn(),
 }));
@@ -41,7 +38,6 @@ describe("POST /api/directEditLink", () => {
     async function setup() {
         const { requireAuth } = await import("@/lib/auth-helpers");
         const { getUserById } = await import("@/server/utils/queries/userQueries");
-        const { getArtistById } = await import("@/server/utils/queries/artistQueries");
         const { sendDiscordMessage } = await import("@/server/utils/queries/discord");
         const { getApprovedClaimForArtistByUserId } = await import("@/server/utils/queries/dashboardQueries");
         const { setArtistLink, clearArtistLink } = await import("@/server/utils/artistLinkService");
@@ -51,7 +47,6 @@ describe("POST /api/directEditLink", () => {
             POST,
             requireAuth: requireAuth as jest.Mock,
             getUserById: getUserById as jest.Mock,
-            getArtistById: getArtistById as jest.Mock,
             sendDiscordMessage: sendDiscordMessage as jest.Mock,
             getApprovedClaimForArtistByUserId: getApprovedClaimForArtistByUserId as jest.Mock,
             setArtistLink: setArtistLink as jest.Mock,
@@ -100,12 +95,11 @@ describe("POST /api/directEditLink", () => {
     });
 
     it("allows admin to edit any artist and notifies Discord", async () => {
-        const { POST, requireAuth, getUserById, getArtistById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
+        const { POST, requireAuth, getUserById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
         getUserById.mockResolvedValue({ id: "u1", username: "admin-user", isAdmin: true });
-        getArtistById.mockResolvedValue({ id: "a1", name: "Test Artist" });
         extractArtistId.mockResolvedValue({ siteName: "x", id: "testuser", cardPlatformName: "X" });
-        setArtistLink.mockResolvedValue(undefined);
+        setArtistLink.mockResolvedValue({ oldValue: null, artistName: "Test Artist" });
 
         const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://x.com/testuser" }));
         const data = await res.json();
@@ -120,13 +114,12 @@ describe("POST /api/directEditLink", () => {
     });
 
     it("allows claimed artist to edit own profile", async () => {
-        const { POST, requireAuth, getUserById, getArtistById, sendDiscordMessage, getApprovedClaimForArtistByUserId, extractArtistId, setArtistLink } = await setup();
+        const { POST, requireAuth, getUserById, sendDiscordMessage, getApprovedClaimForArtistByUserId, extractArtistId, setArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
         getUserById.mockResolvedValue({ id: "u1", username: "claimed-artist", isAdmin: false });
-        getArtistById.mockResolvedValue({ id: "a1", name: "Claimed Artist" });
         getApprovedClaimForArtistByUserId.mockResolvedValue({ id: "c1", artistId: "a1", userId: "u1" });
         extractArtistId.mockResolvedValue({ siteName: "instagram", id: "artist", cardPlatformName: "Instagram" });
-        setArtistLink.mockResolvedValue(undefined);
+        setArtistLink.mockResolvedValue({ oldValue: null, artistName: "Claimed Artist" });
 
         const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://instagram.com/artist" }));
         const data = await res.json();
@@ -154,10 +147,9 @@ describe("POST /api/directEditLink", () => {
     });
 
     it("does not notify Discord when setting the link fails", async () => {
-        const { POST, requireAuth, getUserById, getArtistById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
+        const { POST, requireAuth, getUserById, sendDiscordMessage, extractArtistId, setArtistLink } = await setup();
         requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
         getUserById.mockResolvedValue({ id: "u1", username: "admin-user", isAdmin: true });
-        getArtistById.mockResolvedValue({ id: "a1", name: "Test Artist" });
         extractArtistId.mockResolvedValue({ siteName: "x", id: "testuser", cardPlatformName: "X" });
         setArtistLink.mockRejectedValue(new Error("Database write failed"));
 
