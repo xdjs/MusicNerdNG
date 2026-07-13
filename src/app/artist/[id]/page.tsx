@@ -95,6 +95,9 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const isClaimedByUser = isClaimed && !!session && existingClaim.userId === session.user.id;
     const isPendingByUser = isPending && !!session && existingClaim.userId === session.user.id;
     const canEdit = isClaimedByUser || isAdmin;
+    // Admin additions should continue through the auto-approved UGC flow so they
+    // receive contribution credit and appear in the home activity feed.
+    const shouldDirectEditLinks = isClaimedByUser && !isAdmin;
 
     const pendingSources = canEdit ? pendingSourcesRaw : [];
 
@@ -162,7 +165,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                             spotifyImg={platformImage ?? ""}
                             availableLinks={urlMapList}
                             isOpenOnLoad={false}
-                            directEdit={canEdit}
+                            directEdit={shouldDirectEditLinks}
                         />
                     </div>
                     <ArtistLinksGrid isMonetized={false} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
@@ -177,7 +180,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                             spotifyImg={platformImage ?? ""}
                             availableLinks={urlMapList}
                             isOpenOnLoad={false}
-                            directEdit={canEdit}
+                            directEdit={shouldDirectEditLinks}
                         />
                     </div>
                     <ArtistLinksGrid isMonetized={true} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
