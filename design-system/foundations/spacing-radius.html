@@ -1,0 +1,308 @@
+<!-- @dsCard group="Spacing" name="Spacing & radius" subtitle="container 1400px/2rem · breakpoints · radius scale" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spacing &amp; radius</title>
+<style>
+  :root{
+    --maroon:#422b46;
+    --pastyblue:#2ad4fc;
+    --pastypink:#ff9ce3;
+    --jellygreen:#19ffb8;
+    --ink:#1c1420;
+    --muted:#7a6f80;
+    --line:#e7e2ea;
+    --canvas:#ffffff;
+    --panel:#faf8fb;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,"Cascadia Code",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--canvas);
+    color:var(--ink);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+    padding:32px;
+  }
+  .wrap{max-width:960px;margin:0 auto}
+  header.hd{margin-bottom:28px}
+  .kicker{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--pastyblue);
+    filter:saturate(.7) brightness(.72);
+    margin:0 0 6px;
+  }
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px;color:var(--maroon)}
+  .sub{margin:0;color:var(--muted);font-size:14px}
+  .sub code{font-family:var(--mono);font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--maroon)}
+
+  section.block{margin-top:30px}
+  .blkhead{display:flex;align-items:baseline;gap:10px;margin:0 0 14px;flex-wrap:wrap}
+  .blkhead h2{font-size:15px;margin:0;color:var(--ink);letter-spacing:-.01em}
+  .blkhead .note{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+  /* ---- Radius scale ---- */
+  .radii{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:14px;
+  }
+  @media(max-width:640px){.radii{grid-template-columns:repeat(2,1fr)}}
+  .rcell{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px 14px 14px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+  }
+  .swatch{
+    width:74px;height:74px;
+    background:linear-gradient(135deg,#f6d9ff 0%, #d7f3ff 100%);
+    border:2px solid var(--maroon);
+    position:relative;
+    margin-bottom:14px;
+  }
+  /* corner tick to make rounding legible */
+  .swatch::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-top:6px solid var(--pastypink);
+    border-left:6px solid var(--pastypink);
+    border-radius:inherit;
+    -webkit-mask:linear-gradient(135deg,#000 0 34%,transparent 40%);
+            mask:linear-gradient(135deg,#000 0 34%,transparent 40%);
+    opacity:.9;
+  }
+  .r-sm{border-radius:calc(0.5rem - 4px)}   /* 4px */
+  .r-md{border-radius:calc(0.5rem - 2px)}   /* 6px */
+  .r-lg{border-radius:0.5rem}               /* 8px */
+  .r-2xl{border-radius:1rem}                /* 16px */
+  .r-full{border-radius:9999px}
+  .rname{font-weight:600;font-size:13px;color:var(--maroon)}
+  .rval{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+  .rpx{font-family:var(--mono);font-size:11px;color:var(--ink);margin-top:2px;font-weight:600}
+
+  /* ---- Container diagram ---- */
+  .viewport{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:
+      repeating-linear-gradient(45deg,#f2ecf5 0 6px,#faf8fb 6px 12px);
+    padding:0;
+    position:relative;
+    overflow:hidden;
+  }
+  .vp-bar{
+    background:var(--maroon);
+    color:#fff;
+    font-family:var(--mono);
+    font-size:11px;
+    padding:6px 12px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .vp-bar .dot{display:inline-block;width:9px;height:9px;border-radius:9999px;background:var(--pastypink);margin-right:5px;vertical-align:middle}
+  .vp-body{position:relative;padding:22px 0 26px}
+  .content-col{
+    max-width:520px;
+    margin:0 auto;
+    background:#fff;
+    border:1.5px dashed var(--pastyblue);
+    border-radius:8px;
+    min-height:96px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:16px 18px;
+  }
+  .content-col .ctitle{font-size:13px;font-weight:600;color:var(--maroon)}
+  .content-col .cval{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px}
+  .gutter-tag{
+    position:absolute;top:50%;transform:translateY(-50%);
+    font-family:var(--mono);font-size:10.5px;color:var(--maroon);
+    background:rgba(255,255,255,.85);
+    border:1px solid var(--line);border-radius:4px;
+    padding:2px 6px;white-space:nowrap;
+  }
+  .gutter-tag.l{left:14px}
+  .gutter-tag.r{right:14px}
+  .cap-max{
+    text-align:center;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted);
+    margin-top:10px;
+  }
+  .cap-max b{color:var(--maroon)}
+  .deadnote{
+    margin-top:12px;
+    font-size:12.5px;
+    color:var(--muted);
+    background:#fff7ed;
+    border:1px solid #f4dcc0;
+    border-left:3px solid #e0993f;
+    border-radius:6px;
+    padding:9px 12px;
+  }
+  .deadnote code{font-family:var(--mono);font-size:11.5px;color:var(--maroon)}
+
+  /* ---- lower grid: breakpoints + ramp ---- */
+  .lower{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:640px){.lower{grid-template-columns:1fr}}
+
+  table.bp{border-collapse:collapse;width:100%;font-size:13px}
+  table.bp th,table.bp td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  table.bp th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+  table.bp td.tok{font-family:var(--mono);font-weight:600;color:var(--maroon)}
+  table.bp td.val{font-family:var(--mono);color:var(--ink)}
+  table.bp .track{height:8px;background:var(--panel);border:1px solid var(--line);border-radius:9999px;position:relative;overflow:hidden;min-width:60px}
+  table.bp .fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--pastyblue),var(--pastypink));border-radius:9999px}
+  .bp-foot{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:8px}
+
+  .ramp{display:flex;flex-direction:column;gap:9px}
+  .rrow{display:flex;align-items:center;gap:10px}
+  .rbar{height:16px;border-radius:4px;background:var(--jellygreen);border:1px solid #12d69a}
+  .rlabel{font-family:var(--mono);font-size:11px;color:var(--ink);white-space:nowrap}
+  .rlabel b{color:var(--maroon)}
+  .rtok{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .ramp-foot{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:10px}
+
+  footer.ft{
+    margin-top:30px;padding-top:16px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.7;
+  }
+  footer.ft b{color:var(--maroon)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hd">
+    <p class="kicker">Foundations · Spacing</p>
+    <h1>Spacing &amp; radius</h1>
+    <p class="sub">Stock shadcn scale on <code>--radius: 0.5rem</code>. Container config (<code>center · 2rem · 1400px</code>) exists in <code>tailwind.config.ts</code> but the <code>.container</code> class is unused — real columns are 800–1000px.</p>
+  </header>
+
+  <!-- Block 1: Radius scale -->
+  <section class="block">
+    <div class="blkhead">
+      <h2>Radius scale</h2>
+      <span class="note">tailwind.config.ts · borderRadius</span>
+    </div>
+    <div class="radii">
+      <div class="rcell">
+        <div class="swatch r-sm"></div>
+        <div class="rname">rounded-sm</div>
+        <div class="rval">calc(0.5rem − 4px)</div>
+        <div class="rpx">4px</div>
+      </div>
+      <div class="rcell">
+        <div class="swatch r-md"></div>
+        <div class="rname">rounded-md</div>
+        <div class="rval">calc(0.5rem − 2px)</div>
+        <div class="rpx">6px</div>
+      </div>
+      <div class="rcell">
+        <div class="swatch r-lg"></div>
+        <div class="rname">rounded-lg</div>
+        <div class="rval">var(--radius)</div>
+        <div class="rpx">8px</div>
+      </div>
+      <div class="rcell">
+        <div class="swatch r-2xl"></div>
+        <div class="rname">rounded-2xl</div>
+        <div class="rval">1rem (default)</div>
+        <div class="rpx">16px</div>
+      </div>
+      <div class="rcell">
+        <div class="swatch r-full"></div>
+        <div class="rname">rounded-full</div>
+        <div class="rval">9999px</div>
+        <div class="rpx">pill</div>
+      </div>
+    </div>
+    <p class="bp-foot" style="margin-top:12px">sm/md/lg derive from <b style="color:var(--maroon)">--radius</b>. Off-scale hardcoded radii in globals.css bypass the token: <b style="color:var(--maroon)">.glass</b> 16px · <b style="color:var(--maroon)">.glass-subtle</b> 12px · <b style="color:var(--maroon)">.search-bar / .pink-btn</b> 5px.</p>
+  </section>
+
+  <!-- Block 2: Container rules -->
+  <section class="block">
+    <div class="blkhead">
+      <h2>Container rules</h2>
+      <span class="note">theme.container · centered · padded · capped</span>
+    </div>
+    <div class="viewport">
+      <div class="vp-bar">
+        <span><span class="dot"></span>2xl viewport — <b>1400px</b> cap</span>
+        <span>center: true</span>
+      </div>
+      <div class="vp-body">
+        <span class="gutter-tag l">padding 2rem</span>
+        <span class="gutter-tag r">padding 2rem</span>
+        <div class="content-col">
+          <div>
+            <div class="ctitle">centered content column</div>
+            <div class="cval">margin-inline: auto · max-width 1400px @ 2xl</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap-max">screens: { <b>"2xl": "1400px"</b> } &nbsp;·&nbsp; padding: <b>"2rem"</b> &nbsp;·&nbsp; center: <b>true</b></p>
+    <p class="deadnote"><b>Reality:</b> this config is <b>dead</b> — <code>.container</code> is used nowhere in <code>src/</code>. Each page rolls its own centered column: <code>max-w-[800px]</code> (artist), <code>max-w-[1000px]</code> (nav), <code>max-w-2xl</code> (home / add-artist). Gutters cluster on <code>px-4/px-5 → sm:px-8/sm:px-10</code>.</p>
+  </section>
+
+  <!-- Block 3: breakpoints + ramp -->
+  <section class="block">
+    <div class="blkhead">
+      <h2>Breakpoints &amp; spacing ramp</h2>
+      <span class="note">stock Tailwind screens · 4px base scale</span>
+    </div>
+    <div class="lower">
+      <div>
+        <table class="bp">
+          <thead>
+            <tr><th>Token</th><th>Min-width</th><th style="width:34%">Scale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="tok">sm</td><td class="val">640px</td><td><div class="track"><div class="fill" style="width:42%"></div></div></td></tr>
+            <tr><td class="tok">md</td><td class="val">768px</td><td><div class="track"><div class="fill" style="width:50%"></div></div></td></tr>
+            <tr><td class="tok">lg</td><td class="val">1024px</td><td><div class="track"><div class="fill" style="width:67%"></div></div></td></tr>
+            <tr><td class="tok">xl</td><td class="val">1280px</td><td><div class="track"><div class="fill" style="width:83%"></div></div></td></tr>
+            <tr><td class="tok">2xl</td><td class="val">1536px</td><td><div class="track"><div class="fill" style="width:100%"></div></div></td></tr>
+          </tbody>
+        </table>
+        <p class="bp-foot">All defaults — <b style="color:var(--maroon)">theme.screens</b> is never overridden. The 2xl <b style="color:var(--maroon)">breakpoint</b> is 1536px; the container's 2xl <b style="color:var(--maroon)">max-width</b> cap (1400px, above) is separate. Effective use is near-two-breakpoint: sm 157× · md 41×. One raw SCSS <code style="font-family:var(--mono)">@media (max-width:768px)</code> duplicates <b style="color:var(--maroon)">md</b>.</p>
+      </div>
+      <div>
+        <div class="ramp">
+          <div class="rrow"><div class="rbar" style="width:12px"></div><span class="rlabel"><b>4px</b></span><span class="rtok">gap-1 · space-1</span></div>
+          <div class="rrow"><div class="rbar" style="width:24px"></div><span class="rlabel"><b>8px</b></span><span class="rtok">gap-2 · space-2</span></div>
+          <div class="rrow"><div class="rbar" style="width:36px"></div><span class="rlabel"><b>12px</b></span><span class="rtok">gap-3 · space-3</span></div>
+          <div class="rrow"><div class="rbar" style="width:48px"></div><span class="rlabel"><b>16px</b></span><span class="rtok">gap-4 · space-y-4</span></div>
+          <div class="rrow"><div class="rbar" style="width:72px"></div><span class="rlabel"><b>24px</b></span><span class="rtok">space-y-6 (sections)</span></div>
+          <div class="rrow"><div class="rbar" style="width:96px"></div><span class="rlabel"><b>32px</b></span><span class="rtok">gap-8 · p-8</span></div>
+        </div>
+        <p class="ramp-foot">4px base grid. Favorites: <b style="color:var(--maroon)">gap-2</b> (65×) inline · <b style="color:var(--maroon)">space-y-4</b> (24×) stacks · <b style="color:var(--maroon)">space-y-6</b> page sections.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="ft">
+    <b>Sources:</b> tailwind.config.ts (container, borderRadius) · src/app/globals.css (--radius: 0.5rem) · DESIGN.md §Layout &amp; spacing<br>
+    <b>Honest note:</b> KoHo never loads → captions render in system sans. Container config &amp; the 2xl 1400px cap are declared but unused; radius scale &amp; breakpoints are unmodified shadcn/Tailwind defaults.
+  </footer>
+</div>
+</body>
+</html>

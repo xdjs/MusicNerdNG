@@ -1,0 +1,341 @@
+<!-- @dsCard group="Components" name="Card" subtitle="header/content/footer + glass variant" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    /* ---- resolved shadcn "slate" tokens (globals.css :root) ---- */
+    --background: hsl(0, 0%, 100%);
+    --card: hsl(0, 0%, 100%);
+    --card-foreground: hsl(222.2, 84%, 4.9%);
+    --muted-foreground: hsl(215.4, 16.3%, 46.9%);
+    --border: hsl(214.3, 31.8%, 91.4%);
+    --primary: hsl(222.2, 47.4%, 11.2%);
+    --primary-foreground: hsl(210, 40%, 98%);
+    --radius: 0.5rem; /* 8px, not overridden in .dark */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --sys: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; }
+
+  body {
+    background: var(--background);
+    color: var(--card-foreground);
+    font-family: var(--sys);
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 32px 56px;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  .doc-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+  }
+  .doc-sub {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--muted-foreground);
+    margin: 0 0 32px;
+    max-width: 620px;
+  }
+  .doc-sub code { font-family: var(--mono); font-size: 12.5px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 28px;
+    align-items: start;
+  }
+
+  .specimen { min-width: 0; }
+  .specimen-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 10px;
+  }
+  .specimen-label .badge {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 10.5px;
+    color: var(--muted-foreground);
+    margin-left: 8px;
+  }
+
+  /* ---- a "stage" so each specimen's surface reads ---- */
+  .stage {
+    border-radius: 14px;
+    padding: 34px 30px;
+  }
+  .stage--neutral { background: #f1f5f9; } /* slate-100, so shadow-sm reads */
+  .stage--candy {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, #ff9ce3 0%, #2ad4fc 55%, #19ffb8 100%);
+  }
+  /* blurred brand blobs behind the glass so blur(20px) is visible */
+  .stage--candy::before,
+  .stage--candy::after {
+    content: "";
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(2px);
+  }
+  .stage--candy::before {
+    width: 150px; height: 150px;
+    background: #ef95ff;
+    top: -30px; left: -20px;
+  }
+  .stage--candy::after {
+    width: 120px; height: 120px;
+    background: #19ffb8;
+    bottom: -24px; right: 10px;
+  }
+
+  /* ============================================================
+     STANDARD CARD  — card.tsx, resolved literally
+     rounded-lg border bg-card text-card-foreground shadow-sm
+     ============================================================ */
+  .card {
+    position: relative;
+    background: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);      /* 8px */
+    box-shadow: var(--shadow-sm);
+  }
+  .card__header { display: flex; flex-direction: column; gap: 6px; padding: 24px; }  /* space-y-1.5 p-6 */
+  .card__title {
+    font-size: 24px;                   /* text-2xl */
+    line-height: 1;                    /* leading-none */
+    font-weight: 600;                  /* font-semibold */
+    letter-spacing: -0.025em;          /* tracking-tight */
+    margin: 0;
+  }
+  .card__desc {
+    font-size: 14px;                   /* text-sm */
+    line-height: 1.35;
+    color: var(--muted-foreground);
+    margin: 0;
+  }
+  .card__content { padding: 0 24px 24px; }   /* p-6 pt-0 */
+  .card__footer { display: flex; align-items: center; padding: 0 24px 24px; }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .pill {
+    font-size: 12px;
+    line-height: 1;
+    padding: 6px 10px;
+    border-radius: 9999px;             /* genre pills use rounded-full */
+    background: hsl(210, 40%, 96.1%);  /* --secondary */
+    color: hsl(222.2, 47.4%, 11.2%);   /* --secondary-foreground */
+  }
+  .stat-line {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+  .stat-line strong { color: var(--card-foreground); font-weight: 600; }
+
+  /* shadcn default Button: bg-primary rounded-md h-10 px-4 text-sm font-medium */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: calc(var(--radius) - 2px); /* rounded-md, 6px */
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-family: var(--sys);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-primary svg { width: 15px; height: 15px; }
+
+  /* ============================================================
+     GLASS CARD  — .glass recipe from globals.css (off-token)
+     ============================================================ */
+  .glass {
+    position: relative;
+    background: rgba(255, 255, 255, 0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 1rem;               /* 16px — hardcoded, NOT from --radius */
+    padding: 20px;                     /* the app's real panel: glass p-4/p-5 */
+    color: #1e1024;
+  }
+  .glass__title {
+    font-size: 24px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: #2a1330;
+  }
+  .glass__desc {
+    font-size: 14px;
+    line-height: 1.4;
+    margin: 0 0 14px;
+    color: rgba(66, 43, 70, 0.75);     /* maroon #422b46 at ~75% */
+  }
+  .glass .meta-row { margin-bottom: 16px; }
+  .glass .pill {
+    background: rgba(255, 255, 255, 0.55);
+    color: #422b46;                    /* maroon */
+    border: 1px solid rgba(255, 255, 255, 0.6);
+  }
+
+  /* .pink-btn from globals.css (third brand pink, KoHo never loads) */
+  .pink-btn {
+    display: inline-block;
+    background-color: #EDADF8;
+    color: #422B46;                    /* maroon */
+    font-family: "KoHo", var(--sys);   /* KoHo declared; falls back to system */
+    border: 0;
+    border-radius: 5px;                /* off-scale */
+    padding: 5px 30px;
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  /* ---- shared value captions ---- */
+  .notes {
+    margin-top: 12px;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+  }
+  .notes li {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+  }
+  .notes b { color: var(--card-foreground); font-weight: 600; }
+
+  .footnote {
+    margin-top: 34px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--muted-foreground);
+  }
+  .footnote code { font-family: var(--mono); font-size: 11.5px; color: var(--card-foreground); }
+  .footnote strong { color: var(--card-foreground); font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="doc-title">Card</h1>
+    <p class="doc-sub">
+      Two card-like surfaces coexist in MusicNerdWeb. Left: the stock shadcn
+      <code>Card</code> primitive (<code>card.tsx</code>) — an opaque slate token
+      surface. Right: the brand's real workhorse, the off-token <code>.glass</code>
+      panel used across 13+ artist-page components. Every class below is resolved
+      to the literal CSS it compiles to.
+    </p>
+
+    <div class="grid">
+      <!-- ===================== STANDARD CARD ===================== -->
+      <div class="specimen">
+        <p class="specimen-label">Standard Card<span class="badge">card.tsx</span></p>
+        <div class="stage stage--neutral">
+          <div class="card">
+            <div class="card__header">
+              <h3 class="card__title">Phoebe Bridgers</h3>
+              <p class="card__desc">Indie &middot; Singer-songwriter &middot; Los Angeles</p>
+            </div>
+            <div class="card__content">
+              <div class="meta-row">
+                <span class="pill">indie</span>
+                <span class="pill">folk</span>
+                <span class="pill">emo</span>
+              </div>
+              <p class="stat-line">
+                <strong>14</strong> platform links &middot;
+                added by <strong>@clt</strong><br>
+                4.2M monthly listeners on Spotify
+              </p>
+            </div>
+            <div class="card__footer">
+              <button class="btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                View artist
+              </button>
+            </div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li><b>radius</b> rounded-lg = var(--radius) = 8px</li>
+          <li><b>border</b> hsl(214.3 31.8% 91.4%)</li>
+          <li><b>bg-card</b> hsl(0 0% 100%) &middot; opaque</li>
+          <li><b>shadow-sm</b> 0 1px 2px 0 rgb(0 0 0/.05)</li>
+          <li><b>header / content / footer</b> p-6 = 24px</li>
+          <li><b>title</b> text-2xl/600, leading-none, tracking-tight</li>
+        </ul>
+      </div>
+
+      <!-- ===================== GLASS CARD ===================== -->
+      <div class="specimen">
+        <p class="specimen-label">Glass variant<span class="badge">.glass (globals.css)</span></p>
+        <div class="stage stage--candy">
+          <div class="glass">
+            <h3 class="glass__title">Jamie xx</h3>
+            <p class="glass__desc">Electronic &middot; Producer &middot; London</p>
+            <div class="meta-row">
+              <span class="pill">house</span>
+              <span class="pill">uk garage</span>
+            </div>
+            <p class="stat-line" style="color:rgba(66,43,70,.72);margin-bottom:16px;">
+              9 platform links &middot; last edited 2d ago
+            </p>
+            <button class="pink-btn">Support artist</button>
+          </div>
+        </div>
+        <ul class="notes">
+          <li><b>bg</b> rgba(255,255,255,0.55) &middot; translucent</li>
+          <li><b>filter</b> blur(20px) saturate(180%)</li>
+          <li><b>border</b> 1px rgba(255,255,255,0.3)</li>
+          <li><b>radius</b> 1rem = 16px &middot; hardcoded, not --radius</li>
+          <li><b>padding</b> real usage: glass p-4/p-5 (16&ndash;20px)</li>
+          <li><b>.pink-btn</b> #EDADF8 on #422B46, radius 5px</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footnote">
+      <strong>Reality notes.</strong>
+      The app mostly reaches for <code>.glass</code> panels, not the stock
+      <code>Card</code> — so <strong>two padding conventions coexist</strong>
+      (Card's rigid <code>p-6</code> vs. glass <code>p-4/p-5</code>) and two radii
+      (<code>8px</code> token vs. glass <code>16px</code> literal).
+      The <code>.pink-btn</code> declares <code>font-family:"KoHo"</code>, but
+      KoHo is never actually loaded in the app, so all text here renders in the
+      real system sans stack (<code>-apple-system, "Segoe UI", Roboto</code>) —
+      shown faithfully. Semantic colors are unmodified shadcn "slate";
+      the brand's candy-neon pink/blue/green live outside the tokens as hex literals.
+    </p>
+  </div>
+</body>
+</html>

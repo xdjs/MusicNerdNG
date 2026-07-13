@@ -1,0 +1,192 @@
+<!-- @dsCard group="Patterns" name="Artist links grid" subtitle="signature neon platform-link icons" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    /* resolved shadcn "slate" tokens from globals.css :root (light) */
+    --background: hsl(0 0% 100%);
+    --muted-foreground: hsl(215.4 16.3% 46.9%);
+    --foreground: hsl(222.2 84% 4.9%);
+    /* brand */
+    --maroon:#422b46;
+    --pink-glow: 239,149,255;   /* #ef95ff — ArtistLinksGrid hover glow */
+    --blue-glow: 0,199,242;     /* #00c7f2 — "listen" (Deezer) variant glow */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--background);
+    color:var(--foreground);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:32px 28px 40px;
+    line-height:1.5;
+  }
+  .wrap{max-width:860px;margin:0 auto}
+  h1{font-size:22px;font-weight:650;letter-spacing:-.01em;margin:0 0 4px}
+  .lede{font-size:13.5px;color:var(--muted-foreground);margin:0 0 6px;max-width:60ch}
+  .intent{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;color:var(--muted-foreground);
+    background:#f6f7f9;border:1px solid hsl(214.3 31.8% 91.4%);
+    border-radius:6px;padding:7px 10px;margin:12px 0 26px;
+  }
+  .intent b{color:var(--maroon)}
+
+  section{margin:0 0 30px}
+  .sechead{display:flex;align-items:baseline;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+  .sechead h2{font-size:14px;font-weight:620;margin:0}
+  .sechead .tag{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10.5px;color:var(--muted-foreground);
+  }
+
+  /* the surface the glass tiles sit over — artist pages have imagery/gradients behind.
+     A soft candy panel lets the translucent white + neon glow read. */
+  .stage{
+    border-radius:16px;
+    padding:26px 24px;
+    background:
+      radial-gradient(120% 130% at 18% 12%, rgba(42,212,252,.16), transparent 55%),
+      radial-gradient(120% 130% at 85% 90%, rgba(239,149,255,.20), transparent 55%),
+      radial-gradient(120% 130% at 60% 40%, rgba(25,255,184,.10), transparent 60%),
+      #eef1f5;
+    border:1px solid hsl(214.3 31.8% 91.4%);
+  }
+
+  /* ---- ArtistLinksGrid tile: literal resolution of the Tailwind classes ---- */
+  /* w-12 h-12 rounded-full backdrop-blur-sm bg-white/70 border border-white/40
+     shadow-sm  +  group-hover:scale-110 shadow-[0_0_15px_rgba(239,149,255,.45)] bg-white/90 */
+  .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
+  @media(max-width:560px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+  .chip{display:flex;flex-direction:column;align-items:center;gap:6px;text-decoration:none}
+  .tile{
+    width:48px;height:48px;border-radius:9999px;
+    background:rgba(255,255,255,.70);
+    border:1px solid rgba(255,255,255,.40);
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+    box-shadow:0 1px 2px 0 rgba(0,0,0,.05);   /* shadow-sm */
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    transition:all .3s ease;
+  }
+  .tile svg{width:28px;height:28px;display:block}          /* w-7 h-7 */
+  .label{font-size:12px;color:var(--muted-foreground);line-height:1.15;text-align:center}
+
+  /* live hover — the real "pink-glow lift" (default / social + web3 platforms) */
+  .chip:hover .tile,
+  .tile.is-hover{
+    transform:scale(1.1);
+    background:rgba(255,255,255,.90);
+    box-shadow:0 0 15px rgba(var(--pink-glow),.45);
+  }
+  /* the "listen" variant swaps the glow to blue */
+  .chip.listen:hover .tile,
+  .tile.is-hover.listen{
+    box-shadow:0 0 15px rgba(var(--blue-glow),.45);
+  }
+
+  .statecap{display:flex;gap:26px;flex-wrap:wrap;margin-top:16px}
+  .statecap div{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--muted-foreground);max-width:34ch}
+  .statecap b{color:var(--maroon);font-weight:600}
+  .hint{font-size:11.5px;color:var(--muted-foreground);margin:14px 0 0}
+
+  /* frozen specimens row: resting vs accented, side by side & visually distinct */
+  .compare{display:flex;gap:36px;flex-wrap:wrap;align-items:flex-end}
+  .compare .col{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .compare .col .name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--muted-foreground);text-align:center}
+
+  /* ---- legacy list-row renderer (ArtistLinks / StaticPlatformLink) ---- */
+  .rows{display:flex;flex-direction:column;gap:2px;max-width:340px}
+  .row{
+    display:grid;grid-template-columns:auto 1fr;align-items:center;   /* .link-item-grid */
+    column-gap:16px;                                                  /* gap-x-4 */
+    border-radius:12px;padding:8px 10px;text-decoration:none;color:#000;
+    transition:background .15s ease;
+  }
+  .row:hover{background:rgba(255,255,255,.6)}
+  .row .ico{width:34px;height:34px;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .row .ico svg{width:22px;height:22px}
+  .row .lab{font-size:14px;color:#000}
+</style>
+</head>
+<body>
+<!-- icon defs: same-document SVG symbols, referenced with <use> (no network, no JS) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="g-sp" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#1DB954"/><g fill="none" stroke="#fff" stroke-linecap="round"><path d="M6.5 9.2c3.6-1 7.4-.7 10.6 1.1" stroke-width="1.9"/><path d="M7.1 12.4c2.9-.8 6-.5 8.6 1" stroke-width="1.6"/><path d="M7.7 15.3c2.3-.6 4.7-.4 6.7.8" stroke-width="1.3"/></g></symbol>
+  <symbol id="g-dz" viewBox="0 0 24 24"><g fill="#00c7f2"><rect x="3.5" y="14" width="3" height="5" rx=".6"/><rect x="8" y="11" width="3" height="8" rx=".6"/><rect x="12.5" y="8" width="3" height="11" rx=".6"/><rect x="17" y="5" width="3" height="14" rx=".6"/></g><rect x="17" y="5" width="3" height="2.2" rx=".6" fill="#ef95ff"/></symbol>
+  <symbol id="g-sc" viewBox="0 0 24 24"><g fill="#FF5500"><rect x="4" y="10" width="1.7" height="7" rx=".8"/><rect x="7" y="8" width="1.7" height="9" rx=".8"/><rect x="10" y="6.5" width="1.7" height="10.5" rx=".8"/><rect x="13" y="9" width="1.7" height="8" rx=".8"/></g><path d="M15 8.5a5 5 0 0 1 5 5 3.5 3.5 0 0 1-3.5 3.5H15z" fill="#FF7A33"/></symbol>
+  <symbol id="g-ig" viewBox="0 0 24 24"><defs><linearGradient id="igg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#feda75"/><stop offset=".5" stop-color="#ef95ff"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs><rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="url(#igg)"/><circle cx="12" cy="12" r="4.4" fill="none" stroke="#fff" stroke-width="1.8"/><circle cx="17.2" cy="6.8" r="1.25" fill="#fff"/></symbol>
+  <symbol id="g-x" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" fill="#0f0f0f"/><path d="M7 6.5l4.1 5.2L7.2 17.5h1.7l3-3.9 3 3.9H19l-4.4-5.6L18.6 6.5h-1.7l-2.7 3.5-2.7-3.5z" fill="#fff"/></symbol>
+  <symbol id="g-yt" viewBox="0 0 24 24"><rect x="1.5" y="5" width="21" height="14" rx="4.5" fill="#FF0000"/><path d="M10 8.7l5.2 3.3L10 15.3z" fill="#fff"/></symbol>
+  <symbol id="g-bc" viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="4" fill="#1DA0C3"/><path d="M8 8.5h9l-3 7H5z" fill="#fff"/></symbol>
+</svg>
+<div class="wrap">
+  <h1>Artist links grid</h1>
+  <p class="lede">The signature MusicNerd platform-link renderer: circular frosted-glass tiles that lift and glow on hover — the "pink-glow lift" gesture. Two renderers coexist in the app; the glass grid is the newer, signature one.</p>
+  <p class="intent"><b>Reality note:</b> labels are declared <code>font-family:"KoHo"</code> in globals.css, but the webfont never loads — so text renders in the system sans stack, shown here. Glow uses <code>#ef95ff</code> <code>rgba(239,149,255,.45)</code>, not the <code>#ff9ce3</code> title glow (two pink hexes coexist).</p>
+
+  <!-- SPECIMEN 1 — the live grid -->
+  <section>
+    <div class="sechead">
+      <h2>ArtistLinksGrid — live tiles (hover me)</h2>
+      <span class="tag">grid-cols-7 · gap-3 · w-12 h-12 rounded-full</span>
+    </div>
+    <div class="stage">
+      <div class="grid">
+        <a class="chip" href="#" onclick="return false"><span class="tile"><svg><use href="#g-sp"/></svg></span><span class="label">Spotify</span></a>
+        <a class="chip listen" href="#" onclick="return false"><span class="tile"><svg><use href="#g-dz"/></svg></span><span class="label">Deezer</span></a>
+        <a class="chip" href="#" onclick="return false"><span class="tile"><svg><use href="#g-sc"/></svg></span><span class="label">SoundCloud</span></a>
+        <a class="chip" href="#" onclick="return false"><span class="tile"><svg><use href="#g-ig"/></svg></span><span class="label">Instagram</span></a>
+        <a class="chip" href="#" onclick="return false"><span class="tile"><svg><use href="#g-x"/></svg></span><span class="label">X</span></a>
+        <a class="chip" href="#" onclick="return false"><span class="tile"><svg><use href="#g-yt"/></svg></span><span class="label">YouTube</span></a>
+        <a class="chip" href="#" onclick="return false"><span class="tile"><svg><use href="#g-bc"/></svg></span><span class="label">Bandcamp</span></a>
+      </div>
+      <p class="hint">Hover any tile — <code style="font-family:ui-monospace,monospace">transition:all .3s</code> → <code style="font-family:ui-monospace,monospace">scale(1.1)</code> + colored glow. Social &amp; web3 = pink glow; the "listen" tile (Deezer) swaps to blue.</p>
+    </div>
+  </section>
+
+  <!-- SPECIMEN 2 — frozen states, guaranteed distinct -->
+  <section>
+    <div class="sechead">
+      <h2>Resting → accented (frozen)</h2>
+      <span class="tag">the two visual states side by side</span>
+    </div>
+    <div class="stage">
+      <div class="compare">
+        <div class="col">
+          <span class="tile"><svg><use href="#g-sc"/></svg></span>
+          <span class="name">resting<br>bg rgba(255,255,255,.70)<br>shadow-sm · scale 1.0</span>
+        </div>
+        <div class="col">
+          <span class="tile is-hover"><svg><use href="#g-ig"/></svg></span>
+          <span class="name">accented — social/web3<br>bg .90 · scale 1.10<br>glow rgba(239,149,255,.45)</span>
+        </div>
+        <div class="col">
+          <span class="tile is-hover listen"><svg><use href="#g-sp"/></svg></span>
+          <span class="name">accented — "listen"<br>bg .90 · scale 1.10<br>glow rgba(0,199,242,.45)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPECIMEN 3 — the coexisting legacy renderer -->
+  <section>
+    <div class="sechead">
+      <h2>ArtistLinks — legacy list rows</h2>
+      <span class="tag">.link-item-grid · .corners-rounded · StaticPlatformLink</span>
+    </div>
+    <div class="stage" style="background:#f2f4f7">
+      <div class="rows">
+        <a class="row" href="#" onclick="return false"><span class="ico"><svg><use href="#g-sp"/></svg></span><span class="lab">Listen on Spotify</span></a>
+        <a class="row" href="#" onclick="return false"><span class="ico"><svg><use href="#g-ig"/></svg></span><span class="lab">Follow on Instagram</span></a>
+        <a class="row" href="#" onclick="return false"><span class="ico"><svg><use href="#g-yt"/></svg></span><span class="lab">Watch on YouTube</span></a>
+      </div>
+      <p class="hint">The older renderer draws links as full-width rows (icon + descriptor) rather than glass tiles — no glow, softer <code style="font-family:ui-monospace,monospace">:hover</code> background wash. Documented as a known duplication (DESIGN.md §Two artist-link renderers).</p>
+    </div>
+  </section>
+</div>
+</body>
+</html>

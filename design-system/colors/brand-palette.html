@@ -1,0 +1,365 @@
+<!-- @dsCard group="Colors" name="Brand palette" subtitle="maroon · pastyblue · pastypink · jellygreen + the 3 pinks" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brand palette — MusicNerdWeb</title>
+<style>
+  :root {
+    --canvas: #ffffff;
+    --ink: #422b46;          /* maroon — the brand "ink" */
+    --hairline: #ece7ee;
+    --muted: #8a7f90;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 28px 40px;
+  }
+
+  header { margin-bottom: 28px; }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+  }
+
+  .lede {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 0;
+    max-width: 62ch;
+  }
+
+  .lede code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #f5f1f6;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #6f4b75;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin: 30px 0 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .section-label .count {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #b3a8ba;
+  }
+
+  /* ---- Brand swatch grid ---- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+  }
+
+  .swatch {
+    border-radius: 8px;                 /* --radius 0.5rem = 8px */
+    overflow: hidden;
+    border: 1px solid var(--hairline);
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chip {
+    height: 118px;
+    display: flex;
+    align-items: flex-end;
+    padding: 12px;
+  }
+  .chip .role {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.35);
+    backdrop-filter: blur(2px);
+  }
+
+  .meta {
+    padding: 12px 13px 14px;
+  }
+  .meta .name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 2px;
+  }
+  .meta .cls {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: #6f4b75;
+    margin: 0 0 8px;
+  }
+  .meta .hex {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 3px;
+  }
+  .meta .use {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  /* ---- Pink fragmentation row ---- */
+  .pink-panel {
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .pink-head {
+    padding: 13px 16px;
+    background: #fbf7fc;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .pink-head .title {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 3px;
+  }
+  .pink-head .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .pink-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .pink-cell {
+    padding: 0;
+    border-right: 1px solid var(--hairline);
+    display: flex;
+    flex-direction: column;
+  }
+  .pink-cell:last-child { border-right: 0; }
+  .pink-bar {
+    height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pink-bar .hexlabel {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: #422b46;
+    background: rgba(255,255,255,0.55);
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .pink-info {
+    padding: 11px 13px 14px;
+  }
+  .pink-info .tok {
+    font-size: 12.5px;
+    font-weight: 700;
+    margin: 0 0 3px;
+  }
+  .pink-info .where {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin: 0 0 6px;
+    line-height: 1.35;
+  }
+  .pink-info .src {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #9b83a0;
+    margin: 0;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  .badge.palette { background: #e6f9f2; color: #0a8a63; }
+  .badge.orphan  { background: #ffeef8; color: #b23a86; }
+
+  footer {
+    margin-top: 26px;
+    padding-top: 16px;
+    border-top: 1px solid var(--hairline);
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  footer code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #6f4b75;
+  }
+
+  @media (max-width: 520px) {
+    .pink-row { grid-template-columns: 1fr; }
+    .pink-cell { border-right: 0; border-bottom: 1px solid var(--hairline); }
+    .pink-cell:last-child { border-bottom: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Brand palette</h1>
+      <p class="lede">
+        The four Tailwind brand colors from <code>tailwind.config.ts</code> (lines 26–29). These are
+        plain color extensions — <strong>not</strong> wired into the shadcn semantic
+        <code>--primary</code>/<code>--accent</code> tokens, which stay stock navy "slate."
+        Brand character is layered on top as ad-hoc hex.
+      </p>
+    </header>
+
+    <div class="section-label">The neon accent trio + the ink</div>
+
+    <div class="grid">
+      <!-- maroon -->
+      <div class="swatch">
+        <div class="chip" style="background:#422b46;">
+          <span class="role" style="color:#f3e9f4;">ink / body text</span>
+        </div>
+        <div class="meta">
+          <p class="name">maroon</p>
+          <p class="cls">text-maroon</p>
+          <p class="hex">#422b46</p>
+          <p class="use">Deep aubergine for footer + body text. Forced to white in dark mode.</p>
+        </div>
+      </div>
+
+      <!-- pastyblue -->
+      <div class="swatch">
+        <div class="chip" style="background:#2ad4fc;">
+          <span class="role" style="color:#0b3a45;">accent · cyan</span>
+        </div>
+        <div class="meta">
+          <p class="name">pastyblue</p>
+          <p class="cls">bg-pastyblue</p>
+          <p class="hex">#2ad4fc</p>
+          <p class="use">Takes over as the accent in dark mode (checkbox, moon icon).</p>
+        </div>
+      </div>
+
+      <!-- pastypink -->
+      <div class="swatch">
+        <div class="chip" style="background:#ef95ff;">
+          <span class="role" style="color:#5a2b66;">accent · pink</span>
+        </div>
+        <div class="meta">
+          <p class="name">pastypink</p>
+          <p class="cls">text-pastypink</p>
+          <p class="hex">#ef95ff</p>
+          <p class="use">Most-used brand token (~93 uses). The hero gradient pink.</p>
+        </div>
+      </div>
+
+      <!-- jellygreen -->
+      <div class="swatch">
+        <div class="chip" style="background:#19ffb8;">
+          <span class="role" style="color:#0a5c42;">accent · mint</span>
+        </div>
+        <div class="meta">
+          <p class="name">jellygreen</p>
+          <p class="cls">bg-jellygreen</p>
+          <p class="hex">#19ffb8</p>
+          <p class="use">Jelly mint-green. Appears mostly as raw hex in the activity feed.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">
+      Brand pink is fragmented into 3 values
+      <span class="count">— an honest signature of the current system</span>
+    </div>
+
+    <div class="pink-panel">
+      <div class="pink-head">
+        <p class="title">One pink, three hexes that never reconcile</p>
+        <p class="sub">The pink you actually see on screen (<code style="font-family:var(--mono);font-size:11px;">#ff9ce3</code>) is not the palette token — it lives outside <code style="font-family:var(--mono);font-size:11px;">tailwind.config.ts</code> as 57 hardcoded uses.</p>
+      </div>
+      <div class="pink-row">
+        <!-- #ef95ff -->
+        <div class="pink-cell">
+          <div class="pink-bar" style="background:#ef95ff;">
+            <span class="hexlabel">#ef95ff</span>
+          </div>
+          <div class="pink-info">
+            <p class="tok">pastypink token</p>
+            <p class="where">HeroSection gradient, general accent. The one that lives in the palette.</p>
+            <p class="src">tailwind.config.ts:28 · _colors.scss:2 ($secondary)</p>
+            <span class="badge palette">IN PALETTE</span>
+          </div>
+        </div>
+
+        <!-- #ff9ce3 -->
+        <div class="pink-cell">
+          <div class="pink-bar" style="background:#ff9ce3;">
+            <span class="hexlabel">#ff9ce3</span>
+          </div>
+          <div class="pink-info">
+            <p class="tok">on-screen pink · 57 uses</p>
+            <p class="where">"music nerd" title glow, highlight borders, light checked checkbox, focus rings, feed.</p>
+            <p class="src">globals.css:168–277, 485–488 · hardcoded</p>
+            <span class="badge orphan">NOT IN PALETTE</span>
+          </div>
+        </div>
+
+        <!-- #edadf8 -->
+        <div class="pink-cell">
+          <div class="pink-bar" style="background:#edadf8;">
+            <span class="hexlabel">#edadf8</span>
+          </div>
+          <div class="pink-info">
+            <p class="tok">.pink-btn pink</p>
+            <p class="where">Login button background + <code style="font-family:var(--mono);font-size:10.5px;">.text-color-primary</code>. A third distinct value.</p>
+            <p class="src">globals.css:516, 585</p>
+            <span class="badge orphan">NOT IN PALETTE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Values verified against <code>tailwind.config.ts</code>, <code>src/app/_colors.scss</code>, and DESIGN.md §Color.
+      Radius base <code>--radius: 0.5rem</code> (8px). Type renders in the system sans stack
+      (<code>-apple-system, …</code>) — the intended brand font <strong>KoHo</strong> is declared but never loads in the app.
+    </footer>
+  </div>
+</body>
+</html>

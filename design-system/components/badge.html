@@ -1,0 +1,278 @@
+<!-- @dsCard group="Components" name="Badge" subtitle="all cva variants" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    /* shadcn "slate" light tokens, verbatim from globals.css :root */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --radius: 0.5rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    /* Reality: KoHo is declared but never loads in the app -> system sans */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: hsl(var(--background));       /* --background 0 0% 100% */
+    color: hsl(var(--foreground));            /* --foreground 222.2 84% 4.9% */
+    padding: 40px 44px 48px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+
+  .lede {
+    font-size: 13.5px;
+    color: hsl(var(--muted-foreground));      /* --muted-foreground 215.4 16.3% 46.9% */
+    margin: 0 0 6px;
+    max-width: 620px;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* ---- the actual Badge base recipe, resolved from cva ---- */
+  /* "inline-flex items-center rounded-full border px-2.5 py-0.5
+      text-xs font-semibold transition-colors" */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;               /* rounded-full */
+    border: 1px solid transparent;        /* border */
+    padding: 2px 10px;                    /* py-0.5 px-2.5 */
+    font-size: 12px;                      /* text-xs */
+    line-height: 16px;
+    font-weight: 600;                     /* font-semibold */
+    white-space: nowrap;
+    transition: background-color .15s, color .15s, border-color .15s;
+  }
+
+  /* variant: default -> bg-primary / text-primary-foreground / border-transparent */
+  .badge--default {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: transparent;
+  }
+  /* variant: secondary -> bg-secondary / text-secondary-foreground / border-transparent */
+  .badge--secondary {
+    background: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border-color: transparent;
+  }
+  /* variant: destructive -> bg-destructive / text-destructive-foreground / border-transparent */
+  .badge--destructive {
+    background: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+    border-color: transparent;
+  }
+  /* variant: outline -> text-foreground only (transparent bg, default --border ring) */
+  .badge--outline {
+    background: transparent;
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));    /* inherits base `border` -> --border */
+  }
+
+  /* ---- specimen rows ---- */
+  .rows {
+    margin-top: 26px;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);         /* 0.5rem = 8px */
+    overflow: hidden;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 170px 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px 22px;
+    border-top: 1px solid hsl(var(--border));
+  }
+  .row:first-child { border-top: none; }
+
+  .specimen {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .vname {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .vsub {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .tokens {
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
+    line-height: 1.7;
+  }
+  .tokens .k { color: hsl(var(--foreground)); }
+  .sw {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 5px;
+    border: 1px solid rgba(0,0,0,.12);
+  }
+
+  .base {
+    margin-top: 22px;
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--secondary));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    line-height: 1.75;
+  }
+  .base b { color: hsl(var(--foreground)); font-weight: 600; }
+
+  .note {
+    margin-top: 16px;
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
+    border-left: 3px solid hsl(var(--destructive));
+    padding: 4px 0 4px 12px;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Badge</h1>
+    <p class="lede">
+      Every <span class="mono">badgeVariants</span> cva variant from
+      <span class="mono">src/components/ui/badge.tsx</span>, resolved to literal CSS
+      from the stock shadcn &ldquo;slate&rdquo; tokens. No brand pink/blue/green reaches
+      these &mdash; the semantic layer was never rebranded.
+    </p>
+
+    <div class="rows">
+
+      <!-- DEFAULT -->
+      <div class="row">
+        <div>
+          <span class="vname">default</span>
+          <span class="vsub mono">variant="default" (defaultVariant)</span>
+        </div>
+        <div>
+          <div class="specimen">
+            <span class="badge badge--default">Verified</span>
+            <span class="badge badge--default">new</span>
+            <span class="badge badge--default">2ad4fc</span>
+          </div>
+          <div class="tokens mono" style="margin-top:12px">
+            <div><span class="sw" style="background:hsl(222.2 47.4% 11.2%)"></span><span class="k">bg-primary</span> &rarr; hsl(222.2 47.4% 11.2%) &middot; #0f172a</div>
+            <div><span class="sw" style="background:hsl(210 40% 98%)"></span><span class="k">text-primary-foreground</span> &rarr; hsl(210 40% 98%) &middot; #f8fafc</div>
+            <div>border-transparent &middot; hover:bg-primary/80</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECONDARY -->
+      <div class="row">
+        <div>
+          <span class="vname">secondary</span>
+          <span class="vsub mono">variant="secondary"</span>
+        </div>
+        <div>
+          <div class="specimen">
+            <span class="badge badge--secondary">Draft</span>
+            <span class="badge badge--secondary">social</span>
+            <span class="badge badge--secondary">pending</span>
+          </div>
+          <div class="tokens mono" style="margin-top:12px">
+            <div><span class="sw" style="background:hsl(210 40% 96.1%)"></span><span class="k">bg-secondary</span> &rarr; hsl(210 40% 96.1%) &middot; #f1f5f9</div>
+            <div><span class="sw" style="background:hsl(222.2 47.4% 11.2%)"></span><span class="k">text-secondary-foreground</span> &rarr; hsl(222.2 47.4% 11.2%) &middot; #0f172a</div>
+            <div>border-transparent &middot; hover:bg-secondary/80</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DESTRUCTIVE -->
+      <div class="row">
+        <div>
+          <span class="vname">destructive</span>
+          <span class="vsub mono">variant="destructive"</span>
+        </div>
+        <div>
+          <div class="specimen">
+            <span class="badge badge--destructive">Removed</span>
+            <span class="badge badge--destructive">error</span>
+            <span class="badge badge--destructive">revoked</span>
+          </div>
+          <div class="tokens mono" style="margin-top:12px">
+            <div><span class="sw" style="background:hsl(0 84.2% 60.2%)"></span><span class="k">bg-destructive</span> &rarr; hsl(0 84.2% 60.2%) &middot; #ef4444</div>
+            <div><span class="sw" style="background:hsl(210 40% 98%)"></span><span class="k">text-destructive-foreground</span> &rarr; hsl(210 40% 98%) &middot; #f8fafc</div>
+            <div>border-transparent &middot; hover:bg-destructive/80</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OUTLINE -->
+      <div class="row">
+        <div>
+          <span class="vname">outline</span>
+          <span class="vsub mono">variant="outline"</span>
+        </div>
+        <div>
+          <div class="specimen">
+            <span class="badge badge--outline">Listen</span>
+            <span class="badge badge--outline">web3</span>
+            <span class="badge badge--outline">optional</span>
+          </div>
+          <div class="tokens mono" style="margin-top:12px">
+            <div><span class="sw" style="background:transparent"></span>bg &rarr; transparent (no bg utility)</div>
+            <div><span class="sw" style="background:hsl(222.2 84% 4.9%)"></span><span class="k">text-foreground</span> &rarr; hsl(222.2 84% 4.9%) &middot; #020817</div>
+            <div><span class="sw" style="background:hsl(214.3 31.8% 91.4%)"></span>border &rarr; base <span class="k">border</span> = hsl(214.3 31.8% 91.4%) &middot; #e2e8f0</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="base">
+      <b>Base recipe</b> (applies to all variants):
+      <span class="mono">inline-flex items-center <b>rounded-full</b> (9999px) border
+      <b>px-2.5</b> (10px) <b>py-0.5</b> (2px) <b>text-xs</b> (12/16px)
+      <b>font-semibold</b> (600) transition-colors</span>. Focus ring:
+      <span class="mono">focus:ring-2 focus:ring-ring focus:ring-offset-2</span>.
+      Note badges use full pill rounding, not <span class="mono">--radius: 0.5rem</span>.
+    </div>
+
+    <div class="note">
+      Font reality: the badge text renders in the system sans stack. KoHo is the declared
+      brand typeface but never loads in the React app, so all <span class="mono">text-xs</span>
+      badges fall back to <span class="mono">-apple-system / Segoe UI / Roboto</span>.
+    </div>
+  </div>
+</body>
+</html>

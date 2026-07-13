@@ -1,0 +1,200 @@
+<!-- @dsCard group="Colors" name="Semantic tokens" subtitle="stock shadcn slate · light + dark" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --radius: 0.5rem;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: #ffffff;
+    color: hsl(222.2 84% 4.9%);
+    -webkit-font-smoothing: antialiased;
+    padding: 28px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 20px; }
+  h1 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  .sub {
+    font-size: 13px;
+    color: hsl(215.4 16.3% 46.9%);
+    margin: 0;
+  }
+  .sub code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: hsl(222.2 47.4% 11.2%);
+    background: hsl(210 40% 96.1%);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 620px) { .cols { grid-template-columns: 1fr; } }
+
+  .panel {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .panel-light {
+    background: hsl(0 0% 100%);
+    color: hsl(222.2 84% 4.9%);
+  }
+  .panel-dark {
+    background: hsl(222.2 84% 4.9%);
+    color: hsl(210 40% 98%);
+    border-color: rgba(255,255,255,0.10);
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 14px;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .panel-dark .panel-head { border-bottom-color: rgba(255,255,255,0.08); }
+  .mode-dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(128,128,128,0.35);
+  }
+  .panel-light .mode-dot { background: #ffffff; }
+  .panel-dark  .mode-dot { background: hsl(222.2 84% 4.9%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
+
+  .row {
+    display: grid;
+    grid-template-columns: 30px 1fr auto;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 14px;
+  }
+  .row + .row { border-top: 1px solid rgba(128,128,128,0.10); }
+
+  .swatch {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    /* hairline ring so pure-white / near-black swatches stay visible on either canvas */
+    box-shadow: inset 0 0 0 1px rgba(128,128,128,0.28);
+  }
+
+  .name {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: right;
+    opacity: 0.62;
+    white-space: nowrap;
+  }
+
+  .caption {
+    margin-top: 18px;
+    padding: 13px 15px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: var(--radius);
+    background: hsl(210 40% 96.1%);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: hsl(222.2 47.4% 11.2%);
+  }
+  .caption strong { font-weight: 650; }
+  .caption .chip {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    vertical-align: -1px;
+    margin: 0 1px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+  }
+  .caption code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Semantic tokens</h1>
+    <p class="sub">Unmodified stock shadcn <code>slate</code> — <code>globals.css</code> <code>:root</code> / <code>.dark</code>, resolved from real HSL</p>
+  </header>
+
+  <div class="cols">
+    <!-- LIGHT -->
+    <div class="panel panel-light">
+      <div class="panel-head"><span class="mode-dot"></span>Light · :root</div>
+
+      <div class="row"><div class="swatch" style="background:hsl(0 0% 100%)"></div><div class="name">background</div><div class="val">0 0% 100%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(222.2 84% 4.9%)"></div><div class="name">foreground</div><div class="val">222.2 84% 4.9%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(0 0% 100%)"></div><div class="name">card</div><div class="val">0 0% 100%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(0 0% 100%)"></div><div class="name">popover</div><div class="val">0 0% 100%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(222.2 47.4% 11.2%)"></div><div class="name">primary</div><div class="val">222.2 47.4% 11.2%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(210 40% 96.1%)"></div><div class="name">secondary</div><div class="val">210 40% 96.1%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(210 40% 96.1%)"></div><div class="name">muted</div><div class="val">210 40% 96.1%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(210 40% 96.1%)"></div><div class="name">accent</div><div class="val">210 40% 96.1%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(0 84.2% 60.2%)"></div><div class="name">destructive</div><div class="val">0 84.2% 60.2%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(214.3 31.8% 91.4%)"></div><div class="name">border</div><div class="val">214.3 31.8% 91.4%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(214.3 31.8% 91.4%)"></div><div class="name">input</div><div class="val">214.3 31.8% 91.4%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(222.2 84% 4.9%)"></div><div class="name">ring</div><div class="val">222.2 84% 4.9%</div></div>
+    </div>
+
+    <!-- DARK -->
+    <div class="panel panel-dark">
+      <div class="panel-head"><span class="mode-dot"></span>Dark · .dark</div>
+
+      <div class="row"><div class="swatch" style="background:hsl(222.2 84% 4.9%)"></div><div class="name">background</div><div class="val">222.2 84% 4.9%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(210 40% 98%)"></div><div class="name">foreground</div><div class="val">210 40% 98%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(222.2 84% 4.9%)"></div><div class="name">card</div><div class="val">222.2 84% 4.9%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(222.2 84% 4.9%)"></div><div class="name">popover</div><div class="val">222.2 84% 4.9%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(210 40% 98%)"></div><div class="name">primary</div><div class="val">210 40% 98%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(217.2 32.6% 17.5%)"></div><div class="name">secondary</div><div class="val">217.2 32.6% 17.5%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(217.2 32.6% 17.5%)"></div><div class="name">muted</div><div class="val">217.2 32.6% 17.5%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(217.2 32.6% 17.5%)"></div><div class="name">accent</div><div class="val">217.2 32.6% 17.5%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(0 62.8% 30.6%)"></div><div class="name">destructive</div><div class="val">0 62.8% 30.6%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(217.2 32.6% 17.5%)"></div><div class="name">border</div><div class="val">217.2 32.6% 17.5%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(217.2 32.6% 17.5%)"></div><div class="name">input</div><div class="val">217.2 32.6% 17.5%</div></div>
+      <div class="row"><div class="swatch" style="background:hsl(212.7 26.8% 83.9%)"></div><div class="name">ring</div><div class="val">212.7 26.8% 83.9%</div></div>
+    </div>
+  </div>
+
+  <p class="caption">
+    These twelve tokens are <strong>unmodified stock shadcn/ui &ldquo;slate&rdquo;</strong> — navy
+    <code>primary 222.2&nbsp;47.4%&nbsp;11.2%</code>, cool-grey <code>secondary/muted/accent 210&nbsp;40%&nbsp;96.1%</code>,
+    red <code>destructive 0&nbsp;84.2%&nbsp;60.2%</code>. The semantic layer was scaffolded from shadcn and
+    <strong>never rebranded</strong>: none of them carry MusicNerd&rsquo;s identity. The brand palette lives
+    <strong>outside</strong> these tokens as hardcoded hex — pink
+    <span class="chip" style="background:#ff9ce3"></span><code>#ff9ce3</code> /
+    <span class="chip" style="background:#ef95ff"></span><code>#ef95ff</code> /
+    <span class="chip" style="background:#edadf8"></span><code>#edadf8</code>, blue
+    <span class="chip" style="background:#2ad4fc"></span><code>#2ad4fc</code>, green
+    <span class="chip" style="background:#19ffb8"></span><code>#19ffb8</code>, maroon
+    <span class="chip" style="background:#422b46"></span><code>#422b46</code> — applied via 200+ literal uses and
+    <code>!important</code> dark overrides, not through <code>hsl(var(--token))</code>.
+  </p>
+</div>
+</body>
+</html>

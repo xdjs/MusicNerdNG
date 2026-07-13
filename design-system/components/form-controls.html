@@ -1,0 +1,372 @@
+<!-- @dsCard group="Forms" name="Form controls" subtitle="input · textarea · select · checkbox · label" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Form controls</title>
+<style>
+  /* ---- Resolved design tokens (from src/app/globals.css :root / .dark) ---- */
+  :root{
+    /* LIGHT — stock shadcn "slate" */
+    --background:      hsl(0 0% 100%);         /* #ffffff */
+    --foreground:      hsl(222.2 84% 4.9%);    /* #020817 */
+    --muted:           hsl(210 40% 96.1%);     /* #f1f5f9 */
+    --muted-foreground:hsl(215.4 16.3% 46.9%); /* #64748b */
+    --input:           hsl(214.3 31.8% 91.4%); /* #e2e8f0 */
+    --ring:            hsl(222.2 84% 4.9%);    /* #020817 */
+    --primary:         hsl(222.2 47.4% 11.2%); /* #0f172a */
+    --radius: 0.5rem;                          /* 8px  */
+    --radius-md: calc(var(--radius) - 2px);    /* 6px  → rounded-md */
+    --radius-sm: calc(var(--radius) - 4px);    /* 4px  → rounded-sm */
+    --checked: #ff9ce3;                        /* light checkbox accent */
+  }
+  /* DARK surface tokens, used only inside .dark-surface below */
+  .dark-surface{
+    --background:      hsl(222.2 84% 4.9%);    /* #020817 */
+    --foreground:      hsl(210 40% 98%);       /* #f8fafc */
+    --muted:           hsl(217.2 32.6% 17.5%); /* #1e293b */
+    --muted-foreground:hsl(215 20.2% 65.1%);   /* #94a3b8 */
+    --input:           hsl(217.2 32.6% 17.5%); /* #1e293b */
+    --ring:            hsl(212.7 26.8% 83.9%); /* #cbd5e1 */
+    --primary:         hsl(210 40% 98%);       /* #f8fafc */
+    --checked: #2ad4fc;                        /* dark checkbox accent */
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{
+    background:#ffffff;
+    color:var(--foreground);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding:32px 28px 40px;
+  }
+  .wrap{ max-width:920px; margin:0 auto; }
+
+  h1{ font-size:22px; font-weight:650; letter-spacing:-0.02em; margin:0 0 2px; }
+  .sub{ font-size:13px; color:var(--muted-foreground); margin:0 0 4px;
+        font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  .lead{ font-size:13px; color:var(--muted-foreground); margin:10px 0 26px; max-width:640px; }
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }
+
+  .card{
+    border:1px solid var(--input);
+    border-radius:12px;
+    background:#ffffff;
+    padding:18px 18px 16px;
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .card.span2{ grid-column:1 / -1; }
+  .card-h{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .card-h .name{ font-size:14px; font-weight:650; letter-spacing:-0.01em; }
+  .card-h .file{ font-size:11px; color:var(--muted-foreground);
+                 font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+
+  .row{ display:flex; flex-direction:column; gap:6px; }
+  .row-label{ display:flex; align-items:center; gap:8px; }
+  .state{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
+          color:var(--muted-foreground); }
+  .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px;
+         color:var(--muted-foreground); }
+  .mono b{ color:var(--foreground); font-weight:600; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Real primitives — every class resolved to literal token values     */
+  /* ------------------------------------------------------------------ */
+
+  /* Label — text-sm font-medium leading-none */
+  .ui-label{ font-size:14px; font-weight:500; line-height:1; color:var(--foreground); }
+
+  /* Input, form-restyled (border-input + h-10 + focus ring the primitive omits) */
+  .ui-input{
+    display:flex; width:100%; height:40px;              /* h-10 */
+    border:1px solid var(--input);                       /* border border-input */
+    border-radius:var(--radius-md);                      /* rounded-md 6px */
+    background:var(--background);                         /* bg-background */
+    padding:8px 12px;                                    /* px-3 py-2 */
+    font:inherit; font-size:16px;                        /* text-base */
+    color:var(--foreground);
+    outline:none;
+  }
+  .ui-input::placeholder{ color:var(--muted-foreground); }/* placeholder:text-muted-foreground */
+  .ui-input.is-focused{
+    /* ring-offset-background(2) + focus-visible:ring-2 ring-ring */
+    box-shadow:0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+  }
+  .ui-input.is-disabled{ opacity:.5; cursor:not-allowed; }/* disabled:opacity-50 */
+
+  /* Input primitive AS-IS — stripped: no border, no height, no ring */
+  .ui-input-bare{
+    display:flex; width:100%;
+    border:0;
+    border-radius:var(--radius-md);
+    background:var(--background);
+    padding:8px 12px;
+    font:inherit; font-size:16px; color:var(--foreground);
+    outline:none;
+  }
+  .ui-input-bare::placeholder{ color:var(--muted-foreground); }
+  .bare-field{ background:var(--muted); border-radius:var(--radius-md); }
+
+  /* Textarea — min-h-[50px] border-input, focus ring is MISSING in source */
+  .ui-textarea{
+    display:block; width:100%; min-height:50px;          /* min-h-[50px] */
+    border:1px solid var(--input);
+    border-radius:var(--radius-md);
+    background:var(--background);
+    padding:8px 12px;
+    font:inherit; font-size:14px;                        /* md:text-sm */
+    color:var(--foreground);
+    resize:none; outline:none;
+  }
+  .ui-textarea::placeholder{ color:var(--muted-foreground); }
+
+  /* Select trigger — h-10 border-input, focus:ring-2 (this one DOES ring) */
+  .ui-select{
+    display:flex; align-items:center; justify-content:space-between;
+    width:100%; height:40px;                             /* h-10 */
+    border:1px solid var(--input);
+    border-radius:var(--radius-md);
+    background:var(--background);
+    padding:8px 12px;
+    font:inherit; font-size:14px;                        /* text-sm */
+    color:var(--foreground);
+    outline:none;
+  }
+  .ui-select.is-focused{ box-shadow:0 0 0 2px var(--background), 0 0 0 4px var(--ring); }
+  .ui-select svg{ width:16px; height:16px; opacity:.5; }  /* ChevronDown h-4 w-4 opacity-50 */
+
+  /* Checkbox — h-4 w-4 rounded-sm border border-primary */
+  .ui-check{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px;                             /* h-4 w-4 */
+    border:1px solid var(--primary);                     /* border-primary */
+    border-radius:var(--radius-sm);                      /* rounded-sm 4px */
+    background:var(--background);
+    flex:0 0 auto;
+  }
+  .ui-check svg{ width:14px; height:14px; color:#fff; display:none; }
+  .ui-check.checked{
+    background:var(--checked);                            /* [data-state=checked] */
+    border-color:var(--checked);
+  }
+  .ui-check.checked svg{ display:block; }
+  .check-line{ display:flex; align-items:center; gap:10px; }
+  .check-line span{ font-size:14px; }
+
+  /* dark surface panel */
+  .dark-surface{
+    background:var(--background);
+    border:1px solid var(--input);
+    border-radius:10px;
+    padding:16px;
+    color:var(--foreground);
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .dark-surface .ui-label{ color:var(--foreground); }
+  .dark-surface .mono{ color:var(--muted-foreground); }
+  .dark-surface .mono b{ color:var(--foreground); }
+  .dark-surface .state{ color:var(--muted-foreground); }
+
+  .swatchrow{ display:flex; flex-wrap:wrap; gap:10px; margin-top:2px; }
+  .chip{ display:flex; align-items:center; gap:7px; font-size:11px;
+         font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--muted-foreground); }
+  .chip i{ width:13px; height:13px; border-radius:3px; display:inline-block;
+           border:1px solid rgba(0,0,0,.12); }
+
+  .note{ font-size:12px; color:var(--muted-foreground);
+         border-left:2px solid var(--input); padding:2px 0 2px 12px; margin-top:2px; }
+  .note b{ color:var(--foreground); font-weight:600; }
+  .warn{ color:#b45309; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:14px 22px; margin:26px 0 0;
+           padding-top:18px; border-top:1px solid var(--input); }
+  .legend .chip i{ width:14px; height:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Form controls</h1>
+  <p class="sub">input · textarea · select · checkbox · label</p>
+  <p class="lead">
+    Primitives from <b style="font-family:inherit">src/components/ui/</b>, resolved to literal CSS.
+    Border = <code style="font-family:ui-monospace,monospace">--input</code>, focus ring =
+    <code style="font-family:ui-monospace,monospace">--ring</code>, radius from
+    <code style="font-family:ui-monospace,monospace">--radius: 0.5rem</code>. Semantic tokens are
+    stock shadcn <b style="font-family:inherit">slate</b> — brand color never reaches this layer.
+  </p>
+
+  <div class="grid">
+
+    <!-- LABEL + INPUT -->
+    <div class="card">
+      <div class="card-h">
+        <span class="name">Label + Input</span>
+        <span class="file">label.tsx · input.tsx</span>
+      </div>
+
+      <div class="row">
+        <label class="ui-label" for="a">Email address</label>
+        <div class="row-label"><span class="state">default</span></div>
+        <input id="a" class="ui-input" placeholder="you@example.com">
+      </div>
+      <div class="mono">
+        Label <b>text-sm 14px · font-medium 500 · leading-none</b><br>
+        Input restyled: border <b>--input #e2e8f0</b> · h-10 <b>40px</b> · rounded-md <b>6px</b> · text-base <b>16px</b>
+      </div>
+
+      <div class="row">
+        <div class="row-label"><span class="state">focused</span></div>
+        <input class="ui-input is-focused" value="you@example.com">
+      </div>
+      <div class="mono">Ring <b>0 0 0 2px --background</b> + <b>0 0 0 4px --ring #020817</b> &nbsp;(ring-offset-2 + ring-2)</div>
+
+      <div class="row">
+        <div class="row-label"><span class="state">disabled</span></div>
+        <input class="ui-input is-disabled" placeholder="you@example.com" disabled>
+      </div>
+      <div class="mono">disabled:opacity-50 &nbsp;→&nbsp; <b>opacity: .5</b></div>
+    </div>
+
+    <!-- INPUT PRIMITIVE AS-IS -->
+    <div class="card">
+      <div class="card-h">
+        <span class="name">Input — the primitive as-is</span>
+        <span class="file">input.tsx</span>
+      </div>
+      <div class="row">
+        <div class="row-label"><span class="state">stripped</span></div>
+        <div class="bare-field">
+          <input class="ui-input-bare" placeholder="search…">
+        </div>
+      </div>
+      <p class="note">
+        The real <b>Input</b> is heavily stripped: <b>no <code style="font-family:ui-monospace,monospace">border border-input</code></b>,
+        no fixed height, and <b class="warn">no <code style="font-family:ui-monospace,monospace">focus-visible</code> ring</b> — so it renders
+        borderless with no focus affordance (shown on a <code style="font-family:ui-monospace,monospace">--muted</code> field so the box is visible).
+        It also uses <code style="font-family:ui-monospace,monospace">text-base</code> where stock shadcn uses <code style="font-family:ui-monospace,monospace">text-sm</code>.
+        Every form must re-add chrome via <code style="font-family:ui-monospace,monospace">className</code> — that's the restyled input on the left.
+      </p>
+    </div>
+
+    <!-- TEXTAREA -->
+    <div class="card">
+      <div class="card-h">
+        <span class="name">Textarea</span>
+        <span class="file">textarea.tsx</span>
+      </div>
+      <div class="row">
+        <div class="row-label"><span class="state">default</span></div>
+        <textarea class="ui-textarea" placeholder="Add context for this artist…" rows="3"></textarea>
+      </div>
+      <div class="mono">
+        min-h-[50px] <b>50px</b> · border <b>--input #e2e8f0</b> · rounded-md <b>6px</b> · md:text-sm <b>14px</b>
+      </div>
+      <p class="note">
+        <b class="warn">Focus ring never renders:</b> the source has <code style="font-family:ui-monospace,monospace">ring-ring</code>
+        + <code style="font-family:ui-monospace,monospace">ring-offset-2</code> but is <b>missing <code style="font-family:ui-monospace,monospace">focus-visible:ring-2</code></b>
+        (no ring width). Unlike Select/Button, it stays un-ringed on focus.
+      </p>
+    </div>
+
+    <!-- SELECT -->
+    <div class="card">
+      <div class="card-h">
+        <span class="name">Select — trigger</span>
+        <span class="file">select.tsx</span>
+      </div>
+      <div class="row">
+        <div class="row-label"><span class="state">default</span></div>
+        <button class="ui-select" type="button">
+          <span>Sort by contributions</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div class="row">
+        <div class="row-label"><span class="state">focused</span></div>
+        <button class="ui-select is-focused" type="button">
+          <span>Sort by contributions</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div class="mono">
+        h-10 <b>40px</b> · border <b>--input</b> · text-sm <b>14px</b> · ChevronDown <b>16px opacity-.5</b><br>
+        focus:ring-2 ring-ring <b>--ring #020817</b> &nbsp;(this one <b>does</b> ring)
+      </div>
+    </div>
+
+    <!-- CHECKBOX -->
+    <div class="card span2">
+      <div class="card-h">
+        <span class="name">Checkbox</span>
+        <span class="file">checkbox.tsx · globals.css [data-state=checked]</span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; align-items:start;">
+        <!-- light -->
+        <div class="row">
+          <span class="state">light theme</span>
+          <div class="check-line">
+            <span class="ui-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <span>Unchecked</span>
+          </div>
+          <div class="check-line">
+            <span class="ui-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <span>Checked</span>
+          </div>
+          <div class="mono">
+            h-4 w-4 <b>16px</b> · rounded-sm <b>4px</b><br>
+            border <b>--primary #0f172a</b><br>
+            checked fill <b style="color:#d81b9b">#ff9ce3</b> · check <b>#fff</b>
+          </div>
+        </div>
+
+        <!-- dark -->
+        <div class="dark-surface">
+          <span class="state">dark theme</span>
+          <div class="check-line">
+            <span class="ui-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <span>Unchecked</span>
+          </div>
+          <div class="check-line">
+            <span class="ui-check checked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <span>Checked</span>
+          </div>
+          <div class="mono">
+            border <b>--primary #f8fafc</b><br>
+            checked fill <b style="color:#2ad4fc">#2ad4fc</b> · check <b>#fff</b>
+          </div>
+        </div>
+      </div>
+
+      <p class="note">
+        <b>Light → dark accent swap.</b> The checked box is <b style="color:#d81b9b">pink #ff9ce3</b> in light and
+        <b style="color:#0891b2">cyan #2ad4fc</b> in dark — hardcoded in <code style="font-family:ui-monospace,monospace">globals.css</code>
+        as <code style="font-family:ui-monospace,monospace">[data-state="checked"]</code> overrides, <b>not</b> from the semantic
+        <code style="font-family:ui-monospace,monospace">--primary</code> token (which stays slate). The unchecked border still
+        follows <code style="font-family:ui-monospace,monospace">--primary</code>. #ff9ce3 is the real on-screen pink (57 uses); it isn't in any palette.
+      </p>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="chip"><i style="background:#e2e8f0"></i> --input <b style="color:#020817;font-weight:600">#e2e8f0</b> / dark #1e293b</div>
+    <div class="chip"><i style="background:#020817"></i> --ring <b style="color:#020817;font-weight:600">#020817</b> / dark #cbd5e1</div>
+    <div class="chip"><i style="background:#0f172a"></i> --primary <b style="color:#020817;font-weight:600">#0f172a</b> / dark #f8fafc</div>
+    <div class="chip"><i style="background:#ff9ce3"></i> checked-light <b style="color:#020817;font-weight:600">#ff9ce3</b></div>
+    <div class="chip"><i style="background:#2ad4fc"></i> checked-dark <b style="color:#020817;font-weight:600">#2ad4fc</b></div>
+    <div class="chip"><i style="background:#f1f5f9"></i> --muted <b style="color:#020817;font-weight:600">#f1f5f9</b></div>
+    <div class="chip"><i style="border-color:#cbd5e1;background:#fff"></i> radius <b style="color:#020817;font-weight:600">8 · md 6 · sm 4px</b></div>
+  </div>
+
+  <p class="lead" style="margin-top:22px">
+    Font: KoHo is declared for <code style="font-family:ui-monospace,monospace">.koho-*</code>/<code style="font-family:ui-monospace,monospace">.pink-btn</code>
+    but never loads in the app, so all control text renders in the <b>system sans</b> stack shown here — that's the reality this card documents.
+  </p>
+</div>
+</body>
+</html>
