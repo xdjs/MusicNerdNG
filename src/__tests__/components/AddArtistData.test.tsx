@@ -74,7 +74,7 @@ describe('AddArtistData "+" trigger', () => {
     expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
   });
 
-  it('uses "Save Link" submit label for direct-edit (owner / admin)', () => {
+  it('uses "Save Link" submit label for a claim owner using direct edit', () => {
     (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
 
     render(<AddArtistData {...baseProps} directEdit />);
@@ -82,6 +82,17 @@ describe('AddArtistData "+" trigger', () => {
 
     expect(screen.getByRole('heading', { name: /Add a link for Test Artist/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save Link' })).toBeInTheDocument();
+  });
+
+  it('uses immediate-addition copy for an auto-approved contribution', () => {
+    (useSession as jest.Mock).mockReturnValue({ data: { user: { id: 'u1' } }, status: 'authenticated' });
+
+    render(<AddArtistData {...baseProps} autoApprove />);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(screen.getByRole('heading', { name: /Add a link for Test Artist/i })).toBeInTheDocument();
+    expect(screen.getByText(/added immediately and recorded as your contribution/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Link' })).toBeInTheDocument();
   });
 
   it('shows the friendly LINK_NOT_SUPPORTED error when a URL matches no platform', async () => {

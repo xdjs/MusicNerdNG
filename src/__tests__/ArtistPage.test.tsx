@@ -39,8 +39,8 @@ jest.mock('@/app/_components/EditModeContext', () => ({
 jest.mock('@/app/_components/EditModeToggle', () => function EditModeToggle() { return <button data-testid="edit-mode-toggle">Edit</button>; });
 jest.mock('@/app/_components/AutoRefresh', () => function AutoRefresh() { return null; });
 jest.mock('@/app/artist/[id]/_components/BlurbSection', () => function BlurbSection() { return <div data-testid="blurb-section" />; });
-jest.mock('@/app/artist/[id]/_components/AddArtistData', () => function AddArtistData({ directEdit = false }: { directEdit?: boolean }) {
-    return <div data-testid="add-artist-data" data-direct-edit={String(directEdit)} />;
+jest.mock('@/app/artist/[id]/_components/AddArtistData', () => function AddArtistData({ directEdit = false, autoApprove = false }: { directEdit?: boolean, autoApprove?: boolean }) {
+    return <div data-testid="add-artist-data" data-direct-edit={String(directEdit)} data-auto-approve={String(autoApprove)} />;
 });
 jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSection({ artistName }: { artistName: string }) { return <div data-testid="hero-section"><img alt={artistName} src="test.jpg" /></div>; });
 jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return <div data-testid="fun-facts" />; });
@@ -176,6 +176,7 @@ describe('ArtistProfile page', () => {
             expect(screen.getAllByTestId('add-artist-data')).toHaveLength(2);
             screen.getAllByTestId('add-artist-data').forEach((component) => {
                 expect(component).toHaveAttribute('data-direct-edit', 'false');
+                expect(component).toHaveAttribute('data-auto-approve', 'true');
             });
         });
 
@@ -183,6 +184,25 @@ describe('ArtistProfile page', () => {
             const { getUserById } = await import('@/server/utils/queries/userQueries');
             const { getClaimByArtistId } = await import('@/server/utils/queries/dashboardQueries');
             (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: false, isWhiteListed: false });
+            (getClaimByArtistId as jest.Mock).mockResolvedValue({
+                id: 'claim-uuid',
+                artistId: 'artist-uuid',
+                userId: 'user-uuid',
+                status: 'approved',
+            });
+
+            await renderArtistPage();
+
+            expect(screen.getAllByTestId('add-artist-data')).toHaveLength(2);
+            screen.getAllByTestId('add-artist-data').forEach((component) => {
+                expect(component).toHaveAttribute('data-direct-edit', 'true');
+            });
+        });
+
+        it('preserves direct link editing when the approved claimant is also an admin', async () => {
+            const { getUserById } = await import('@/server/utils/queries/userQueries');
+            const { getClaimByArtistId } = await import('@/server/utils/queries/dashboardQueries');
+            (getUserById as jest.Mock).mockResolvedValue({ id: 'user-uuid', isAdmin: true, isWhiteListed: true });
             (getClaimByArtistId as jest.Mock).mockResolvedValue({
                 id: 'claim-uuid',
                 artistId: 'artist-uuid',
