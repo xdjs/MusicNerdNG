@@ -34,7 +34,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { LINK_NOT_SUPPORTED, LINK_TWITTER_INVALID, TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
 
-export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean }) {
+export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false, autoApprove = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean, autoApprove?: boolean }) {
     const { data: session, status } = useSession();
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [isLoading, setIsLoading] = useState(false);
@@ -237,13 +237,15 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                     )}
                     <DialogHeader className="space-y-1">
                         <DialogTitle className="text-black dark:text-white text-lg font-bold">
-                            {directEdit
+                            {directEdit || autoApprove
                                 ? `Add a link for ${artist.name}`
                                 : `Suggest a link for ${artist.name}`}
                         </DialogTitle>
                         {!directEdit && (
                             <DialogDescription className="text-xs text-muted-foreground">
-                                An admin will review it before it&apos;s added.
+                                {autoApprove
+                                    ? "This link will be added immediately and recorded as your contribution."
+                                    : "An admin will review it before it’s added."}
                             </DialogDescription>
                         )}
                     </DialogHeader>
@@ -291,7 +293,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                     {isLoading ? (
                                         <img className="max-h-6" src="/spinner.svg" alt="submitting" />
                                     ) : (
-                                        <span>{directEdit ? "Save Link" : "Submit"}</span>
+                                        <span>{directEdit ? "Save Link" : autoApprove ? "Add Link" : "Submit"}</span>
                                     )}
                                 </Button>
                                 {addArtistResp && addArtistResp.status === "success" ? (
