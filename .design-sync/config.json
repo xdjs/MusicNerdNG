@@ -1,0 +1,146 @@
+{
+  "projectId": "5c842a8e-3d59-454b-8153-4249ee34a66f",
+  "shape": "package",
+  "pkg": "musicnerdweb",
+  "globalName": "MusicNerd",
+  "srcDir": "src",
+  "tsconfig": "tsconfig.json",
+  "buildCmd": "npx tailwindcss -c .design-sync/tailwind.ds.config.ts -i src/app/globals.css -o .design-sync/.cache/ds-tailwind.css",
+  "cssEntry": ".design-sync/.cache/ds-tailwind.css",
+  "libOverrides": {
+    "dts.mjs": "app repo has no shipped .d.ts tree \u2014 extract props from the .tsx sources (and bound the glob to src/, since the repo-root scan OOM'd on .next/)",
+    "source-kit.mjs": "Next.js App Router `_components` private-folder prefix defeated the generic-dir test, forcing a group named \"components\" that outranked the category frontmatter"
+  },
+  "provider": {
+    "component": "ThemeProvider",
+    "inner": {
+      "component": "EditModeProvider",
+      "props": {
+        "canEdit": true
+      }
+    }
+  },
+  "componentSrcMap": {
+    "AspectRatio": "src/components/ui/aspect-ratio.tsx",
+    "Badge": "src/components/ui/badge.tsx",
+    "Button": "src/components/ui/button.tsx",
+    "Calendar": "src/components/ui/calendar.tsx",
+    "Card": "src/components/ui/card.tsx",
+    "Carousel": "src/components/ui/carousel.tsx",
+    "Checkbox": "src/components/ui/checkbox.tsx",
+    "Dialog": "src/components/ui/dialog.tsx",
+    "Drawer": "src/components/ui/drawer.tsx",
+    "DropdownMenu": "src/components/ui/dropdown-menu.tsx",
+    "Form": "src/components/ui/form.tsx",
+    "Input": "src/components/ui/input.tsx",
+    "Label": "src/components/ui/label.tsx",
+    "Popover": "src/components/ui/popover.tsx",
+    "Select": "src/components/ui/select.tsx",
+    "Table": "src/components/ui/table.tsx",
+    "Tabs": "src/components/ui/tabs.tsx",
+    "Textarea": "src/components/ui/textarea.tsx",
+    "Toast": "src/components/ui/toast.tsx",
+    "Tooltip": "src/components/ui/tooltip.tsx",
+    "BookmarkButton": "src/app/_components/BookmarkButton.tsx",
+    "EditModeToggle": "src/app/_components/EditModeToggle.tsx",
+    "Footer": "src/app/_components/Footer.tsx",
+    "LoadingPage": "src/app/_components/LoadingPage.tsx",
+    "PleaseLoginPage": "src/app/_components/PleaseLoginPage.tsx",
+    "SlidingText": "src/app/_components/SlidingText.tsx",
+    "ThemeToggle": "src/app/_components/ThemeToggle.tsx",
+    "TypeWriter": "src/app/_components/TypeWriter.tsx"
+  },
+  "guidelinesGlob": [
+    "DESIGN.md"
+  ],
+  "docsMap": {
+    "AspectRatio": ".design-sync/groups/AspectRatio.md",
+    "Badge": ".design-sync/groups/Badge.md",
+    "BookmarkButton": ".design-sync/groups/BookmarkButton.md",
+    "Button": ".design-sync/groups/Button.md",
+    "Calendar": ".design-sync/groups/Calendar.md",
+    "Card": ".design-sync/groups/Card.md",
+    "Carousel": ".design-sync/groups/Carousel.md",
+    "Checkbox": ".design-sync/groups/Checkbox.md",
+    "Dialog": ".design-sync/groups/Dialog.md",
+    "Drawer": ".design-sync/groups/Drawer.md",
+    "DropdownMenu": ".design-sync/groups/DropdownMenu.md",
+    "EditModeToggle": ".design-sync/groups/EditModeToggle.md",
+    "Footer": ".design-sync/groups/Footer.md",
+    "Form": ".design-sync/groups/Form.md",
+    "Input": ".design-sync/groups/Input.md",
+    "Label": ".design-sync/groups/Label.md",
+    "LoadingPage": ".design-sync/groups/LoadingPage.md",
+    "PleaseLoginPage": ".design-sync/groups/PleaseLoginPage.md",
+    "Popover": ".design-sync/groups/Popover.md",
+    "Select": ".design-sync/groups/Select.md",
+    "SlidingText": ".design-sync/groups/SlidingText.md",
+    "Table": ".design-sync/groups/Table.md",
+    "Tabs": ".design-sync/groups/Tabs.md",
+    "Textarea": ".design-sync/groups/Textarea.md",
+    "ThemeToggle": ".design-sync/groups/ThemeToggle.md",
+    "Toast": ".design-sync/groups/Toast.md",
+    "Tooltip": ".design-sync/groups/Tooltip.md",
+    "TypeWriter": ".design-sync/groups/TypeWriter.md"
+  },
+  "overrides": {
+    "Dialog": {
+      "cardMode": "single",
+      "primaryStory": "Open",
+      "viewport": "680x460"
+    },
+    "Drawer": {
+      "cardMode": "single",
+      "primaryStory": "Open",
+      "viewport": "680x540"
+    },
+    "DropdownMenu": {
+      "cardMode": "single",
+      "primaryStory": "Open",
+      "viewport": "560x440"
+    },
+    "Popover": {
+      "cardMode": "single",
+      "primaryStory": "Open",
+      "viewport": "560x400"
+    },
+    "Tooltip": {
+      "cardMode": "single",
+      "primaryStory": "Open",
+      "viewport": "480x280"
+    },
+    "Select": {
+      "cardMode": "single",
+      "primaryStory": "Open",
+      "viewport": "560x440"
+    },
+    "Toast": {
+      "cardMode": "single",
+      "primaryStory": "Default",
+      "viewport": "640x340"
+    },
+    "Table": {
+      "cardMode": "column"
+    },
+    "Calendar": {
+      "cardMode": "column"
+    },
+    "EditModeToggle": {
+      "cardMode": "column"
+    },
+    "Carousel": {
+      "cardMode": "column"
+    },
+    "AspectRatio": {
+      "cardMode": "column"
+    },
+    "Tabs": {
+      "cardMode": "column"
+    },
+    "LoadingPage": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
