@@ -1,0 +1,113 @@
+<!-- Local review gallery for the design-system preview bundle. Not a @dsCard — exclude from design-sync. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MusicNerd — Design System Preview Bundle</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1115;
+    color: #e7e7ea;
+    padding: 32px clamp(16px, 4vw, 56px) 96px;
+  }
+  header { max-width: 1200px; margin: 0 auto 8px; }
+  h1 { font-size: clamp(24px, 4vw, 40px); margin: 0 0 6px; letter-spacing: -0.02em; }
+  h1 .pink { color: #ff9ce3; text-shadow: 0 0 18px rgba(255,156,227,.5); }
+  .sub { color: #9aa0aa; font-size: 15px; margin: 0 0 4px; }
+  .meta { color: #6d7481; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .group { max-width: 1200px; margin: 40px auto 0; }
+  .group > h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .14em;
+    color: #8a90fb; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 1px solid #23262e;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; }
+  .card { background: #161922; border: 1px solid #23262e; border-radius: 14px; overflow: hidden; }
+  .card .cap { padding: 12px 14px 10px; border-bottom: 1px solid #23262e; }
+  .card .name { font-weight: 650; font-size: 15px; }
+  .card .st { color: #8b93a1; font-size: 12.5px; margin-top: 2px; }
+  .card .pth { color: #5f6773; font-size: 11.5px; font-family: ui-monospace, Menlo, monospace; margin-top: 4px; }
+  .card iframe { width: 100%; height: 460px; border: 0; background: #fff; display: block; }
+  .pill { display:inline-block; font-size:11px; color:#0f1115; background:#19ffb8; border-radius:999px; padding:2px 8px; font-weight:700; margin-left:8px; vertical-align:middle;}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="pink">music nerd</span> — Design System <span class="pill">13 cards</span></h1>
+  <p class="sub">Self-contained preview cards generated from DESIGN.md and real source. This is the payload for Claude Design / design-sync.</p>
+  <p class="meta">Each tile is one <code>@dsCard</code> preview file · all offline / no external requests</p>
+</header>
+
+<section class="group">
+  <h2>Colors</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Brand palette</div><div class="st">maroon · pastyblue · pastypink · jellygreen + the 3 pinks</div><div class="pth">colors/brand-palette.html</div></div><iframe src="colors/brand-palette.html"></iframe></div>
+    <div class="card"><div class="cap"><div class="name">Semantic tokens</div><div class="st">stock shadcn slate · light + dark</div><div class="pth">colors/semantic-tokens.html</div></div><iframe src="colors/semantic-tokens.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Type</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Typography</div><div class="st">system sans (KoHo intended, never loads) · scale + display</div><div class="pth">foundations/typography.html</div></div><iframe src="foundations/typography.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Spacing</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Spacing &amp; radius</div><div class="st">container 1400px/2rem · breakpoints · radius scale</div><div class="pth">foundations/spacing-radius.html</div></div><iframe src="foundations/spacing-radius.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Surfaces</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Glass surfaces</div><div class="st">.glass / .glass-subtle · blur(20px) saturate(180%)</div><div class="pth">foundations/glass.html</div></div><iframe src="foundations/glass.html"></iframe></div>
+    <div class="card"><div class="cap"><div class="name">Gradients</div><div class="st">hero / accent gradients</div><div class="pth">foundations/gradients.html</div></div><iframe src="foundations/gradients.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Motion</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Motion</div><div class="st">fadeSlideIn · accordion · spin · live ping</div><div class="pth">foundations/motion.html</div></div><iframe src="foundations/motion.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Buttons</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Button</div><div class="st">6 cva variants × 4 sizes + legacy pink-btn</div><div class="pth">components/button.html</div></div><iframe src="components/button.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Components</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Badge</div><div class="st">all cva variants</div><div class="pth">components/badge.html</div></div><iframe src="components/badge.html"></iframe></div>
+    <div class="card"><div class="cap"><div class="name">Card</div><div class="st">header/content/footer + glass variant</div><div class="pth">components/card.html</div></div><iframe src="components/card.html"></iframe></div>
+    <div class="card"><div class="cap"><div class="name">Tabs</div><div class="st">list + active/inactive triggers</div><div class="pth">components/tabs.html</div></div><iframe src="components/tabs.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Forms</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Form controls</div><div class="st">input · textarea · select · checkbox · label</div><div class="pth">components/form-controls.html</div></div><iframe src="components/form-controls.html"></iframe></div>
+  </div>
+</section>
+
+<section class="group">
+  <h2>Patterns</h2>
+  <div class="grid">
+    <div class="card"><div class="cap"><div class="name">Artist links grid</div><div class="st">signature neon platform-link icons</div><div class="pth">patterns/artist-links.html</div></div><iframe src="patterns/artist-links.html"></iframe></div>
+  </div>
+</section>
+
+</body>
+</html>

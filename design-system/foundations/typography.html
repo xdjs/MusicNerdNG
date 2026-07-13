@@ -1,0 +1,442 @@
+<!-- @dsCard group="Type" name="Typography" subtitle="system sans (KoHo intended, never loads) · scale + display" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    /* real --background / --foreground from globals.css :root (stock shadcn slate) */
+    --bg: hsl(0 0% 100%);
+    --fg: hsl(222.2 84% 4.9%);
+    --muted-fg: hsl(215.4 16.3% 46.9%);
+    --border: hsl(214.3 31.8% 91.4%);
+    --card: hsl(210 40% 98%);
+    --radius: 0.5rem; /* base radius token */
+    /* the real on-screen pink (57 hardcoded uses, in no palette) */
+    --wordmark-pink: #ff9ce3;
+    /* home-text-h2 subtitle colors */
+    --h2-light: #9b83a0;
+    --h2-dark: #a08ba8;
+    /* the real Tailwind default font-sans stack the app actually renders in */
+    --sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--bg);
+    color:var(--fg);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    line-height:1.4;
+    padding:40px clamp(20px,4vw,56px) 56px;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+
+  header.head{margin-bottom:36px;}
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted-fg);
+    margin:0 0 10px;
+  }
+  h1.title{
+    font-size:34px;
+    font-weight:700;
+    letter-spacing:-.02em;
+    margin:0 0 8px;
+  }
+  .subtitle{
+    color:var(--muted-fg);
+    font-size:15px;
+    margin:0;
+    max-width:62ch;
+  }
+
+  section{margin-top:44px;}
+  .sec-head{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    border-bottom:1px solid var(--border);
+    padding-bottom:10px;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+  }
+  .sec-head h2{
+    font-size:13px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.09em;
+    margin:0;
+  }
+  .sec-head .note{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:var(--muted-fg);
+  }
+
+  /* ---- honest KoHo caption banner ---- */
+  .honest{
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-left:3px solid var(--wordmark-pink);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    margin-top:24px;
+    font-size:13.5px;
+    color:#4a4152;
+    line-height:1.5;
+  }
+  .honest .icon{
+    flex:0 0 auto;
+    width:18px;height:18px;
+    border-radius:50%;
+    background:var(--wordmark-pink);
+    color:#422b46;
+    font-weight:700;
+    font-size:12px;
+    display:flex;align-items:center;justify-content:center;
+    margin-top:1px;
+  }
+  .honest code{font-family:var(--mono);font-size:12px;background:rgba(66,43,70,.07);padding:1px 5px;border-radius:4px;}
+
+  /* ---- scale table ---- */
+  .scale-scroll{overflow-x:auto;}
+  .scale{
+    display:grid;
+    grid-template-columns:max-content 1fr;
+    gap:0;
+    min-width:520px;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .row{display:contents;}
+  .cell-meta,.cell-spec{
+    border-top:1px solid var(--border);
+    padding:14px 18px;
+    display:flex;
+    align-items:center;
+  }
+  .row:first-child .cell-meta,.row:first-child .cell-spec{border-top:none;}
+  .cell-meta{
+    flex-direction:column;
+    align-items:flex-start;
+    justify-content:center;
+    gap:5px;
+    background:var(--card);
+    min-width:210px;
+    border-right:1px solid var(--border);
+  }
+  .cls{
+    font-family:var(--mono);
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--fg);
+  }
+  .dims{font-family:var(--mono);font-size:11px;color:var(--muted-fg);}
+  .use{
+    font-family:var(--mono);
+    font-size:10.5px;
+    color:var(--muted-fg);
+  }
+  .tag{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:10px;
+    padding:1px 6px;
+    border-radius:999px;
+    letter-spacing:.02em;
+  }
+  .tag-used{background:rgba(25,255,184,.16);color:#0b7d5a;}
+  .tag-unused{background:hsl(210 40% 92%);color:var(--muted-fg);}
+  .cell-spec{
+    overflow:hidden;
+    white-space:nowrap;
+    color:var(--fg);
+  }
+  .cell-spec .sample{line-height:1.05;font-weight:400;}
+
+  /* ---- weights ---- */
+  .weights{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+    gap:14px;
+  }
+  .w-card{
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px 16px 14px;
+    background:var(--bg);
+  }
+  .w-card.dead{background:var(--card);border-style:dashed;}
+  .w-sample{font-size:30px;line-height:1;margin-bottom:12px;}
+  .w-name{font-family:var(--mono);font-size:12px;font-weight:600;}
+  .w-sub{font-family:var(--mono);font-size:10.5px;color:var(--muted-fg);margin-top:4px;line-height:1.45;}
+
+  /* ---- display / fluid headings ---- */
+  .display{
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+  }
+  .disp-card{
+    border:1px solid var(--border);
+    border-radius:12px; /* off-scale, matches glass family */
+    padding:26px 26px 22px;
+    background:var(--bg);
+    overflow:hidden;
+  }
+  .disp-label{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted-fg);
+    margin-bottom:16px;
+    letter-spacing:.02em;
+  }
+  .disp-label b{color:var(--fg);font-weight:600;}
+
+  /* the real homepage wordmark, faithful to HomePageSplash.tsx */
+  .wordmark{
+    text-transform:lowercase;
+    font-weight:700;
+    color:var(--wordmark-pink);
+    line-height:1;
+    margin:0;
+    font-size:clamp(32px, calc(32px + (84 - 32) * ((100vw - 360px) / (1440 - 360))), 84px);
+    letter-spacing:clamp(-1px, calc(-1px + (-4 - -1) * ((100vw - 360px) / (1440 - 360))), -4px);
+    text-shadow:0 0 40px rgba(255,156,227,0.25);
+  }
+  /* the legacy .home-text-h2 (dead code — only referenced inside globals.css) */
+  .h2legacy{
+    margin:0;
+    font-weight:700;
+    color:var(--h2-light);
+    font-size:clamp(28px, calc(28px + (78 - 28) * ((100vw - 360px) / (1440 - 360))), 70px);
+    letter-spacing:clamp(-1px, calc(-1px + (-3 - -1) * ((100vw - 360px) / (1440 - 360))), -3px);
+    line-height:clamp(36px, calc(36px + (78 - 36) * ((100vw - 360px) / (1440 - 360))), 70px);
+  }
+  .disp-meta{
+    margin-top:18px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted-fg);
+    line-height:1.7;
+    border-top:1px dashed var(--border);
+    padding-top:12px;
+  }
+  .disp-meta .k{color:#7a5c7f;}
+  .swatch{
+    display:inline-block;width:10px;height:10px;border-radius:2px;
+    vertical-align:middle;margin-right:5px;border:1px solid rgba(0,0,0,.12);
+  }
+
+  /* dark chip: wordmark stays pink in both modes; h2 subtitle shifts */
+  .darkchip{
+    margin-top:22px;
+    background:#141414;
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:12px;
+    padding:22px 24px;
+    color:#e7e0ea;
+    overflow:hidden;
+  }
+  .darkchip .disp-label{color:#9b8aa0;}
+  .darkchip .disp-label b{color:#e7e0ea;}
+  .darkchip .wordmark{color:var(--wordmark-pink);}
+  .darkchip .h2legacy{color:var(--h2-dark);}
+  .darkchip .darknote{
+    font-family:var(--mono);font-size:11px;color:#9b8aa0;margin-top:14px;line-height:1.6;
+  }
+
+  .foot{
+    margin-top:40px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted-fg);
+    border-top:1px solid var(--border);
+    padding-top:14px;
+    line-height:1.7;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <p class="eyebrow">Foundations · Type</p>
+    <h1 class="title">Typography</h1>
+    <p class="subtitle">Stock Tailwind type scale rendered in the system sans stack the app actually ships. No custom <code style="font-family:var(--mono);font-size:13px">fontSize</code> scale, no font tokens — the only bespoke type is two hand-rolled fluid <code style="font-family:var(--mono);font-size:13px">clamp()</code> display headings.</p>
+  </header>
+
+  <!-- honest KoHo caption -->
+  <div class="honest">
+    <span class="icon">i</span>
+    <div>
+      <b>KoHo is declared but never loads.</b> <code>.koho-extralight</code> (200), <code>.koho-light</code> (300) and the shipping <code>.pink-btn</code> all declare <code>font-family: "KoHo", sans-serif</code> — but there is no <code>next/font</code>, <code>&lt;link&gt;</code>, <code>@font-face</code> or font package anywhere in the app, so every one silently falls back to <b>system sans-serif</b>. Everything below renders in the real fallback stack. (KoHo only loads on two standalone <code>public/*privacy.html</code> legal pages.)
+    </div>
+  </div>
+
+  <!-- TYPE SCALE -->
+  <section>
+    <div class="sec-head">
+      <h2>Type scale</h2>
+      <span class="note">stock Tailwind defaults · 16px root (never overridden) · px + rem · line-height</span>
+    </div>
+    <div class="scale-scroll">
+      <div class="scale">
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-xs</span><span class="dims">12px · 0.75rem / lh 16px</span><span class="use"><span class="tag tag-used">108×</span> badges · captions · meta</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:12px">music nerd — discover artists</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-sm</span><span class="dims">14px · 0.875rem / lh 20px</span><span class="use"><span class="tag tag-used">138×</span> de-facto body / UI</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:14px">music nerd — discover artists</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-base</span><span class="dims">16px · 1rem / lh 24px</span><span class="use"><span class="tag tag-used">22×</span> Input default</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:16px">music nerd — discover artists</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-lg</span><span class="dims">18px · 1.125rem / lh 28px</span><span class="use"><span class="tag tag-used">40×</span> sub-headings</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:18px">music nerd — discover artists</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-xl</span><span class="dims">20px · 1.25rem / lh 28px</span><span class="use"><span class="tag tag-used">22×</span> section headings</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:20px">music nerd — discover</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-2xl</span><span class="dims">24px · 1.5rem / lh 32px</span><span class="use"><span class="tag tag-used">14×</span> CardTitle · artist name</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:24px;font-weight:600">music nerd — discover</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-3xl</span><span class="dims">30px · 1.875rem / lh 36px</span><span class="use"><span class="tag tag-used">5×</span> page H1s · font-bold</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:30px;font-weight:700">music nerd</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-4xl</span><span class="dims">36px · 2.25rem / lh 40px</span><span class="use"><span class="tag tag-used">1×</span> .artist-name only</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:36px;font-weight:700">music nerd</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-5xl</span><span class="dims">48px · 3rem / lh 1</span><span class="use"><span class="tag tag-unused">0×</span> unused in src/</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:48px;line-height:1;font-weight:700;color:var(--muted-fg)">music nerd</span></div>
+        </div>
+
+        <div class="row">
+          <div class="cell-meta"><span class="cls">text-6xl</span><span class="dims">60px · 3.75rem / lh 1</span><span class="use"><span class="tag tag-unused">0×</span> unused in src/</span></div>
+          <div class="cell-spec"><span class="sample" style="font-size:60px;line-height:1;font-weight:700;color:var(--muted-fg)">music nerd</span></div>
+        </div>
+
+      </div>
+    </div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--muted-fg);margin:12px 2px 0;line-height:1.6">The app tops out at <b>text-4xl</b> — <b>text-5xl / text-6xl</b> (greyed) are stock Tailwind but appear nowhere in <code style="font-family:var(--mono)">src/</code>. All display type at that scale is hand-rolled clamp, below.</p>
+  </section>
+
+  <!-- WEIGHTS -->
+  <section>
+    <div class="sec-head">
+      <h2>Weights</h2>
+      <span class="note">rendered at 30px · same fallback stack</span>
+    </div>
+    <div class="weights">
+      <div class="w-card dead">
+        <div class="w-sample" style="font-weight:200">Aa nerd</div>
+        <div class="w-name">.koho-extralight</div>
+        <div class="w-sub">weight 200 · KoHo intended<br>never renders (falls back)</div>
+      </div>
+      <div class="w-card dead">
+        <div class="w-sample" style="font-weight:300">Aa nerd</div>
+        <div class="w-name">.koho-light</div>
+        <div class="w-sub">weight 300 · KoHo intended<br>never renders (falls back)</div>
+      </div>
+      <div class="w-card">
+        <div class="w-sample" style="font-weight:400">Aa nerd</div>
+        <div class="w-name">font-normal</div>
+        <div class="w-sub">weight 400 · 8×<br>occasional body reset</div>
+      </div>
+      <div class="w-card">
+        <div class="w-sample" style="font-weight:500">Aa nerd</div>
+        <div class="w-name">font-medium</div>
+        <div class="w-sub">weight 500 · 41×<br>buttons · labels</div>
+      </div>
+      <div class="w-card">
+        <div class="w-sample" style="font-weight:600">Aa nerd</div>
+        <div class="w-name">font-semibold</div>
+        <div class="w-sub">weight 600 · 62×<br>dominant heading weight</div>
+      </div>
+      <div class="w-card">
+        <div class="w-sample" style="font-weight:700">Aa nerd</div>
+        <div class="w-name">font-bold</div>
+        <div class="w-sub">weight 700 · 33×<br>page H1s</div>
+      </div>
+    </div>
+    <p style="font-family:var(--mono);font-size:11px;color:var(--muted-fg);margin:14px 2px 0;line-height:1.6">The two light weights the brand cares about — <b>200</b> &amp; <b>300</b> — are the KoHo weights that never render (dashed cards). What you see for them is whatever the system font supplies at that weight.</p>
+  </section>
+
+  <!-- DISPLAY / FLUID CLAMP -->
+  <section>
+    <div class="sec-head">
+      <h2>Display type — two hand-rolled fluid clamp headings</h2>
+      <span class="note">clamp() over 360px → 1440px viewport · resize this card to watch them scale</span>
+    </div>
+    <div class="display">
+
+      <!-- 1. the pink wordmark -->
+      <div class="disp-card">
+        <div class="disp-label"><b>1 · "music nerd" wordmark</b> — HomePageSplash.tsx (largest type on the site, inline-styled)</div>
+        <h1 class="wordmark">music nerd</h1>
+        <div class="disp-meta">
+          <span class="k">font-size</span>&nbsp;&nbsp;clamp(32px, …, 84px)<br>
+          <span class="k">letter-spacing</span>&nbsp;&nbsp;clamp(-1px, …, -4px) &nbsp;·&nbsp; <span class="k">line-height</span> 1 &nbsp;·&nbsp; lowercase font-bold<br>
+          <span class="k">color</span>&nbsp;&nbsp;<span class="swatch" style="background:#ff9ce3"></span>#ff9ce3 &nbsp;·&nbsp; <span class="k">text-shadow</span> 0 0 40px rgba(255,156,227,.25) &nbsp;— a pink glow, <b>not</b> a gradient<br>
+          <span style="color:#7a5c7f">note</span>&nbsp;&nbsp;#ff9ce3 is the on-screen pink (57 hardcoded uses) — defined in no palette, ≠ pastypink #ef95ff. Forced pink in both light &amp; dark.
+        </div>
+      </div>
+
+      <!-- 2. .home-text-h2 legacy -->
+      <div class="disp-card">
+        <div class="disp-label"><b>2 · .home-text-h2</b> — globals.css:616 &nbsp;<span style="color:#b08; background:hsl(210 40% 92%); padding:1px 6px; border-radius:999px; font-size:10px">legacy / dead</span> (referenced only inside globals.css, never applied by any .tsx)</div>
+        <h2 class="h2legacy">crowd-sourced directory</h2>
+        <div class="disp-meta">
+          <span class="k">font-size</span>&nbsp;&nbsp;clamp(28px, …, 70px)<br>
+          <span class="k">letter-spacing</span>&nbsp;&nbsp;clamp(-1px, …, -3px) &nbsp;·&nbsp; <span class="k">line-height</span> clamp(36px, …, 70px)<br>
+          <span class="k">color</span>&nbsp;&nbsp;<span class="swatch" style="background:#9b83a0"></span>#9b83a0 (light subtitle) / <span class="swatch" style="background:#a08ba8"></span>#a08ba8 (dark) &nbsp;·&nbsp; or #ff9ce3 as a title variant
+        </div>
+      </div>
+
+    </div>
+
+    <!-- dark chip -->
+    <div class="darkchip">
+      <div class="disp-label"><b>Dark mode</b> — the wordmark is the one element forced to stay pink; the h2 subtitle shifts #9b83a0 → #a08ba8</div>
+      <h1 class="wordmark">music nerd</h1>
+      <h2 class="h2legacy" style="margin-top:10px">crowd-sourced directory</h2>
+      <div class="darknote">wordmark <span class="swatch" style="background:#ff9ce3"></span>#ff9ce3 (unchanged) &nbsp;·&nbsp; h2 <span class="swatch" style="background:#a08ba8"></span>#a08ba8</div>
+    </div>
+  </section>
+
+  <p class="foot">
+    Font stack (real, Tailwind default font-sans):<br>
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif<br>
+    Semantic tokens: stock shadcn slate · --radius 0.5rem · body font-family: unset (no override) · sources: globals.css, HomePageSplash.tsx, DESIGN.md §Typography
+  </p>
+
+</div>
+</body>
+</html>

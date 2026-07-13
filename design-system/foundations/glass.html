@@ -1,0 +1,349 @@
+<!-- @dsCard group="Surfaces" name="Glass surfaces" subtitle=".glass / .glass-subtle · blur(20px) saturate(180%)" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #1a1420;
+    --muted: #6b6472;
+    --hairline: #ece7f0;
+    --maroon: #422b46;
+    --pastyblue: #2ad4fc;
+    --pastypink: #ef95ff;
+    --jellygreen: #19ffb8;
+    --screenpink: #ff9ce3;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    padding: 32px;
+  }
+
+  .wrap { max-width: 920px; margin: 0 auto; }
+
+  header { margin-bottom: 26px; }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  .sub {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .lede {
+    margin-top: 12px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #4a4451;
+    max-width: 640px;
+  }
+  .lede code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #f4f0f7;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 30px 0 12px;
+  }
+
+  /* ---- Neon stage: the colorful backdrop that makes blur visible ---- */
+  .stage {
+    position: relative;
+    border-radius: 18px;
+    padding: 34px;
+    overflow: hidden;
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  .stage.light {
+    background:
+      radial-gradient(circle at 12% 20%, var(--pastypink) 0%, transparent 42%),
+      radial-gradient(circle at 88% 15%, var(--pastyblue) 0%, transparent 45%),
+      radial-gradient(circle at 25% 95%, var(--jellygreen) 0%, transparent 48%),
+      radial-gradient(circle at 85% 90%, var(--screenpink) 0%, transparent 46%),
+      linear-gradient(135deg, #fff4fd 0%, #eefcff 100%);
+  }
+  .stage.dark {
+    background:
+      radial-gradient(circle at 15% 18%, rgba(239,149,255,0.85) 0%, transparent 42%),
+      radial-gradient(circle at 85% 12%, rgba(42,212,252,0.8) 0%, transparent 44%),
+      radial-gradient(circle at 30% 92%, rgba(25,255,184,0.75) 0%, transparent 46%),
+      radial-gradient(circle at 90% 88%, rgba(255,156,227,0.7) 0%, transparent 44%),
+      linear-gradient(135deg, #2a1c2d 0%, #1a1420 100%);
+  }
+
+  /* Crisp elements BEHIND the panels so the backdrop blur is obvious */
+  .behind {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    font-family: var(--sans);
+  }
+  .behind .stripe {
+    position: absolute;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 0.9;
+  }
+  .stage.light .behind .stripe { color: var(--maroon); }
+  .stage.dark  .behind .stripe { color: #fff; }
+  .behind .s1 { top: 30px;  left: -10px; }
+  .behind .s2 { top: 128px; left: -30px; }
+  .behind .s3 { top: 226px; left: 40px; }
+  .behind .dots {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(currentColor 1.5px, transparent 1.6px);
+    background-size: 16px 16px;
+    opacity: 0.18;
+  }
+  .stage.light .behind .dots { color: var(--maroon); }
+  .stage.dark  .behind .dots { color: #ffffff; }
+
+  /* ---- The glass panels ---- */
+  .panel {
+    position: relative;
+    z-index: 1;
+    width: 250px;
+    min-height: 176px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .glass {
+    background: rgba(255, 255, 255, 0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 1rem;
+  }
+  .glass-subtle {
+    background: rgba(255, 255, 255, 0.35);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0.75rem;
+  }
+  /* dark stage overrides — mirror ".dark .glass" in globals.css */
+  .stage.dark .glass {
+    background: rgba(30, 30, 30, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .stage.dark .glass-subtle {
+    background: rgba(40, 40, 40, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .p-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .stage.dark .p-name { color: #fff; }
+  .p-css {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: #33313a;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .stage.dark .p-css { color: rgba(255,255,255,0.82); }
+  .p-tag {
+    margin-top: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #7b7482;
+  }
+  .stage.dark .p-tag { color: rgba(255,255,255,0.55); }
+
+  /* ---- scrollbar-glass sample ---- */
+  .scroll-panel {
+    position: relative;
+    z-index: 1;
+    width: 250px;
+    padding: 16px 8px 16px 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  .scroll-box {
+    height: 108px;
+    overflow-y: scroll;
+    padding-right: 10px;
+    margin-top: 8px;
+  }
+  .scrollbar-glass {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  .scrollbar-glass::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-glass::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-glass::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.18);
+    border-radius: 9999px;
+  }
+  .scrollbar-glass::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.32);
+  }
+  .scroll-row {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255,255,255,0.9);
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .note {
+    margin-top: 12px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .note b { color: #4a4451; font-weight: 600; }
+  .note .ic { flex: none; margin-top: 1px; }
+  .note code {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: #f4f0f7;
+    padding: 1px 4px;
+    border-radius: 4px;
+    color: #5a3f60;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Glass surfaces</h1>
+      <div class="sub">.glass / .glass-subtle · blur(20px) saturate(180%)</div>
+      <p class="lede">
+        The primary surface language. Translucent white over a <code>backdrop-filter</code> blur —
+        no semantic token involved. Defined by hand in <code>globals.css</code>, used across 13+
+        artist-page components and admin. Panels float over color so the blur reads.
+      </p>
+    </header>
+
+    <div class="section-label">Light — over neon brand gradient</div>
+    <div class="stage light">
+      <div class="behind">
+        <div class="dots"></div>
+        <div class="stripe s1">music nerd ✦ pastypink ✦ pastyblue</div>
+        <div class="stripe s2">jellygreen ✦ #ff9ce3 ✦ maroon ✦ candy-neon</div>
+        <div class="stripe s3">frosted ✦ blur ✦ saturate ✦ glassy</div>
+      </div>
+
+      <div class="panel glass">
+        <div class="p-name">.glass</div>
+        <div class="p-css">background: rgba(255,255,255,.55);
+backdrop-filter:
+  blur(20px) saturate(180%);
+border: 1px solid
+  rgba(255,255,255,.3);
+border-radius: 1rem;</div>
+        <div class="p-tag">radius 16px · primary panel</div>
+      </div>
+
+      <div class="panel glass-subtle">
+        <div class="p-name">.glass-subtle</div>
+        <div class="p-css">background: rgba(255,255,255,.35);
+backdrop-filter:
+  blur(12px) saturate(150%);
+border: 1px solid
+  rgba(255,255,255,.25);
+border-radius: .75rem;</div>
+        <div class="p-tag">radius 12px · nested panel</div>
+      </div>
+    </div>
+
+    <div class="section-label">Dark — .dark .glass overrides + .scrollbar-glass thumb</div>
+    <div class="stage dark">
+      <div class="behind">
+        <div class="dots"></div>
+        <div class="stripe s1">music nerd ✦ pastypink ✦ pastyblue</div>
+        <div class="stripe s2">jellygreen ✦ #ff9ce3 ✦ maroon ✦ candy-neon</div>
+        <div class="stripe s3">frosted ✦ blur ✦ saturate ✦ glassy</div>
+      </div>
+
+      <div class="panel glass">
+        <div class="p-name">.dark .glass</div>
+        <div class="p-css">background: rgba(30,30,30,.55);
+border: 1px solid
+  rgba(255,255,255,.08);
+/* blur/saturate/radius
+   inherited from .glass */</div>
+        <div class="p-tag">radius 16px · dark surface</div>
+      </div>
+
+      <div class="panel glass-subtle">
+        <div class="p-name">.dark .glass-subtle</div>
+        <div class="p-css">background: rgba(40,40,40,.4);
+border: 1px solid
+  rgba(255,255,255,.06);
+/* blur(12px) saturate(150%)
+   inherited */</div>
+        <div class="p-tag">radius 12px · dark nested</div>
+      </div>
+
+      <div class="panel glass scroll-panel">
+        <div class="p-name">.scrollbar-glass</div>
+        <div class="p-css" style="color:rgba(255,255,255,.82)">thumb rgba(255,255,255,.18)
+hover 0.32 · track transparent
+6px · radius 9999px ↓ scroll</div>
+        <div class="scroll-box scrollbar-glass">
+          <div class="scroll-row">deezer id</div>
+          <div class="scroll-row">apple music</div>
+          <div class="scroll-row">musicbrainz</div>
+          <div class="scroll-row">wikidata</div>
+          <div class="scroll-row">tidal</div>
+          <div class="scroll-row">amazon music</div>
+          <div class="scroll-row">youtube music</div>
+          <div class="scroll-row">spotify</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="ic">ℹ</span>
+      <span><b>Fidelity notes.</b> This is the exact recipe from <code>globals.css</code>.
+      The glass utilities define <b>no box-shadow</b> — only a translucent border — so panels read as
+      edges, not drop-shadows. Their radii (16px / 12px) are <b>off the <code>--radius</code> scale</b>
+      (which is 8/6/4px) — hardcoded brand exceptions. The <code>.scrollbar-glass</code> thumb is near-invisible
+      on light surfaces by design; it's tuned for dark/glass. WebKit renders the 6px pill; Firefox uses the
+      thin <code>scrollbar-color</code> fallback.</span>
+    </div>
+  </div>
+</body>
+</html>

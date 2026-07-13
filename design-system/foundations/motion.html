@@ -1,0 +1,293 @@
+<!-- @dsCard group="Motion" name="Motion" subtitle="fadeSlideIn · accordion · spin · live ping" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    /* Resolved from globals.css :root (shadcn "slate") */
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(222.2 84% 4.9%);
+    --muted-foreground: hsl(215.4 16.3% 46.9%);
+    --border: hsl(214.3 31.8% 91.4%);
+    --card: hsl(0 0% 100%);
+    --primary: hsl(222.2 47.4% 11.2%);
+    /* Brand */
+    --maroon:#422b46;
+    --pastyblue:#2ad4fc;
+    --pastypink:#ef95ff;
+    --jellygreen:#19ffb8;
+    --radius:0.5rem;
+    --mono:"SF Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--background);
+    color:var(--foreground);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    padding:28px 24px 32px;
+  }
+  .wrap{max-width:920px;margin:0 auto}
+  header{margin-bottom:22px}
+  h1{
+    font-size:26px;
+    letter-spacing:-0.02em;
+    margin:0 0 6px;
+    font-weight:650;
+  }
+  .lede{
+    color:var(--muted-foreground);
+    font-size:14px;
+    margin:0;
+    max-width:640px;
+    line-height:1.5;
+  }
+  .lede code{font-family:var(--mono);font-size:12.5px;color:var(--maroon)}
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:16px;
+    margin-top:22px;
+  }
+  .demo{
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    background:var(--card);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  .stage{
+    position:relative;
+    height:150px;
+    background:
+      radial-gradient(120% 120% at 50% 0%, #fbfcfe 0%, #f4f6fa 100%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    overflow:hidden;
+  }
+  .meta{
+    padding:12px 14px 14px;
+    border-top:1px solid var(--border);
+  }
+  .name{
+    font-family:var(--mono);
+    font-size:13px;
+    font-weight:600;
+    color:var(--foreground);
+    letter-spacing:-0.01em;
+  }
+  .spec{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted-foreground);
+    margin-top:4px;
+    line-height:1.5;
+  }
+  .spec b{color:var(--maroon);font-weight:600}
+  .src{
+    display:inline-block;
+    margin-top:8px;
+    font-family:var(--mono);
+    font-size:10px;
+    color:#8a93a3;
+  }
+
+  /* ---------- 1. fadeSlideIn : fadeSlideIn 0.3s ease-out both ---------- */
+  .fsi-card{
+    width:150px;
+    border-radius:var(--radius);
+    background:#fff;
+    border:1px solid var(--border);
+    box-shadow:0 6px 18px -10px rgba(66,43,70,0.35);
+    padding:12px 13px;
+    animation:fsi-loop 2.6s infinite;
+  }
+  .fsi-card .bar{height:8px;border-radius:4px;background:var(--pastypink);width:70%;margin-bottom:8px}
+  .fsi-card .bar.two{background:#e7ebf1;width:100%}
+  .fsi-card .bar.three{background:#e7ebf1;width:45%;margin-bottom:0}
+  @keyframes fsi-loop{
+    0%   {opacity:0;transform:translateY(-8px);animation-timing-function:ease-out}
+    11.5%{opacity:1;transform:translateY(0)}
+    85%  {opacity:1;transform:translateY(0)}
+    100% {opacity:0;transform:translateY(-8px)}
+  }
+
+  /* ---------- 2. accordion : accordion-down/up 0.2s ease-out ---------- */
+  .acc{width:160px;border:1px solid var(--border);border-radius:var(--radius);background:#fff;overflow:hidden}
+  .acc .trigger{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:9px 12px;font-family:var(--sans);font-size:12px;font-weight:600;color:var(--foreground);
+  }
+  .acc .chev{
+    width:9px;height:9px;border-right:2px solid var(--maroon);border-bottom:2px solid var(--maroon);
+    transform:rotate(45deg);transform-origin:55% 55%;
+    animation:chev-loop 2.8s infinite;
+  }
+  .acc .panel{
+    height:0;overflow:hidden;
+    animation:acc-loop 2.8s infinite;
+  }
+  .acc .panel .inner{padding:0 12px 11px;font-family:var(--sans);font-size:11px;line-height:1.55;color:var(--muted-foreground)}
+  @keyframes acc-loop{
+    0%  {height:0;animation-timing-function:ease-out}
+    7%  {height:60px}
+    50% {height:60px;animation-timing-function:ease-out}
+    57% {height:0}
+    100%{height:0}
+  }
+  @keyframes chev-loop{
+    0%  {transform:rotate(45deg);animation-timing-function:ease-out}
+    7%  {transform:rotate(-135deg)}
+    50% {transform:rotate(-135deg);animation-timing-function:ease-out}
+    57% {transform:rotate(45deg)}
+    100%{transform:rotate(45deg)}
+  }
+
+  /* ---------- 3. spin (hover logo) : spin 3s linear infinite ---------- */
+  .disc{
+    width:74px;height:74px;border-radius:50%;position:relative;
+    background:
+      radial-gradient(circle at 50% 50%, #5a3f60 0 17%, transparent 17%),
+      repeating-radial-gradient(circle at 50% 50%, #2c1c30 0 3px, #3a2740 3px 6px);
+    box-shadow:0 4px 14px -4px rgba(66,43,70,0.5);
+    animation:spin360 3s linear infinite;
+  }
+  .disc::before{
+    content:"";position:absolute;inset:0;margin:auto;
+    width:22px;height:22px;border-radius:50%;
+    background:radial-gradient(circle at 50% 40%,var(--pastypink),var(--maroon));
+  }
+  .disc::after{
+    content:"";position:absolute;top:9px;left:50%;width:4px;height:4px;border-radius:50%;
+    background:var(--jellygreen);transform:translateX(-50%);box-shadow:0 0 6px var(--jellygreen);
+  }
+  @keyframes spin360{to{transform:rotate(360deg)}}
+
+  /* ---------- 4. Live ping : Tailwind animate-ping ---------- */
+  .pings{display:flex;gap:26px;align-items:center}
+  .pingcol{display:flex;flex-direction:column;align-items:center;gap:9px}
+  .chip{
+    padding:10px 14px;border-radius:var(--radius);display:flex;align-items:center;gap:8px;
+  }
+  .chip.light{background:#fff;border:1px solid var(--border)}
+  .chip.dark{background:#221226;border:1px solid #3a2740}
+  .ping{position:relative;display:inline-flex;height:8px;width:8px}
+  .ping .wave{position:absolute;inset:0;border-radius:50%;opacity:.75;animation:ping 1s cubic-bezier(0,0,.2,1) infinite}
+  .ping .dot{position:relative;display:inline-flex;border-radius:50%;height:8px;width:8px}
+  .light .wave,.light .dot{background:#059669}
+  .dark  .wave,.dark  .dot{background:var(--jellygreen)}
+  .livelabel{font-family:var(--sans);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;font-weight:600}
+  .light .livelabel{color:rgba(90,77,94,0.75)}
+  .dark  .livelabel{color:rgba(198,191,199,0.75)}
+  .cap{font-family:var(--mono);font-size:10px;color:var(--muted-foreground)}
+  @keyframes ping{75%,100%{transform:scale(2.2);opacity:0}}
+
+  footer{
+    margin-top:24px;padding-top:14px;border-top:1px dashed var(--border);
+    font-family:var(--mono);font-size:11px;color:var(--muted-foreground);line-height:1.6;
+  }
+  footer b{color:var(--maroon);font-weight:600}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Motion</h1>
+      <p class="lede">
+        The real animation tokens shipped in <code>tailwind.config.ts</code> and <code>globals.css</code>.
+        Slow, eased, ambient — motion that feels alive but calm. Demos loop for preview; in the app each
+        fires once (or on hover / when live).
+      </p>
+    </header>
+
+    <div class="grid">
+
+      <!-- fadeSlideIn -->
+      <div class="demo">
+        <div class="stage">
+          <div class="fsi-card">
+            <div class="bar"></div>
+            <div class="bar two"></div>
+            <div class="bar three"></div>
+          </div>
+        </div>
+        <div class="meta">
+          <div class="name">fadeSlideIn</div>
+          <div class="spec"><b>0.3s ease-out both</b><br>opacity 0→1 · translateY(−8px)→0</div>
+          <span class="src">tailwind.config.ts › keyframes.fadeSlideIn</span>
+        </div>
+      </div>
+
+      <!-- accordion -->
+      <div class="demo">
+        <div class="stage">
+          <div class="acc">
+            <div class="trigger">Details <span class="chev"></span></div>
+            <div class="panel"><div class="inner">crowd-sourced links, verified across 40+ platforms.</div></div>
+          </div>
+        </div>
+        <div class="meta">
+          <div class="name">accordion-down / -up</div>
+          <div class="spec"><b>0.2s ease-out</b><br>height 0 ⇄ var(--radix-accordion-content-height)</div>
+          <span class="src">tailwind.config.ts › keyframes.accordion-*</span>
+        </div>
+      </div>
+
+      <!-- spin -->
+      <div class="demo">
+        <div class="stage">
+          <div class="disc"></div>
+        </div>
+        <div class="meta">
+          <div class="name">spin (hover logo)</div>
+          <div class="spec"><b>spin 3s linear infinite</b><br>rotate 0deg→360deg · on <b>:hover</b></div>
+          <span class="src">NavContent.tsx › hover:animate-[spin_3s_linear_infinite]</span>
+        </div>
+      </div>
+
+      <!-- live ping -->
+      <div class="demo">
+        <div class="stage">
+          <div class="pings">
+            <div class="pingcol">
+              <div class="chip light">
+                <span class="ping"><span class="wave"></span><span class="dot"></span></span>
+                <span class="livelabel">Live</span>
+              </div>
+              <span class="cap">light #059669</span>
+            </div>
+            <div class="pingcol">
+              <div class="chip dark">
+                <span class="ping"><span class="wave"></span><span class="dot"></span></span>
+                <span class="livelabel">Live</span>
+              </div>
+              <span class="cap">dark #19ffb8</span>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <div class="name">animate-ping (Live dot)</div>
+          <div class="spec"><b>ping 1s cubic-bezier(0,0,.2,1) ∞</b><br>scale→2 · opacity 0.75→0 · accent swaps light→dark</div>
+          <span class="src">ActivityFeed.tsx › --feed-live-dot</span>
+        </div>
+      </div>
+
+    </div>
+
+    <footer>
+      Notes: <b>spin</b> and <b>ping</b> reuse Tailwind's built-in keyframes (nav overrides spin's duration to 3s).
+      Also present: <b>slow-spin 10s linear infinite</b> (profile avatar hover) and marquee
+      <b>scroll-left / scroll-right 20s linear infinite</b>. Labels render in system sans — the app declares
+      <b>KoHo</b> but it never loads, so type falls back to the platform font.
+    </footer>
+  </div>
+</body>
+</html>

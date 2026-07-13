@@ -1,0 +1,365 @@
+<!-- @dsCard group="Buttons" name="Button" subtitle="6 cva variants × 4 sizes + legacy pink-btn" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    /* Resolved light-mode semantic tokens (stock shadcn slate, globals.css :root) */
+    --primary: #0f172a;             /* hsl(222.2 47.4% 11.2%) */
+    --primary-foreground: #f8fafc;  /* hsl(210 40% 98%)       */
+    --destructive: #ef4444;         /* hsl(0 84.2% 60.2%)     */
+    --destructive-foreground: #f8fafc;
+    --secondary: #f1f5f9;           /* hsl(210 40% 96.1%)     */
+    --secondary-foreground: #0f172a;
+    --accent: #f1f5f9;              /* hsl(210 40% 96.1%)     */
+    --accent-foreground: #0f172a;
+    --background: #ffffff;          /* hsl(0 0% 100%)         */
+    --foreground: #020817;          /* hsl(222.2 84% 4.9%)    */
+    --input: #e2e8f0;               /* hsl(214.3 31.8% 91.4%) */
+    --ring: #020817;                /* hsl(222.2 84% 4.9%)    */
+    --md-radius: 6px;               /* rounded-md = calc(--radius[.5rem] - 2px) */
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 28px; }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  .sub { font-size: 13px; color: #64748b; margin: 0 0 6px; }
+  .src {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  section { margin-top: 34px; }
+  .sec-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+    margin: 0 0 4px;
+  }
+  .sec-note {
+    font-size: 12px;
+    color: #94a3b8;
+    margin: 0 0 18px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .cell {
+    border: 1px solid #eef2f6;
+    border-radius: 10px;
+    padding: 18px 16px 14px;
+    background: #fbfcfd;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .cell .stage {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+  .cell .name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+  .cell .cap {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: #64748b;
+    word-break: break-word;
+  }
+  .cap .k { color: #94a3b8; }
+
+  /* ── shared cva base: real classes from button.tsx line 8 ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    border-radius: var(--md-radius);       /* rounded-md */
+    font-size: 14px;                        /* text-sm    */
+    line-height: 20px;
+    font-weight: 500;                       /* font-medium */
+    /* font-sans → system stack (KoHo never loads); see note */
+    font-family: inherit;
+    transition: background-color .15s, color .15s;
+    cursor: pointer;
+    border: 1px solid transparent;
+    /* default size: h-10 px-4 py-2 */
+    height: 40px;
+    padding: 8px 16px;
+  }
+  .btn:focus-visible {                      /* focus-visible:ring-2 ring-ring ring-offset-2 */
+    outline: none;
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+  }
+
+  /* ── variants (resolved) ── */
+  .v-default {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    /* NB: no hover — stock hover:bg-primary/90 was removed */
+  }
+  .v-destructive {
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+  }
+  .v-destructive:hover { background: #f15656; } /* destructive/90 over white */
+  .v-outline {
+    border-color: var(--input);
+    background: var(--background);
+    color: var(--foreground);
+  }
+  .v-outline:hover { background: var(--accent); color: var(--accent-foreground); }
+  .v-secondary {
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+  }
+  .v-secondary:hover { background: #e8eef4; }   /* secondary/80 over white */
+  .v-ghost {
+    background: transparent;
+    color: var(--foreground);
+  }
+  .v-ghost:hover { background: var(--accent); color: var(--accent-foreground); }
+  .v-link {
+    background: transparent;
+    color: var(--primary);
+    text-underline-offset: 4px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .v-link:hover { text-decoration: underline; }
+
+  /* ── size scale (default variant) ── */
+  .s-sm    { height: 36px; padding: 0 12px; }   /* h-9  px-3 */
+  .s-lg    { height: 48px; padding: 0 32px; }   /* h-12 px-8 */
+  .s-icon  { height: 40px; width: 40px; padding: 0; }  /* h-10 w-10 */
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 18px;
+  }
+  .sizecell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .sizecell .lab {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #64748b;
+    text-align: center;
+  }
+  .sizecell .lab b { color: #0f172a; font-weight: 600; }
+
+  /* ── legacy pink-btn (globals.css:584) ── */
+  .pink-btn {
+    background-color: #EDADF8;
+    color: #422B46;
+    /* font-family: "KoHo" declared → falls back to system sans (never loads) */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    border-radius: 5px;                     /* off-scale, not from --radius */
+    padding: 5px 30px;
+    font-size: 18px;
+    border: none;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .legacy {
+    border: 1px solid #f0dbf5;
+    background: #fdf7ff;
+    border-radius: 10px;
+    padding: 20px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 420px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #7c3a86;
+    background: #f6e4fb;
+    border-radius: 999px;
+    padding: 3px 9px;
+    align-self: flex-start;
+  }
+
+  .notes {
+    margin-top: 36px;
+    border-top: 1px solid #eef2f6;
+    padding-top: 16px;
+  }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+  .notes code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #334155;
+  }
+  .swatch {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 3px;
+    border: 1px solid rgba(0,0,0,.08);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Button</h1>
+    <p class="sub">6 cva variants × 4 sizes + legacy pink-btn — <code style="font-family:ui-monospace,monospace;font-size:12px">buttonVariants</code> resolved to literal CSS from stock shadcn slate tokens.</p>
+    <p class="src">src/components/ui/button.tsx&nbsp;·&nbsp;globals.css :root / .pink-btn</p>
+  </header>
+
+  <!-- ── VARIANTS ── -->
+  <section>
+    <p class="sec-title">6 cva variants</p>
+    <p class="sec-note">Default size (h-10 px-4 py-2), rounded-md 6px, text-sm/font-medium. Rendered on white <span style="font-family:ui-monospace,monospace">--background</span>.</p>
+    <div class="grid">
+
+      <div class="cell">
+        <div class="stage"><button class="btn v-default">Default</button></div>
+        <div class="name">default</div>
+        <div class="cap"><span class="k">bg</span> bg-primary <span class="swatch" style="background:#0f172a"></span>#0f172a<br>
+        <span class="k">text</span> primary-foreground <span class="swatch" style="background:#f8fafc"></span>#f8fafc<br>
+        <span class="k">hover</span> none <span style="color:#b45309">(stock hover removed)</span></div>
+      </div>
+
+      <div class="cell">
+        <div class="stage"><button class="btn v-destructive">Destructive</button></div>
+        <div class="name">destructive</div>
+        <div class="cap"><span class="k">bg</span> bg-destructive <span class="swatch" style="background:#ef4444"></span>#ef4444<br>
+        <span class="k">text</span> destructive-foreground <span class="swatch" style="background:#f8fafc"></span>#f8fafc<br>
+        <span class="k">hover</span> bg-destructive/90</div>
+      </div>
+
+      <div class="cell">
+        <div class="stage"><button class="btn v-outline">Outline</button></div>
+        <div class="name">outline</div>
+        <div class="cap"><span class="k">bd</span> border-input <span class="swatch" style="background:#e2e8f0"></span>#e2e8f0<br>
+        <span class="k">bg</span> background <span class="swatch" style="background:#ffffff"></span>#ffffff · <span class="k">text</span> #020817<br>
+        <span class="k">hover</span> bg-accent <span class="swatch" style="background:#f1f5f9"></span>#f1f5f9</div>
+      </div>
+
+      <div class="cell">
+        <div class="stage"><button class="btn v-secondary">Secondary</button></div>
+        <div class="name">secondary</div>
+        <div class="cap"><span class="k">bg</span> bg-secondary <span class="swatch" style="background:#f1f5f9"></span>#f1f5f9<br>
+        <span class="k">text</span> secondary-foreground <span class="swatch" style="background:#0f172a"></span>#0f172a<br>
+        <span class="k">hover</span> bg-secondary/80</div>
+      </div>
+
+      <div class="cell">
+        <div class="stage"><button class="btn v-ghost">Ghost</button></div>
+        <div class="name">ghost</div>
+        <div class="cap"><span class="k">bg</span> transparent · <span class="k">text</span> #020817<br>
+        <span class="k">hover</span> bg-accent <span class="swatch" style="background:#f1f5f9"></span>#f1f5f9 + accent-foreground</div>
+      </div>
+
+      <div class="cell">
+        <div class="stage"><button class="btn v-link">Link</button></div>
+        <div class="name">link</div>
+        <div class="cap"><span class="k">text</span> text-primary <span class="swatch" style="background:#0f172a"></span>#0f172a<br>
+        underline-offset-4 · <span class="k">hover</span> underline</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SIZES ── -->
+  <section>
+    <p class="sec-title">Size scale — default variant</p>
+    <p class="sec-note">Heights h-9 / h-10 / h-12 = 36 / 40 / 48px; icon is a 40×40 square.</p>
+    <div class="row">
+
+      <div class="sizecell">
+        <button class="btn v-default s-sm">Small</button>
+        <div class="lab"><b>sm</b><br>h-9 px-3<br>36px</div>
+      </div>
+
+      <div class="sizecell">
+        <button class="btn v-default">Default</button>
+        <div class="lab"><b>default</b><br>h-10 px-4 py-2<br>40px</div>
+      </div>
+
+      <div class="sizecell">
+        <button class="btn v-default s-lg">Large</button>
+        <div class="lab"><b>lg</b><br>h-12 px-8<br>48px</div>
+      </div>
+
+      <div class="sizecell">
+        <button class="btn v-default s-icon" aria-label="icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="lab"><b>icon</b><br>h-10 w-10<br>40×40</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── LEGACY ── -->
+  <section>
+    <p class="sec-title">Legacy · .pink-btn</p>
+    <p class="sec-note">Pre-shadcn global class (the "Log In" button, <span style="font-family:ui-monospace,monospace">LoginBtn</span>). One of three parallel button systems still in the tree.</p>
+    <div class="legacy">
+      <span class="tag">older button system</span>
+      <div><button class="pink-btn">Log In</button></div>
+      <div class="cap" style="font-size:11px">
+        <span class="k">bg</span> <span class="swatch" style="background:#EDADF8"></span>#EDADF8 (third brand pink) ·
+        <span class="k">text</span> <span class="swatch" style="background:#422B46"></span>#422B46 maroon<br>
+        <span class="k">radius</span> 5px (off-scale, not from --radius) ·
+        <span class="k">size</span> 18px · <span class="k">pad</span> 5px 30px<br>
+        <span class="k">font</span> "KoHo" declared → <b>falls back to system sans</b> (KoHo never loads)
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HONEST NOTES ── -->
+  <div class="notes">
+    <ul>
+      <li><b>Reality vs intent — font:</b> all buttons declare <code>font-sans</code> / <code>"KoHo"</code>, but KoHo is never loaded (no <code>next/font</code>, no <code>@font-face</code>), so every specimen here renders in the <b>system sans stack</b> — which is what ships.</li>
+      <li><b>Deviation — no hover on <code>default</code>:</b> stock shadcn ships <code>hover:bg-primary/90</code>; it was removed in <code>button.tsx:12</code>, so the primary button has no hover feedback. Every other variant keeps its hover.</li>
+      <li><b>Semantic layer is 100% stock slate:</b> <code>--primary/--secondary/--accent/--destructive</code> are unmodified shadcn values in both <code>:root</code> and <code>.dark</code> — brand color (maroon/pastypink/pastyblue) never reaches these tokens.</li>
+      <li><b>Three parallel button systems:</b> this cva <code>Button</code>, the legacy <code>.pink-btn</code>, and a hand-rolled <code>ThemeToggle</code> <code>&lt;button&gt;</code>.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
