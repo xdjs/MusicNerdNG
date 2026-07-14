@@ -80,7 +80,6 @@ const feedThemeVars = `
         --feed-body-hover: #3d2f42;
         --feed-artist: #ff9ce3;
         --feed-timestamp: #9b8a9f;
-        --feed-timestamp-dim: rgba(155, 138, 159, 0.4);
         --feed-live-dot: #059669;
         --feed-live-label: rgba(90, 77, 94, 0.6);
         --feed-bar-agent: #0891b2;
@@ -110,7 +109,6 @@ const feedThemeVars = `
         --feed-body-hover: #e0d8e2;
         --feed-artist: #ff9ce3;
         --feed-timestamp: rgba(198, 191, 199, 0.35);
-        --feed-timestamp-dim: rgba(198, 191, 199, 0.25);
         --feed-live-dot: #19ffb8;
         --feed-live-label: rgba(198, 191, 199, 0.6);
         --feed-bar-agent: #2ad4fc;
