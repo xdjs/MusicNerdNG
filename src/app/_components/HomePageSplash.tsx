@@ -6,10 +6,11 @@ import ActivityFeed from "./ActivityFeed";
 // identity pink (#ff9ce3) — the same pink as the wordmark, applied inline exactly as the app
 // already does for it. globals.css defends `[style*="#ff9ce3"]` in dark mode, so the keywords and
 // the wordmark stay pink in both themes while `text-maroon` flips to white around them.
-const MANIFESTO: ReadonlyArray<{ before: string; keyword: string }> = [
+// The highlighted keyword can fall anywhere in the line, not just at the end.
+const MANIFESTO: ReadonlyArray<{ before: string; keyword: string; after?: string }> = [
     { before: "we listen with ", keyword: "intent" },
     { before: "we follow with ", keyword: "curiosity" },
-    { before: "we care when artists let us into ", keyword: "the work" },
+    { before: "we ", keyword: "care", after: " when artists let us into the work" },
     { before: "we act with ", keyword: "purpose" },
 ];
 
@@ -46,10 +47,11 @@ export default function HomePage() {
 
                 {/* Manifesto */}
                 <div className="text-center lowercase pt-[26px] px-4 pb-1">
-                    {MANIFESTO.map(({ before, keyword }) => (
+                    {MANIFESTO.map(({ before, keyword, after }) => (
                         <p key={keyword} className="font-bold text-maroon" style={LINE_STYLE}>
                             {before}
-                            <span style={KEYWORD_STYLE}>{keyword}</span>.
+                            <span style={KEYWORD_STYLE}>{keyword}</span>
+                            {after}
                         </p>
                     ))}
 
