@@ -13,8 +13,17 @@ type ActivityEvent = {
     createdAt: string;
 };
 
-const MAX_ITEMS = 15;
+// The manifesto hero owns the top of the homepage, so the feed is condensed to a short tail
+// beneath it (was 15).
+const MAX_ITEMS = 4;
 const POLL_INTERVAL = 30_000;
+
+// Rows fade down the list: with n rows, row i sits at 1 - (i / (n-1)) * 0.55.
+// 4 rows → 1, 0.82, 0.63, 0.45.
+function rowOpacity(i: number, n: number): number {
+    if (n <= 1) return 1;
+    return Math.round((1 - (i / (n - 1)) * 0.55) * 100) / 100;
+}
 
 // --- Helpers --------------------------------------------------------------
 
@@ -144,14 +153,16 @@ export default function ActivityFeed() {
         }
     }, []);
 
-    // Initial load
+    // Initial load. The endpoint returns more than we show, so cap here as well as on the poll
+    // path — the row count drives the opacity ramp, so an uncapped list also flattens the fade.
     useEffect(() => {
         fetchEvents().then((data) => {
             if (!data?.length) return;
-            setEvents(data);
-            latestTimestamp.current = data[0].createdAt;
+            const rows = data.slice(0, MAX_ITEMS);
+            setEvents(rows);
+            latestTimestamp.current = rows[0].createdAt;
             // Clear initial load flag after stagger animation completes
-            setTimeout(() => setInitialLoad(false), data.length * 30 + 300);
+            setTimeout(() => setInitialLoad(false), rows.length * 30 + 300);
         });
     }, [fetchEvents]);
 
@@ -194,8 +205,8 @@ export default function ActivityFeed() {
     return (
         <>
             <style dangerouslySetInnerHTML={{ __html: feedThemeVars }} />
-            <div className="feed-root flex flex-col items-center w-full px-2 sm:px-4">
-                <div className="w-full max-w-xl">
+            <div className="feed-root flex flex-col items-center w-full px-2 pt-[26px]">
+                <div className="w-full">
                     {/* Live indicator */}
                     <div className="flex items-center justify-center gap-2 mb-3">
                         <span className="relative flex h-2 w-2">
@@ -222,7 +233,7 @@ export default function ActivityFeed() {
                                 const key = eventKey(e);
                                 const isFresh = freshIds.has(key);
                                 const shouldAnimate = initialLoad || isFresh;
-                                const opacity = Math.max(0.45, 1 - i * 0.035);
+                                const opacity = rowOpacity(i, events.length);
 
                                 return (
                                     <li
@@ -237,7 +248,7 @@ export default function ActivityFeed() {
                                     >
                                         <Link
                                             href={`/artist/${e.artistId}`}
-                                            className="group flex items-center gap-2.5 py-[5px] px-2 sm:px-3 rounded-md
+                                            className="group flex items-center gap-3 py-[7px] px-2 rounded-md
                                                        transition-all duration-300 hover:bg-[var(--feed-hover-bg)]"
                                             style={{
                                                 backgroundColor: isFresh
@@ -246,21 +257,22 @@ export default function ActivityFeed() {
                                             }}
                                         >
                                             <span
-                                                className="flex-shrink-0 w-[3px] h-4 rounded-full transition-all duration-300
+                                                className="flex-shrink-0 w-[3px] h-[18px] rounded-[2px] transition-all duration-300
                                                            group-hover:h-5"
                                                 style={{ backgroundColor: typeBarVar[e.type] }}
                                             />
-                                            <span className="feed-text text-[13px] truncate flex-1
+                                            <span className="feed-text text-sm truncate flex-1
                                                              transition-colors duration-300"
                                                 style={{ color: 'var(--feed-body)' }}
                                             >
                                                 {eventText(e)}
                                             </span>
-                                            <span className="feed-ts text-[11px] flex-shrink-0 tabular-nums transition-colors duration-300"
+                                            <span className="feed-ts text-xs flex-shrink-0 tabular-nums transition-colors duration-300"
                                                 style={{
                                                     color: isFresh
                                                         ? 'var(--feed-fresh-time)'
-                                                        : 'var(--feed-timestamp-dim)',
+                                                        : 'var(--feed-timestamp)',
+                                                    opacity: isFresh ? 1 : 0.7,
                                                 }}
                                             >
                                                 {relativeTime(e.createdAt)}
