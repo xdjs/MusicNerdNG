@@ -1,0 +1,267 @@
+<!-- @dsCard group="Surfaces" name="Gradients" subtitle="hero / accent gradients" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #1a1420;
+    --muted: #6b6472;
+    --line: #ece7ef;
+    --card: #faf8fb;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --radius: 0.5rem; /* real --radius base */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 28px 56px; }
+
+  header { margin-bottom: 8px; }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .sub { margin: 0; color: var(--muted); font-size: 14px; }
+  .intro {
+    margin: 16px 0 30px;
+    font-size: 13.5px;
+    color: var(--muted);
+    border-left: 3px solid #ef95ff;
+    padding: 8px 0 8px 14px;
+    background: linear-gradient(90deg, rgba(239,149,255,.07), transparent 70%);
+  }
+  .intro code { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+
+  .stack { display: flex; flex-direction: column; gap: 26px; }
+
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--card);
+  }
+
+  /* ---- swatch panel ---- */
+  .swatch {
+    height: 190px;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+  }
+  .swatch .tag {
+    margin: 12px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .02em;
+    background: rgba(255,255,255,.86);
+    color: #2a2230;
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.18);
+  }
+
+  /* simulated dark, blurred artist photo (hero context) */
+  .photo-dark {
+    background:
+      radial-gradient(60% 80% at 74% 18%, rgba(37,99,235,.55), transparent 60%),
+      radial-gradient(70% 75% at 18% 82%, rgba(16,185,129,.42), transparent 62%),
+      linear-gradient(135deg, #3b4453, #131820);
+  }
+  /* simulated lighter photo so darkening reads */
+  .photo-light {
+    background:
+      radial-gradient(60% 80% at 28% 22%, #fde68a, transparent 60%),
+      radial-gradient(70% 72% at 82% 72%, #93c5fd, transparent 60%),
+      linear-gradient(135deg, #e8ebf0, #9aa2ae);
+  }
+  /* transparency checkerboard — signals a translucent fallback fill */
+  .checker {
+    background-color: #ffffff;
+    background-image:
+      linear-gradient(45deg, #e7e2ea 25%, transparent 25%),
+      linear-gradient(-45deg, #e7e2ea 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e7e2ea 75%),
+      linear-gradient(-45deg, transparent 75%, #e7e2ea 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  }
+
+  /* the REAL gradients, as an overlay layer above the backdrop */
+  .g-hero-wash::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom right,
+      rgba(239,149,255,.20), transparent, rgba(124,58,237,.15));
+  }
+  .g-hero-dark::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom,
+      rgba(0,0,0,.20), rgba(0,0,0,.50));
+  }
+  .g-press::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom right,
+      rgba(239,149,255,.10), rgba(88,28,135,.20), transparent);
+  }
+
+  /* ---- meta block under each swatch ---- */
+  .meta { padding: 14px 16px 16px; }
+  .meta .name {
+    font-size: 14.5px; font-weight: 650; margin: 0 0 2px;
+  }
+  .meta .where {
+    font-family: var(--mono); font-size: 11px; color: var(--muted); margin: 0 0 12px;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 10.5px; color: #2a2230;
+    background: #fff; border: 1px solid var(--line);
+    padding: 3px 7px 3px 4px; border-radius: 20px;
+  }
+  .dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,.12);
+    /* alpha dots sit on their own mini-checker so opacity reads */
+    background-color: #fff;
+    background-image:
+      linear-gradient(45deg, #ddd 25%, transparent 25%),
+      linear-gradient(-45deg, #ddd 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #ddd 75%),
+      linear-gradient(-45deg, transparent 75%, #ddd 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+    position: relative;
+  }
+  .dot::after { content:""; position:absolute; inset:0; border-radius:50%; background: var(--c); }
+
+  .code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+    color: #2a2230;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .code .k { color: #a3369b; }
+  .code .lbl { display:block; color: var(--muted); font-size: 10px; letter-spacing:.04em; text-transform: uppercase; margin: 0 0 4px; }
+  .code + .code { margin-top: 8px; }
+
+  footer {
+    margin-top: 34px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  footer b { color: var(--ink); font-weight: 650; }
+  footer code { font-family: var(--mono); font-size: 11.5px; color:#2a2230; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Gradients</h1>
+    <p class="sub">Surfaces &middot; hero / accent gradients</p>
+  </header>
+
+  <p class="intro">
+    Every gradient in the app is a <b>translucent overlay on a <code>&lt;div&gt;</code></b> — composited over
+    artist imagery, never gradient-clipped text (<code>bg-clip-text</code> = 0 hits). Three exist, all authored
+    as Tailwind <code>bg-gradient-*</code> utilities. Backdrops below are simulated to reveal the low-alpha stops.
+  </p>
+
+  <div class="stack">
+
+    <!-- 1. Hero brand wash -->
+    <div class="card">
+      <div class="swatch photo-dark g-hero-wash">
+        <span class="tag">over blurred artist photo</span>
+      </div>
+      <div class="meta">
+        <p class="name">Hero brand wash</p>
+        <p class="where">artist/[id]/_components/HeroSection.tsx:79</p>
+        <div class="chips">
+          <span class="chip"><span class="dot" style="--c:rgba(239,149,255,.20)"></span>#ef95ff / 20%</span>
+          <span class="chip"><span class="dot" style="--c:transparent"></span>transparent</span>
+          <span class="chip"><span class="dot" style="--c:rgba(124,58,237,.15)"></span>#7c3aed / 15%</span>
+        </div>
+        <div class="code"><span class="lbl">Tailwind</span>bg-gradient-to-br from-[#ef95ff]/20 via-transparent to-[#7c3aed]/15</div>
+        <div class="code"><span class="lbl">Resolved CSS</span><span class="k">linear-gradient(</span>to bottom right,
+  rgba(239,149,255,.20),
+  transparent,
+  rgba(124,58,237,.15)<span class="k">)</span></div>
+      </div>
+    </div>
+
+    <!-- 2. Hero dark overlay -->
+    <div class="card">
+      <div class="swatch photo-light g-hero-dark">
+        <span class="tag">over lighter photo — bottom darkens</span>
+      </div>
+      <div class="meta">
+        <p class="name">Hero dark overlay</p>
+        <p class="where">artist/[id]/_components/HeroSection.tsx:82</p>
+        <div class="chips">
+          <span class="chip"><span class="dot" style="--c:rgba(0,0,0,.20)"></span>black / 20%</span>
+          <span class="chip"><span class="dot" style="--c:rgba(0,0,0,.50)"></span>black / 50%</span>
+        </div>
+        <div class="code"><span class="lbl">Tailwind</span>bg-gradient-to-b from-black/20 to-black/50</div>
+        <div class="code"><span class="lbl">Resolved CSS</span><span class="k">linear-gradient(</span>to bottom,
+  rgba(0,0,0,.20),
+  rgba(0,0,0,.50)<span class="k">)</span></div>
+      </div>
+    </div>
+
+    <!-- 3. Press thumb fallback -->
+    <div class="card">
+      <div class="swatch checker g-press">
+        <span class="tag">translucent fallback fill (no image)</span>
+      </div>
+      <div class="meta">
+        <p class="name">Press thumb fallback</p>
+        <p class="where">artist/[id]/_components/PressAndFeatures.tsx:68</p>
+        <div class="chips">
+          <span class="chip"><span class="dot" style="--c:rgba(239,149,255,.10)"></span>pastypink #ef95ff / 10%</span>
+          <span class="chip"><span class="dot" style="--c:rgba(88,28,135,.20)"></span>purple-900 #581c87 / 20%</span>
+          <span class="chip"><span class="dot" style="--c:transparent"></span>transparent</span>
+        </div>
+        <div class="code"><span class="lbl">Tailwind</span>bg-gradient-to-br from-pastypink/10 via-purple-900/20 to-transparent</div>
+        <div class="code"><span class="lbl">Resolved CSS</span><span class="k">linear-gradient(</span>to bottom right,
+  rgba(239,149,255,.10),
+  rgba(88,28,135,.20),
+  transparent<span class="k">)</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <b>Two vocabularies for the same pink&rarr;purple wash.</b> The hero uses raw hex
+    (<code>from-[#ef95ff] to-[#7c3aed]</code>); the press thumb uses the <code>pastypink</code> token
+    + Tailwind <code>purple-900</code>. Note the palette pink here is <code>#ef95ff</code> — not the
+    <code>#ff9ce3</code> pink users actually see on the wordmark. Base <code>--radius: 0.5rem</code>;
+    swatch corners are illustrative. KoHo is declared but never loads, so all type renders in the
+    system sans stack.
+  </footer>
+</div>
+</body>
+</html>

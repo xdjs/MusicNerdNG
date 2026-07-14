@@ -79,3 +79,8 @@ wikidata_query.py
 
 # Claude Code runtime lock (machine-specific)
 .claude/scheduled_tasks.lock
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

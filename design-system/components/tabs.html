@@ -1,0 +1,283 @@
+<!-- @dsCard group="Components" name="Tabs" subtitle="list + active/inactive triggers" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    /* Resolved shadcn "slate" semantic tokens — light (globals.css :root) */
+    --background: hsl(0 0% 100%);          /* #ffffff */
+    --foreground: hsl(222.2 84% 4.9%);     /* ~#020817 */
+    --muted: hsl(210 40% 96.1%);           /* ~#f1f5f9 */
+    --muted-foreground: hsl(215.4 16.3% 46.9%); /* ~#64748b */
+    --ring: hsl(222.2 84% 4.9%);
+    --radius: 0.5rem;                       /* 8px base */
+    /* Resolved dark tokens (globals.css .dark) */
+    --d-background: hsl(222.2 84% 4.9%);    /* ~#020817 */
+    --d-foreground: hsl(210 40% 98%);       /* ~#f8fafc */
+    --d-muted: hsl(217.2 32.6% 17.5%);      /* ~#1e293b */
+    --d-muted-foreground: hsl(215 20.2% 65.1%); /* ~#94a3b8 */
+
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #ffffff;
+    color: var(--foreground);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 36px 48px;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  .lede {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #475569;
+    margin: 0 0 8px;
+    max-width: 60ch;
+  }
+  code.k {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: #f1f5f9;
+    color: #334155;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin: 34px 0 12px;
+    font-weight: 600;
+  }
+
+  /* ---- Real Tabs component, resolved to literal CSS ---- */
+
+  /* TabsList: inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground */
+  .tabs-list {
+    display: inline-flex;
+    height: 40px;                 /* h-10 */
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;           /* rounded-md = calc(0.5rem - 2px) */
+    background: var(--muted);
+    padding: 4px;                 /* p-1 */
+    color: var(--muted-foreground);
+  }
+
+  /* TabsTrigger base: rounded-sm px-3 py-1.5 text-sm font-medium transition-all */
+  .tabs-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    border-radius: 4px;           /* rounded-sm = calc(0.5rem - 4px) */
+    padding: 6px 12px;            /* py-1.5 px-3 */
+    font-size: 14px;             /* text-sm */
+    line-height: 20px;
+    font-weight: 500;            /* font-medium */
+    font-family: var(--sans);
+    background: transparent;      /* inactive: no bg, inherits list color */
+    color: inherit;              /* inactive → muted-foreground */
+    border: 0;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+
+  /* data-[state=active]: bg-background text-foreground shadow-sm */
+  .tabs-trigger[data-state="active"] {
+    background: var(--background);
+    color: var(--foreground);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);   /* shadow-sm */
+  }
+
+  /* TabsContent: mt-2 */
+  .tabs-content {
+    margin-top: 8px;             /* mt-2 */
+    font-size: 14px;
+    line-height: 1.6;
+    color: #334155;
+    border: 1px solid hsl(214.3 31.8% 91.4%);   /* --border, for panel framing only */
+    border-radius: 6px;
+    padding: 16px 18px;
+    max-width: 420px;
+  }
+  .tabs-content h4 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  .tabs-content p { margin: 0; color: var(--muted-foreground); }
+
+  /* Callout markers pointing at active vs inactive */
+  .specimen { margin: 4px 0 0; }
+
+  .legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 22px;
+  }
+  .leg {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 13px 15px;
+    background: #fff;
+  }
+  .leg .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-bottom: 9px;
+  }
+  .leg.active .tag { background: #020817; color: #fff; }
+  .leg.inactive .tag { background: #f1f5f9; color: #64748b; }
+  .leg ul { margin: 0; padding: 0; list-style: none; }
+  .leg li {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.9;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sw {
+    width: 13px; height: 13px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.12);
+    flex: none;
+  }
+  .leg li b { color: #0f172a; font-weight: 600; }
+
+  /* Dark specimen block */
+  .dark-stage {
+    margin-top: 12px;
+    background: var(--d-background);
+    border-radius: 10px;
+    padding: 22px 22px 24px;
+    border: 1px solid #1e293b;
+  }
+  .dark-stage .tabs-list {
+    background: var(--d-muted);
+    color: var(--d-muted-foreground);
+  }
+  .dark-stage .tabs-trigger[data-state="active"] {
+    background: var(--d-background);
+    color: var(--d-foreground);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  }
+  .dark-stage .tabs-content {
+    border-color: #1e293b;
+    color: #cbd5e1;
+  }
+  .dark-stage .tabs-content h4 { color: var(--d-foreground); }
+  .dark-stage .tabs-content p { color: var(--d-muted-foreground); }
+  .dark-cap { color: #64748b; }
+
+  .note {
+    margin-top: 30px;
+    border-left: 3px solid #cbd5e1;
+    background: #f8fafc;
+    padding: 11px 14px;
+    border-radius: 0 6px 6px 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #475569;
+  }
+  .note b { color: #0f172a; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Tabs</h1>
+    <p class="lede">
+      Radix <code class="k">TabsPrimitive</code> wrapped in <code class="k">tabs.tsx</code>. Stock shadcn treatment:
+      a <code class="k">bg-muted</code> track holds triggers; the active trigger lifts to <code class="k">bg-background</code>
+      with <code class="k">text-foreground</code> and <code class="k">shadow-sm</code>. Inactive triggers stay transparent and
+      inherit <code class="k">text-muted-foreground</code> from the list. All classes below are resolved to literal CSS from
+      the real slate tokens.
+    </p>
+
+    <div class="section-label">Light — TabsList · 3 triggers · content panel</div>
+
+    <div class="specimen">
+      <div class="tabs-list" role="tablist">
+        <button class="tabs-trigger" data-state="active" role="tab">Overview</button>
+        <button class="tabs-trigger" role="tab">Links</button>
+        <button class="tabs-trigger" role="tab">Activity</button>
+      </div>
+      <div class="tabs-content" role="tabpanel">
+        <h4>Overview</h4>
+        <p>Content for the active tab renders here (<code class="k" style="background:#f1f5f9">mt-2</code> below the list).</p>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="leg active">
+        <span class="tag">Active trigger</span>
+        <ul>
+          <li><span class="sw" style="background:#ffffff"></span> bg <b>#ffffff</b> — bg-background</li>
+          <li><span class="sw" style="background:#020817"></span> text <b>hsl(222 84% 4.9%)</b> — foreground</li>
+          <li><span class="sw" style="background:linear-gradient(#fff,#e8eaee)"></span> shadow-sm <b>0 1px 2px /.05</b></li>
+          <li><span class="sw" style="border-radius:4px;background:#eef2f7"></span> radius <b>4px</b> — rounded-sm</li>
+        </ul>
+      </div>
+      <div class="leg inactive">
+        <span class="tag">Inactive triggers</span>
+        <ul>
+          <li><span class="sw" style="background:transparent;border-style:dashed"></span> bg <b>transparent</b></li>
+          <li><span class="sw" style="background:#64748b"></span> text <b>hsl(215 16% 47%)</b> — muted-fg</li>
+          <li><span class="sw" style="background:#f1f5f9"></span> track <b>hsl(210 40% 96%)</b> — bg-muted</li>
+          <li><span class="sw" style="border-radius:6px;background:#eef2f7"></span> list radius <b>6px</b> — rounded-md</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section-label">Dark — same tokens, <code class="k" style="background:#1e293b;color:#cbd5e1">.dark</code> scope</div>
+    <div class="dark-stage">
+      <div class="tabs-list" role="tablist">
+        <button class="tabs-trigger" data-state="active" role="tab">Overview</button>
+        <button class="tabs-trigger" role="tab">Links</button>
+        <button class="tabs-trigger" role="tab">Activity</button>
+      </div>
+      <div class="tabs-content" role="tabpanel">
+        <h4>Overview</h4>
+        <p>Active lifts to <span style="font-family:var(--mono);font-size:12px">bg #020817</span> on a
+        <span style="font-family:var(--mono);font-size:12px">#1e293b</span> track.</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Reality note.</b> DESIGN.md marks Tabs <b>&ldquo;Stock&rdquo;</b> — no brand color touches this component.
+      Type renders in the <b>system sans</b> stack (KoHo is declared project-wide but never actually loads),
+      not a custom face. Radius derives from <code class="k">--radius: 0.5rem</code>:
+      list <code class="k">rounded-md</code> = 6px, trigger <code class="k">rounded-sm</code> = 4px. The content-panel
+      border here is only for framing the specimen; <code class="k">TabsContent</code> itself ships with just
+      <code class="k">mt-2</code> and a focus ring.
+    </div>
+  </div>
+</body>
+</html>
