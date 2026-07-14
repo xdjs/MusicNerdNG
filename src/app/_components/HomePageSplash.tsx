@@ -27,13 +27,14 @@ export default function HomePage() {
     return (
         <div className="px-6 sm:px-8 pt-0 pb-4 flex flex-col items-center w-full !flex-grow-0">
             <div className="w-full max-w-[800px]">
-                {/* Wordmark — reduced from the production hero scale (was 32→84px) so the
-                    manifesto leads. It stays recognizable but yields the top of the page. */}
-                <div className="flex justify-center w-full px-4 pt-11">
+                {/* Wordmark — trimmed from the production hero scale (was 32→84px) so the
+                    manifesto leads, but kept large enough to still read as the wordmark.
+                    Sits tight under the nav; the manifesto owns the vertical space below. */}
+                <div className="flex justify-center w-full px-4 -mt-2">
                     <h1 className="lowercase font-bold"
                         style={{
-                            fontSize: 'clamp(32px, calc(32px + (52 - 32) * ((100vw - 360px) / (1440 - 360))), 52px)',
-                            letterSpacing: 'clamp(-1px, calc(-1px + (-2.5 - -1) * ((100vw - 360px) / (1440 - 360))), -2.5px)',
+                            fontSize: 'clamp(32px, calc(32px + (68 - 32) * ((100vw - 360px) / (1440 - 360))), 68px)',
+                            letterSpacing: 'clamp(-1px, calc(-1px + (-3 - -1) * ((100vw - 360px) / (1440 - 360))), -3px)',
                             lineHeight: '1',
                             color: '#ff9ce3',
                             textShadow: '0 0 40px rgba(255, 156, 227, 0.25)',
