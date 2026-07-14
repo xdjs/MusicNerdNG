@@ -198,6 +198,10 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     return (
         <div className="relative w-full max-w-[400px]">
             <div className="relative">
+                {/* The Input primitive ships with no border, height or focus ring (a documented
+                    deviation from stock shadcn), so the search pill's chrome is added here at the
+                    call site rather than by forking the primitive. Focus tints the hairline to the
+                    brand pink instead of the browser's default outline. */}
                 <Input
                     type="text"
                     placeholder="Search for an artist..."
@@ -205,7 +209,9 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                     onChange={handleInputChange}
                     onBlur={handleBlur}
                     onFocus={handleFocus}
-                    className="pl-10"
+                    className="pl-10 h-[46px] rounded-full border border-input
+                               transition-colors duration-300
+                               focus:outline-none focus:border-pastypink/50"
                 />
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             </div>
