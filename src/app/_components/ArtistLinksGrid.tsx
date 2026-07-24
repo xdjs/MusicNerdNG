@@ -3,7 +3,7 @@ import { getArtistLinks } from "@/server/utils/queries/artistQueries";
 import EditableLinkIcon from "./EditableLinkIcon";
 
 /** Platforms that should always appear in "Support the Artist" regardless of DB isMonetized flag */
-const FORCE_SUPPORT_PLATFORMS = new Set(["bandcamp", "catalog", "sound", "supercollector"]);
+const FORCE_SUPPORT_PLATFORMS = new Set(["bandcamp", "catalog", "sound", "supercollector", "subvert"]);
 
 interface ArtistLinksGridProps {
     isMonetized: boolean;
