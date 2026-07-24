@@ -41,6 +41,12 @@ describe("sanitizeBioText", () => {
     expect(result).toBe("Hear it at today.");
   });
 
+  it("keeps sentence punctuation when a bare URL ends a sentence", () => {
+    const result = sanitizeBioText("Visit https://example.com. Great artist.");
+
+    expect(result).toBe("Visit. Great artist.");
+  });
+
   it("leaves a clean bio untouched, including legitimate parentheses", () => {
     const clean =
       "Her debut EP (recorded across three Brooklyn basements) landed in 2019, and the follow-up sharpened every edge.";

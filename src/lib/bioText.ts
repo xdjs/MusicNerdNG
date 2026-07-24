@@ -19,8 +19,9 @@ export function sanitizeBioText(text: string | null | undefined): string {
       .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")
       // Inline markdown links carrying real sentence content — keep just the label.
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-      // Bare URLs left in the prose.
-      .replace(/https?:\/\/[^\s)\]]+/g, "")
+      // Bare URLs left in the prose. The final char class excludes trailing
+      // sentence punctuation so "Visit https://example.com. Next" keeps its period.
+      .replace(/https?:\/\/[^\s)\]]*[^\s)\].,;:!?]/g, "")
       // Parens/brackets emptied out by the removals above.
       .replace(/\(\s*\)/g, "")
       .replace(/\[\s*\]/g, "")
