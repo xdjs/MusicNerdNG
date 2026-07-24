@@ -16,7 +16,7 @@ AI-generated "Artist Summary" bios read as cringe LLM prose, not bios. The failu
 Root cause: the current `musicNerdVoice` prompt asks the model to *perform* personality it can't deliver, which produces mannered filler. The user wants the opposite: stop performing, state what is true, cleanly.
 
 Separately, two adjacent issues surfaced during investigation and are folded into this work at the user's request:
-- **34 existing bios** in production are unmistakably AI-generated and broken. 28 carry legacy markdown citations (25 with a literal `utm_source=openai`); a further 6 are pure prompt-scaffolding leaks with no link (e.g. `"Checklist: (1) Identify the artist…"`) or an AI refusal (`"I'm sorry, but I could not find sufficient information…"`). None could be artist-written.
+- **39 existing bios** in production are unmistakably AI-generated and broken (verified count; an initial estimate of 34 undercounted "I'm sorry…" AI refusals). 28 carry legacy markdown citations (25 with a literal `utm_source=openai`); the rest are pure prompt-scaffolding leaks with no link (e.g. `"Checklist: (1) Identify the artist…"`) or explicit AI refusals (`"I'm sorry, but I couldn't find much information on the artist with the Spotify ID…"`). None could be artist-written. The backfill script prints the exact matched set on a dry run before any write.
 - **`renderMarkdown` in `BlurbSection.tsx` is a stored-XSS vector**: it applies bold/italic regex and injects the result via `dangerouslySetInnerHTML` **without escaping HTML**, so any `<script>`/`<img onerror>` in a bio executes for every visitor. Artist editors can PUT arbitrary bio text.
 
 ### Provenance note (why we do NOT regenerate all bios)

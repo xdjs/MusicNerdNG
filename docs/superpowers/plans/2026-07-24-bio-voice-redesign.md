@@ -306,8 +306,10 @@ const client = postgres(process.env.SUPABASE_DB_CONNECTION!, { prepare: false })
 const db = drizzle(client, { schema });
 
 // AI-signature predicate — must exactly mirror the spec's Part C selection.
+// `%](http%` (a bare LIKE) catches markdown citation links without regex
+// paren-balancing hazards inside the template literal.
 const AI_SIGNATURE = sql`(
-  bio ~ '\\]\\(https?://'
+  bio LIKE '%](http%'
   OR bio ILIKE '%utm_source=openai%'
   OR bio ILIKE '%Identify the artist%'
   OR bio ILIKE '%Retrieve verified information%'
@@ -362,7 +364,7 @@ main().catch((e) => { console.error(e); process.exit(1); });
 - [ ] **Step 2: Dry-run to verify selection (no writes)**
 
 Run: `npx tsx scripts/backfill-ai-bios.ts`
-Expected: prints ~34 artist names (incl. Alissa White-Gluz, KIRINJI, SLIGHT, Yani Mo, Bea Maher, Barry Hudson-Taylor, Krimer, LFZ, Flyboy Tarantino, Dúo Dø) and `DRY RUN — nothing written.`
+Expected: prints the matched set (~36–39, incl. KIRINJI, SLIGHT, Yani Mo, Bea Maher, and "I'm sorry…" AI refusals like 1000 Eyes, chauncy, Playd3ad) and `DRY RUN — nothing written.` The verified true count is 39 broken AI bios; 3 (Alissa, Cocteau Twins, Daegho) were already fixed during Task 4 eval, so the dry run shows the remainder.
 If the count is wildly off (e.g. hundreds), STOP — the predicate is over-matching; do not run `--write`.
 
 - [ ] **Step 3: Commit the script (dry-run verified; live run deferred)**
