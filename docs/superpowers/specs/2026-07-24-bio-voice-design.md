@@ -16,21 +16,27 @@ AI-generated "Artist Summary" bios read as cringe LLM prose, not bios. The failu
 Root cause: the current `musicNerdVoice` prompt asks the model to *perform* personality it can't deliver, which produces mannered filler. The user wants the opposite: stop performing, state what is true, cleanly.
 
 Separately, two adjacent issues surfaced during investigation and are folded into this work at the user's request:
-- **28 existing bios** in production contain legacy markdown citations and/or the old cringe voice.
+- **34 existing bios** in production are unmistakably AI-generated and broken. 28 carry legacy markdown citations (25 with a literal `utm_source=openai`); a further 6 are pure prompt-scaffolding leaks with no link (e.g. `"Checklist: (1) Identify the artist…"`) or an AI refusal (`"I'm sorry, but I could not find sufficient information…"`). None could be artist-written.
 - **`renderMarkdown` in `BlurbSection.tsx` is a stored-XSS vector**: it applies bold/italic regex and injects the result via `dangerouslySetInnerHTML` **without escaping HTML**, so any `<script>`/`<img onerror>` in a bio executes for every visitor. Artist editors can PUT arbitrary bio text.
+
+### Provenance note (why we do NOT regenerate all bios)
+
+There is **no provenance field** distinguishing AI-written from artist-written bios: `artists.bio` is a lone text column, and `artist_bio_versions` tracks only `bio_text / is_pinned / created_at` — no author or `is_ai` flag. Some of the ~253 existing bios may be artist-authored. Therefore the backfill is **strictly limited to content-verified AI junk** (the 34 above). The AI-signature match *is* the safety mechanism — a human bio will not contain citation markdown or leaked prompt scaffolding. Bulk-regenerating all 253 is explicitly rejected: it would risk clobbering human work.
+
+Adding a provenance flag going forward (mark bios AI vs artist-edited) is a sensible **follow-up** so future backfills never rely on content-sniffing.
 
 ## Goals
 
 - Bios read like a clean, factual encyclopedia entry: name-anchored, third person, no editorializing.
 - Facts are verifiable: grounding on by default, anchored to the identifiers MusicNerd already stores.
 - Correct-or-neutral pronouns, never a guessed gendered pronoun.
-- Existing dirty bios brought up to the new standard.
+- The 34 content-verified broken AI bios regenerated to the new standard (no artist-written bio touched).
 - Close the `dangerouslySetInnerHTML` XSS hole.
 
 ## Non-goals (follow-ups)
 
 - Dedicated MusicBrainz / Discogs / Wikipedia **API fetch** for structured facts (higher fidelity, separate project).
-- Regenerating **all** ~253 existing bios (scope is the 28 dirty ones; widening is a later call).
+- Regenerating **all** ~253 existing bios (scope is the 34 content-verified AI ones; some of the rest may be artist-written — see Provenance note).
 - Applying the new voice to `askArtist` Q&A (it uses the bio as context; can follow later).
 - Replacing Gemini Google Search grounding with a dedicated search provider (Exa/Tavily/etc. — none currently wired).
 
@@ -42,7 +48,7 @@ Separately, two adjacent issues surfaced during investigation and are folded int
 | **Length** | One paragraph, **up to ~100 words**. Shorter when facts are thin; never pad to hit a count. |
 | **Pronouns** | Use she/he/they only when the artist is **clearly documented** to use them in sources; fall back to **they/them** when unclear. Never guess a gendered pronoun. |
 | **Fact source** | Google Search grounding **always on** + pass the identifiers the DB already holds (Wikipedia, MusicBrainz, Discogs, Wikidata) as authoritative anchors + platform stats + vault sources. No new external API integrations. |
-| **Dirty bios** | **Regenerate** the 28 through the new pipeline (not just strip citations — that would leave the old voice). |
+| **Dirty bios** | **Regenerate** the 34 content-verified AI bios through the new pipeline (not just strip citations — that would leave the old voice). Never touch bios without an AI signature. |
 
 ## Implementation
 
@@ -99,12 +105,18 @@ function renderMarkdown(text: string): string {
 
 Escaping `<`, `>`, `&` is sufficient for element-content context (we are not writing into an attribute). Asterisks are untouched, so `**bold**` / `*italic*` still work. This makes stored-XSS via bio text impossible without adding a dependency.
 
-### Part C — Backfill the 28 dirty bios
+### Part C — Backfill the 34 broken AI bios
 
 One-time script (run locally against prod, after Parts A/B are verified and with explicit user go-ahead):
-- Select the 28 artists whose `bio ~ '\]\(https?://'` or `bio ILIKE '%utm_source=openai%'`.
+- **Selection (AI-signature only):** an artist qualifies if its `bio` matches any of:
+  - `bio ~ '\]\(https?://'` (markdown citation link) — 28 rows
+  - `bio ILIKE '%utm_source=openai%'` — subset of the above
+  - `bio ILIKE '%Identify the artist%'` OR `bio ILIKE '%Retrieve verified information%'` OR `bio ILIKE '%Checklist:%'` (prompt-scaffolding leak)
+  - `bio ILIKE '%I could not find%'` OR `bio ILIKE '%I'm sorry%'` (AI refusal)
+  - Total ≈ 34. The script prints the exact matched set for confirmation before writing anything.
 - For each, call the new `generateArtistBio()` (regenerates in the new voice + grounding, writes back through the existing code path).
-- Cost/impact: ~28 grounded Gemini calls, a few minutes, prod writes. Serial with a small delay to respect rate limits. Log before/after per artist.
+- Cost/impact: ~34 grounded Gemini calls, a few minutes, prod writes. Serial with a small delay to respect rate limits. Log before/after per artist.
+- **Never selects a bio without an AI signature** — no risk to artist-written bios.
 - This is a **prod DB write** — gated on user confirmation at run time, not run silently.
 
 ## Testing
@@ -121,10 +133,11 @@ Unit tests mock Gemini, so they verify **wiring**, not writing quality:
 2. Part A (voice + anchors + grounding) — with unit tests.
 3. Manual eval of 3 regenerated bios; iterate on prompt wording if needed.
 4. Merge to `staging`.
-5. Part C (backfill 28) — after A/B verified, with user go-ahead, run against prod.
+5. Part C (backfill 34) — after A/B verified, with user go-ahead, run against prod.
 
 ## Open items
 
 - **Model choice.** Staying on `gemini-2.5-pro`. If factual output still drifts, revisit.
 - **Pronoun accuracy** depends on grounding surfacing clear sources; the they/them fallback bounds the downside.
-- Widening backfill to all 253 bios is deferred to a later user call.
+- Widening backfill beyond the 34 AI-signature bios is deferred; it requires a provenance flag (below) to stay safe.
+- **Follow-up:** add a bio provenance flag (AI-generated vs artist-edited) so future backfills never rely on content-sniffing.
