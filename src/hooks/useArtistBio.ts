@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { sanitizeBioText } from '@/lib/bioText';
 
 interface BioCache {
   [artistId: string]: {
@@ -55,11 +56,13 @@ export function useArtistBio(artistId: string, initialBio?: string | null): UseA
   // Check for initial value from server or cache
   const getInitialBio = (): string | undefined => {
     // Use != null to allow empty strings (only skip if undefined/null)
-    if (initialBio != null) return initialBio;
+    // Sanitize here so stored legacy bios (markdown citations from the pre-Gemini
+    // generator) never reach the page or the edit textarea.
+    if (initialBio != null) return sanitizeBioText(initialBio);
     const cache = getCache();
     const cached = cache[artistId];
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return cached.bio;
+      return sanitizeBioText(cached.bio);
     }
     return undefined;
   };
@@ -76,7 +79,7 @@ export function useArtistBio(artistId: string, initialBio?: string | null): UseA
     const cache = getCache();
     const cached = cache[artistId];
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      setBio(cached.bio);
+      setBio(sanitizeBioText(cached.bio));
       return;
     }
 
@@ -90,7 +93,7 @@ export function useArtistBio(artistId: string, initialBio?: string | null): UseA
       }
       
       const data = await response.json();
-      const bioText = data.bio as string;
+      const bioText = sanitizeBioText(data.bio as string);
       
       // Cache the result
       const newCache = { ...cache };
@@ -121,7 +124,7 @@ export function useArtistBio(artistId: string, initialBio?: string | null): UseA
     const cache = getCache();
     const cached = cache[artistId];
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      setBio(cached.bio);
+      setBio(sanitizeBioText(cached.bio));
       setLoading(false);
       return;
     }

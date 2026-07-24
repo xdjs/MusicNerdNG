@@ -31,6 +31,34 @@ describe('useArtistBio', () => {
     expect(fetch).toHaveBeenCalledWith('/api/artistBio/test-artist-id');
   });
 
+  it('should strip markdown citations from a server-provided bio', () => {
+    const dirty =
+      'Her new single dropped in December. ([music.apple.com](https://music.apple.com/us/song/1758574026?utm_source=openai))';
+
+    const { result } = renderHook(() => useArtistBio('test-artist-id', dirty));
+
+    expect(result.current.bio).toBe('Her new single dropped in December.');
+    expect(result.current.loading).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('should strip markdown citations from a fetched bio', async () => {
+    (fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        bio: 'Out now on Sound.xyz. ([sound.xyz](https://www.sound.xyz/honey?utm_source=openai))',
+      }),
+    });
+
+    const { result } = renderHook(() => useArtistBio('test-artist-id'));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.bio).toBe('Out now on Sound.xyz.');
+  });
+
   it('should use cached bio on subsequent calls', async () => {
     const mockBio = 'Test artist bio';
     (fetch as jest.Mock).mockResolvedValueOnce({
