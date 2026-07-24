@@ -50,11 +50,16 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
   // Authoritative identity anchors — the IDs/links MusicNerd already stores.
   // Formatted as real URLs so Google Search grounding confirms exactly which
   // artist this is and reads the right sources.
+  // Values are normally bare slugs/IDs (writes go through extractArtistId), but
+  // guard against a legacy/future row already holding a full URL so we never
+  // build a doubled ".../wiki/https://.../wiki/..." anchor.
+  const anchorUrl = (base: string, value: string) =>
+    /^https?:\/\//i.test(value) ? value : `${base}${value}`;
   const anchors: string[] = [];
-  if (artist.wikipedia) anchors.push(`Wikipedia: https://en.wikipedia.org/wiki/${artist.wikipedia}`);
-  if (artist.musicbrainz) anchors.push(`MusicBrainz: https://musicbrainz.org/artist/${artist.musicbrainz}`);
-  if (artist.discogs) anchors.push(`Discogs: https://www.discogs.com/artist/${artist.discogs}`);
-  if (artist.wikidata) anchors.push(`Wikidata: https://www.wikidata.org/wiki/${artist.wikidata}`);
+  if (artist.wikipedia) anchors.push(`Wikipedia: ${anchorUrl("https://en.wikipedia.org/wiki/", artist.wikipedia)}`);
+  if (artist.musicbrainz) anchors.push(`MusicBrainz: ${anchorUrl("https://musicbrainz.org/artist/", artist.musicbrainz)}`);
+  if (artist.discogs) anchors.push(`Discogs: ${anchorUrl("https://www.discogs.com/artist/", artist.discogs)}`);
+  if (artist.wikidata) anchors.push(`Wikidata: ${anchorUrl("https://www.wikidata.org/wiki/", artist.wikidata)}`);
   if (anchors.length > 0) {
     promptParts.push(
       `Authoritative identity anchors (use these to confirm exactly which artist this is; prefer facts they support):\n${anchors.join("\n")}`

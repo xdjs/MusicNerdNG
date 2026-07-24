@@ -301,6 +301,23 @@ describe("artistBioQuery", () => {
     expect(contents).not.toMatch(/Wikipedia:\s*Test_Artist(?!\/|")/);
   });
 
+  it("does not double the base URL when an anchor value is already a full URL", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "artist-1", name: "Test Artist", spotify: null,
+      instagram: null, x: null, soundcloud: null, youtube: null,
+      youtubechannel: null,
+      wikipedia: "https://en.wikipedia.org/wiki/Test_Artist",
+      musicbrainz: null, discogs: null, wikidata: null,
+    });
+
+    await generateArtistBio("artist-1");
+
+    const contents = (mockGenerateContent as jest.Mock).mock.calls[0][0].contents;
+    expect(contents).not.toContain("wiki/https://");
+    expect(contents).toContain("https://en.wikipedia.org/wiki/Test_Artist");
+  });
+
   // ------- regenerateArtistBio -------
 
   it("regenerateArtistBio returns bio string on success", async () => {
