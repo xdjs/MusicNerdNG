@@ -263,6 +263,44 @@ describe("artistBioQuery", () => {
     expect(callArgs.contents).toContain("VAULT CONTEXT");
   });
 
+  it("enables Google Search grounding even with no vault sources", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "artist-1", name: "Test Artist", spotify: "sp1",
+      instagram: null, x: null, soundcloud: null, youtube: null,
+      youtubechannel: null, wikipedia: null, musicbrainz: null,
+      discogs: null, wikidata: null,
+    });
+
+    await generateArtistBio("artist-1");
+
+    const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    expect(callArgs.config.tools).toEqual([{ googleSearch: {} }]);
+  });
+
+  it("passes identifier anchors as full URLs in the prompt", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "artist-1", name: "Test Artist", spotify: null,
+      instagram: null, x: null, soundcloud: null, youtube: null,
+      youtubechannel: null,
+      wikipedia: "Test_Artist",
+      musicbrainz: "abc-123",
+      discogs: "999",
+      wikidata: "Q42",
+    });
+
+    await generateArtistBio("artist-1");
+
+    const contents = (mockGenerateContent as jest.Mock).mock.calls[0][0].contents;
+    expect(contents).toContain("https://en.wikipedia.org/wiki/Test_Artist");
+    expect(contents).toContain("https://musicbrainz.org/artist/abc-123");
+    expect(contents).toContain("https://www.discogs.com/artist/999");
+    expect(contents).toContain("https://www.wikidata.org/wiki/Q42");
+    // regression: never the bare slug
+    expect(contents).not.toMatch(/Wikipedia:\s*Test_Artist(?!\/|")/);
+  });
+
   // ------- regenerateArtistBio -------
 
   it("regenerateArtistBio returns bio string on success", async () => {

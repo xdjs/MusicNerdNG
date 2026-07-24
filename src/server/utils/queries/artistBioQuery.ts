@@ -47,19 +47,29 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
   if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
   if (artist.youtube) promptParts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, '')}`);
   if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
-  if (artist.wikipedia) promptParts.push(`Wikipedia: ${artist.wikipedia}`);
+  // Authoritative identity anchors — the IDs/links MusicNerd already stores.
+  // Formatted as real URLs so Google Search grounding confirms exactly which
+  // artist this is and reads the right sources.
+  const anchors: string[] = [];
+  if (artist.wikipedia) anchors.push(`Wikipedia: https://en.wikipedia.org/wiki/${artist.wikipedia}`);
+  if (artist.musicbrainz) anchors.push(`MusicBrainz: https://musicbrainz.org/artist/${artist.musicbrainz}`);
+  if (artist.discogs) anchors.push(`Discogs: https://www.discogs.com/artist/${artist.discogs}`);
+  if (artist.wikidata) anchors.push(`Wikidata: https://www.wikidata.org/wiki/${artist.wikidata}`);
+  if (anchors.length > 0) {
+    promptParts.push(
+      `Authoritative identity anchors (use these to confirm exactly which artist this is; prefer facts they support):\n${anchors.join("\n")}`
+    );
+  }
   if (platformBioData) promptParts.push(`Music Platform Data: ${platformBioData}`);
 
   // Include approved vault sources as additional context
   let hasVaultContext = false;
-  const vaultUrls: string[] = [];
   try {
     const vaultSources = await getVaultSourcesByArtistId(artistId, "approved");
     console.log(`[bio] Found ${vaultSources.length} approved vault sources for artist ${artistId}`);
     if (vaultSources.length > 0) {
       hasVaultContext = true;
       const vaultContext = vaultSources.map(s => {
-        if (s.url) vaultUrls.push(s.url);
         const parts = [`Source: ${s.title ?? s.url}`];
         if (s.snippet) parts.push(s.snippet);
         if (s.extractedText) parts.push(s.extractedText.slice(0, 2000));
@@ -77,21 +87,22 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
 
     const geminiStartTime = Date.now();
 
-    const musicNerdVoice = `You write for MusicNerd, a discovery platform for people who genuinely care about music. Write an artist bio the way the sharpest person at the record store talks about an artist they love: deeply informed, a little obsessive, genuinely excited — and never corporate.
+    const musicNerdVoice = `You write clean, factual artist bios for MusicNerd, a music discovery platform. Think well-written encyclopedia entry, not a review or press release. Tell the reader who this artist is and what they're known for — accurately, without embellishment.
 
-Write ONE paragraph, 90-130 words. One paragraph only.
+Write ONE paragraph, up to ~100 words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.
 
-Voice:
-- Open with an angle — a line that frames what makes this artist worth caring about. Never a job title, never "[Name] is a [genre] artist."
-- Write like you're letting a fellow nerd in on something good. Pull the reader into the artist's world: the scene they come from, the lineage they're part of, the specific choices that make their work theirs.
-- Active, vivid verbs. Sentences with rhythm — vary the length. Hold a point of view; have a take on why this work matters.
-- Facts are your texture: names, places, labels, collaborators, songs, dates, and any artist-provided context. Specifics earn trust; adjectives don't. Let detail do the work.
+Structure:
+- Open with the name and what they are: "[Name] is a [role/genre] from [place]." This is the one place a plain identity sentence is correct — lead with it.
+- Follow with the most significant verifiable facts: bands, notable releases, collaborators, milestones, dates, well-documented activity outside music.
+- Stop when the facts run out. No closing "significance" flourish.
 
-Hard rules:
-- No corporate/résumé register. Never use "leveraged", "spearheaded", "integrated campaigns", "secured placements", "career connects", "leading work in".
-- Banned vanilla phrases: "emerging force", "pushing boundaries", "sonic territories", "artist to watch", "rising star", "carving out", "soundscape", "eclectic", "undeniable", "versatile", "seamlessly".
-- Facts only — never invent credits, collaborators, scenes, or influences. If the data is thin, stay short and concrete instead of padding.
-- No social links in the bio text.`;
+Rules:
+- Third person. Anchor on the name; use pronouns sparingly.
+- Pronouns: use she/he/they only as the artist is clearly documented to use them in your sources. If unclear, use they/them. Never guess a gendered pronoun.
+- State only what your sources support. Never invent bands, releases, collaborators, places, or dates. If unsure a fact is true, leave it out.
+- No editorializing. Don't tell the reader why the work "matters," don't say the artist is "showing" or "proving" something, and don't append interpretive clauses to facts. Report the fact and stop.
+- Banned hype words: "emerging", "rising", "boundary-pushing", "eclectic", "versatile", "undeniable", "sonic", "soundscape", "artist to watch", "cross-genre draw", "carving out". Banned resume-speak: "leveraged", "spearheaded", "secured", "integrated".
+- Plain, direct sentences. No social links in the bio text.`;
 
     const systemPrompt = hasVaultContext
       ? `${musicNerdVoice}
@@ -99,8 +110,10 @@ Hard rules:
 The artist-provided vault context below is your PRIMARY source — mine it for the real names, places, labels, collaborators, credits, and timeline that make the bio specific. Treat platform stats (followers, releases, top track) as seasoning, not the story.`
       : `${musicNerdVoice}`;
 
-    // Use Google Search grounding when vault sources exist (allows Gemini to visit those URLs)
-    const useGrounding = hasVaultContext && vaultUrls.length > 0;
+    // Grounding is always on: bios must be factual, and grounding lets Gemini
+    // read the anchor URLs and the open web. Bios are cached, so the added
+    // latency is not on any user's critical path.
+    const useGrounding = true;
 
     const response = await Promise.race([
       getGemini().models.generateContent({
