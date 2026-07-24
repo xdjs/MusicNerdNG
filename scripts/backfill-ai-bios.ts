@@ -79,4 +79,9 @@ async function main() {
   await client.end();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// regenerateArtistBio opens the app's own pooled DB client (@/server/db/drizzle),
+// separate from `client` above; its open pool can keep the process alive after
+// client.end(). Exit explicitly so the script always terminates.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => { console.error(e); process.exit(1); });
