@@ -7,19 +7,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useArtistBio } from "@/hooks/useArtistBio";
 import { Check } from "lucide-react";
 import { saveCurrentBio } from "@/app/actions/dashboardActions";
+import { renderBioMarkdown } from "@/lib/renderBioMarkdown";
 import BioVersionHistory from "./BioVersionHistory";
 
 interface BlurbSectionProps {
   artistName: string;
   artistId: string;
   initialBio?: string | null;
-}
-
-/** Convert **bold** and *italic* markdown to HTML. Input is AI-generated so only these two patterns occur. */
-function renderMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>");
 }
 
 export default function BlurbSection({ artistName, artistId, initialBio }: BlurbSectionProps) {
@@ -224,7 +218,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
       {aiBlurb ? (
         <p
           className="text-black dark:text-white text-sm leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(aiBlurb) }}
+          dangerouslySetInnerHTML={{ __html: renderBioMarkdown(aiBlurb) }}
         />
       ) : (
         <p className="text-gray-500 dark:text-gray-400 italic">No summary is available</p>

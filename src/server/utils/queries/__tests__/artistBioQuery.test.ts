@@ -135,6 +135,34 @@ describe("artistBioQuery", () => {
     expect(setMock).toHaveBeenCalledWith({ bio: "mocked gemini response" });
   });
 
+  it("strips markdown citations before saving and returning the bio", async () => {
+    const { generateArtistBio, getArtistById, db } = await setup();
+
+    mockGenerateContent.mockResolvedValue({
+      text: "Her debut landed in 2019. ([example.com](https://example.com/a?utm_source=openai))",
+    });
+
+    getArtistById.mockResolvedValue({
+      id: "artist-1",
+      name: "Test Artist",
+      spotify: null,
+      instagram: null,
+      x: null,
+      soundcloud: null,
+      youtube: null,
+      youtubechannel: null,
+      wikipedia: null,
+    });
+
+    const result = await generateArtistBio("artist-1");
+    const data = await result.json();
+
+    expect(data.bio).toBe("Her debut landed in 2019.");
+
+    const setMock = db.update.mock.results[0].value.set;
+    expect(setMock).toHaveBeenCalledWith({ bio: "Her debut landed in 2019." });
+  });
+
   it("returns error on Gemini failure", async () => {
     const { generateArtistBio, getArtistById } = await setup();
 
@@ -233,6 +261,61 @@ describe("artistBioQuery", () => {
     const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
     expect(callArgs.config.tools).toEqual([{ googleSearch: {} }]);
     expect(callArgs.contents).toContain("VAULT CONTEXT");
+  });
+
+  it("enables Google Search grounding even with no vault sources", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "artist-1", name: "Test Artist", spotify: "sp1",
+      instagram: null, x: null, soundcloud: null, youtube: null,
+      youtubechannel: null, wikipedia: null, musicbrainz: null,
+      discogs: null, wikidata: null,
+    });
+
+    await generateArtistBio("artist-1");
+
+    const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    expect(callArgs.config.tools).toEqual([{ googleSearch: {} }]);
+  });
+
+  it("passes identifier anchors as full URLs in the prompt", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "artist-1", name: "Test Artist", spotify: null,
+      instagram: null, x: null, soundcloud: null, youtube: null,
+      youtubechannel: null,
+      wikipedia: "Test_Artist",
+      musicbrainz: "abc-123",
+      discogs: "999",
+      wikidata: "Q42",
+    });
+
+    await generateArtistBio("artist-1");
+
+    const contents = (mockGenerateContent as jest.Mock).mock.calls[0][0].contents;
+    expect(contents).toContain("https://en.wikipedia.org/wiki/Test_Artist");
+    expect(contents).toContain("https://musicbrainz.org/artist/abc-123");
+    expect(contents).toContain("https://www.discogs.com/artist/999");
+    expect(contents).toContain("https://www.wikidata.org/wiki/Q42");
+    // regression: never the bare slug
+    expect(contents).not.toMatch(/Wikipedia:\s*Test_Artist(?!\/|")/);
+  });
+
+  it("does not double the base URL when an anchor value is already a full URL", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "artist-1", name: "Test Artist", spotify: null,
+      instagram: null, x: null, soundcloud: null, youtube: null,
+      youtubechannel: null,
+      wikipedia: "https://en.wikipedia.org/wiki/Test_Artist",
+      musicbrainz: null, discogs: null, wikidata: null,
+    });
+
+    await generateArtistBio("artist-1");
+
+    const contents = (mockGenerateContent as jest.Mock).mock.calls[0][0].contents;
+    expect(contents).not.toContain("wiki/https://");
+    expect(contents).toContain("https://en.wikipedia.org/wiki/Test_Artist");
   });
 
   // ------- regenerateArtistBio -------
