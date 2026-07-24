@@ -6,6 +6,7 @@ import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
+import { sanitizeBioText } from "@/lib/bioText";
 
 /**
  * Generate an artist bio using Gemini Pro with Google Search grounding.
@@ -118,7 +119,9 @@ The artist-provided vault context below is your PRIMARY source — mine it for t
     const geminiEndTime = Date.now();
     const geminiDurationMs = geminiEndTime - geminiStartTime;
 
-    const bio = response.text ?? "";
+    // Strip any link artifacts the model emitted despite the "no social links" rule —
+    // grounded responses in particular like to append markdown citations.
+    const bio = sanitizeBioText(response.text);
     console.debug("Gemini bio:", JSON.stringify(bio, null, 2));
     console.debug("Gemini call duration:", `${geminiDurationMs}ms`);
 
