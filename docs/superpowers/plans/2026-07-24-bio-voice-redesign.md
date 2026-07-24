@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the AI-cringe artist bio voice with a clean, factual, name-anchored one; ground every bio in verifiable sources; close a stored-XSS hole in bio rendering; and regenerate the 34 content-verified broken AI bios.
+**Goal:** Replace the AI-cringe artist bio voice with a clean, factual, name-anchored one; ground every bio in verifiable sources; close a stored-XSS hole in bio rendering; and regenerate the content-verified broken AI bios (39 total — 36 via the backfill script, 3 during eval).
 
 **Architecture:** All generation logic lives in `generateArtistBio()` in `src/server/utils/queries/artistBioQuery.ts` — we rewrite its system prompt, add authoritative-identifier anchors to the prompt, and enable Google Search grounding unconditionally. Bio rendering markdown is extracted to a testable, HTML-escaping helper. A one-off `tsx` script regenerates the broken bios through the new pipeline.
 
@@ -269,7 +269,7 @@ git commit -m "feat: factual bio voice, identifier anchors, always-on grounding"
 
 ---
 
-### Task 3: Backfill script for the 34 broken AI bios (gated)
+### Task 3: Backfill script for the broken AI bios (gated) — 39 total
 
 One-off `tsx` script. Default run is a **dry run** that prints the matched set; `--write` regenerates each through the new pipeline. Selection matches ONLY AI-signature bios, so artist-written bios are never touched.
 
@@ -431,7 +431,7 @@ git commit -m "chore: bio prompt tuning from manual eval"
 - Identifier anchors + Wikipedia-URL bug fix → Task 2 Steps 1,3 ✅
 - Keep `sanitizeBioText` → foundation commit `b986b53c` (Global Constraints) ✅
 - XSS hardening → Task 1 ✅
-- Backfill 34 (AI-signature only, gated) → Task 3 ✅
+- Backfill (AI-signature only, gated; 39 total = 36 via script + 3 in eval) → Task 3 ✅
 - Provenance follow-up / no bulk-regen → honored by Task 3 selection predicate ✅
 
 **Placeholder scan:** No TBD/TODO; all code blocks complete; prompt text included verbatim.
