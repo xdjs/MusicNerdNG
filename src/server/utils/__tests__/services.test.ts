@@ -35,6 +35,12 @@ jest.mock("../queries/queriesTS", () => ({
       siteName: "tiktok",
       cardPlatformName: "TikTok",
     },
+    {
+      // Subvert (music support platform) — bare-slug artist URLs
+      regex: /^https?:\/\/(?:www\.)?subvert\.fm\/([^/?#]+)/,
+      siteName: "subvert",
+      cardPlatformName: "Subvert",
+    },
   ]),
 }));
 
@@ -262,6 +268,16 @@ describe("utils/services", () => {
     it('returns null when TikTok URL does not match pattern', async () => {
         const result = await extractArtistId('https://tiktok.com/invalid-format');
         expect(result).toBeNull();
+    });
+
+    it("resolves a Subvert artist URL to the subvert siteName + slug", async () => {
+      const res = await extractArtistId("https://www.subvert.fm/pete-rango");
+      expect(res).toMatchObject({ siteName: "subvert", id: "pete-rango" });
+    });
+
+    it("resolves a non-www Subvert URL", async () => {
+      const res = await extractArtistId("https://subvert.fm/pete-rango");
+      expect(res).toMatchObject({ siteName: "subvert", id: "pete-rango" });
     });
 
     it("returns null when url does not match any pattern", async () => {

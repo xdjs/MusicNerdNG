@@ -57,6 +57,13 @@
       "when": 1780511811930,
       "tag": "0007_artist_claims_partial_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784936493464,
+      "tag": "0008_neat_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

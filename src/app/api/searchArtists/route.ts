@@ -32,7 +32,8 @@ const LINK_FIELDS = [
   "soundxyz",
   "twitch",
   "wikidata",
-  "wikipedia"
+  "wikipedia",
+  "subvert"
 ] as const;
 
 type LinkField = (typeof LINK_FIELDS)[number];
