@@ -1,1 +1,1 @@
-ALTER TABLE "artists" ADD COLUMN "subvert" text;
+ALTER TABLE "artists" ADD COLUMN IF NOT EXISTS "subvert" text;

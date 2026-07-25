@@ -84,3 +84,7 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Supabase CLI local link state
+supabase/.temp/
+supabase/.branches/
