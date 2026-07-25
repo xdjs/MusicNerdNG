@@ -19,6 +19,7 @@ const TRACKED_COLUMNS = [
   { column: "youtubechannel", category: "social" },
   { column: "soundcloud", category: "listen" },
   { column: "bandcamp", category: "listen" },
+  { column: "subvert", category: "listen" },
   { column: "discogs", category: "reference" },
   { column: "lastfm", category: "reference" },
   { column: "musicbrainz", category: "reference" },

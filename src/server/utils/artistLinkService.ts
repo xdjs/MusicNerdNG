@@ -20,7 +20,7 @@ const WRITABLE_LINK_COLUMNS = new Set([
   "linktree", "onlyfans", "wikipedia", "audius", "zora", "catalog", "opensea",
   "foundation", "lastfm", "linkedin", "soundxyz", "mirror", "glassnode",
   "spotifyusername", "bandcampfan", "tellie", "lens", "cameo", "farcaster",
-  "supercollector", "ens",
+  "supercollector", "ens", "subvert",
 ]);
 
 // Drizzle row properties can differ from the physical column names used in SQL.
