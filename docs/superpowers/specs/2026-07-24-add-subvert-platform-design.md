@@ -24,7 +24,7 @@ Each platform is (a) a column on the `artists` table, (b) a `urlmap` row whose `
 
 ### Production DB writes
 8. Apply the column migration to prod.
-9. Insert the `urlmap` row:
+9. Insert the `urlmap` row (recorded reproducibly in `drizzle/seed/subvert_urlmap.sql` — idempotent, re-runnable on any environment):
    - `site_name` = `subvert`, `site_url` = `subvert.fm`
    - `example` = `https://www.subvert.fm/ARTIST_NAME`
    - `app_string_format` = `https://www.subvert.fm/%@`
