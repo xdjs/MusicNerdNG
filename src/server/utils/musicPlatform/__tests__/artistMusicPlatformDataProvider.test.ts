@@ -21,6 +21,7 @@ function makeArtist(overrides: Partial<Artist> = {}): Artist {
         spotify: null,
         deezer: null,
         subvert: null,
+        bluesky: null,
         lcname: 'test artist',
         createdAt: '2024-01-01',
         updatedAt: '2024-01-01',

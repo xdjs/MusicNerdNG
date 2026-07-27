@@ -80,6 +80,7 @@ const mockArtist: Artist = {
     customImage: null,
     deezer: null,
     subvert: null,
+    bluesky: null,
 };
 
 // Session removed - authentication disabled

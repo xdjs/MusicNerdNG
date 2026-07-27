@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 // and in totalWithSpotify. Including it here would double-count across sections.
 const TRACKED_COLUMNS = [
   { column: "instagram", category: "social" },
+  { column: "bluesky", category: "social" },
   { column: "x", category: "social" },
   { column: "facebook", category: "social" },
   { column: "tiktok", category: "social" },

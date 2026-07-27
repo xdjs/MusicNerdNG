@@ -41,6 +41,12 @@ jest.mock("../queries/queriesTS", () => ({
       siteName: "subvert",
       cardPlatformName: "Subvert",
     },
+    {
+      // Bluesky (social) — /profile/<handle>
+      regex: /^https?:\/\/(?:www\.)?bsky\.app\/profile\/([^/?#]+)/,
+      siteName: "bluesky",
+      cardPlatformName: "Bluesky",
+    },
   ]),
 }));
 
@@ -278,6 +284,16 @@ describe("utils/services", () => {
     it("resolves a non-www Subvert URL", async () => {
       const res = await extractArtistId("https://subvert.fm/pete-rango");
       expect(res).toMatchObject({ siteName: "subvert", id: "pete-rango" });
+    });
+
+    it("resolves a Bluesky profile URL to the bluesky siteName + handle", async () => {
+      const res = await extractArtistId("https://bsky.app/profile/pete.bsky.social");
+      expect(res).toMatchObject({ siteName: "bluesky", id: "pete.bsky.social" });
+    });
+
+    it("resolves a www Bluesky profile URL", async () => {
+      const res = await extractArtistId("https://www.bsky.app/profile/pete.bsky.social");
+      expect(res).toMatchObject({ siteName: "bluesky", id: "pete.bsky.social" });
     });
 
     it("returns null when url does not match any pattern", async () => {

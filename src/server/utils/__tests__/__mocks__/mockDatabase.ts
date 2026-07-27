@@ -122,6 +122,7 @@ export const createMockArtist = (id: string, name: string, spotify: string): Art
     customImage: null,
     deezer: null,
     subvert: null,
+    bluesky: null,
 });
 
 // Basic tests to verify mock functionality
