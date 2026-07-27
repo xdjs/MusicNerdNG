@@ -188,9 +188,10 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
         if (!res.count) {
           toast({ title: "No new sources found" });
         } else {
-          toast({ title: `Found ${res.count} source(s)`, description: "Refresh to review them." });
+          // Show the found sources immediately in the pending list — no manual refresh.
+          if (res.sources?.length) setPending(prev => [...res.sources!, ...prev]);
+          toast({ title: `Found ${res.count} source(s)`, description: "Added below for you to review." });
         }
-        router.refresh();
       } else {
         toast({ title: "Search failed", description: res.error ?? "Please try again", variant: "destructive" });
       }
