@@ -86,6 +86,12 @@ Key entities in the PostgreSQL database:
 - Platform links are validated against urlmap regex patterns
 - ID mappings reference artists via `artist_id` (UUID FK to artists)
 
+### Database Access & Row-Level Security (RLS)
+- **The app connects to Postgres as a non-privileged role: `mnweb`** (not `postgres`/superuser). Every query the app runs is subject to that role's grants and RLS policies. Superuser tools (Supabase dashboard SQL editor, `supabase db query --linked` via the Management API) connect as `postgres` and **bypass RLS** — so a write can succeed there yet fail in the running app. Never conclude a write works based on a superuser test alone.
+- **RLS is enabled on the app's tables.** The `mnweb` role can only perform an operation if a policy explicitly permits it. A permissive policy with an **empty `USING`/`WITH CHECK` expression grants nothing** and silently blocks the app — the write fails and surfaces as a generic "Failed to …" error.
+- **Any migration that creates a new table the app writes to MUST also create RLS policies for the `mnweb` role**, with real expressions (`FOR INSERT ... WITH CHECK (true)`, `FOR SELECT/UPDATE/DELETE ... USING (true)`, `FOR UPDATE ... USING (true) WITH CHECK (true)`) — matching the working pattern on `ugcresearch`/`artists`. Drizzle does not manage RLS automatically; add the `CREATE POLICY` statements to the migration by hand. Omitting them means the feature works in Dev/staging but is dead on prod.
+- Cautionary precedent: `drizzle/0010_fix_artist_edit_rls_policies.sql` restored empty policies on `artist_claims` / `artist_vault_sources` / `artist_bio_versions` that had silently broken claiming, vault sources, and save-bio-to-vault on production. See `docs/db-fixes/2026-07-27-prod-rls-fix.md`.
+
 ## Authentication System
 - **Privy Email-First**: Users authenticate via Privy (email login as primary method)
 - **NextAuth Integration**: CredentialsProvider named "privy" verifies Privy tokens
