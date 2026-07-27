@@ -76,6 +76,7 @@ function createMockArtist(overrides: Partial<Artist> = {}): Artist {
     customImage: null,
     deezer: null,
     subvert: null,
+    bluesky: null,
     ...overrides,
   };
 }
@@ -390,6 +391,7 @@ describe("toArtistDetail", () => {
         name: "No Deezer Artist",
         deezer: null,
         subvert: null,
+        bluesky: null,
       });
 
       mockedGetArtistLinks.mockResolvedValue([]);

@@ -33,7 +33,8 @@ const LINK_FIELDS = [
   "twitch",
   "wikidata",
   "wikipedia",
-  "subvert"
+  "subvert",
+  "bluesky"
 ] as const;
 
 type LinkField = (typeof LINK_FIELDS)[number];
