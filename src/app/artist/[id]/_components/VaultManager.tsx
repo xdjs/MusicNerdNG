@@ -189,7 +189,8 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
           toast({ title: "No new sources found" });
         } else {
           // Show the found sources immediately in the pending list — no manual refresh.
-          if (res.sources?.length) setPending(prev => [...res.sources!, ...prev]);
+          const found = res.sources;
+          if (found && found.length) setPending(prev => [...found, ...prev]);
           toast({ title: `Found ${res.count} source(s)`, description: "Added below for you to review." });
         }
       } else {

@@ -33,9 +33,13 @@ audit of every RLS-enabled table's `mnweb` coverage; the app writes to no other 
 
 ## Status
 
-- `artist_claims` + `artist_vault_sources` — **already fixed on prod** (2026-07-27, via
-  `ALTER POLICY`). Claiming re-verified working.
-- `artist_bio_versions` — **not yet applied to prod** (the last one). Needs sign-off.
+**All three tables fixed on prod (2026-07-27) and re-verified** — `mnweb` can INSERT/SELECT/
+UPDATE on each. `artist_claims` + `artist_vault_sources` were applied first (claiming re-verified
+working); `artist_bio_versions` was applied after DB-owner sign-off.
+
+The tracked migration (`0010`) uses `DROP POLICY IF EXISTS` + `CREATE POLICY` (rather than the
+`ALTER POLICY` shown below) so it is portable to environments where the policies don't already
+exist — e.g. a from-scratch DB or a pipeline replaying `drizzle/*.sql` end-to-end.
 
 ## The fix (idempotent, low-risk)
 

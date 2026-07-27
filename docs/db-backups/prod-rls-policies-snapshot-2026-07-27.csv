@@ -54,4 +54,3 @@ users,mnweb_delete_users,DELETE,{mnweb},true,
 users,mnweb_insert_users,INSERT,{mnweb},,true
 users,mnweb_select_users,SELECT,{mnweb},true,
 users,mnweb_update_users,UPDATE,{mnweb},true,true
-<claude-code-hint v="1" type="plugin" value="supabase@claude-plugins-official" />
