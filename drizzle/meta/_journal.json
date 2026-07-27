@@ -71,6 +71,13 @@
       "when": 1785162099661,
       "tag": "0009_misty_kulan_gath",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785178380347,
+      "tag": "0010_fix_artist_edit_rls_policies",
+      "breakpoints": true
     }
   ]
 }
