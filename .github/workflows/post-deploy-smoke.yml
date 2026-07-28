@@ -1,17 +1,30 @@
 name: Post-deploy smoke
 
-# Runs AFTER a deployment succeeds (Vercel reports status via the GitHub
-# integration). Hits the LIVE deployed URL's /api/health and fails if storage or
-# the database aren't actually wired — catching deploy/config regressions (e.g. a
-# missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY) that the mocked unit suite
-# structurally cannot. Non-blocking until enabled as a required check.
+# Hits a LIVE deployed URL's /api/health and fails if storage or the database
+# aren't actually wired — catching deploy/config regressions (e.g. a missing
+# SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY) that the mocked unit suite cannot.
+#
+# Runs automatically after a PRODUCTION deployment succeeds. (Preview deploys are
+# skipped: they can sit behind Vercel deployment protection, which would 401 the
+# health check. Point it at staging/prod public domains via manual dispatch.)
+# Non-blocking until enabled as a required check.
 on:
   deployment_status:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL to smoke test (e.g. https://staging.musicnerd.xyz)'
+        required: true
+        type: string
 
 jobs:
   smoke:
-    # Only when the deployment actually succeeded, and only if we got a URL.
-    if: github.event.deployment_status.state == 'success' && github.event.deployment_status.environment_url != ''
+    # Manual dispatch, OR a successful *production* deployment with a URL.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment_status.environment == 'Production' &&
+       github.event.deployment_status.environment_url != '')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +35,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # package.json engines require npm >=11; the runner ships an older npm.
+      - name: Upgrade npm
+        run: npm install -g npm@11.12.1
+
       - name: Install dependencies
         run: npm ci
 
@@ -30,5 +47,5 @@ jobs:
       # because Supabase creds are not provided to this job.
       - name: Smoke test the deployed environment
         env:
-          SMOKE_BASE_URL: ${{ github.event.deployment_status.environment_url }}
+          SMOKE_BASE_URL: ${{ github.event.deployment_status.environment_url || github.event.inputs.base_url }}
         run: npm run test:smoke
