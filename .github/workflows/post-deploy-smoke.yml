@@ -1,0 +1,34 @@
+name: Post-deploy smoke
+
+# Runs AFTER a deployment succeeds (Vercel reports status via the GitHub
+# integration). Hits the LIVE deployed URL's /api/health and fails if storage or
+# the database aren't actually wired — catching deploy/config regressions (e.g. a
+# missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY) that the mocked unit suite
+# structurally cannot. Non-blocking until enabled as a required check.
+on:
+  deployment_status:
+
+jobs:
+  smoke:
+    # Only when the deployment actually succeeded, and only if we got a URL.
+    if: github.event.deployment_status.state == 'success' && github.event.deployment_status.environment_url != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Runs *.smoke.test.ts (jest.smoke.config.ts, no global mocks). The health
+      # smoke targets SMOKE_BASE_URL; the storage-integration smoke skips here
+      # because Supabase creds are not provided to this job.
+      - name: Smoke test the deployed environment
+        env:
+          SMOKE_BASE_URL: ${{ github.event.deployment_status.environment_url }}
+        run: npm run test:smoke

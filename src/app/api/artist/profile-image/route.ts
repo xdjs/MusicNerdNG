@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
-import { supabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
+import { supabaseAdmin, VAULT_BUCKET, isSupabaseStorageConfigured } from "@/server/lib/supabase";
 import { validateMagicBytes } from "@/server/utils/validateMagicBytes";
 import { db } from "@/server/db/drizzle";
 import { artists } from "@/server/db/schema";
@@ -68,6 +68,17 @@ export async function POST(req: Request) {
             return NextResponse.json(
                 { error: "Image content does not match declared type" },
                 { status: 400 }
+            );
+        }
+
+        // Fail fast with a clear message when storage credentials are absent (a common
+        // deploy misconfig: DB connection set but SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+        // missing). Without this, the getSupabaseAdmin() throw below surfaces as a generic 500.
+        if (!isSupabaseStorageConfigured()) {
+            console.error("[artist/profile-image] storage not configured: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
+            return NextResponse.json(
+                { error: "Image storage is not configured on this server (missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)." },
+                { status: 503 }
             );
         }
 

@@ -19,6 +19,7 @@ jest.mock('@/server/lib/supabase', () => ({
     },
   },
   VAULT_BUCKET: 'vault',
+  isSupabaseStorageConfigured: jest.fn(() => true),
 }));
 jest.mock('@/server/utils/validateMagicBytes', () => ({ validateMagicBytes: jest.fn().mockReturnValue(true) }));
 jest.mock('@/server/utils/extractPdfText', () => ({ extractPdfText: jest.fn().mockResolvedValue(null) }));
@@ -175,5 +176,68 @@ describe('POST /api/vault/upload admin path', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe('Not authorized for this artist');
+  });
+
+  it('accepts a .md file the browser reports with an EMPTY MIME type', async () => {
+    // Browsers frequently send file.type === "" for .md. The old strict allowlist
+    // check on file.type alone rejected these; resolveUploadType recovers via the extension.
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+    (claims.insertVaultSource as jest.Mock).mockResolvedValue({ id: 'src-md' });
+
+    const { POST } = await import('../route');
+    const mdBytes = new TextEncoder().encode('# Notes\nsome content here');
+    const mockFile = {
+      name: 'notes.md',
+      type: '', // the empty-MIME case
+      size: mdBytes.byteLength,
+      arrayBuffer: async () => mdBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'artist-x']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    const callArg = (claims.insertVaultSource as jest.Mock).mock.calls[0][0];
+    // resolved to text/markdown despite the empty declared type...
+    expect(callArg.contentType).toBe('text/markdown');
+    // ...and text was extracted for LLM context (proves resolvedType drives extraction)
+    expect(callArg.extractedText).toContain('some content here');
+  });
+
+  it('returns a clear 503 (not a generic 500) when storage is not configured', async () => {
+    // Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY on the deployment — the guard
+    // must surface a diagnosable error and never attempt a DB insert.
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    const supabase = await import('@/server/lib/supabase');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+    (supabase.isSupabaseStorageConfigured as jest.Mock).mockReturnValue(false);
+
+    const { POST } = await import('../route');
+    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+    const mockFile = {
+      name: 'doc.pdf',
+      type: 'application/pdf',
+      size: pdfBytes.byteLength,
+      arrayBuffer: async () => pdfBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'artist-x']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toMatch(/not configured/i);
+    expect(claims.insertVaultSource).not.toHaveBeenCalled();
   });
 });

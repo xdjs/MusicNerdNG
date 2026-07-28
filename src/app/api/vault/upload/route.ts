@@ -3,8 +3,9 @@ import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
 import { insertVaultSource } from "@/server/utils/queries/dashboardQueries";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
-import { supabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
+import { supabaseAdmin, VAULT_BUCKET, isSupabaseStorageConfigured } from "@/server/lib/supabase";
 import { validateMagicBytes } from "@/server/utils/validateMagicBytes";
+import { resolveUploadType } from "@/server/utils/resolveUploadType";
 import { extractPdfText } from "@/server/utils/extractPdfText";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,13 @@ export async function POST(req: Request) {
             );
         }
 
-        if (!ALLOWED_TYPES.includes(file.type)) {
+        // Resolve the effective MIME type. Browsers report an empty or nonstandard
+        // `file.type` for some formats (notably .md, sometimes .csv), which a strict
+        // allowlist check on file.type alone would wrongly reject — fall back to the
+        // extension. resolvedType is used for the rest of the flow (magic bytes,
+        // storage content-type, text extraction, DB record).
+        const resolvedType = resolveUploadType(file.name, file.type, ALLOWED_TYPES);
+        if (!resolvedType) {
             console.error("[vault/upload] rejected:", { name: file.name, type: file.type, size: file.size, reason: "unsupported_type" });
             return NextResponse.json(
                 { error: `File type not supported: "${file.type || "unknown"}". Supported: PDF, TXT, MD, CSV, JSON, DOCX, images, audio.` },
@@ -80,7 +87,7 @@ export async function POST(req: Request) {
         const buffer = Buffer.from(bytes);
 
         // Validate magic bytes for binary formats to prevent MIME type spoofing
-        if (!validateMagicBytes(buffer, file.type)) {
+        if (!validateMagicBytes(buffer, resolvedType)) {
             console.error("[vault/upload] rejected:", {
                 name: file.name,
                 type: file.type,
@@ -94,15 +101,27 @@ export async function POST(req: Request) {
             );
         }
 
+        // Fail fast with a clear message when the storage service-role credentials
+        // are absent (a common deploy misconfig: SUPABASE_DB_CONNECTION set so DB
+        // features work, but SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing). Without
+        // this, the getSupabaseAdmin() throw below surfaces as a generic 500.
+        if (!isSupabaseStorageConfigured()) {
+            console.error("[vault/upload] storage not configured: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing");
+            return NextResponse.json(
+                { error: "File storage is not configured on this server (missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)." },
+                { status: 503 }
+            );
+        }
+
         // All ALLOWED_TYPES have entries in MIME_EXT_MAP; fallback is safety-net only
-        const ext = MIME_EXT_MAP[file.type] ?? "";
+        const ext = MIME_EXT_MAP[resolvedType] ?? "";
         const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
         const storagePath = `${artistId}/${Date.now()}_${baseName}${ext}`;
 
         // Upload to Supabase Storage
         const { error: uploadError } = await supabaseAdmin.storage
             .from(VAULT_BUCKET)
-            .upload(storagePath, buffer, { contentType: file.type });
+            .upload(storagePath, buffer, { contentType: resolvedType });
 
         if (uploadError) {
             console.error("[vault/upload] Supabase upload error:", uploadError);
@@ -118,13 +137,13 @@ export async function POST(req: Request) {
         // Extract text content for LLM access (bio + funFacts + askArtist context)
         let extractedText: string | undefined;
         if (
-            file.type === "text/plain" ||
-            file.type === "text/markdown" ||
-            file.type === "text/csv" ||
-            file.type === "application/json"
+            resolvedType === "text/plain" ||
+            resolvedType === "text/markdown" ||
+            resolvedType === "text/csv" ||
+            resolvedType === "application/json"
         ) {
             extractedText = new TextDecoder().decode(bytes);
-        } else if (file.type === "application/pdf") {
+        } else if (resolvedType === "application/pdf") {
             extractedText = (await extractPdfText(buffer)) ?? undefined;
             if (!extractedText) {
                 console.warn(`[vault/upload] No text extracted from PDF "${file.name}" (image-only or empty?)`);
@@ -142,12 +161,12 @@ export async function POST(req: Request) {
             url: publicUrl,
             title: file.name,
             snippet: extractedText ? extractedText.slice(0, 300) : `Uploaded file: ${file.name} (${formatFileSize(file.size)})`,
-            type: getSourceType(file.type),
+            type: getSourceType(resolvedType),
             status: "approved",
             fileName: file.name,
             fileSize: file.size,
             filePath: storagePath,
-            contentType: file.type,
+            contentType: resolvedType,
             extractedText: extractedText ?? null,
         });
 
