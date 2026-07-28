@@ -2,6 +2,7 @@
 
 import { getServerAuthSession } from "@/server/auth";
 import { getDevSession } from "@/server/utils/dev-auth";
+import type { ArtistVaultSource } from "@/server/db/DbTypes";
 import {
     createClaim,
     getClaimByArtistId,
@@ -133,7 +134,7 @@ export async function updateSourceStatus(
     }
 }
 
-export async function searchWebForSources(artistId: string): Promise<{ success: boolean; count?: number; error?: string }> {
+export async function searchWebForSources(artistId: string): Promise<{ success: boolean; count?: number; sources?: ArtistVaultSource[]; error?: string }> {
     const session = await getServerAuthSession() ?? await getDevSession();
     if (!session) return { success: false, error: "Not authenticated" };
 
@@ -141,8 +142,8 @@ export async function searchWebForSources(artistId: string): Promise<{ success: 
         const auth = await verifyArtistEditable(session.user.id, artistId);
         if (!auth.ok) return { success: false, error: auth.error };
 
-        const count = await searchAndPopulateVault(artistId);
-        return { success: true, count };
+        const sources = await searchAndPopulateVault(artistId);
+        return { success: true, count: sources.length, sources };
     } catch (error) {
         console.error("[searchWebForSources] Error:", error);
         return { success: false, error: "Failed to search for sources" };

@@ -17,7 +17,7 @@ jest.mock('@/app/actions/dashboardActions', () => ({
   removeVaultSources: jest.fn().mockResolvedValue({ success: true, count: 1 }),
   addVaultSource: jest.fn().mockResolvedValue({ success: true }),
 }));
-import { updateSourceStatus, removeVaultSource, removeVaultSources, addVaultSource } from '@/app/actions/dashboardActions';
+import { updateSourceStatus, removeVaultSource, removeVaultSources, addVaultSource, searchWebForSources } from '@/app/actions/dashboardActions';
 
 const pending = [{ id: 'p1', artistId: 'a1', url: 'http://e/1', title: 'Pending One', status: 'pending' }];
 const approved = [{ id: 'ap1', artistId: 'a1', url: 'http://e/2', title: 'Approved One', status: 'approved' }];
@@ -94,6 +94,20 @@ describe('VaultManager', () => {
     fireEvent.click(deleteButtons[0]);
 
     await waitFor(() => expect(removeVaultSource).toHaveBeenCalledWith('p1'));
+  });
+
+  it('web search: found sources appear in Pending immediately, no refresh prompt', async () => {
+    searchWebForSources.mockResolvedValueOnce({
+      success: true,
+      count: 1,
+      sources: [{ id: 'ws1', artistId: 'a1', url: 'http://found/1', title: 'Found Source', status: 'pending' }],
+    });
+    renderEditing(true);
+    fireEvent.click(screen.getByRole('button', { name: /search web for sources/i }));
+    // The found source appears without any manual page refresh...
+    await waitFor(() => expect(screen.getByText('Found Source')).toBeInTheDocument());
+    // ...and the user is never told to refresh.
+    expect(screen.queryByText(/refresh to review/i)).not.toBeInTheDocument();
   });
 
   it('add-by-URL: typing a URL and clicking Add calls addVaultSource', async () => {

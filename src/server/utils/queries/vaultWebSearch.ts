@@ -3,6 +3,7 @@ import { insertVaultSource, getVaultSourcesByArtistId, updateVaultSourceContent 
 import { getArtistById } from "./artistQueries";
 import { SOURCE_TYPES, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
+import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
@@ -58,9 +59,9 @@ function normalizeUrl(raw: string): string {
  * Uses Gemini Flash with Google Search grounding to find articles/interviews/reviews
  * about an artist, then inserts them as pending vault sources.
  */
-export async function searchAndPopulateVault(artistId: string): Promise<number> {
+export async function searchAndPopulateVault(artistId: string): Promise<ArtistVaultSource[]> {
     const artist = await getArtistById(artistId);
-    if (!artist) return 0;
+    if (!artist) return [];
 
     const artistName = artist.name ?? "Unknown Artist";
 
@@ -113,7 +114,7 @@ If you cannot find any results specifically about this artist, return an empty a
         const jsonMatch = outputText.match(/\[[\s\S]*\]/);
         if (!jsonMatch) {
             console.error("[vaultWebSearch] No JSON array found in response");
-            return 0;
+            return [];
         }
 
         let results: WebSearchResult[];
@@ -121,10 +122,10 @@ If you cannot find any results specifically about this artist, return an empty a
             results = JSON.parse(jsonMatch[0]);
         } catch {
             console.error("[vaultWebSearch] Failed to parse JSON:", jsonMatch[0].slice(0, 200));
-            return 0;
+            return [];
         }
 
-        if (!Array.isArray(results) || results.length === 0) return 0;
+        if (!Array.isArray(results) || results.length === 0) return [];
 
         // Only dedup against pending + approved sources (allow re-discovery of deleted/rejected URLs)
         const [pendingSources, approvedSources] = await Promise.all([
@@ -137,7 +138,7 @@ If you cannot find any results specifically about this artist, return an empty a
         );
 
         // Insert each result as a pending vault source, skipping duplicates
-        let inserted = 0;
+        const insertedSources: ArtistVaultSource[] = [];
         let skipped = 0;
         for (const result of results) {
             if (!result.url || !result.title) continue;
@@ -171,7 +172,7 @@ If you cannot find any results specifically about this artist, return an empty a
                     type: normalizeSourceType(result.type ?? "article"),
                     status: "pending",
                 });
-                inserted++;
+                if (source) insertedSources.push(source);
 
                 // Fire background content fetch to populate extractedText
                 if (source?.id) {
@@ -193,8 +194,8 @@ If you cannot find any results specifically about this artist, return an empty a
             console.log(`[vaultWebSearch] Skipped ${skipped} duplicate(s) for "${artistName}"`);
         }
 
-        console.log(`[vaultWebSearch] Inserted ${inserted} sources for "${artistName}"`);
-        return inserted;
+        console.log(`[vaultWebSearch] Inserted ${insertedSources.length} sources for "${artistName}"`);
+        return insertedSources;
     } catch (error: unknown) {
         const err = error as { status?: number; message?: string; code?: string };
         console.error("[vaultWebSearch] Error searching for artist:", {
@@ -203,6 +204,6 @@ If you cannot find any results specifically about this artist, return an empty a
             code: err.code,
             full: error,
         });
-        return 0;
+        return [];
     }
 }
