@@ -185,13 +185,15 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
     try {
       const res = await searchWebForSources(artistId);
       if (res.success) {
-        if (!res.count) {
+        // Derive both the count shown and the list update from the same array, so the
+        // toast can never claim "Found N" while nothing actually renders.
+        const found = res.sources ?? [];
+        if (found.length === 0) {
           toast({ title: "No new sources found" });
         } else {
           // Show the found sources immediately in the pending list — no manual refresh.
-          const found = res.sources;
-          if (found && found.length) setPending(prev => [...found, ...prev]);
-          toast({ title: `Found ${res.count} source(s)`, description: "Added below for you to review." });
+          setPending(prev => [...found, ...prev]);
+          toast({ title: `Found ${found.length} source(s)`, description: "Added below for you to review." });
         }
       } else {
         toast({ title: "Search failed", description: res.error ?? "Please try again", variant: "destructive" });
