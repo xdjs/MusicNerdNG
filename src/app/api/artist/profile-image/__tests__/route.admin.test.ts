@@ -14,6 +14,7 @@ jest.mock('@/server/lib/supabase', () => {
   return {
     supabaseAdmin: { storage: { from } },
     VAULT_BUCKET: 'vault',
+    isSupabaseStorageConfigured: jest.fn(() => true),
     __storageMocks: { upload, list, remove, getPublicUrl, from },
   };
 });
@@ -191,5 +192,32 @@ describe('POST /api/artist/profile-image admin path', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe('Not authorized for this artist');
+  });
+
+  it('returns a clear 503 (not a generic 500) when storage is not configured', async () => {
+    const auth = await import('@/server/auth');
+    const users = await import('@/server/utils/queries/userQueries');
+    const claims = await import('@/server/utils/queries/dashboardQueries');
+    const supabase = await import('@/server/lib/supabase');
+    (auth.getServerAuthSession as jest.Mock).mockResolvedValue({ user: { id: 'admin-1' } });
+    (users.getUserById as jest.Mock).mockResolvedValue({ isAdmin: true });
+    (claims.getApprovedClaimForArtistByUserId as jest.Mock).mockResolvedValue(undefined);
+    (supabase.isSupabaseStorageConfigured as jest.Mock).mockReturnValue(false);
+
+    const { POST } = await import('../route');
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // valid PNG header — reaches the storage guard
+    const mockFile = {
+      name: 'a.png',
+      type: 'image/png',
+      size: pngBytes.byteLength,
+      arrayBuffer: async () => pngBytes.buffer,
+    };
+    const fd = new Map([['file', mockFile], ['artistId', 'artist-x']]);
+    const req = { formData: async () => ({ get: (k) => fd.get(k) }) } as unknown as Request;
+    const res = await POST(req);
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toMatch(/not configured/i);
   });
 });
