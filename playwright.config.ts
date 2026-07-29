@@ -1,5 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
+// Set E2E_BASE_URL to run the E2E suite against a deployed environment (e.g.
+// https://staging.musicnerd.xyz) instead of a local dev server. When set, the
+// local dev webServer is not started.
+const remoteBaseUrl = process.env.E2E_BASE_URL;
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -8,15 +13,18 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'https://localhost:3001',
+    baseURL: remoteBaseUrl ?? 'https://localhost:3001',
     ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
   },
-  webServer: {
-    command: 'npx next dev --experimental-https --port 3001',
-    url: 'https://localhost:3001',
-    reuseExistingServer: true,
-    ignoreHTTPSErrors: true,
-    timeout: 60_000,
-  },
+  // Only spin up the local dev server when targeting localhost.
+  webServer: remoteBaseUrl
+    ? undefined
+    : {
+        command: 'npx next dev --experimental-https --port 3001',
+        url: 'https://localhost:3001',
+        reuseExistingServer: true,
+        ignoreHTTPSErrors: true,
+        timeout: 60_000,
+      },
 });
