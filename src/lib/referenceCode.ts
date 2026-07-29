@@ -8,7 +8,11 @@ export function generateReferenceCode(): string {
     // Rejection sampling to eliminate modulo bias
     const code = Array.from(bytes)
         .map(b => {
-            const limit = 256 - (256 % CHARS.length); // 256 - (256 % 28) = 252
+            // Rejection sampling to eliminate modulo bias. With the current
+            // 32-char alphabet this branch never fires (256 % 32 === 0, so
+            // limit === 256), but it keeps the generator unbiased if CHARS
+            // ever changes to a length that doesn't divide 256 evenly.
+            const limit = 256 - (256 % CHARS.length);
             if (b >= limit) return CHARS[randomBytes(1)[0] % CHARS.length]; // re-roll
             return CHARS[b % CHARS.length];
         })
