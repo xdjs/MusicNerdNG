@@ -14,12 +14,21 @@ describe("generateReferenceCode", () => {
         }
     });
 
-    it("generates unique codes", () => {
+    it("produces effectively-unique codes across a large batch (high entropy)", () => {
+        // The generator is RANDOM over a 32^4 ≈ 1.05M code space; it does not
+        // guarantee strict uniqueness across independent calls. Asserting "all N
+        // unique" was therefore flaky — 50 codes collide with ~0.12% probability
+        // (birthday paradox), which reddened CI intermittently.
+        //
+        // Instead assert the property that actually holds: the uniqueness rate
+        // stays very high over a large batch. Expected collisions in 2000 draws
+        // ≈ 1.9, so the `>= N - 20` threshold has a flake probability far below
+        // 1e-9 while still catching a genuinely low-entropy regression.
+        const N = 2000;
         const codes = new Set<string>();
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < N; i++) {
             codes.add(generateReferenceCode());
         }
-        // With 28^4 = ~600K possibilities, 50 codes should all be unique
-        expect(codes.size).toBe(50);
+        expect(codes.size).toBeGreaterThanOrEqual(N - 20);
     });
 });
