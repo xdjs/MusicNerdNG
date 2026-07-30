@@ -8,7 +8,7 @@ describe("idMappingService", () => {
 
   async function setup() {
     const { db } = await import("@/server/db/drizzle");
-    db.execute = jest.fn().mockResolvedValue([]);
+    db.execute = jest.fn().mockResolvedValue([{ id: "mapping-1" }]);
     (db as any).query.artists = {
       findFirst: jest.fn().mockResolvedValue({ id: "artist-123" }),
       findMany: jest.fn(),
@@ -151,6 +151,27 @@ describe("idMappingService", () => {
     expect(db.execute).toHaveBeenCalled();
   });
 
+  it("accepts spotify as a mapping target", async () => {
+    const { resolveArtistMapping, VALID_MAPPING_PLATFORMS } = await setup();
+    expect(VALID_MAPPING_PLATFORMS.has("spotify")).toBe(true);
+    expect(VALID_MAPPING_PLATFORMS.has("instagram")).toBe(false);
+    expect(VALID_MAPPING_PLATFORMS.has("official_website")).toBe(false);
+
+    await expect(
+      resolveArtistMapping({
+        artistId: "artist-123",
+        platform: "spotify",
+        platformId: "6vWDO969PvNqNYHIOW5v0m",
+        confidence: "high",
+        source: "wikidata",
+      }),
+    ).resolves.toEqual({
+      created: true,
+      updated: false,
+      skipped: false,
+    });
+  });
+
   it("creates new mapping", async () => {
     const { db, resolveArtistMapping } = await setup();
     const result = await resolveArtistMapping({
@@ -202,6 +223,70 @@ describe("idMappingService", () => {
     expect(result.previousMapping).toEqual({ platformId: "existing-id", confidence: "manual" });
   });
 
+  it("does not let a delayed lower-confidence update overwrite a stronger concurrent write", async () => {
+    const { db, resolveArtistMapping } = await setup();
+    (db as any).query.artistIdMappings.findFirst
+      .mockResolvedValueOnce({
+        artistId: "artist-123",
+        platformId: "initial-low",
+        confidence: "low",
+      })
+      .mockResolvedValueOnce({
+        artistId: "artist-123",
+        platformId: "concurrent-high",
+        confidence: "high",
+      });
+    db.execute = jest.fn().mockResolvedValue([]);
+
+    const result = await resolveArtistMapping({
+      artistId: "artist-123",
+      platform: "deezer",
+      platformId: "delayed-medium",
+      confidence: "medium",
+      source: "musicbrainz",
+    });
+
+    expect(result).toEqual({
+      created: false,
+      updated: false,
+      skipped: true,
+      previousMapping: {
+        platformId: "concurrent-high",
+        confidence: "high",
+      },
+    });
+  });
+
+  it("arbitrates confidence after a concurrent insert", async () => {
+    const { db, resolveArtistMapping } = await setup();
+    (db as any).query.artistIdMappings.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        artistId: "artist-123",
+        platformId: "concurrent-manual",
+        confidence: "manual",
+      });
+    db.execute = jest.fn().mockResolvedValue([]);
+
+    const result = await resolveArtistMapping({
+      artistId: "artist-123",
+      platform: "deezer",
+      platformId: "incoming-high",
+      confidence: "high",
+      source: "wikidata",
+    });
+
+    expect(result).toEqual({
+      created: false,
+      updated: false,
+      skipped: true,
+      previousMapping: {
+        platformId: "concurrent-manual",
+        confidence: "manual",
+      },
+    });
+  });
+
   // getUnmappedArtists
   it("returns unmapped artists for valid platform", async () => {
     const { db, getUnmappedArtists } = await setup();
@@ -232,7 +317,7 @@ describe("idMappingService", () => {
     expect(stats.totalArtistsWithSpotify).toBe(100);
     expect(stats.totalArtistsWithDeezer).toBe(390);
     // All valid platforms should be present
-    expect(stats.platformStats).toHaveLength(11);
+    expect(stats.platformStats).toHaveLength(15);
     const deezer = stats.platformStats.find(s => s.platform === "deezer");
     expect(deezer.mappedCount).toBe(50);
     expect(deezer.percentage).toBe(50);

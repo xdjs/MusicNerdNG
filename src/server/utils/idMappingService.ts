@@ -5,6 +5,7 @@
 import { db } from "@/server/db/drizzle";
 import { eq, and, sql, asc } from "drizzle-orm";
 import { artists, artistIdMappings, artistMappingExclusions } from "@/server/db/schema";
+import { ID_MAPPING_PLATFORM_VALUES } from "@/lib/artistResearch/types";
 
 export class MappingNotFoundError extends Error {
   constructor(message: string) { super(message); this.name = "MappingNotFoundError"; }
@@ -22,11 +23,9 @@ export class MappingValidationError extends Error {
   constructor(message: string) { super(message); this.name = "MappingValidationError"; }
 }
 
-export const VALID_MAPPING_PLATFORMS = new Set([
-  "deezer", "apple_music", "musicbrainz", "wikidata",
-  "tidal", "amazon_music", "youtube_music",
-  "genius", "allmusic", "billboard", "rolling_stone",
-]);
+export const VALID_MAPPING_PLATFORMS = new Set<string>(
+  ID_MAPPING_PLATFORM_VALUES,
+);
 
 export const VALID_SOURCES = new Set([
   "wikidata", "musicbrainz", "name_search", "web_search", "manual",
@@ -39,6 +38,7 @@ export const VALID_EXCLUSION_REASONS = new Set<ExclusionReason>(EXCLUSION_REASON
 
 export type MappingConfidence = "high" | "medium" | "low" | "manual";
 export type MappingSource = "wikidata" | "musicbrainz" | "name_search" | "web_search" | "manual";
+export type MappingExecutor = Pick<typeof db, "query" | "execute">;
 
 const CONFIDENCE_PRIORITY: Record<string, number> = {
   manual: 4, high: 3, medium: 2, low: 1,
@@ -81,14 +81,20 @@ export async function getUnmappedArtists(
   }
 
   const baseFilter = basePlatform === 'deezer'
-    ? sql`a.deezer IS NOT NULL`
-    : sql`a.spotify IS NOT NULL`;
+    ? sql`a.deezer IS NOT NULL AND BTRIM(a.deezer) <> ''`
+    : sql`a.spotify IS NOT NULL AND BTRIM(a.spotify) <> ''`;
+  // Spotify was added as a reverse-mapping target for Deezer-primary artists.
+  // Do not research artists whose first-class Spotify field is already known.
+  const targetFilter = platform === "spotify"
+    ? sql`(a.spotify IS NULL OR BTRIM(a.spotify) = '')`
+    : sql`true`;
 
   const [countResult, result] = await Promise.all([
     db.execute<{ total: number }>(sql`
       SELECT COUNT(*)::int AS total
       FROM artists a
       WHERE ${baseFilter}
+        AND ${targetFilter}
         AND NOT EXISTS (
           SELECT 1 FROM artist_id_mappings m
           WHERE m.artist_id = a.id AND m.platform = ${platform}
@@ -102,6 +108,7 @@ export async function getUnmappedArtists(
       SELECT a.id, a.name, a.spotify, a.deezer
       FROM artists a
       WHERE ${baseFilter}
+        AND ${targetFilter}
         AND NOT EXISTS (
           SELECT 1 FROM artist_id_mappings m
           WHERE m.artist_id = a.id AND m.platform = ${platform}
@@ -121,7 +128,7 @@ export async function getUnmappedArtists(
   };
 }
 
-export async function resolveArtistMapping(params: {
+export type ResolveArtistMappingParams = {
   artistId: string;
   platform: string;
   platformId: string;
@@ -129,10 +136,28 @@ export async function resolveArtistMapping(params: {
   source: string;
   reasoning?: string;
   apiKeyHash?: string;
-}): Promise<{ created: boolean; updated: boolean; skipped: boolean; previousMapping?: { platformId: string; confidence: string } }> {
-  const { artistId, platform, platformId, confidence, source, reasoning, apiKeyHash } = params;
+};
 
-  if (!VALID_MAPPING_PLATFORMS.has(platform)) {
+export type ResolveArtistMappingResult = {
+  created: boolean;
+  updated: boolean;
+  skipped: boolean;
+  previousMapping?: { platformId: string; confidence: string };
+};
+
+/**
+ * Transaction-aware mapping primitive. Callers that need to atomically mirror
+ * a mapping into an artist column can pass a Drizzle transaction here.
+ */
+export async function resolveArtistMappingWithExecutor(
+  database: MappingExecutor,
+  params: ResolveArtistMappingParams,
+  options: { validPlatforms?: ReadonlySet<string> } = {},
+): Promise<ResolveArtistMappingResult> {
+  const { artistId, platform, platformId, confidence, source, reasoning, apiKeyHash } = params;
+  const validPlatforms = options.validPlatforms ?? VALID_MAPPING_PLATFORMS;
+
+  if (!validPlatforms.has(platform)) {
     throw new MappingValidationError(`Invalid platform: ${platform}`);
   }
   if (!VALID_SOURCES.has(source)) {
@@ -146,7 +171,7 @@ export async function resolveArtistMapping(params: {
   }
 
   // Verify artist exists
-  const artist = await db.query.artists.findFirst({
+  const artist = await database.query.artists.findFirst({
     where: eq(artists.id, artistId),
     columns: { id: true },
   });
@@ -155,58 +180,125 @@ export async function resolveArtistMapping(params: {
   }
 
   // Check for existing mapping on this artist+platform
-  const existing = await db.query.artistIdMappings.findFirst({
+  let existing = await database.query.artistIdMappings.findFirst({
     where: and(eq(artistIdMappings.artistId, artistId), eq(artistIdMappings.platform, platform)),
   });
 
-  if (existing) {
-    const existingPriority = CONFIDENCE_PRIORITY[existing.confidence] ?? 0;
-    const newPriority = CONFIDENCE_PRIORITY[confidence] ?? 0;
-
-    // Equal confidence overwrites intentionally — latest submission wins at the same tier
-    if (newPriority < existingPriority) {
-      return {
-        created: false,
-        updated: false,
-        skipped: true,
-        previousMapping: { platformId: existing.platformId, confidence: existing.confidence },
-      };
-    }
-
+  if (!existing) {
     try {
-      await db.execute(sql`
-        UPDATE artist_id_mappings
-        SET platform_id = ${platformId},
-            confidence = ${confidence}::confidence_level,
-            source = ${source},
-            reasoning = ${reasoning ?? null},
-            api_key_hash = ${apiKeyHash ?? null},
-            resolved_at = now(),
-            updated_at = now()
-        WHERE artist_id = ${artistId} AND platform = ${platform}
+      const inserted = await database.execute<{ id: string }>(sql`
+        INSERT INTO artist_id_mappings (
+          artist_id, platform, platform_id, confidence, source, reasoning, api_key_hash
+        )
+        VALUES (
+          ${artistId}, ${platform}, ${platformId}, ${confidence}::confidence_level,
+          ${source}, ${reasoning ?? null}, ${apiKeyHash ?? null}
+        )
+        ON CONFLICT (artist_id, platform) DO NOTHING
+        RETURNING id
       `);
+      if (inserted.length > 0) {
+        return { created: true, updated: false, skipped: false };
+      }
     } catch (err: unknown) {
       handleUniqueViolation(err, platform, platformId);
     }
 
+    // Another writer inserted this artist+platform after our initial read.
+    // Re-read and arbitrate by confidence instead of surfacing a race error.
+    existing = await database.query.artistIdMappings.findFirst({
+      where: and(
+        eq(artistIdMappings.artistId, artistId),
+        eq(artistIdMappings.platform, platform),
+      ),
+    });
+    if (!existing) {
+      throw new MappingConcurrentWriteError(
+        `A mapping for ${platform} changed concurrently; retry the operation`,
+      );
+    }
+  }
+
+  const existingPriority = CONFIDENCE_PRIORITY[existing.confidence] ?? 0;
+  const newPriority = CONFIDENCE_PRIORITY[confidence] ?? 0;
+  const previousMapping = {
+    platformId: existing.platformId,
+    confidence: existing.confidence,
+  };
+
+  // Equal confidence overwrites intentionally — latest committed submission
+  // wins at the same tier.
+  if (newPriority < existingPriority) {
     return {
       created: false,
-      updated: true,
-      skipped: false,
-      previousMapping: { platformId: existing.platformId, confidence: existing.confidence },
+      updated: false,
+      skipped: true,
+      previousMapping,
     };
   }
 
+  let updated: { id: string }[];
   try {
-    await db.execute(sql`
-      INSERT INTO artist_id_mappings (artist_id, platform, platform_id, confidence, source, reasoning, api_key_hash)
-      VALUES (${artistId}, ${platform}, ${platformId}, ${confidence}::confidence_level, ${source}, ${reasoning ?? null}, ${apiKeyHash ?? null})
+    updated = await database.execute<{ id: string }>(sql`
+      UPDATE artist_id_mappings
+      SET platform_id = ${platformId},
+          confidence = ${confidence}::confidence_level,
+          source = ${source},
+          reasoning = ${reasoning ?? null},
+          api_key_hash = ${apiKeyHash ?? null},
+          resolved_at = now(),
+          updated_at = now()
+      WHERE artist_id = ${artistId}
+        AND platform = ${platform}
+        AND ${newPriority} >= CASE confidence
+          WHEN 'manual'::confidence_level THEN 4
+          WHEN 'high'::confidence_level THEN 3
+          WHEN 'medium'::confidence_level THEN 2
+          WHEN 'low'::confidence_level THEN 1
+          ELSE 0
+        END
+      RETURNING id
     `);
   } catch (err: unknown) {
     handleUniqueViolation(err, platform, platformId);
   }
 
-  return { created: true, updated: false, skipped: false };
+  if (updated.length > 0) {
+    return {
+      created: false,
+      updated: true,
+      skipped: false,
+      previousMapping,
+    };
+  }
+
+  // A stronger mapping committed after our read. Report the actual winner.
+  const winner = await database.query.artistIdMappings.findFirst({
+    where: and(
+      eq(artistIdMappings.artistId, artistId),
+      eq(artistIdMappings.platform, platform),
+    ),
+  });
+  if (!winner) {
+    throw new MappingConcurrentWriteError(
+      `A mapping for ${platform} changed concurrently; retry the operation`,
+    );
+  }
+  return {
+    created: false,
+    updated: false,
+    skipped: true,
+    previousMapping: {
+      platformId: winner.platformId,
+      confidence: winner.confidence,
+    },
+  };
+}
+
+export async function resolveArtistMapping(
+  params: ResolveArtistMappingParams,
+): Promise<ResolveArtistMappingResult> {
+  return resolveArtistMappingWithExecutor(db, params);
 }
 
 export async function getMappingStats(): Promise<{

@@ -19,14 +19,25 @@ import {
   mkdirSync,
 } from "fs";
 import { dirname } from "path";
+import {
+  WIKIDATA_PLATFORM_DEFINITIONS,
+} from "../../src/lib/artistResearch/platformRegistry";
+import {
+  filterSafeWikidataLookupIds,
+  lookupWikidataArtists,
+} from "../../src/lib/artistResearch/wikidata";
+import { verifyDeezerArtistId } from "../../src/lib/artistResearch/deezer";
+import {
+  queryMusicBrainzByMbid,
+  queryMusicBrainzByName,
+  type MusicBrainzResult,
+} from "../../src/lib/artistResearch/musicbrainz";
 
 // --- Config ---
 
 const DB_URL = process.env.SUPABASE_DB_CONNECTION;
 const WIKIDATA_BATCH = parseInt(process.env.WIKIDATA_BATCH || "80", 10);
 const DRY_RUN = process.env.DRY_RUN === "1";
-const USER_AGENT =
-  "MusicNerdWeb/1.0 (https://musicnerd.xyz; contact@musicnerd.xyz)";
 
 // --- Types ---
 
@@ -67,30 +78,56 @@ interface CollectStats {
   errors: number;
 }
 
-// Wikidata property → target info
+// Preserve the legacy JSONL shape while deriving Wikidata property metadata
+// from the shared registry. New research flows store every allowlisted finding;
+// the catalog importer intentionally retains its historical targets.
+const LEGACY_MAPPING_PLATFORMS = new Set([
+  "deezer",
+  "apple_music",
+  "musicbrainz",
+  "tidal",
+  "amazon_music",
+  "youtube_music",
+  "genius",
+  "allmusic",
+  "billboard",
+  "rolling_stone",
+]);
+
+const LEGACY_ARTIST_COLUMN_PLATFORMS = new Set([
+  "musicbrainz",
+  "discogs",
+  "lastfm",
+  "soundcloud",
+  "imdb",
+  "youtube_channel",
+  "x",
+  "instagram",
+  "facebook",
+]);
+
+const LEGACY_WIKIDATA_DEFINITIONS = WIKIDATA_PLATFORM_DEFINITIONS.filter(
+  (definition) =>
+    definition.key !== "spotify" && definition.key !== "official_website",
+);
+
 const WIKIDATA_PROPS: Record<
   string,
   { sparqlVar: string; platform?: string; artistColumn?: string }
-> = {
-  P2722: { sparqlVar: "deezer", platform: "deezer" },
-  P2850: { sparqlVar: "apple", platform: "apple_music" },
-  P434: { sparqlVar: "mbid", platform: "musicbrainz", artistColumn: "musicbrainz" },
-  P7650: { sparqlVar: "tidal", platform: "tidal" },
-  P7400: { sparqlVar: "amazonMusic", platform: "amazon_music" },
-  P10625: { sparqlVar: "youtubeMusic", platform: "youtube_music" },
-  P1953: { sparqlVar: "discogs", artistColumn: "discogs" },
-  P2373: { sparqlVar: "genius", platform: "genius" },
-  P1728: { sparqlVar: "allmusic", platform: "allmusic" },
-  P3192: { sparqlVar: "lastfm", artistColumn: "lastfm" },
-  P3040: { sparqlVar: "soundcloud", artistColumn: "soundcloud" },
-  P4208: { sparqlVar: "billboard", platform: "billboard" },
-  P345: { sparqlVar: "imdb", artistColumn: "imdb" },
-  P3017: { sparqlVar: "rollingStone", platform: "rolling_stone" },
-  P2397: { sparqlVar: "youtube", artistColumn: "youtubechannel" },
-  P2002: { sparqlVar: "twitter", artistColumn: "x" },
-  P2003: { sparqlVar: "instagram", artistColumn: "instagram" },
-  P2013: { sparqlVar: "facebook", artistColumn: "facebookID" },
-};
+> = Object.fromEntries(
+  LEGACY_WIKIDATA_DEFINITIONS.map((definition) => [
+    definition.key,
+    {
+      sparqlVar: definition.wikidataVariable,
+      platform: LEGACY_MAPPING_PLATFORMS.has(definition.key)
+        ? definition.key
+        : undefined,
+      artistColumn: LEGACY_ARTIST_COLUMN_PLATFORMS.has(definition.key)
+        ? definition.artistColumn
+        : undefined,
+    },
+  ]),
+);
 
 // --- Helpers ---
 
@@ -108,20 +145,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function normalizeName(name: string): string {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/^the\s+/, "")
-    .replace(/\s+(feat\.?|ft\.?|featuring)\s+.*/i, "")
-    .trim();
-}
-
-function namesMatch(a: string, b: string): boolean {
-  return normalizeName(a) === normalizeName(b);
-}
-
 function ensureDir(filePath: string): void {
   const dir = dirname(filePath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -132,173 +155,42 @@ function ensureDir(filePath: string): void {
 async function queryWikidata(
   spotifyIds: string[],
 ): Promise<{ results: Map<string, Record<string, string[]>>; skippedMultiEntity: number }> {
-  // Validate Spotify IDs before embedding in SPARQL (defense against malformed DB data)
-  const safeIds = spotifyIds.filter((id) => /^[A-Za-z0-9]+$/.test(id));
-  const values = safeIds.map((id) => `"${id}"`).join(" ");
-  const optionals = Object.entries(WIKIDATA_PROPS)
-    .map(([code, { sparqlVar }]) => `  OPTIONAL { ?item wdt:${code} ?${sparqlVar} }`)
-    .join("\n");
+  const safeIds = filterSafeWikidataLookupIds(spotifyIds, "spotify");
+  if (safeIds.length === 0) {
+    return { results: new Map(), skippedMultiEntity: 0 };
+  }
 
-  const sparql = `
-SELECT ?item ?spotifyId
-       ${Object.values(WIKIDATA_PROPS).map((p) => `?${p.sparqlVar}`).join(" ")}
-WHERE {
-  VALUES ?spotifyId { ${values} }
-  ?item wdt:P1902 ?spotifyId .
-${optionals}
-}`;
-
-  const res = await fetch("https://query.wikidata.org/sparql", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "User-Agent": USER_AGENT,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: `query=${encodeURIComponent(sparql)}`,
-    signal: AbortSignal.timeout(30_000),
+  const lookup = await lookupWikidataArtists({
+    sourcePlatform: "spotify",
+    sourceIds: safeIds,
+    targetPlatforms: LEGACY_WIKIDATA_DEFINITIONS.map(
+      (definition) => definition.key,
+    ),
   });
-
-  if (!res.ok) {
-    throw new Error(`Wikidata SPARQL error: ${res.status} ${res.statusText}`);
-  }
-
-  const data = await res.json();
-  const bindings = data.results?.bindings ?? [];
-
-  // Group by spotifyId, track entities per spotifyId for multi-entity dedup
-  const grouped = new Map<
-    string,
-    { entities: Set<string>; values: Record<string, Set<string>> }
-  >();
-
-  for (const row of bindings) {
-    const spotifyId = row.spotifyId?.value;
-    const entity = row.item?.value?.replace("http://www.wikidata.org/entity/", "");
-    if (!spotifyId || !entity) continue;
-
-    if (!grouped.has(spotifyId)) {
-      grouped.set(spotifyId, { entities: new Set(), values: {} });
-    }
-    const entry = grouped.get(spotifyId)!;
-    entry.entities.add(entity);
-
-    // Collect wikidata entity ID
-    if (!entry.values.wikidata) entry.values.wikidata = new Set();
-    entry.values.wikidata.add(entity);
-
-    // Collect all property values
-    for (const { sparqlVar } of Object.values(WIKIDATA_PROPS)) {
-      const val = row[sparqlVar]?.value;
-      if (val) {
-        if (!entry.values[sparqlVar]) entry.values[sparqlVar] = new Set();
-        entry.values[sparqlVar].add(val);
-      }
-    }
-  }
-
-  // Filter: skip multi-entity matches (Case 1), pick first value for multi-value (Case 2)
   const results = new Map<string, Record<string, string[]>>();
-  let skippedMultiEntity = 0;
-  for (const [spotifyId, entry] of grouped) {
-    if (entry.entities.size > 1) {
-      warn(
-        `Spotify ID ${spotifyId} matched ${entry.entities.size} Wikidata entities (${[...entry.entities].join(", ")}) — skipping`,
-      );
-      skippedMultiEntity++;
-      continue;
-    }
-    const values: Record<string, string[]> = {};
-    for (const [key, valSet] of Object.entries(entry.values)) {
-      values[key] = [...valSet];
+  for (const [spotifyId, match] of lookup.matches) {
+    const values: Record<string, string[]> = {
+      wikidata: [match.entityId],
+    };
+    for (const definition of LEGACY_WIKIDATA_DEFINITIONS) {
+      const platformValues = match.values[definition.key];
+      if (platformValues) {
+        values[definition.wikidataVariable] = platformValues;
+      }
     }
     results.set(spotifyId, values);
   }
 
-  return { results, skippedMultiEntity };
-}
-
-async function verifyDeezer(
-  deezerId: string,
-  expectedName: string,
-): Promise<boolean> {
-  try {
-    const res = await fetch(`https://api.deezer.com/artist/${deezerId}`, {
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (data.error) return false;
-    return namesMatch(data.name ?? "", expectedName);
-  } catch {
-    return false;
-  }
-}
-
-interface MusicBrainzResult {
-  deezerId?: string;
-  otherUrls: { platform: string; id: string }[];
-}
-
-async function queryMusicBrainzByMbid(
-  mbid: string,
-): Promise<MusicBrainzResult> {
-  const res = await fetch(
-    `https://musicbrainz.org/ws/2/artist/${mbid}?inc=url-rels&fmt=json`,
-    { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(10_000) },
-  );
-  if (!res.ok) throw new Error(`MusicBrainz ${res.status}`);
-  const data = await res.json();
-  return parseMusicBrainzRelations(data.relations ?? []);
-}
-
-async function queryMusicBrainzByName(
-  name: string,
-): Promise<{ mbid: string } | null> {
-  // Escape Lucene special characters in artist name before embedding in query
-  const escapedName = name.replace(/([+\-!(){}[\]^"~*?:\\\/])/g, "\\$1");
-  const res = await fetch(
-    `https://musicbrainz.org/ws/2/artist/?query=artist:"${encodeURIComponent(escapedName)}"&fmt=json&limit=10`,
-    { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(10_000) },
-  );
-  if (!res.ok) throw new Error(`MusicBrainz search ${res.status}`);
-  const data = await res.json();
-  const artists = data.artists ?? [];
-
-  // Require exact name match, reject ambiguous
-  const matches = artists.filter(
-    (a: { name: string }) => namesMatch(a.name, name),
-  );
-  if (matches.length === 1) return { mbid: matches[0].id };
-  return null;
-}
-
-function parseMusicBrainzRelations(
-  relations: { url?: { resource: string }; type: string }[],
-): MusicBrainzResult {
-  const result: MusicBrainzResult = { otherUrls: [] };
-
-  for (const rel of relations) {
-    const url = rel.url?.resource;
-    if (!url) continue;
-
-    // Deezer artist URL
-    const deezerMatch = url.match(
-      /deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/,
+  for (const [spotifyId, entityIds] of lookup.ambiguous) {
+    warn(
+      `Spotify ID ${spotifyId} matched ${entityIds.length} Wikidata entities (${entityIds.join(", ")}) — skipping`,
     );
-    if (deezerMatch) {
-      result.deezerId = deezerMatch[1];
-      continue;
-    }
-
-    // Tidal
-    const tidalMatch = url.match(/tidal\.com\/(?:browse\/)?artist\/(\d+)/);
-    if (tidalMatch) {
-      result.otherUrls.push({ platform: "tidal", id: tidalMatch[1] });
-    }
   }
 
-  return result;
+  return {
+    results,
+    skippedMultiEntity: lookup.ambiguous.size,
+  };
 }
 
 // --- Collect command ---
@@ -432,7 +324,7 @@ async function collect(outFile: string): Promise<void> {
           if (prop.platform) {
             if (prop.platform === "deezer") {
               // Deezer requires name verification
-              const verified = await verifyDeezer(val, artist.name);
+              const verified = await verifyDeezerArtistId(val, artist.name);
               if (verified) {
                 collected.mappings.deezer = { id: val, verified: true };
                 needsDeezer.delete(artist.spotifyId);
@@ -548,7 +440,10 @@ async function collect(outFile: string): Promise<void> {
       }
 
       if (mbResult?.deezerId) {
-        const verified = await verifyDeezer(mbResult.deezerId, artist.name);
+        const verified = await verifyDeezerArtistId(
+          mbResult.deezerId,
+          artist.name,
+        );
         if (verified) {
           const mbLine: CollectedArtist = {
             artistId: artist.id,
@@ -562,7 +457,11 @@ async function collect(outFile: string): Promise<void> {
           };
           // Add any other URLs found
           for (const url of mbResult.otherUrls) {
-            mbLine.mappings[url.platform] = { id: url.id };
+            // Preserve the legacy importer behavior; the reusable resolver
+            // exposes all allowlisted URLs through mbResult.findings.
+            if (url.platform === "tidal") {
+              mbLine.mappings[url.platform] = { id: url.id };
+            }
           }
           appendFileSync(outFile, JSON.stringify(mbLine) + "\n");
           stats.musicbrainzDeezerResolved++;
@@ -751,7 +650,7 @@ async function importData(inFile: string): Promise<void> {
     const idChunk = artistIds.slice(i, i + 1000);
     const rows = await sql`
       SELECT id, wikidata, musicbrainz, discogs, lastfm, soundcloud, imdb,
-             youtubechannel, x, instagram, "facebookID"
+             youtubechannel, x, instagram, facebook, "facebookID"
       FROM artists
       WHERE id = ANY(${idChunk}::uuid[])
     `;
@@ -783,6 +682,7 @@ async function importData(inFile: string): Promise<void> {
     youtubechannel: "youtubechannel",
     x: "x",
     instagram: "instagram",
+    facebook: "facebook",
     facebookID: "facebookID",
   };
 

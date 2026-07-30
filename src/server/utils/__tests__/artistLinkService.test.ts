@@ -17,8 +17,8 @@ describe("artistLinkService", () => {
     // Mock artist existence check - return a found artist by default
     (db as any).query.artists.findFirst = jest.fn().mockResolvedValue({ id: "artist-123", name: "Test Artist" });
     const { regenerateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
-    const { setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS } = await import("../artistLinkService");
-    return { db, setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS, regenerateArtistBio };
+    const { setArtistLink, clearArtistLink, writeArtistLinkValue, sanitizeColumnName, BIO_RELEVANT_COLUMNS } = await import("../artistLinkService");
+    return { db, setArtistLink, clearArtistLink, writeArtistLinkValue, sanitizeColumnName, BIO_RELEVANT_COLUMNS, regenerateArtistBio };
   }
 
   // 1. sanitizeColumnName strips non-alphanumeric/underscore
@@ -173,5 +173,123 @@ describe("artistLinkService", () => {
     (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", x: "old-handle" });
     const result = await clearArtistLink("artist-123", "x");
     expect(result).toEqual({ oldValue: "old-handle" });
+  });
+
+  it("research fill_empty mode preserves a populated artist link", async () => {
+    const { db, writeArtistLinkValue, regenerateArtistBio } = await setup();
+    (db as any).query.artists.findFirst.mockResolvedValue({
+      id: "artist-123",
+      name: "Test Artist",
+      instagram: "curated-handle",
+    });
+
+    const result = await writeArtistLinkValue({
+      database: db,
+      artistId: "artist-123",
+      siteName: "instagram",
+      value: "research-handle",
+      mode: "fill_empty",
+      bioMode: "preserve",
+    });
+
+    expect(result.status).toBe("conflict");
+    expect(result.oldValue).toBe("curated-handle");
+    expect(db.execute).not.toHaveBeenCalled();
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
+  });
+
+  it("research fill_empty mode writes an empty link without bio work", async () => {
+    const { db, writeArtistLinkValue, regenerateArtistBio } = await setup();
+    db.execute = jest.fn().mockResolvedValue([{ id: "artist-123" }]);
+
+    const result = await writeArtistLinkValue({
+      database: db,
+      artistId: "artist-123",
+      siteName: "instagram",
+      value: "research-handle",
+      mode: "fill_empty",
+      bioMode: "preserve",
+    });
+
+    expect(result.status).toBe("written");
+    expect(db.execute).toHaveBeenCalledTimes(1);
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
+  });
+
+  it("research fill_empty mode does not overwrite a concurrent link write", async () => {
+    const { db, writeArtistLinkValue } = await setup();
+    (db as any).query.artists.findFirst
+      .mockResolvedValueOnce({
+        id: "artist-123",
+        name: "Test Artist",
+        instagram: null,
+      })
+      .mockResolvedValueOnce({
+        id: "artist-123",
+        name: "Test Artist",
+        instagram: "concurrent-handle",
+      });
+    db.execute = jest.fn().mockResolvedValue([]);
+
+    const result = await writeArtistLinkValue({
+      database: db,
+      artistId: "artist-123",
+      siteName: "instagram",
+      value: "research-handle",
+      mode: "fill_empty",
+      bioMode: "preserve",
+    });
+
+    expect(result).toEqual({
+      oldValue: "concurrent-handle",
+      artistName: "Test Artist",
+      status: "conflict",
+    });
+  });
+
+  it("research can replace the exact value mirrored by an older mapping", async () => {
+    const { db, writeArtistLinkValue } = await setup();
+    (db as any).query.artists.findFirst.mockResolvedValue({
+      id: "artist-123",
+      name: "Test Artist",
+      spotify: "older-mirrored-id",
+    });
+    db.execute = jest.fn().mockResolvedValue([{ id: "artist-123" }]);
+
+    const result = await writeArtistLinkValue({
+      database: db,
+      artistId: "artist-123",
+      siteName: "spotify",
+      value: "stronger-id",
+      mode: "fill_empty",
+      bioMode: "preserve",
+      replaceIfValue: "older-mirrored-id",
+    });
+
+    expect(result.status).toBe("written");
+    expect(result.oldValue).toBe("older-mirrored-id");
+    expect(db.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("research does not replace a value that diverged from the older mapping", async () => {
+    const { db, writeArtistLinkValue } = await setup();
+    (db as any).query.artists.findFirst.mockResolvedValue({
+      id: "artist-123",
+      name: "Test Artist",
+      spotify: "curated-id",
+    });
+
+    const result = await writeArtistLinkValue({
+      database: db,
+      artistId: "artist-123",
+      siteName: "spotify",
+      value: "stronger-id",
+      mode: "fill_empty",
+      bioMode: "preserve",
+      replaceIfValue: "older-mirrored-id",
+    });
+
+    expect(result.status).toBe("conflict");
+    expect(db.execute).not.toHaveBeenCalled();
   });
 });

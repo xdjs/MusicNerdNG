@@ -29,6 +29,15 @@ const ARTIST_ROW_PROPERTY_BY_COLUMN: Record<string, string> = {
   tiktokID: "tiktokId",
 };
 
+export type ArtistLinkExecutor = Pick<typeof db, "query" | "execute">;
+export type ArtistLinkWriteMode = "overwrite" | "fill_empty";
+export type ArtistLinkBioMode = "invalidate" | "preserve";
+export type ArtistLinkWriteResult = {
+  oldValue: string | null;
+  artistName: string | null;
+  status: "written" | "unchanged" | "conflict";
+};
+
 export function sanitizeColumnName(siteName: string): string {
   return siteName.replace(/[^a-zA-Z0-9_]/g, "");
 }
@@ -50,38 +59,144 @@ function getArtistLinkValue(artist: object, columnName: string): string | null {
   return ((artist as Record<string, unknown>)[propertyName] as string | null | undefined) ?? null;
 }
 
+/**
+ * Transaction-aware primitive for artist link/ID columns.
+ *
+ * Existing edit flows use overwrite + invalidate. Automated research uses
+ * fill_empty + preserve so it cannot replace curated data or trigger content
+ * work that is outside the research phase.
+ */
+export async function writeArtistLinkValue(params: {
+  database: ArtistLinkExecutor;
+  artistId: string;
+  siteName: string;
+  value: string;
+  mode: ArtistLinkWriteMode;
+  bioMode: ArtistLinkBioMode;
+  replaceIfValue?: string;
+}): Promise<ArtistLinkWriteResult> {
+  const {
+    database,
+    artistId,
+    siteName,
+    value,
+    mode,
+    bioMode,
+    replaceIfValue,
+  } = params;
+  const columnName = sanitizeColumnName(siteName);
+  assertWritable(columnName);
+
+  const artist = await database.query.artists.findFirst({
+    where: eq(artists.id, artistId),
+  });
+  if (!artist) {
+    throw new Error(`Artist not found: ${artistId}`);
+  }
+  if (!value) {
+    throw new Error("Value must not be empty");
+  }
+
+  const oldValue = getArtistLinkValue(artist, columnName);
+  const hasExistingValue = Boolean(oldValue?.trim());
+  if (mode === "fill_empty" && hasExistingValue) {
+    if (oldValue === value) {
+      return {
+        oldValue,
+        artistName: artist.name ?? null,
+        status: "unchanged",
+      };
+    }
+    if (replaceIfValue === undefined || oldValue !== replaceIfValue) {
+      return {
+        oldValue,
+        artistName: artist.name ?? null,
+        status: "conflict",
+      };
+    }
+  }
+
+  const shouldInvalidateBio =
+    bioMode === "invalidate" && BIO_RELEVANT_COLUMNS.includes(columnName);
+  if (mode === "fill_empty") {
+    const canReplaceExpectedValue = replaceIfValue !== undefined;
+    const writtenRows = shouldInvalidateBio
+      ? await database.execute<{ id: string }>(
+          sql`UPDATE artists
+              SET ${sql.identifier(columnName)} = ${value}, bio = NULL
+              WHERE id = ${artistId}
+                AND (
+                  ${sql.identifier(columnName)} IS NULL
+                  OR BTRIM(${sql.identifier(columnName)}) = ''
+                  OR (${canReplaceExpectedValue} AND ${sql.identifier(columnName)} = ${replaceIfValue ?? ""})
+                )
+              RETURNING id`,
+        )
+      : await database.execute<{ id: string }>(
+          sql`UPDATE artists
+              SET ${sql.identifier(columnName)} = ${value}
+              WHERE id = ${artistId}
+                AND (
+                  ${sql.identifier(columnName)} IS NULL
+                  OR BTRIM(${sql.identifier(columnName)}) = ''
+                  OR (${canReplaceExpectedValue} AND ${sql.identifier(columnName)} = ${replaceIfValue ?? ""})
+                )
+              RETURNING id`,
+        );
+
+    if (writtenRows.length === 0) {
+      // A concurrent write populated the field after the read above. Re-read
+      // rather than overwriting it.
+      const latestArtist = await database.query.artists.findFirst({
+        where: eq(artists.id, artistId),
+      });
+      if (!latestArtist) {
+        throw new Error(`Artist not found: ${artistId}`);
+      }
+      const latestValue = getArtistLinkValue(latestArtist, columnName);
+      return {
+        oldValue: latestValue,
+        artistName: latestArtist.name ?? null,
+        status: latestValue === value ? "unchanged" : "conflict",
+      };
+    }
+  } else if (shouldInvalidateBio) {
+    await database.execute(
+      sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value}, bio = NULL WHERE id = ${artistId}`,
+    );
+  } else {
+    await database.execute(
+      sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`,
+    );
+  }
+
+  return {
+    oldValue,
+    artistName: artist.name ?? null,
+    status: "written",
+  };
+}
+
 export async function setArtistLink(
   artistId: string,
   siteName: string,
   value: string
 ): Promise<{ oldValue: string | null; artistName: string | null }> {
   const columnName = sanitizeColumnName(siteName);
-  assertWritable(columnName);
-
-  // Fetch full row to capture oldValue for audit trail (MCP callers use the return value)
-  const artist = await db.query.artists.findFirst({
-    where: eq(artists.id, artistId),
+  const result = await writeArtistLinkValue({
+    database: db,
+    artistId,
+    siteName: columnName,
+    value,
+    mode: "overwrite",
+    bioMode: "invalidate",
   });
-  if (!artist) {
-    throw new Error(`Artist not found: ${artistId}`);
-  }
 
-  if (!value) {
-    throw new Error("Value must not be empty");
-  }
-
-  // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
-  const oldValue = getArtistLinkValue(artist, columnName);
-
-  // For bio-relevant columns, set value and null bio in a single statement
   if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
-    await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value}, bio = NULL WHERE id = ${artistId}`);
     regenerateArtistBio(artistId).catch((e) => console.error("[artistLinkService] Bio regen failed", e));
-  } else {
-    await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
   }
 
-  return { oldValue, artistName: artist.name ?? null };
+  return { oldValue: result.oldValue, artistName: result.artistName };
 }
 
 export async function clearArtistLink(
