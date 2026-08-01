@@ -30,15 +30,22 @@ import {
 
 type ResearchDatabase = Pick<typeof db, "transaction">;
 
-export type ResearchFindingConflict = {
-  reason:
-    | "existing_artist_value"
-    | "platform_id_owned_by_another_artist"
-    | "mapping_conflict";
-  field?: string;
-  existingValue?: string;
-  conflictingArtistId?: string;
-};
+export type ResearchFindingConflict =
+  | {
+      reason: "existing_artist_value";
+      field: string;
+      existingValue?: string;
+    }
+  | {
+      reason: "platform_id_owned_by_another_artist";
+      conflictingArtistId?: string;
+    }
+  | { reason: "mapping_conflict" }
+  | {
+      reason: "conflicting_findings";
+      candidateValues: string[];
+      candidateFindings: ResearchFinding[];
+    };
 
 export type ApplyResearchFindingResult = {
   finding: ResearchFinding;
@@ -155,12 +162,26 @@ function mergeEquivalentFindings(
   };
 }
 
+type NormalizedResearchWorkItem =
+  | { type: "finding"; finding: ResearchFinding }
+  | {
+      type: "conflict";
+      finding: ResearchFinding;
+      conflict: Extract<
+        ResearchFindingConflict,
+        { reason: "conflicting_findings" }
+      >;
+    };
+
 function validateAndNormalizeFindings(
   findings: readonly ResearchFinding[],
-): ResearchFinding[] {
+): NormalizedResearchWorkItem[] {
   const confidenceValues = new Set<string>(RESEARCH_CONFIDENCE_VALUES);
   const sourceValues = new Set<string>(RESEARCH_SOURCE_VALUES);
-  const byPlatform = new Map<ResearchPlatform, ResearchFinding>();
+  const byPlatform = new Map<
+    ResearchPlatform,
+    Map<string, ResearchFinding>
+  >();
   const withoutStorageByPlatformValue = new Map<string, ResearchFinding>();
 
   for (const finding of findings) {
@@ -201,27 +222,45 @@ function validateAndNormalizeFindings(
       continue;
     }
 
-    const existing = byPlatform.get(finding.platform);
-    if (existing && existing.value !== value) {
-      throw new Error(
-        `Conflicting findings for ${finding.platform}: ${existing.value} and ${value}`,
-      );
-    }
+    const findingsByValue = byPlatform.get(finding.platform) ?? new Map();
+    const existing = findingsByValue.get(value);
     if (existing) {
-      byPlatform.set(
-        finding.platform,
+      findingsByValue.set(
+        value,
         mergeEquivalentFindings(existing, normalizedFinding),
       );
     } else {
-      byPlatform.set(finding.platform, normalizedFinding);
+      findingsByValue.set(value, normalizedFinding);
     }
+    byPlatform.set(finding.platform, findingsByValue);
   }
 
   return [
-    ...byPlatform.values(),
+    ...[...byPlatform.values()].map((findingsByValue) => {
+      const candidateFindings = [...findingsByValue.values()].sort((a, b) =>
+        a.value.localeCompare(b.value),
+      );
+      const finding = candidateFindings[0];
+
+      if (candidateFindings.length === 1) {
+        return { type: "finding" as const, finding };
+      }
+
+      return {
+        type: "conflict" as const,
+        // `finding` remains populated for the existing per-result contract,
+        // but no candidate is selected as a winner or sent to storage.
+        finding,
+        conflict: {
+          reason: "conflicting_findings" as const,
+          candidateValues: candidateFindings.map((candidate) => candidate.value),
+          candidateFindings,
+        },
+      };
+    }),
     ...[...withoutStorageByPlatformValue.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, finding]) => finding),
+      .map(([, finding]) => ({ type: "finding" as const, finding })),
   ];
 }
 
@@ -398,14 +437,24 @@ export async function applyResearchFindings(
   },
   database: ResearchDatabase = db,
 ): Promise<ApplyResearchFindingsResult> {
-  const findings = validateAndNormalizeFindings(params.findings);
+  const workItems = validateAndNormalizeFindings(params.findings);
   const results: ApplyResearchFindingResult[] = [];
 
-  for (const finding of findings) {
+  for (const workItem of workItems) {
+    if (workItem.type === "conflict") {
+      results.push({
+        finding: workItem.finding,
+        status: "conflict",
+        mutated: false,
+        conflict: workItem.conflict,
+      });
+      continue;
+    }
+
     results.push(
       await applySingleResearchFinding(
         params.artistId,
-        finding,
+        workItem.finding,
         params.apiKeyHash,
         database,
       ),

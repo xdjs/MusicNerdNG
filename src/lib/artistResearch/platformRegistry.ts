@@ -68,6 +68,10 @@ function firstPathSegment(url: URL): string | null {
   return pathParts(url)?.[0] ?? null;
 }
 
+// Wikidata P2397 stores a YouTube channel ID. The same channel ID resolves on
+// both YouTube and YouTube Music, so those platforms intentionally share it.
+const YOUTUBE_CHANNEL_ID_WIKIDATA_PROPERTY = "P2397";
+
 function matchingValue(
   value: string | null,
   pattern: RegExp,
@@ -198,7 +202,7 @@ const DEFINITIONS: Record<ResearchPlatform, ResearchPlatformDefinition> = {
     key: "youtube_music",
     label: "YouTube Music",
     kind: "platform_id",
-    wikidataProperty: "P2397",
+    wikidataProperty: YOUTUBE_CHANNEL_ID_WIKIDATA_PROPERTY,
     wikidataVariable: "youtubeMusic",
     buildUrl: (value) => `https://music.youtube.com/channel/${encodeURIComponent(value)}`,
     extractFromUrl: (url) =>
@@ -299,7 +303,7 @@ const DEFINITIONS: Record<ResearchPlatform, ResearchPlatformDefinition> = {
     label: "YouTube",
     kind: "social_link",
     artistColumn: "youtubechannel",
-    wikidataProperty: "P2397",
+    wikidataProperty: YOUTUBE_CHANNEL_ID_WIKIDATA_PROPERTY,
     wikidataVariable: "youtube",
     buildUrl: (value) => `https://www.youtube.com/channel/${encodeURIComponent(value)}`,
     extractFromUrl: (url) =>

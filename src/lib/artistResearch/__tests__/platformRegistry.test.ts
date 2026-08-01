@@ -31,6 +31,23 @@ describe("artist research platform registry", () => {
     expect(properties.get("official_website")).toBe("P856");
   });
 
+  it("reuses Wikidata YouTube channel IDs for YouTube and YouTube Music", () => {
+    const channelId = "UC123";
+
+    expect(RESEARCH_PLATFORM_REGISTRY.youtube_channel.wikidataProperty).toBe(
+      "P2397",
+    );
+    expect(RESEARCH_PLATFORM_REGISTRY.youtube_music.wikidataProperty).toBe(
+      RESEARCH_PLATFORM_REGISTRY.youtube_channel.wikidataProperty,
+    );
+    expect(buildResearchPlatformUrl("youtube_channel", channelId)).toBe(
+      `https://www.youtube.com/channel/${channelId}`,
+    );
+    expect(buildResearchPlatformUrl("youtube_music", channelId)).toBe(
+      `https://music.youtube.com/channel/${channelId}`,
+    );
+  });
+
   it("builds public URLs from native IDs and handles", () => {
     expect(buildResearchPlatformUrl("spotify", "abc123")).toBe(
       "https://open.spotify.com/artist/abc123",

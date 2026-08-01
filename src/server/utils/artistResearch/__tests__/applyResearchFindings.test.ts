@@ -303,19 +303,99 @@ describe("applyResearchFindings", () => {
     expect(result.results[1].mapping).toBeUndefined();
   });
 
-  it("rejects order-dependent duplicate findings before starting work", async () => {
+  it("isolates competing platform values and applies unrelated findings", async () => {
     const { db, applyResearchFindings } = await setup();
 
-    await expect(
-      applyResearchFindings({
-        artistId: "artist-123",
-        findings: [
-          spotifyFinding,
-          { ...spotifyFinding, value: "different-id" },
-        ],
+    const result = await applyResearchFindings({
+      artistId: "artist-123",
+      findings: [
+        {
+          ...spotifyFinding,
+          value: "z-spotify-id",
+          confidence: "low",
+          source: "web_search",
+          reasoning: "fallback candidate",
+          evidence: [
+            {
+              type: "url",
+              value: "https://open.spotify.com/artist/z-spotify-id",
+            },
+          ],
+        },
+        {
+          kind: "social_link",
+          platform: "instagram",
+          value: "@testartist",
+          confidence: "high",
+          source: "wikidata",
+        },
+        {
+          ...spotifyFinding,
+          value: "a-spotify-id",
+          evidence: [{ type: "identifier", value: "a-spotify-id" }],
+        },
+        {
+          ...spotifyFinding,
+          value: "z-spotify-id",
+          source: "musicbrainz",
+          reasoning: "stronger candidate evidence",
+          evidence: [{ type: "identifier", value: "z-spotify-id" }],
+        },
+      ],
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        appliedCount: 1,
+        conflictCount: 1,
+        errorCount: 0,
       }),
-    ).rejects.toThrow("Conflicting findings for spotify");
-    expect(db.transaction).not.toHaveBeenCalled();
+    );
+    expect(result.results[0]).toEqual(
+      expect.objectContaining({
+        finding: expect.objectContaining({
+          platform: "spotify",
+          value: "a-spotify-id",
+        }),
+        status: "conflict",
+        mutated: false,
+        conflict: {
+          reason: "conflicting_findings",
+          candidateValues: ["a-spotify-id", "z-spotify-id"],
+          candidateFindings: [
+            expect.objectContaining({
+              value: "a-spotify-id",
+              evidence: [{ type: "identifier", value: "a-spotify-id" }],
+            }),
+            expect.objectContaining({
+              value: "z-spotify-id",
+              confidence: "high",
+              source: "musicbrainz",
+              reasoning: "fallback candidate | stronger candidate evidence",
+              evidence: expect.arrayContaining([
+                { type: "identifier", value: "z-spotify-id" },
+                {
+                  type: "url",
+                  value: "https://open.spotify.com/artist/z-spotify-id",
+                },
+              ]),
+            }),
+          ],
+        },
+      }),
+    );
+    expect(result.results[1]).toEqual(
+      expect.objectContaining({
+        finding: expect.objectContaining({
+          platform: "instagram",
+          value: "testartist",
+        }),
+        status: "applied",
+      }),
+    );
+    // Only Instagram gets a transaction; neither Spotify candidate is stored.
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(db.execute).toHaveBeenCalledTimes(1);
   });
 
   it("deterministically keeps the strongest equivalent finding", async () => {
