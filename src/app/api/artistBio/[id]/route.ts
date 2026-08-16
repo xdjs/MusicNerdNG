@@ -44,9 +44,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     //If the artist lacks vital info (instagram, X, Youtube etc), then display a generic message from the aiprompts table
-    if (!forceRegenerate && !artist.bio && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
-      const testBio = "MusicNerd needs artist data to generate a summary. Try adding some to get started!";
-      return NextResponse.json({ bio: testBio }, { headers: CORS_HEADERS });
+    // Empty-state only when there's NO usable identity anchor at all (no bio, no
+    // Spotify, no socials). A Spotify ID alone is enough to generate a grounded About.
+    if (!forceRegenerate && !artist.bio && !artist.spotify && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
+      const emptyState = "We couldn't find enough verified information about this artist yet — and Music Nerd won't guess. If this is you, claim your profile and add a few sources, and your About will fill in within seconds.";
+      return NextResponse.json({ bio: emptyState }, { headers: CORS_HEADERS });
     }
 
     // If bio already exists in the database and not forcing regeneration, return cached

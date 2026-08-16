@@ -16,10 +16,21 @@ jest.mock("@/server/utils/queries/artistQueries", () => ({
 }));
 
 jest.mock("@/server/utils/queries/externalApiQueries", () => ({
-  getSpotifyHeaders: jest.fn(),
+  getSpotifyHeaders: jest.fn().mockResolvedValue({ headers: {} }),
   getSpotifyArtist: jest.fn(),
   getArtistTopTrackName: jest.fn(),
   getNumberOfSpotifyReleases: jest.fn(),
+  getSpotifyCatalogNames: jest.fn().mockResolvedValue({ releases: [], topTracks: [] }),
+}));
+
+const mockResolveGrounding = jest.fn().mockResolvedValue(null);
+jest.mock("@/server/utils/verifiedGrounding", () => ({
+  resolveVerifiedGrounding: (...args: unknown[]) => mockResolveGrounding(...args),
+}));
+
+const mockSearchAndPopulate = jest.fn().mockResolvedValue([]);
+jest.mock("@/server/utils/queries/vaultWebSearch", () => ({
+  searchAndPopulateVault: (...args: unknown[]) => mockSearchAndPopulate(...args),
 }));
 
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
@@ -42,6 +53,10 @@ describe("artistBioQuery", () => {
     jest.resetModules();
     mockGenerateContent.mockClear();
     mockGenerateContent.mockResolvedValue({ text: "mocked gemini response" });
+    mockResolveGrounding.mockClear();
+    mockResolveGrounding.mockResolvedValue(null);
+    mockSearchAndPopulate.mockClear();
+    mockSearchAndPopulate.mockResolvedValue([]);
   });
 
   async function setup() {
@@ -108,9 +123,79 @@ describe("artistBioQuery", () => {
     const callArgs = (mockGenerateContent as jest.Mock).mock.calls[0][0];
     expect(callArgs.model).toBe("gemini-2.5-pro");
     expect(callArgs.contents).toContain("Test Artist");
-    expect(callArgs.contents).toContain("Spotify ID: spotify-123");
+    expect(callArgs.contents).toContain("open.spotify.com/artist/spotify-123");
+    expect(callArgs.contents).not.toContain("Spotify ID: spotify-123"); // no bare ID anymore
     expect(callArgs.contents).toContain("Instagram: https://instagram.com/testinsta");
     expect(callArgs.contents).toContain("X: https://x.com/testx");
+  });
+
+  it("anchors identity + enforces guardrails, and uses 'Music Nerd' (two words)", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    getArtistById.mockResolvedValue({
+      id: "a1", name: "Black Dave MK2", spotify: "7cOl6pCLdiRKfC8nnNQ0ax",
+      instagram: null, x: null, soundcloud: null, youtube: null, youtubechannel: null, wikipedia: null,
+    });
+
+    await generateArtistBio("a1");
+
+    const call = (mockGenerateContent as jest.Mock).mock.calls[0][0];
+    const sys = call.config.systemInstruction;
+    expect(sys).toContain("Music Nerd");
+    expect(sys).not.toMatch(/MusicNerd\b/);            // brand fixed
+    expect(sys).toMatch(/IDENTITY/i);                   // identity anchoring
+    expect(sys).toMatch(/CATALOG IS GROUND TRUTH|discard it entirely/i); // catalog-anchor disambiguation (Sammie fix)
+    expect(sys).toMatch(/collaborated with|Association is not/i); // relationship precision
+    expect(sys).toMatch(/your own words|Never copy/i);  // originality/no-verbatim
+  });
+
+  it("injects verified encyclopedic grounding + real catalog when available", async () => {
+    const { generateArtistBio, getArtistById } = await setup();
+    const external = await import("@/server/utils/queries/externalApiQueries");
+    (external.getSpotifyCatalogNames as jest.Mock).mockResolvedValue({
+      releases: ["SS23", "Aspiring Gundam Pilot"], topTracks: ["Lavender"],
+    });
+    mockResolveGrounding.mockResolvedValue({
+      source: "wikipedia", url: "https://en.wikipedia.org/wiki/X", extract: "Dave Curry is a musician from Charleston.",
+    });
+    getArtistById.mockResolvedValue({
+      id: "a2", name: "Black Dave MK2", spotify: "7cOl6pCLdiRKfC8nnNQ0ax",
+      instagram: null, x: null, soundcloud: null, youtube: null, youtubechannel: null, wikipedia: null,
+    });
+
+    await generateArtistBio("a2");
+
+    const contents = (mockGenerateContent as jest.Mock).mock.calls[0][0].contents;
+    expect(contents).toContain("Charleston");        // grounding injected
+    expect(contents).toContain("SS23");              // real releases injected
+    expect(contents).toContain("Aspiring Gundam Pilot");
+    expect(contents).toContain("Lavender");          // top track injected
+  });
+
+  it("discovers sources into the vault (pending) when the vault is empty", async () => {
+    const { generateArtistBio, getArtistById, getVaultSourcesByArtistId } = await setup();
+    getVaultSourcesByArtistId.mockResolvedValue([]); // approved + pending both empty
+    getArtistById.mockResolvedValue({
+      id: "a3", name: "Thin Artist", spotify: "sp3",
+      instagram: null, x: null, soundcloud: null, youtube: null, youtubechannel: null, wikipedia: null,
+    });
+
+    await generateArtistBio("a3");
+
+    expect(mockSearchAndPopulate).toHaveBeenCalledWith("a3");
+  });
+
+  it("does NOT discover sources when the vault already has approved sources", async () => {
+    const { generateArtistBio, getArtistById, getVaultSourcesByArtistId } = await setup();
+    getVaultSourcesByArtistId.mockImplementation((_id: string, status: string) =>
+      Promise.resolve(status === "approved" ? [{ url: "http://e/1", title: "T", snippet: "s", extractedText: "x" }] : []));
+    getArtistById.mockResolvedValue({
+      id: "a4", name: "Curated Artist", spotify: "sp4",
+      instagram: null, x: null, soundcloud: null, youtube: null, youtubechannel: null, wikipedia: null,
+    });
+
+    await generateArtistBio("a4");
+
+    expect(mockSearchAndPopulate).not.toHaveBeenCalled();
   });
 
   it("saves bio to DB on success", async () => {

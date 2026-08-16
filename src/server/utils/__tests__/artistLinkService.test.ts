@@ -51,12 +51,13 @@ describe("artistLinkService", () => {
     expect(result).toEqual({ oldValue: null, artistName: "Test Artist" });
   });
 
-  // 5. setArtistLink triggers bio regen for prompt-relevant column
-  it("setArtistLink triggers bio regeneration for prompt-relevant column", async () => {
+  // 5. setArtistLink no longer auto-regenerates the bio on a link change (it used
+  // to, which clobbered artist edits + re-ran generation on every submission).
+  it("setArtistLink does NOT regenerate the bio on a prompt-relevant column change", async () => {
     const { db, setArtistLink, regenerateArtistBio } = await setup();
     await setArtistLink("artist-123", "instagram", "testuser");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(regenerateArtistBio).toHaveBeenCalledWith("artist-123");
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
   });
 
   // 6. setArtistLink does NOT trigger bio regen for non-relevant column
@@ -95,12 +96,12 @@ describe("artistLinkService", () => {
     expect(result).toEqual({ oldValue: null });
   });
 
-  // 11. clearArtistLink triggers bio regen for prompt-relevant column
-  it("clearArtistLink triggers bio regeneration for prompt-relevant column", async () => {
+  // 11. clearArtistLink no longer auto-regenerates the bio on a link change.
+  it("clearArtistLink does NOT regenerate the bio on a prompt-relevant column change", async () => {
     const { db, clearArtistLink, regenerateArtistBio } = await setup();
     await clearArtistLink("artist-123", "x");
     expect(db.execute).toHaveBeenCalledTimes(1);
-    expect(regenerateArtistBio).toHaveBeenCalledWith("artist-123");
+    expect(regenerateArtistBio).not.toHaveBeenCalled();
   });
 
   // 12. clearArtistLink does NOT trigger bio regen for non-relevant column
