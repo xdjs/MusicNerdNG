@@ -9,6 +9,7 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import { sanitizeBioText } from "@/lib/bioText";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
+import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 
 /**
  * Generate an artist bio using Gemini Pro with Google Search grounding.
@@ -94,17 +95,30 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
   // Include approved vault sources as additional context
   let hasVaultContext = false;
   try {
-    const vaultSources = await getVaultSourcesByArtistId(artistId, "approved");
-    console.log(`[bio] Found ${vaultSources.length} approved vault sources for artist ${artistId}`);
-    if (vaultSources.length > 0) {
+    const [approved, pending] = await Promise.all([
+      getVaultSourcesByArtistId(artistId, "approved"),
+      getVaultSourcesByArtistId(artistId, "pending"),
+    ]);
+    console.log(`[bio] Found ${approved.length} approved / ${pending.length} pending vault sources for artist ${artistId}`);
+    if (approved.length > 0) {
       hasVaultContext = true;
-      const vaultContext = vaultSources.map(s => {
+      const vaultContext = approved.map(s => {
         const parts = [`Source: ${s.title ?? s.url}`];
         if (s.snippet) parts.push(s.snippet);
         if (s.extractedText) parts.push(s.extractedText.slice(0, 2000));
         return parts.join(" — ");
       }).join("\n");
       promptParts.push(`\n--- ARTIST-PROVIDED VAULT CONTEXT (USE THIS AS PRIMARY SOURCE) ---\n${vaultContext}\n--- END VAULT CONTEXT ---`);
+    }
+
+    // Connect the About's sources to the vault: when the vault is empty, discover
+    // sources into the PENDING queue (clean, redirect-resolved, dedup'd, curatable)
+    // via the same pipeline as the "Search web for sources" button. Best-effort,
+    // fire-and-forget — never blocks or fails generation; retried on the next
+    // generation if serverless cuts it short (the vault is still empty). Gated on an
+    // empty vault so it doesn't re-run once there's a pending queue to curate.
+    if (approved.length === 0 && pending.length === 0) {
+      searchAndPopulateVault(artistId).catch(e => console.error("[bio] vault source discovery failed:", e));
     }
   } catch (e) {
     console.error("Error fetching vault sources for bio:", e);

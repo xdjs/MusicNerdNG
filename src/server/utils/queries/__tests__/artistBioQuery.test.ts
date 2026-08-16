@@ -28,6 +28,11 @@ jest.mock("@/server/utils/verifiedGrounding", () => ({
   resolveVerifiedGrounding: (...args: unknown[]) => mockResolveGrounding(...args),
 }));
 
+const mockSearchAndPopulate = jest.fn().mockResolvedValue([]);
+jest.mock("@/server/utils/queries/vaultWebSearch", () => ({
+  searchAndPopulateVault: (...args: unknown[]) => mockSearchAndPopulate(...args),
+}));
+
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
   getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
 }));
@@ -50,6 +55,8 @@ describe("artistBioQuery", () => {
     mockGenerateContent.mockResolvedValue({ text: "mocked gemini response" });
     mockResolveGrounding.mockClear();
     mockResolveGrounding.mockResolvedValue(null);
+    mockSearchAndPopulate.mockClear();
+    mockSearchAndPopulate.mockResolvedValue([]);
   });
 
   async function setup() {
@@ -161,6 +168,33 @@ describe("artistBioQuery", () => {
     expect(contents).toContain("SS23");              // real releases injected
     expect(contents).toContain("Aspiring Gundam Pilot");
     expect(contents).toContain("Lavender");          // top track injected
+  });
+
+  it("discovers sources into the vault (pending) when the vault is empty", async () => {
+    const { generateArtistBio, getArtistById, getVaultSourcesByArtistId } = await setup();
+    getVaultSourcesByArtistId.mockResolvedValue([]); // approved + pending both empty
+    getArtistById.mockResolvedValue({
+      id: "a3", name: "Thin Artist", spotify: "sp3",
+      instagram: null, x: null, soundcloud: null, youtube: null, youtubechannel: null, wikipedia: null,
+    });
+
+    await generateArtistBio("a3");
+
+    expect(mockSearchAndPopulate).toHaveBeenCalledWith("a3");
+  });
+
+  it("does NOT discover sources when the vault already has approved sources", async () => {
+    const { generateArtistBio, getArtistById, getVaultSourcesByArtistId } = await setup();
+    getVaultSourcesByArtistId.mockImplementation((_id: string, status: string) =>
+      Promise.resolve(status === "approved" ? [{ url: "http://e/1", title: "T", snippet: "s", extractedText: "x" }] : []));
+    getArtistById.mockResolvedValue({
+      id: "a4", name: "Curated Artist", spotify: "sp4",
+      instagram: null, x: null, soundcloud: null, youtube: null, youtubechannel: null, wikipedia: null,
+    });
+
+    await generateArtistBio("a4");
+
+    expect(mockSearchAndPopulate).not.toHaveBeenCalled();
   });
 
   it("saves bio to DB on success", async () => {
