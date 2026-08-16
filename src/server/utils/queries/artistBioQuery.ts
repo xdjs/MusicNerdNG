@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { sanitizeBioText } from "@/lib/bioText";
+import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
+import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 
 /**
  * Generate an artist bio using Gemini Pro with Google Search grounding.
@@ -41,7 +43,7 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
 
   // Put all informational sections of prompt together
   const promptParts: string[] = [];
-  if (artist.spotify) promptParts.push(`Spotify ID: ${artist.spotify}`);
+  if (artist.spotify) promptParts.push(`Spotify (verified identity): https://open.spotify.com/artist/${artist.spotify}`);
   if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
   if (artist.x) promptParts.push(`X: https://x.com/${artist.x}`);
   if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
@@ -65,6 +67,28 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
       `Authoritative identity anchors (use these to confirm exactly which artist this is; prefer facts they support):\n${anchors.join("\n")}`
     );
   }
+  // Verified encyclopedic grounding (conflation-safe: resolved by Spotify ID via
+  // Wikidata → Wikipedia, never by name) + the artist's REAL catalog names. These
+  // are the strongest anti-conflation levers: facts the generator can't invent around.
+  if (artist.spotify) {
+    const grounding = await resolveVerifiedGrounding(artist.spotify).catch(() => null);
+    if (grounding) {
+      promptParts.push(`Verified encyclopedic source (facts only — do NOT copy wording):\n${grounding.extract}`);
+    }
+    try {
+      const headers = await getSpotifyHeaders();
+      const catalog = await getSpotifyCatalogNames(artist.spotify, headers);
+      if (catalog.releases.length > 0) {
+        promptParts.push(`Verified releases (from their Spotify — these are their ONLY real releases; do NOT attribute any release not consistent with this list): ${catalog.releases.join(", ")}`);
+      }
+      if (catalog.topTracks.length > 0) {
+        promptParts.push(`Verified top tracks: ${catalog.topTracks.join(", ")}`);
+      }
+    } catch (e) {
+      console.error("[bio] Spotify catalog fetch failed:", e);
+    }
+  }
+
   if (platformBioData) promptParts.push(`Music Platform Data: ${platformBioData}`);
 
   // Include approved vault sources as additional context
@@ -92,7 +116,7 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
 
     const geminiStartTime = Date.now();
 
-    const musicNerdVoice = `You write clean, factual artist bios for MusicNerd, a music discovery platform. Think well-written encyclopedia entry, not a review or press release. Tell the reader who this artist is and what they're known for — accurately, without embellishment.
+    const musicNerdVoice = `You write clean, factual artist bios for Music Nerd, a music discovery platform. Think well-written encyclopedia entry, not a review or press release. Tell the reader who this artist is and what they're known for — accurately, without embellishment.
 
 Write ONE paragraph, up to ~100 words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.
 
@@ -108,7 +132,12 @@ Rules:
 - If you genuinely cannot verify anything beyond the name, write ONE neutral sentence, e.g. "[Name] is a musician; limited verified information is currently available." Never explain your process, never refer to "the provided information", never output a refusal or an empty bio.
 - No editorializing. Don't tell the reader why the work "matters," don't say the artist is "showing" or "proving" something, and don't append interpretive clauses to facts. Report the fact and stop.
 - Banned hype words: "emerging", "rising", "boundary-pushing", "eclectic", "versatile", "undeniable", "sonic", "soundscape", "artist to watch", "cross-genre draw", "carving out". Banned resume-speak: "leveraged", "spearheaded", "secured", "integrated".
-- Plain, direct sentences. No social links in the bio text.`;
+- Plain, direct sentences. No social links in the bio text.
+
+GUARDRAILS (critical — accuracy over completeness):
+- IDENTITY: The Spotify page, linked socials, and any verified releases provided ABOVE identify this exact artist. Use only facts consistent with them. Other artists may share this name — ignore them entirely; when unsure whether a fact is about THIS artist, omit it.
+- RELATIONSHIP PRECISION: Do not say the artist "collaborated with", "worked with", "produced", "featured", or is "part of" another artist/group unless the exact nature is explicitly documented. Two names appearing together is NOT collaboration — never upgrade an association into a collaboration. Omit if unsure.
+- ORIGINALITY: Write entirely in your own words. Never copy sentences or phrasing from any source.`;
 
     const systemPrompt = hasVaultContext
       ? `${musicNerdVoice}
