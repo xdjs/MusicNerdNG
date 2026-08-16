@@ -150,6 +150,7 @@ Rules:
 
 GUARDRAILS (critical — accuracy over completeness):
 - IDENTITY: The Spotify page, linked socials, and any verified releases provided ABOVE identify this exact artist. Use only facts consistent with them. Other artists may share this name — ignore them entirely; when unsure whether a fact is about THIS artist, omit it.
+- CATALOG IS GROUND TRUTH: The "Verified releases" listed above are this artist's ACTUAL catalog. If a source or web result describes a different body of work — releases, hits, or a career timeline that do NOT match the verified releases — it is about a DIFFERENT artist who shares the name; discard it entirely. Never merge another artist's history, releases, or biography onto this one. If, after discarding mismatched material, you cannot verify real context about this artist beyond the bare release list, do NOT pad with a track listing — say limited verified information is available.
 - RELATIONSHIP PRECISION: Do not say the artist "collaborated with", "worked with", "produced", "featured", or is "part of" another artist/group unless the exact nature is explicitly documented. Two names appearing together is NOT collaboration — never upgrade an association into a collaboration. Omit if unsure.
 - ORIGINALITY: Write entirely in your own words. Never copy sentences or phrasing from any source.`;
 

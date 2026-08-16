@@ -143,6 +143,7 @@ describe("artistBioQuery", () => {
     expect(sys).toContain("Music Nerd");
     expect(sys).not.toMatch(/MusicNerd\b/);            // brand fixed
     expect(sys).toMatch(/IDENTITY/i);                   // identity anchoring
+    expect(sys).toMatch(/CATALOG IS GROUND TRUTH|discard it entirely/i); // catalog-anchor disambiguation (Sammie fix)
     expect(sys).toMatch(/collaborated with|Association is not/i); // relationship precision
     expect(sys).toMatch(/your own words|Never copy/i);  // originality/no-verbatim
   });
