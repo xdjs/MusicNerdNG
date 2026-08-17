@@ -276,6 +276,18 @@ describe('/api/artistBio/[id]', () => {
       expect(response.headers.get('Access-Control-Allow-Origin')).toBeTruthy(); // CORS on the 403/401
     });
 
+    it('returns 403 (with CORS) for an authenticated non-editor on GET ?regenerate=true', async () => {
+      const { GET, mockGetSession, mockGetUserById, mockGenerateArtistBio } = await setup();
+      mockGetSession.mockResolvedValue(regularSession);
+      mockGetUserById.mockResolvedValue({ id: 'regular-uuid', isAdmin: false }); // no claim, not admin
+
+      const response = await GET(createGetRegenerateRequest(), { params: paramsPromise });
+
+      expect(response.status).toBe(403);
+      expect(mockGenerateArtistBio).not.toHaveBeenCalled();
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBeTruthy();
+    });
+
     it('allows GET ?regenerate=true for an admin/editor', async () => {
       const { GET, mockGetSession, mockGetUserById, mockGetArtistById, mockGenerateArtistBio } = await setup();
       mockGetSession.mockResolvedValue(adminSession);

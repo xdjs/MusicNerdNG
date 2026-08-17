@@ -31,6 +31,15 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
+// Re-wrap an auth failure (from requireArtistEditor) with this route's CORS headers so it
+// matches every other response the route returns. Shared by GET (forced regen) and PUT.
+async function corsAuthFailure(auth: { response: Response }): Promise<NextResponse> {
+  return NextResponse.json(await auth.response.json(), {
+    status: auth.response.status,
+    headers: CORS_HEADERS,
+  });
+}
+
 
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -38,27 +47,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const url = new URL(request.url);
   const forceRegenerate = url.searchParams.get("regenerate") === "true";
 
-  // Forced regeneration bypasses the cache and triggers the expensive discovery + Gemini
-  // path, so gate it to admins / the artist who claimed the profile (same guard as PUT).
-  // Normal cached reads stay public. Re-wrap the auth response with CORS headers so it
-  // matches every other response this cross-origin-enabled route returns.
-  if (forceRegenerate) {
-    const auth = await requireArtistEditor(id);
-    if (!auth.authenticated) {
-      const body = await auth.response.text();
-      return new Response(body, {
-        status: auth.response.status,
-        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
-      });
-    }
-  }
-
   // Set a timeout for the entire operation to prevent Vercel timeouts
   const timeoutPromise = new Promise<NextResponse>((_, reject) =>
     setTimeout(() => reject(new Error('Bio generation timeout')), 57000) // 57s: fits inline discovery (~38s) + synthesis under the 60s maxDuration ceiling
   );
 
   const bioOperation = async (): Promise<NextResponse> => {
+    // Forced regeneration bypasses the cache and triggers the expensive discovery + Gemini
+    // path, so gate it to admins / the artist who claimed the profile (same guard as PUT).
+    // Normal cached reads stay public. Runs INSIDE the try/timeout race so a thrown or slow
+    // auth check gets the same graceful (CORS'd, timed) handling as the rest of the route.
+    if (forceRegenerate) {
+      const auth = await requireArtistEditor(id);
+      if (!auth.authenticated) return corsAuthFailure(auth);
+    }
+
     // Fetch artist row/object
     const artist = await getArtistById(id);
     if (!artist) {
@@ -131,14 +134,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const auth = await requireArtistEditor(id);
     if (!auth.authenticated) {
-      const body = await auth.response.text();
-      return new Response(body, {
-        status: auth.response.status,
-        headers: {
-          'Content-Type': 'application/json',
-          ...CORS_HEADERS,
-        },
-      });
+      return corsAuthFailure(auth);
     }
     const body = await request.json();
     const bio: string = body?.bio;
