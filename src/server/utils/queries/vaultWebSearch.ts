@@ -154,7 +154,7 @@ If you cannot find any results specifically about this artist, return an empty a
         // Resolve vertexaisearch redirect URLs to their real destinations in PARALLEL.
         // Each redirect fetch can take several seconds and there can be up to 8; doing
         // them sequentially could blow the request budget now that discovery runs inside
-        // About generation (bounded by the route's 45s race).
+        // About generation (bounded by the route's 57s race).
         const validResults = results.filter((r) => r.url && r.title);
         await Promise.all(
             validResults.map(async (r) => { r.url = await resolveRedirectUrl(r.url); })

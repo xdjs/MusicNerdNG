@@ -102,7 +102,7 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
   }
 
-  // Run every independent I/O concurrently so they overlap inside the route's 45s budget
+  // Run every independent I/O concurrently so they overlap inside the route's 57s budget
   // instead of summing. Platform stats (Deezer primary, Spotify fallback), verified-ID
   // grounding, the real catalog, and source-gathering all fire at once; each is bounded.
   const spotifyId = artist.spotify;
@@ -288,8 +288,8 @@ You have NO web access for this task. Write the About using ONLY the curated sou
 }
 
 /**
- * Simplified wrapper that returns just the bio string.
- * Used by artistLinkService for background bio regeneration.
+ * Simplified wrapper around generateArtistBio that returns just the bio string
+ * (or null on failure). Used by updateArtistBio for admin-triggered regeneration.
  */
 export async function regenerateArtistBio(artistId: string): Promise<string | null> {
   try {

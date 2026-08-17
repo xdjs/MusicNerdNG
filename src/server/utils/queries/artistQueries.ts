@@ -655,16 +655,22 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
 export async function updateArtistBio(artistId: string, bio: string, regenerate: boolean = false): Promise<RemoveArtistDataResp> {
     try {
         if (regenerate) {
-            // Generate new bio using Gemini
+            // Snapshot the current About so we can tell a real regeneration apart from a
+            // no-op (discovery is flaky; when it finds nothing new the clobber-guard in
+            // generateArtistBio preserves the existing bio unchanged).
+            const priorBio = (await getArtistById(artistId))?.bio ?? null;
             const generatedBio = await regenerateArtistBio(artistId);
             if (!generatedBio) {
                 return { status: "error", message: "Failed to generate bio" };
             }
-            // Discovery is flaky and can find nothing verifiable — in which case the About
-            // degrades to the claim-nudge. Surface that distinctly so an admin regenerate
-            // doesn't look like a normal success when it effectively found no sources.
+            // Discovery found nothing verifiable — the About degraded to the claim-nudge.
+            // Surface that distinctly so an admin regenerate doesn't look like a normal success.
             if (isAboutEmptyState(generatedBio)) {
                 return { status: "success", message: "No verified sources found — showing the claim prompt", data: generatedBio };
+            }
+            // Discovery found nothing new — the existing About was preserved, not regenerated.
+            if (priorBio !== null && generatedBio === priorBio) {
+                return { status: "success", message: "No new sources found — About unchanged", data: generatedBio };
             }
             return { status: "success", message: "Bio regenerated", data: generatedBio };
         } else {
