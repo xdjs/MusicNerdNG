@@ -46,19 +46,20 @@ describe("searchAndPopulateVault — retry on empty/unparseable response", () =>
     expect(result).toHaveLength(1);
   }, 15000);
 
-  it("enriches returned sources with fetched page content (extractedText) for immediate synthesis", async () => {
-    // The About generator synthesizes from the RETURN value on an artist's first-ever
-    // generation, so returned sources must carry extractedText, not just the snippet.
+  it("returns sources immediately and enriches page content in the background (not awaited)", async () => {
+    // Enrichment is fire-and-forget so it never adds latency to inline About generation;
+    // the snippet is enough for synthesis and the fuller text lands for later views.
     mockGenerate.mockResolvedValueOnce({
       text: '[{"url":"https://example.com/a","title":"A","snippet":"snip","type":"article"}]',
     });
 
+    const { fetchPageContent } = await import("@/server/utils/fetchPageContent");
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
     const result = await searchAndPopulateVault("a1");
 
     expect(result).toHaveLength(1);
-    // fetchPageContent mock returns extractedText: "t" — it must be reflected on the returned object.
-    expect(result[0].extractedText).toBe("t");
+    // Background enrichment fetch was fired (not awaited) for the inserted source.
+    expect(fetchPageContent).toHaveBeenCalledWith("https://example.com/a");
   }, 15000);
 
   it("returns [] after exhausting attempts if every response is empty", async () => {

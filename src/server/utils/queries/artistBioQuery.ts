@@ -15,13 +15,14 @@ import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 
 // Every I/O the generator does runs concurrently inside the route's budget, so each gets
 // its own bound: no single slow dependency can starve synthesis and 408 the request.
-// NOTE on DISCOVERY_TIMEOUT_MS: a single grounded Gemini discovery call measured ~33s in
-// practice (Google Search grounding does several sub-searches), so this bound must clear
-// one good call — it exists to cap RUNAWAY retries, not to truncate a normal run. It's the
-// dominant cost; grounding/catalog/platform run concurrently and finish in <1s.
+// NOTE on DISCOVERY_TIMEOUT_MS: grounded Gemini discovery calls measured ~12-33s each and
+// intermittently return empty (forcing a retry), so the full retry+redirect path is wide.
+// Page-content enrichment was moved OFF this path (fire-and-forget) precisely so it fits.
+// This bound must clear a normal 2-3 call run; it exists to cap RUNAWAY retries, not to
+// truncate success. Discovery dominates; grounding/catalog/platform overlap it in <1s.
 const PLATFORM_TIMEOUT_MS = 8000;   // Deezer/Spotify platform stats
 const IDENTITY_TIMEOUT_MS = 10000;  // verified-ID grounding + real catalog
-const DISCOVERY_TIMEOUT_MS = 35000; // source discovery (Gemini + page fetches). Whatever
+const DISCOVERY_TIMEOUT_MS = 38000; // source discovery (Gemini retries + redirects). Whatever
                                     // discovery inserted keeps running server-side and is
                                     // picked up (as pending) on the next generation.
 
@@ -260,9 +261,9 @@ You have NO web access for this task. Write the About using ONLY the curated sou
         },
       }),
       new Promise<never>((_, reject) =>
-        // Grounding-OFF synthesis measured ~8s; 18s is a generous cap that keeps
-        // discovery(≤35s) + synthesis inside the route's 55s race and the 60s ceiling.
-        setTimeout(() => reject(new Error('Gemini timeout')), 18000)
+        // Grounding-OFF synthesis measured ~8s; 15s is a generous cap that keeps
+        // discovery(≤38s) + synthesis inside the route's 57s race and the 60s ceiling.
+        setTimeout(() => reject(new Error('Gemini timeout')), 15000)
       )
     ]);
 

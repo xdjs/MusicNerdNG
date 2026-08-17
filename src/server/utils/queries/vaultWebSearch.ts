@@ -5,11 +5,8 @@ import { SOURCE_TYPES, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
-// Page-content enrichment runs inline before the About is synthesized (see the About
-// generator's discovery budget), so time-box it. External fetches fan out with plain
-// Promise.all — the result set is capped at 8 (see the discovery prompt), so bounded
-// concurrency (p-limit) isn't needed here.
-const ENRICH_TIMEOUT_MS = 8000;
+// External fetches (redirect resolution) fan out with plain Promise.all — the result set
+// is capped at 8 (see the discovery prompt), so bounded concurrency (p-limit) isn't needed.
 
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
@@ -194,6 +191,22 @@ If you cannot find any results specifically about this artist, return an empty a
                     status: "pending",
                 });
                 if (source) insertedSources.push(source);
+
+                // Fire-and-forget page-content enrichment: populate extractedText/ogImage in
+                // the background. Deliberately NOT awaited — this runs inside About generation
+                // (bounded by the route's budget), and a grounded discovery call is already
+                // slow (~12-33s). The snippet is enough for synthesis (validated on Black Dave
+                // + Grimes); the fuller text lands for later views/regenerations.
+                if (source?.id) {
+                    fetchPageContent(result.url).then(content => {
+                        updateVaultSourceContent(source.id, {
+                            title: content.title,
+                            snippet: content.snippet,
+                            extractedText: content.extractedText,
+                            ogImage: content.ogImage,
+                        }).catch(e => console.error("[vaultWebSearch] Background content update failed:", e));
+                    }).catch(e => console.error("[vaultWebSearch] Background fetch failed:", e));
+                }
             } catch (e) {
                 console.error("[vaultWebSearch] Failed to insert source:", result.url, e);
             }
@@ -201,35 +214,6 @@ If you cannot find any results specifically about this artist, return an empty a
 
         if (skipped > 0) {
             console.log(`[vaultWebSearch] Skipped ${skipped} duplicate(s) for "${artistName}"`);
-        }
-
-        // Enrich inserted sources with full page text, time-boxed. This populates
-        // extractedText on the RETURNED objects, so a caller that synthesizes immediately
-        // from the return value (the About generator's first-time discovery path) mines
-        // real page content — not just the 1-2 sentence snippet. Sources that don't finish
-        // in time keep their snippet; the same DB write still lands in the background so a
-        // later read/regenerate sees the full text.
-        if (insertedSources.length > 0) {
-            const enrichments = insertedSources.map(async (source) => {
-                try {
-                    const content = await fetchPageContent(source.url);
-                    await updateVaultSourceContent(source.id, {
-                        title: content.title,
-                        snippet: content.snippet,
-                        extractedText: content.extractedText,
-                        ogImage: content.ogImage,
-                    }).catch(e => console.error("[vaultWebSearch] Content update failed:", e));
-                    if (content.title) source.title = content.title;
-                    if (content.snippet) source.snippet = content.snippet;
-                    if (content.extractedText) source.extractedText = content.extractedText;
-                } catch (e) {
-                    console.error("[vaultWebSearch] Content fetch failed:", source.url, e);
-                }
-            });
-            await Promise.race([
-                Promise.allSettled(enrichments),
-                new Promise<void>((resolve) => setTimeout(resolve, ENRICH_TIMEOUT_MS)),
-            ]);
         }
 
         console.log(`[vaultWebSearch] Inserted ${insertedSources.length} sources for "${artistName}"`);
