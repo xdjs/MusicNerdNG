@@ -17,6 +17,11 @@ export async function resolveVerifiedGrounding(
   spotifyId: string | null | undefined
 ): Promise<VerifiedGrounding | null> {
   if (!spotifyId) return null;
+  // Spotify artist IDs are base62 (letters + digits). Reject anything else before splicing
+  // into the SPARQL string — defense-in-depth so a malformed/hostile value (e.g. one written
+  // via UGC/MCP that slipped a quote through) can't break out of the literal and inject a
+  // query against Wikidata's public endpoint. A rejected ID simply yields no grounding.
+  if (!/^[A-Za-z0-9]+$/.test(spotifyId)) return null;
   try {
     const sparql =
       `SELECT ?item ?sitelink WHERE { ?item wdt:P1902 "${spotifyId}". ` +

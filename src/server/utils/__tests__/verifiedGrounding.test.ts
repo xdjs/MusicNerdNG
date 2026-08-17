@@ -34,6 +34,15 @@ describe("resolveVerifiedGrounding", () => {
     expect(fn).not.toHaveBeenCalled();
   });
 
+  it("rejects a non-base62 spotifyId without building/sending the SPARQL query (injection guard)", async () => {
+    const fn = mockFetchSequence([]);
+    // A value that tries to break out of the SPARQL string literal.
+    expect(await resolveVerifiedGrounding('abc" } UNION { ?item wdt:P1 ?x . #')).toBeNull();
+    expect(await resolveVerifiedGrounding("has spaces")).toBeNull();
+    expect(await resolveVerifiedGrounding("under_score")).toBeNull();
+    expect(fn).not.toHaveBeenCalled(); // guarded before any network call
+  });
+
   it("returns null when a Wikidata item exists but has no English Wikipedia article", async () => {
     mockFetchSequence([{ json: { results: { bindings: [{ item: { value: "http://www.wikidata.org/entity/Q9" } }] } } }]);
     expect(await resolveVerifiedGrounding("abc")).toBeNull();
