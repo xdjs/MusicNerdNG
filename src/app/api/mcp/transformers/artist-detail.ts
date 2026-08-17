@@ -1,5 +1,6 @@
 import { Artist } from "@/server/db/DbTypes";
 import { getArtistLinks } from "@/server/utils/queries/artistQueries";
+import { ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
 import { ArtistDetail, SocialLink } from "../types";
 
 export async function toArtistDetail(artist: Artist): Promise<ArtistDetail> {
@@ -29,7 +30,8 @@ export async function toArtistDetail(artist: Artist): Promise<ArtistDetail> {
   return {
     id: artist.id,
     name: artist.name ?? "",
-    bio: artist.bio ?? null,
+    // The claim-nudge empty-state isn't a real bio — surface null instead.
+    bio: artist.bio && artist.bio !== ABOUT_EMPTY_STATE ? artist.bio : null,
     spotifyId: artist.spotify ?? null,
     deezerId: artist.deezer ?? null,
     socialLinks,

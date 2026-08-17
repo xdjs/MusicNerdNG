@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { requireArtistEditor } from "@/lib/auth-helpers";
-import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
 
 // Bio generation does Gemini + Google Search grounding; we race against a 45s in-handler
 // timeout (see below). Vercel's default serverless function ceiling is 10s, which would
@@ -47,8 +47,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // Empty-state only when there's NO usable identity anchor at all (no bio, no
     // Spotify, no socials). A Spotify ID alone is enough to generate a grounded About.
     if (!forceRegenerate && !artist.bio && !artist.spotify && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
-      const emptyState = "We couldn't find enough verified information about this artist yet — and Music Nerd won't guess. If this is you, claim your profile and add a few sources, and your About will fill in within seconds.";
-      return NextResponse.json({ bio: emptyState }, { headers: CORS_HEADERS });
+      return NextResponse.json({ bio: ABOUT_EMPTY_STATE }, { headers: CORS_HEADERS });
     }
 
     // If bio already exists in the database and not forcing regeneration, return cached

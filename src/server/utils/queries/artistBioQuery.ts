@@ -7,12 +7,20 @@ import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { sanitizeBioText } from "@/lib/bioText";
+import { ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 
 /**
- * Generate an artist bio using Gemini Pro with Google Search grounding.
+ * Generate an artist's "About" via the UNIFIED SOURCING flow:
+ *   1. Gather curated context — approved vault sources (claimed artists), else
+ *      already-discovered pending sources, else RESEARCH (identity-anchored web
+ *      discovery that also writes what it finds to the vault as pending).
+ *   2. No contextual sources → return the claim-nudge (never a hollow catalog bio).
+ *   3. Synthesize the About from those sources + verified-ID grounding + the real
+ *      catalog, with Gemini's own Google Search OFF (live search pulls same-name
+ *      namesakes — the conflation bug this flow fixes).
  * Unified function — used by the bio API route, dashboard actions, and artistLinkService.
  */
 export async function generateArtistBio(artistId: string): Promise<NextResponse> {
@@ -92,37 +100,58 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
 
   if (platformBioData) promptParts.push(`Music Platform Data: ${platformBioData}`);
 
-  // Include approved vault sources as additional context
-  let hasVaultContext = false;
+  // UNIFIED SOURCING — the About is synthesized from CURATED VAULT SOURCES, not the
+  // model's own web search. Claimed artists use their approved vault; for an empty
+  // vault we research (identity-anchored discovery, which also writes what it finds
+  // to the vault as pending, for curation + the Ask-About chat + Press & Features)
+  // and synthesize from those. If no contextual sources can be found, we return the
+  // claim-nudge — never a hollow catalog-only "bio". One source system, end to end.
+  type Src = { title: string | null; url: string; snippet: string | null; extractedText: string | null };
+  let contextualSources: Src[] = [];
   try {
     const [approved, pending] = await Promise.all([
       getVaultSourcesByArtistId(artistId, "approved"),
       getVaultSourcesByArtistId(artistId, "pending"),
     ]);
-    console.log(`[bio] Found ${approved.length} approved / ${pending.length} pending vault sources for artist ${artistId}`);
     if (approved.length > 0) {
-      hasVaultContext = true;
-      const vaultContext = approved.map(s => {
-        const parts = [`Source: ${s.title ?? s.url}`];
-        if (s.snippet) parts.push(s.snippet);
-        if (s.extractedText) parts.push(s.extractedText.slice(0, 2000));
-        return parts.join(" — ");
-      }).join("\n");
-      promptParts.push(`\n--- ARTIST-PROVIDED VAULT CONTEXT (USE THIS AS PRIMARY SOURCE) ---\n${vaultContext}\n--- END VAULT CONTEXT ---`);
-    }
-
-    // Connect the About's sources to the vault: when the vault is empty, discover
-    // sources into the PENDING queue (clean, redirect-resolved, dedup'd, curatable)
-    // via the same pipeline as the "Search web for sources" button. Best-effort,
-    // fire-and-forget — never blocks or fails generation; retried on the next
-    // generation if serverless cuts it short (the vault is still empty). Gated on an
-    // empty vault so it doesn't re-run once there's a pending queue to curate.
-    if (approved.length === 0 && pending.length === 0) {
-      searchAndPopulateVault(artistId).catch(e => console.error("[bio] vault source discovery failed:", e));
+      // Claimed/curated: the artist's approved set is authoritative.
+      contextualSources = approved as Src[];
+      console.log(`[bio] Using ${approved.length} approved vault sources for artist ${artistId}`);
+    } else if (pending.length > 0) {
+      // Already-discovered material awaiting curation — synthesize from it rather
+      // than re-running discovery on every view (discovery dedups, so a re-run would
+      // return nothing new and wrongly collapse to the nudge).
+      contextualSources = pending as Src[];
+      console.log(`[bio] Using ${pending.length} pending (discovered) vault sources for artist ${artistId}`);
+    } else {
+      // Empty vault → research: discover sources (identity-anchored, retries
+      // internally, writes to the vault as pending) and synthesize from what returns.
+      const discovered = await searchAndPopulateVault(artistId).catch(e => {
+        console.error("[bio] discovery failed:", e);
+        return [] as Src[];
+      });
+      contextualSources = discovered as Src[];
+      console.log(`[bio] Discovered ${discovered.length} sources for artist ${artistId}`);
     }
   } catch (e) {
-    console.error("Error fetching vault sources for bio:", e);
+    console.error("[bio] source gathering failed:", e);
   }
+
+  // No contextual sources → don't flatten to a catalog list. Save + return the
+  // claim-nudge so the profile invites the artist to add context (and we don't
+  // re-run the expensive discovery on every view). An explicit regenerate retries.
+  if (contextualSources.length === 0) {
+    await db.update(artists).set({ bio: ABOUT_EMPTY_STATE }).where(eq(artists.id, artistId));
+    return NextResponse.json({ bio: ABOUT_EMPTY_STATE, empty: true });
+  }
+
+  const vaultContext = contextualSources.map(s => {
+    const parts = [`Source: ${s.title ?? s.url}`];
+    if (s.snippet) parts.push(s.snippet);
+    if (s.extractedText) parts.push(s.extractedText.slice(0, 2000));
+    return parts.join(" — ");
+  }).join("\n");
+  promptParts.push(`\n--- SOURCES (synthesize the About ONLY from these + the verified data above; they are about this exact artist) ---\n${vaultContext}\n--- END SOURCES ---`);
 
   try {
     const artistData = promptParts.join("\n");
@@ -154,16 +183,15 @@ GUARDRAILS (critical — accuracy over completeness):
 - RELATIONSHIP PRECISION: Do not say the artist "collaborated with", "worked with", "produced", "featured", or is "part of" another artist/group unless the exact nature is explicitly documented. Two names appearing together is NOT collaboration — never upgrade an association into a collaboration. Omit if unsure.
 - ORIGINALITY: Write entirely in your own words. Never copy sentences or phrasing from any source.`;
 
-    const systemPrompt = hasVaultContext
-      ? `${musicNerdVoice}
+    const systemPrompt = `${musicNerdVoice}
 
-The artist-provided vault context below is your PRIMARY source — mine it for the real names, places, labels, collaborators, credits, and timeline that make the bio specific. Treat platform stats (followers, releases, top track) as seasoning, not the story.`
-      : `${musicNerdVoice}`;
+You have NO web access for this task. Write the About using ONLY the curated sources and verified data provided below — the sources are your PRIMARY material; mine them for the real names, places, labels, collaborators, credits, and timeline that make the About specific. Treat platform stats (followers, releases, top track) as seasoning, not the story. Do not add facts from outside knowledge; if the provided material doesn't support a claim, leave it out.`;
 
-    // Grounding is always on: bios must be factual, and grounding lets Gemini
-    // read the anchor URLs and the open web. Bios are cached, so the added
-    // latency is not on any user's critical path.
-    const useGrounding = true;
+    // Grounding (Gemini's own Google Search) is OFF by design. The About is
+    // synthesized from the CURATED sources we fetched + verified-ID data — never the
+    // model's live web search, which pulls in same-name namesakes (the conflation
+    // bug this whole flow fixes). Bios are cached, so latency isn't on the hot path.
+    const useGrounding = false;
 
     const response = await Promise.race([
       getGemini().models.generateContent({

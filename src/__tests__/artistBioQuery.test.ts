@@ -59,6 +59,13 @@ jest.mock('@/server/utils/queries/dashboardQueries', () => ({
   getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
 }));
 
+// Discovery is awaited in the unified flow; mock it to return a source so synthesis runs.
+jest.mock('@/server/utils/queries/vaultWebSearch', () => ({
+  searchAndPopulateVault: jest.fn().mockResolvedValue([
+    { url: 'https://d/1', title: 'Discovered', snippet: 's', extractedText: 't' },
+  ]),
+}));
+
 describe('artistBioQuery - Gemini bio generation', () => {
   const originalEnv = process.env;
 
@@ -118,7 +125,7 @@ describe('artistBioQuery - Gemini bio generation', () => {
     expect(mockNextResponseJson).toHaveBeenCalledWith({ bio: 'Generated bio text from Gemini' });
   });
 
-  it('should use Google Search grounding when vault sources exist', async () => {
+  it('does NOT use Google Search grounding — synthesis is offline (conflation fix)', async () => {
     const mockArtist = {
       id: 'test-id',
       name: 'Test Artist',
@@ -147,14 +154,9 @@ describe('artistBioQuery - Gemini bio generation', () => {
     const { generateArtistBio } = await import('@/server/utils/queries/artistBioQuery');
     await generateArtistBio('test-id');
 
-    // Verify Gemini was called with google search tool
-    expect(mockGenerateContent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        config: expect.objectContaining({
-          tools: [{ googleSearch: {} }],
-        }),
-      })
-    );
+    // Grounding (Gemini's own web search) is OFF — the About is synthesized only from curated sources.
+    const callArgs = (mockGenerateContent as any).mock.calls[0][0];
+    expect(callArgs.config.tools).toBeUndefined();
   });
 
   it('should return 404 when artist not found', async () => {

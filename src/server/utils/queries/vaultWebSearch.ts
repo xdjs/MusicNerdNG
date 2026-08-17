@@ -148,15 +148,19 @@ If you cannot find any results specifically about this artist, return an empty a
             existingSources.map((s) => normalizeUrl(s.url))
         );
 
+        // Resolve vertexaisearch redirect URLs to their real destinations in PARALLEL.
+        // Each redirect fetch can take several seconds and there can be up to 8; doing
+        // them sequentially could blow the request budget now that discovery runs inside
+        // About generation (bounded by the route's 45s race).
+        const validResults = results.filter((r) => r.url && r.title);
+        await Promise.all(
+            validResults.map(async (r) => { r.url = await resolveRedirectUrl(r.url); })
+        );
+
         // Insert each result as a pending vault source, skipping duplicates
         const insertedSources: ArtistVaultSource[] = [];
         let skipped = 0;
-        for (const result of results) {
-            if (!result.url || !result.title) continue;
-
-            // Resolve vertexaisearch redirect URLs to actual destinations
-            result.url = await resolveRedirectUrl(result.url);
-
+        for (const result of validResults) {
             // Reject non-http(s) schemes and private/local hosts. Gemini can return
             // (or be prompt-injected into returning) javascript:/data:/file: URLs that
             // would become stored XSS when rendered as <a href> on the public page.
