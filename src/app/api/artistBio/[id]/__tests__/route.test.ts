@@ -46,6 +46,11 @@ const createGetRequest = () =>
     method: 'GET',
   });
 
+const createGetRegenerateRequest = () =>
+  new Request('http://localhost/api/artistBio/artist-123?regenerate=true', {
+    method: 'GET',
+  });
+
 const adminSession = {
   user: { id: 'admin-uuid', email: 'admin@test.com' },
   expires: '2025-12-31',
@@ -258,6 +263,31 @@ describe('/api/artistBio/[id]', () => {
       const data = await response.json();
       expect(mockGenerateArtistBio).toHaveBeenCalledWith('artist-123'); // regenerated from sources
       expect(data.bio).toBe('Synthesized from the pending sources');
+    });
+
+    it('rejects unauthenticated GET ?regenerate=true (gates the expensive forced regen)', async () => {
+      const { GET, mockGetSession, mockGenerateArtistBio } = await setup();
+      mockGetSession.mockResolvedValue(null); // unauthenticated
+
+      const response = await GET(createGetRegenerateRequest(), { params: paramsPromise });
+
+      expect(response.status).toBe(401);
+      expect(mockGenerateArtistBio).not.toHaveBeenCalled(); // never reaches discovery/Gemini
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBeTruthy(); // CORS on the 403/401
+    });
+
+    it('allows GET ?regenerate=true for an admin/editor', async () => {
+      const { GET, mockGetSession, mockGetUserById, mockGetArtistById, mockGenerateArtistBio } = await setup();
+      mockGetSession.mockResolvedValue(adminSession);
+      mockGetUserById.mockResolvedValue({ id: 'admin-uuid', isAdmin: true });
+      mockGetArtistById.mockResolvedValue({ id: 'artist-123', bio: null, spotify: 'sp1' });
+      mockGenerateArtistBio.mockResolvedValue(Response.json({ bio: 'Regenerated bio' }));
+
+      const response = await GET(createGetRegenerateRequest(), { params: paramsPromise });
+
+      expect(mockGenerateArtistBio).toHaveBeenCalledWith('artist-123'); // auth passed → generation ran
+      const data = await response.json();
+      expect(data.bio).toBe('Regenerated bio');
     });
 
     it('returns 404 when artist not found', async () => {

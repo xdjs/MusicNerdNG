@@ -38,6 +38,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const url = new URL(request.url);
   const forceRegenerate = url.searchParams.get("regenerate") === "true";
 
+  // Forced regeneration bypasses the cache and triggers the expensive discovery + Gemini
+  // path, so gate it to admins / the artist who claimed the profile (same guard as PUT).
+  // Normal cached reads stay public. Re-wrap the auth response with CORS headers so it
+  // matches every other response this cross-origin-enabled route returns.
+  if (forceRegenerate) {
+    const auth = await requireArtistEditor(id);
+    if (!auth.authenticated) {
+      const body = await auth.response.text();
+      return new Response(body, {
+        status: auth.response.status,
+        headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+      });
+    }
+  }
+
   // Set a timeout for the entire operation to prevent Vercel timeouts
   const timeoutPromise = new Promise<NextResponse>((_, reject) =>
     setTimeout(() => reject(new Error('Bio generation timeout')), 57000) // 57s: fits inline discovery (~38s) + synthesis under the 60s maxDuration ceiling
