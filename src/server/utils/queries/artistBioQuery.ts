@@ -67,16 +67,16 @@ async function gatherContextualSources(artistId: string): Promise<ArtistVaultSou
       return pending;
     }
     // Empty vault → research: discover sources (identity-anchored, retries internally,
-    // writes to the vault as pending) and synthesize from what returns.
-    const discovered = await Promise.race([
+    // writes to the vault as pending) and synthesize from what returns. Bounded by
+    // withTimeout so a slow/hung run can't starve synthesis of the route's budget.
+    const discovered = await withTimeout(
       searchAndPopulateVault(artistId).catch((e) => {
         console.error("[bio] discovery failed:", e);
         return [] as ArtistVaultSource[];
       }),
-      new Promise<ArtistVaultSource[]>((resolve) =>
-        setTimeout(() => { console.warn("[bio] discovery timed out; falling back"); resolve([]); }, DISCOVERY_TIMEOUT_MS)
-      ),
-    ]);
+      DISCOVERY_TIMEOUT_MS,
+      [] as ArtistVaultSource[],
+    );
     console.log(`[bio] Discovered ${discovered.length} sources for artist ${artistId}`);
     return discovered;
   } catch (e) {

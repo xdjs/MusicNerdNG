@@ -16,6 +16,11 @@ export const ABOUT_EMPTY_STATE =
  * empty-state. Use this everywhere the nudge must not be treated as a bio (fed back
  * into the chat/MCP as context, or clobbered/overwritten as if it were real content).
  */
+/** True when `bio` IS the claim-nudge empty-state (trimmed, tolerant of stray whitespace). */
+export function isAboutEmptyState(bio: string | null | undefined): boolean {
+  return bio?.trim() === ABOUT_EMPTY_STATE;
+}
+
 export function isRealBio(bio: string | null | undefined): boolean {
-  return !!bio && bio.trim().length > 0 && bio.trim() !== ABOUT_EMPTY_STATE;
+  return !!bio && bio.trim().length > 0 && !isAboutEmptyState(bio);
 }

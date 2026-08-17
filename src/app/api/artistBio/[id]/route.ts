@@ -3,7 +3,11 @@ import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { requireArtistEditor } from "@/lib/auth-helpers";
-import { MAX_BIO_LENGTH, ABOUT_EMPTY_STATE, isRealBio } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ABOUT_EMPTY_STATE, isRealBio, isAboutEmptyState } from "@/lib/bioConstants";
+
+// This route reads from the DB (getArtistById + the self-heal vault lookup); force dynamic
+// so Next.js never statically caches the response at build time (per CLAUDE.md convention).
+export const dynamic = "force-dynamic";
 
 // Bio generation runs inline: artist fetch + (concurrently) platform data / verified
 // grounding / catalog / source discovery (discovery bounded ~38s — grounded Gemini calls
@@ -61,7 +65,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // inserting pending sources. If vault sources have since appeared, regenerate from them
     // (synthesis only — no re-discovery). If there are genuinely none, serve the nudge
     // without re-running the expensive discovery on every view.
-    if (!forceRegenerate && artist.bio === ABOUT_EMPTY_STATE) {
+    if (!forceRegenerate && isAboutEmptyState(artist.bio)) {
       const [approved, pending] = await Promise.all([
         getVaultSourcesByArtistId(id, "approved"),
         getVaultSourcesByArtistId(id, "pending"),

@@ -180,7 +180,7 @@ Key API routes in `src/app/api/`:
 
 ### API Route Conventions
 - **Performance logging**: Routes wrap handler bodies in `performance.now()` and log duration via `console.debug`
-- **Timeout races**: AI routes use `Promise.race` with timeouts — `artistBio` 25s, `funFacts` 20s, `searchArtists` 12s
+- **Timeout races**: AI routes use `Promise.race` with timeouts — `artistBio` 57s (inline discovery + grounding-off synthesis; `maxDuration` 60s), `funFacts` 20s, `searchArtists` 12s
 - **In-memory caching**: `searchArtists` and `searchArtists/batch` use a 5-minute TTL cache (same serverless caveat as rate limiting)
 - **Error format**: Routes return `{ error: "message" }` (inconsistent in some older routes as `{ status, message }`)
 
