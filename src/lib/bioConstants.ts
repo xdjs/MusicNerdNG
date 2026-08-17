@@ -9,7 +9,7 @@ export const MAX_BIO_LENGTH = 10_000;
  * (e.g. so the nudge is never fed back in as an "existing bio").
  */
 export const ABOUT_EMPTY_STATE =
-  "We couldn't find enough verified information about this artist yet — and Music Nerd won't guess. If this is you, claim your profile and add a few sources, and your About will fill in within seconds.";
+  "We don't have enough verified information about this artist yet. If this is you, claim your profile and add a few sources to generate your About — or write your own. What you add helps Music Nerd tell your story to fans.";
 
 /** True when `bio` IS the claim-nudge empty-state (trimmed, tolerant of stray whitespace). */
 export function isAboutEmptyState(bio: string | null | undefined): boolean {
