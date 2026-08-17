@@ -6,8 +6,6 @@ import { db } from "@/server/db/drizzle";
 import { eq, sql } from "drizzle-orm";
 import { artists } from "@/server/db/schema";
 
-export const BIO_RELEVANT_COLUMNS = ["spotify", "deezer", "instagram", "x", "soundcloud", "youtube", "youtubechannel"];
-
 // Whitelist of platform columns that can be written via link helpers.
 // Derived from the artists table schema — only platform/social columns.
 // System columns (id, name, bio, etc.) are excluded by omission.

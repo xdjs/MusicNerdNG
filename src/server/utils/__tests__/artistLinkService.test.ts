@@ -17,8 +17,8 @@ describe("artistLinkService", () => {
     // Mock artist existence check - return a found artist by default
     (db as any).query.artists.findFirst = jest.fn().mockResolvedValue({ id: "artist-123", name: "Test Artist" });
     const { regenerateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
-    const { setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS } = await import("../artistLinkService");
-    return { db, setArtistLink, clearArtistLink, sanitizeColumnName, BIO_RELEVANT_COLUMNS, regenerateArtistBio };
+    const { setArtistLink, clearArtistLink, sanitizeColumnName } = await import("../artistLinkService");
+    return { db, setArtistLink, clearArtistLink, sanitizeColumnName, regenerateArtistBio };
   }
 
   // 1. sanitizeColumnName strips non-alphanumeric/underscore
