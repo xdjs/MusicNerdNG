@@ -38,13 +38,18 @@ async function saveBio(artistId: string, bio: string): Promise<void> {
 
 /**
  * Gather the curated context for synthesis, tiered: approved vault sources (claimed) →
- * already-discovered pending sources → bounded web discovery. `errored` distinguishes a
- * real infra failure (e.g. the vault lookup threw) from a genuine empty result, so the
- * caller never caches the claim-nudge over a transient error.
+ * already-discovered pending sources → bounded web discovery.
+ *
+ * NOTE on transient DB errors: getVaultSourcesByArtistId degrades to [] on any DB error
+ * (it never throws — the many read paths that use it, the artist page / chat / fun facts,
+ * want graceful degradation, not a crash). We deliberately do NOT try to distinguish "DB
+ * error" from "genuinely empty" here — it isn't observable at this layer, and a transient
+ * vault-read failure is benign: it simply looks like an empty vault and triggers discovery
+ * (which usually still yields a real bio). Any residual bad state is covered elsewhere — the
+ * clobber-guard preserves an existing bio, and the route self-heal recovers a cached nudge
+ * once the DB is healthy and sources exist.
  */
-async function gatherContextualSources(
-  artistId: string
-): Promise<{ sources: ArtistVaultSource[]; errored: boolean }> {
+async function gatherContextualSources(artistId: string): Promise<ArtistVaultSource[]> {
   try {
     const [approved, pending] = await Promise.all([
       getVaultSourcesByArtistId(artistId, "approved"),
@@ -52,14 +57,14 @@ async function gatherContextualSources(
     ]);
     if (approved.length > 0) {
       console.log(`[bio] Using ${approved.length} approved vault sources for artist ${artistId}`);
-      return { sources: approved, errored: false };
+      return approved;
     }
     if (pending.length > 0) {
       // Already-discovered material awaiting curation — synthesize from it rather than
       // re-running discovery on every view (discovery dedups, so a re-run would return
       // nothing new and wrongly collapse to the nudge).
       console.log(`[bio] Using ${pending.length} pending (discovered) vault sources for artist ${artistId}`);
-      return { sources: pending, errored: false };
+      return pending;
     }
     // Empty vault → research: discover sources (identity-anchored, retries internally,
     // writes to the vault as pending) and synthesize from what returns.
@@ -73,11 +78,10 @@ async function gatherContextualSources(
       ),
     ]);
     console.log(`[bio] Discovered ${discovered.length} sources for artist ${artistId}`);
-    return { sources: discovered, errored: false };
+    return discovered;
   } catch (e) {
-    // A thrown lookup (e.g. transient DB failure) is NOT "genuinely found nothing".
     console.error("[bio] source gathering failed:", e);
-    return { sources: [], errored: true };
+    return [];
   }
 }
 
@@ -142,19 +146,12 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
   // sources → the claim-nudge, never a hollow catalog-only "bio". One source system.
   const sourcesPromise = gatherContextualSources(artistId);
 
-  const [platformBioData, grounding, catalog, sourceResult] = await Promise.all([
+  const [platformBioData, grounding, catalog, contextualSources] = await Promise.all([
     platformPromise, groundingPromise, catalogPromise, sourcesPromise,
   ]);
-  const contextualSources = sourceResult.sources;
 
   // No contextual sources → don't flatten to a catalog list.
   if (contextualSources.length === 0) {
-    // A THROWN gathering error (e.g. a transient DB failure on the vault lookup) is not
-    // the same as "genuinely found nothing" — surface an error and cache nothing, so the
-    // client retries instead of the nudge poisoning the cache.
-    if (sourceResult.errored) {
-      return NextResponse.json({ error: "Failed to generate bio" }, { status: 500 });
-    }
     // Don't clobber an existing real About with the nudge: discovery is flaky (it can
     // return sources one run and none the next), so a regenerate that happens to come up
     // empty must NOT wipe a good bio.

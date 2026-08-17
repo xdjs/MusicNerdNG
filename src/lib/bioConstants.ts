@@ -17,5 +17,5 @@ export const ABOUT_EMPTY_STATE =
  * into the chat/MCP as context, or clobbered/overwritten as if it were real content).
  */
 export function isRealBio(bio: string | null | undefined): boolean {
-  return !!bio && bio.trim().length > 0 && bio !== ABOUT_EMPTY_STATE;
+  return !!bio && bio.trim().length > 0 && bio.trim() !== ABOUT_EMPTY_STATE;
 }
