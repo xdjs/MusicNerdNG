@@ -13,14 +13,71 @@ import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 
-// Cap inline discovery so a slow (not hung) run can't starve synthesis of the route's
-// 45s budget. Whatever discovery has inserted keeps running server-side and is picked
-// up (as pending) on the next generation.
-const DISCOVERY_TIMEOUT_MS = 22000;
+// Every I/O the generator does runs concurrently inside the route's budget, so each gets
+// its own bound: no single slow dependency can starve synthesis and 408 the request.
+// NOTE on DISCOVERY_TIMEOUT_MS: a single grounded Gemini discovery call measured ~33s in
+// practice (Google Search grounding does several sub-searches), so this bound must clear
+// one good call — it exists to cap RUNAWAY retries, not to truncate a normal run. It's the
+// dominant cost; grounding/catalog/platform run concurrently and finish in <1s.
+const PLATFORM_TIMEOUT_MS = 8000;   // Deezer/Spotify platform stats
+const IDENTITY_TIMEOUT_MS = 10000;  // verified-ID grounding + real catalog
+const DISCOVERY_TIMEOUT_MS = 35000; // source discovery (Gemini + page fetches). Whatever
+                                    // discovery inserted keeps running server-side and is
+                                    // picked up (as pending) on the next generation.
+
+/** Resolve `p`, or `fallback` if it doesn't settle within `ms` (never rejects). */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
 
 /** Persist the generated About. Single writer so the update shape stays consistent. */
 async function saveBio(artistId: string, bio: string): Promise<void> {
   await db.update(artists).set({ bio }).where(eq(artists.id, artistId));
+}
+
+/**
+ * Gather the curated context for synthesis, tiered: approved vault sources (claimed) →
+ * already-discovered pending sources → bounded web discovery. `errored` distinguishes a
+ * real infra failure (e.g. the vault lookup threw) from a genuine empty result, so the
+ * caller never caches the claim-nudge over a transient error.
+ */
+async function gatherContextualSources(
+  artistId: string
+): Promise<{ sources: ArtistVaultSource[]; errored: boolean }> {
+  try {
+    const [approved, pending] = await Promise.all([
+      getVaultSourcesByArtistId(artistId, "approved"),
+      getVaultSourcesByArtistId(artistId, "pending"),
+    ]);
+    if (approved.length > 0) {
+      console.log(`[bio] Using ${approved.length} approved vault sources for artist ${artistId}`);
+      return { sources: approved, errored: false };
+    }
+    if (pending.length > 0) {
+      // Already-discovered material awaiting curation — synthesize from it rather than
+      // re-running discovery on every view (discovery dedups, so a re-run would return
+      // nothing new and wrongly collapse to the nudge).
+      console.log(`[bio] Using ${pending.length} pending (discovered) vault sources for artist ${artistId}`);
+      return { sources: pending, errored: false };
+    }
+    // Empty vault → research: discover sources (identity-anchored, retries internally,
+    // writes to the vault as pending) and synthesize from what returns.
+    const discovered = await Promise.race([
+      searchAndPopulateVault(artistId).catch((e) => {
+        console.error("[bio] discovery failed:", e);
+        return [] as ArtistVaultSource[];
+      }),
+      new Promise<ArtistVaultSource[]>((resolve) =>
+        setTimeout(() => { console.warn("[bio] discovery timed out; falling back"); resolve([]); }, DISCOVERY_TIMEOUT_MS)
+      ),
+    ]);
+    console.log(`[bio] Discovered ${discovered.length} sources for artist ${artistId}`);
+    return { sources: discovered, errored: false };
+  } catch (e) {
+    // A thrown lookup (e.g. transient DB failure) is NOT "genuinely found nothing".
+    console.error("[bio] source gathering failed:", e);
+    return { sources: [], errored: true };
+  }
 }
 
 /**
@@ -40,28 +97,77 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
   }
 
-  // Compile platform data (Deezer primary, Spotify fallback)
-  const PLATFORM_TIMEOUT_MS = 8000;
-  let platformBioData = "";
-  try {
-    const platformArtist = await Promise.race([
-      musicPlatformData.getArtist(artist),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), PLATFORM_TIMEOUT_MS)),
-    ]);
-    if (platformArtist) {
-      platformBioData = [
+  // Run every independent I/O concurrently so they overlap inside the route's 45s budget
+  // instead of summing. Platform stats (Deezer primary, Spotify fallback), verified-ID
+  // grounding, the real catalog, and source-gathering all fire at once; each is bounded.
+  const spotifyId = artist.spotify;
+  const platformPromise: Promise<string> = (async () => {
+    try {
+      const platformArtist = await withTimeout(musicPlatformData.getArtist(artist), PLATFORM_TIMEOUT_MS, null);
+      if (!platformArtist) return "";
+      return [
         `Name: ${platformArtist.name}`,
         platformArtist.followerCount ? `Followers: ${platformArtist.followerCount}` : null,
         platformArtist.genres.length > 0 ? `Genres: ${platformArtist.genres.join(", ")}` : null,
         platformArtist.albumCount > 0 ? `Number of releases: ${platformArtist.albumCount}` : null,
         platformArtist.topTrackName ? `Top track: ${platformArtist.topTrackName}` : null,
       ].filter(Boolean).join(", ");
+    } catch (error) {
+      console.error("Error fetching platform data for bio generation:", error);
+      return "";
     }
-  } catch (error) {
-    console.error("Error fetching platform data for bio generation:", error);
+  })();
+  // Verified encyclopedic grounding (conflation-safe: resolved by Spotify ID via Wikidata
+  // → Wikipedia, never by name) + the artist's REAL catalog names — the strongest
+  // anti-conflation levers: facts the generator can't invent around.
+  const groundingPromise = spotifyId
+    ? withTimeout(resolveVerifiedGrounding(spotifyId).catch(() => null), IDENTITY_TIMEOUT_MS, null)
+    : Promise.resolve(null);
+  const catalogPromise: Promise<{ releases: string[]; topTracks: string[] }> = spotifyId
+    ? withTimeout((async () => {
+        try {
+          const headers = await getSpotifyHeaders();
+          return await getSpotifyCatalogNames(spotifyId, headers);
+        } catch (e) {
+          console.error("[bio] Spotify catalog fetch failed:", e);
+          return { releases: [], topTracks: [] };
+        }
+      })(), IDENTITY_TIMEOUT_MS, { releases: [], topTracks: [] })
+    : Promise.resolve({ releases: [], topTracks: [] });
+  // UNIFIED SOURCING — the About is synthesized from CURATED VAULT SOURCES, not the
+  // model's own web search. Claimed artists use their approved vault; for an empty vault
+  // we research (identity-anchored discovery, which also writes what it finds to the vault
+  // as pending, for curation + the Ask-About chat + Press & Features). No contextual
+  // sources → the claim-nudge, never a hollow catalog-only "bio". One source system.
+  const sourcesPromise = gatherContextualSources(artistId);
+
+  const [platformBioData, grounding, catalog, sourceResult] = await Promise.all([
+    platformPromise, groundingPromise, catalogPromise, sourcesPromise,
+  ]);
+  const contextualSources = sourceResult.sources;
+
+  // No contextual sources → don't flatten to a catalog list.
+  if (contextualSources.length === 0) {
+    // A THROWN gathering error (e.g. a transient DB failure on the vault lookup) is not
+    // the same as "genuinely found nothing" — surface an error and cache nothing, so the
+    // client retries instead of the nudge poisoning the cache.
+    if (sourceResult.errored) {
+      return NextResponse.json({ error: "Failed to generate bio" }, { status: 500 });
+    }
+    // Don't clobber an existing real About with the nudge: discovery is flaky (it can
+    // return sources one run and none the next), so a regenerate that happens to come up
+    // empty must NOT wipe a good bio.
+    if (isRealBio(artist.bio)) {
+      console.log(`[bio] Discovery empty but preserving existing bio for artist ${artistId}`);
+      return NextResponse.json({ bio: artist.bio });
+    }
+    // Cache the nudge so the profile invites the artist to add context (and we don't
+    // re-run the expensive discovery on every view). An explicit regenerate retries.
+    await saveBio(artistId, ABOUT_EMPTY_STATE);
+    return NextResponse.json({ bio: ABOUT_EMPTY_STATE, empty: true });
   }
 
-  // Put all informational sections of prompt together
+  // Assemble the prompt in order: identity links → anchors → verified facts → sources.
   const promptParts: string[] = [];
   if (artist.spotify) promptParts.push(`Spotify (verified identity): https://open.spotify.com/artist/${artist.spotify}`);
   if (artist.instagram) promptParts.push(`Instagram: https://instagram.com/${artist.instagram}`);
@@ -69,12 +175,10 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
   if (artist.soundcloud) promptParts.push(`SoundCloud: ${artist.soundcloud}`);
   if (artist.youtube) promptParts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, '')}`);
   if (artist.youtubechannel) promptParts.push(`YouTube Channel: ${artist.youtubechannel}`);
-  // Authoritative identity anchors — the IDs/links MusicNerd already stores.
-  // Formatted as real URLs so Google Search grounding confirms exactly which
-  // artist this is and reads the right sources.
-  // Values are normally bare slugs/IDs (writes go through extractArtistId), but
-  // guard against a legacy/future row already holding a full URL so we never
-  // build a doubled ".../wiki/https://.../wiki/..." anchor.
+  // Authoritative identity anchors — the IDs/links MusicNerd already stores. Formatted as
+  // real URLs. Values are normally bare slugs/IDs (writes go through extractArtistId), but
+  // guard against a legacy/future row already holding a full URL so we never build a
+  // doubled ".../wiki/https://.../wiki/..." anchor.
   const anchorUrl = (base: string, value: string) =>
     /^https?:\/\//i.test(value) ? value : `${base}${value}`;
   const anchors: string[] = [];
@@ -87,89 +191,16 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
       `Authoritative identity anchors (use these to confirm exactly which artist this is; prefer facts they support):\n${anchors.join("\n")}`
     );
   }
-  // Verified encyclopedic grounding (conflation-safe: resolved by Spotify ID via
-  // Wikidata → Wikipedia, never by name) + the artist's REAL catalog names. These
-  // are the strongest anti-conflation levers: facts the generator can't invent around.
-  if (artist.spotify) {
-    const grounding = await resolveVerifiedGrounding(artist.spotify).catch(() => null);
-    if (grounding) {
-      promptParts.push(`Verified encyclopedic source (facts only — do NOT copy wording):\n${grounding.extract}`);
-    }
-    try {
-      const headers = await getSpotifyHeaders();
-      const catalog = await getSpotifyCatalogNames(artist.spotify, headers);
-      if (catalog.releases.length > 0) {
-        promptParts.push(`Verified releases (from their Spotify — these are their ONLY real releases; do NOT attribute any release not consistent with this list): ${catalog.releases.join(", ")}`);
-      }
-      if (catalog.topTracks.length > 0) {
-        promptParts.push(`Verified top tracks: ${catalog.topTracks.join(", ")}`);
-      }
-    } catch (e) {
-      console.error("[bio] Spotify catalog fetch failed:", e);
-    }
+  if (grounding) {
+    promptParts.push(`Verified encyclopedic source (facts only — do NOT copy wording):\n${grounding.extract}`);
   }
-
+  if (catalog.releases.length > 0) {
+    promptParts.push(`Verified releases (from their Spotify — these are their ONLY real releases; do NOT attribute any release not consistent with this list): ${catalog.releases.join(", ")}`);
+  }
+  if (catalog.topTracks.length > 0) {
+    promptParts.push(`Verified top tracks: ${catalog.topTracks.join(", ")}`);
+  }
   if (platformBioData) promptParts.push(`Music Platform Data: ${platformBioData}`);
-
-  // UNIFIED SOURCING — the About is synthesized from CURATED VAULT SOURCES, not the
-  // model's own web search. Claimed artists use their approved vault; for an empty
-  // vault we research (identity-anchored discovery, which also writes what it finds
-  // to the vault as pending, for curation + the Ask-About chat + Press & Features)
-  // and synthesize from those. If no contextual sources can be found, we return the
-  // claim-nudge — never a hollow catalog-only "bio". One source system, end to end.
-  let contextualSources: ArtistVaultSource[] = [];
-  try {
-    const [approved, pending] = await Promise.all([
-      getVaultSourcesByArtistId(artistId, "approved"),
-      getVaultSourcesByArtistId(artistId, "pending"),
-    ]);
-    if (approved.length > 0) {
-      // Claimed/curated: the artist's approved set is authoritative.
-      contextualSources = approved;
-      console.log(`[bio] Using ${approved.length} approved vault sources for artist ${artistId}`);
-    } else if (pending.length > 0) {
-      // Already-discovered material awaiting curation — synthesize from it rather
-      // than re-running discovery on every view (discovery dedups, so a re-run would
-      // return nothing new and wrongly collapse to the nudge).
-      contextualSources = pending;
-      console.log(`[bio] Using ${pending.length} pending (discovered) vault sources for artist ${artistId}`);
-    } else {
-      // Empty vault → research: discover sources (identity-anchored, retries
-      // internally, writes to the vault as pending) and synthesize from what returns.
-      // Bound it with its own timeout: discovery now runs inline (up to 4 Gemini
-      // calls + page fetches) and shares the route's 45s budget with synthesis, so a
-      // slow (not hung) run must not starve synthesis and 408 the whole request.
-      const discovered = await Promise.race([
-        searchAndPopulateVault(artistId).catch(e => {
-          console.error("[bio] discovery failed:", e);
-          return [] as ArtistVaultSource[];
-        }),
-        new Promise<ArtistVaultSource[]>(resolve =>
-          setTimeout(() => { console.warn("[bio] discovery timed out; falling back"); resolve([]); }, DISCOVERY_TIMEOUT_MS)
-        ),
-      ]);
-      contextualSources = discovered;
-      console.log(`[bio] Discovered ${discovered.length} sources for artist ${artistId}`);
-    }
-  } catch (e) {
-    console.error("[bio] source gathering failed:", e);
-  }
-
-  // No contextual sources → don't flatten to a catalog list. Cache + return the
-  // claim-nudge so the profile invites the artist to add context (and we don't
-  // re-run the expensive discovery on every view). An explicit regenerate retries.
-  if (contextualSources.length === 0) {
-    // Don't clobber an existing real About with the nudge: discovery is flaky (it can
-    // return sources one run and none the next), so a regenerate that happens to come
-    // up empty must NOT wipe a good bio. Only cache the nudge when there's nothing real
-    // to preserve.
-    if (isRealBio(artist.bio)) {
-      console.log(`[bio] Discovery empty but preserving existing bio for artist ${artistId}`);
-      return NextResponse.json({ bio: artist.bio });
-    }
-    await saveBio(artistId, ABOUT_EMPTY_STATE);
-    return NextResponse.json({ bio: ABOUT_EMPTY_STATE, empty: true });
-  }
 
   const vaultContext = contextualSources.map(s => {
     const parts = [`Source: ${s.title ?? s.url}`];
@@ -229,7 +260,9 @@ You have NO web access for this task. Write the About using ONLY the curated sou
         },
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini timeout')), 45000)
+        // Grounding-OFF synthesis measured ~8s; 18s is a generous cap that keeps
+        // discovery(≤35s) + synthesis inside the route's 55s race and the 60s ceiling.
+        setTimeout(() => reject(new Error('Gemini timeout')), 18000)
       )
     ]);
 

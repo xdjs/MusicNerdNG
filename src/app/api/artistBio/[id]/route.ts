@@ -4,11 +4,12 @@ import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { requireArtistEditor } from "@/lib/auth-helpers";
 import { MAX_BIO_LENGTH, ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
 
-// Bio generation runs inline: artist fetch + platform data + source discovery (bounded,
-// ~22s) + Gemini synthesis (grounding OFF). We race the whole thing against a 45s
-// in-handler timeout (see below). Vercel's default serverless ceiling is 10s, which would
-// kill the function long before our 45s race fires; maxDuration lets Vercel allow up to
-// 60s for this route (requires Pro plan — Hobby caps at 60s too).
+// Bio generation runs inline: artist fetch + (concurrently) platform data / verified
+// grounding / catalog / source discovery (discovery bounded ~35s — a grounded Gemini call
+// measured ~33s) + Gemini synthesis (grounding OFF, ~8s). We race the whole thing against a
+// 55s in-handler timeout (see below), under the 60s ceiling. Vercel's default serverless
+// ceiling is 10s, which would kill the function long before our race fires; maxDuration lets
+// Vercel allow up to 60s for this route (requires Pro plan — Hobby caps at 60s too).
 export const maxDuration = 60;
 
 // CORS configuration for this route
@@ -34,7 +35,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // Set a timeout for the entire operation to prevent Vercel timeouts
   const timeoutPromise = new Promise<NextResponse>((_, reject) =>
-    setTimeout(() => reject(new Error('Bio generation timeout')), 45000) // 45 second timeout for Gemini + Google Search grounding
+    setTimeout(() => reject(new Error('Bio generation timeout')), 55000) // 55s: fits inline discovery (~35s) + synthesis under the 60s maxDuration ceiling
   );
 
   const bioOperation = async (): Promise<NextResponse> => {

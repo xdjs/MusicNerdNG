@@ -236,6 +236,22 @@ describe("artistBioQuery (unified sourcing flow)", () => {
     expect(db.update).not.toHaveBeenCalled();                    // nudge NOT written over the good bio
   });
 
+  it("returns 500 and caches nothing when the source lookup throws (transient error != empty)", async () => {
+    const { generateArtistBio, getArtistById, getVaultSourcesByArtistId, db } = await setup();
+    getVaultSourcesByArtistId.mockRejectedValue(new Error("db down")); // transient infra failure
+    getArtistById.mockResolvedValue(artist({ name: "Some Artist", spotify: "sp1" }));
+
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const result = await generateArtistBio("artist-1");
+    const data = await result.json();
+    consoleSpy.mockRestore();
+
+    expect(result.status).toBe(500);
+    expect(data.error).toBe("Failed to generate bio");
+    expect(db.update).not.toHaveBeenCalled();   // nudge NOT written on a transient error
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
   it("does NOT use Google Search grounding — synthesis is offline (namesake conflation fix)", async () => {
     const { generateArtistBio, getArtistById } = await setup();
     getArtistById.mockResolvedValue(artist({ spotify: "sp1" }));
