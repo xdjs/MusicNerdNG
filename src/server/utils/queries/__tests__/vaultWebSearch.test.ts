@@ -46,6 +46,21 @@ describe("searchAndPopulateVault — retry on empty/unparseable response", () =>
     expect(result).toHaveLength(1);
   }, 15000);
 
+  it("enriches returned sources with fetched page content (extractedText) for immediate synthesis", async () => {
+    // The About generator synthesizes from the RETURN value on an artist's first-ever
+    // generation, so returned sources must carry extractedText, not just the snippet.
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://example.com/a","title":"A","snippet":"snip","type":"article"}]',
+    });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+
+    expect(result).toHaveLength(1);
+    // fetchPageContent mock returns extractedText: "t" — it must be reflected on the returned object.
+    expect(result[0].extractedText).toBe("t");
+  }, 15000);
+
   it("returns [] after exhausting attempts if every response is empty", async () => {
     mockGenerate.mockResolvedValue({ text: "" });
 

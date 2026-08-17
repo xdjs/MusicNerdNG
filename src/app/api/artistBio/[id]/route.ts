@@ -4,10 +4,11 @@ import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { requireArtistEditor } from "@/lib/auth-helpers";
 import { MAX_BIO_LENGTH, ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
 
-// Bio generation does Gemini + Google Search grounding; we race against a 45s in-handler
-// timeout (see below). Vercel's default serverless function ceiling is 10s, which would
-// kill the function long before our 45s race ever fires. Declaring maxDuration tells
-// Vercel to allow up to 60s for this route (requires Pro plan — Hobby caps at 60s too).
+// Bio generation runs inline: artist fetch + platform data + source discovery (bounded,
+// ~22s) + Gemini synthesis (grounding OFF). We race the whole thing against a 45s
+// in-handler timeout (see below). Vercel's default serverless ceiling is 10s, which would
+// kill the function long before our 45s race fires; maxDuration lets Vercel allow up to
+// 60s for this route (requires Pro plan — Hobby caps at 60s too).
 export const maxDuration = 60;
 
 // CORS configuration for this route

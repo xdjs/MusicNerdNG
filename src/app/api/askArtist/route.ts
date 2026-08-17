@@ -1,7 +1,7 @@
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
-import { ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
+import { isRealBio } from "@/lib/bioConstants";
 
 // PUBLIC ENDPOINT — intentionally unauthenticated (rate-limited via middleware STRICT tier).
 //
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
         if (artist.soundcloud) contextParts.push(`SoundCloud: ${artist.soundcloud}`);
         if (artist.youtube) contextParts.push(`YouTube: @${artist.youtube?.replace(/^@/, "")}`);
         // Skip the claim-nudge empty-state — it isn't a real bio, so don't feed it back as context.
-        if (artist.bio && artist.bio !== ABOUT_EMPTY_STATE) contextParts.push(`\nExisting bio:\n${artist.bio}`);
+        if (isRealBio(artist.bio)) contextParts.push(`\nExisting bio:\n${artist.bio}`);
 
         // Include approved vault sources
         const vaultUrls: string[] = [];

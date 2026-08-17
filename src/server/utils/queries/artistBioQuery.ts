@@ -7,10 +7,21 @@ import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { sanitizeBioText } from "@/lib/bioText";
-import { ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
+import { ABOUT_EMPTY_STATE, isRealBio } from "@/lib/bioConstants";
+import type { ArtistVaultSource } from "@/server/db/DbTypes";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
+
+// Cap inline discovery so a slow (not hung) run can't starve synthesis of the route's
+// 45s budget. Whatever discovery has inserted keeps running server-side and is picked
+// up (as pending) on the next generation.
+const DISCOVERY_TIMEOUT_MS = 22000;
+
+/** Persist the generated About. Single writer so the update shape stays consistent. */
+async function saveBio(artistId: string, bio: string): Promise<void> {
+  await db.update(artists).set({ bio }).where(eq(artists.id, artistId));
+}
 
 /**
  * Generate an artist's "About" via the UNIFIED SOURCING flow:
@@ -106,8 +117,7 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
   // to the vault as pending, for curation + the Ask-About chat + Press & Features)
   // and synthesize from those. If no contextual sources can be found, we return the
   // claim-nudge — never a hollow catalog-only "bio". One source system, end to end.
-  type Src = { title: string | null; url: string; snippet: string | null; extractedText: string | null };
-  let contextualSources: Src[] = [];
+  let contextualSources: ArtistVaultSource[] = [];
   try {
     const [approved, pending] = await Promise.all([
       getVaultSourcesByArtistId(artistId, "approved"),
@@ -115,33 +125,49 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
     ]);
     if (approved.length > 0) {
       // Claimed/curated: the artist's approved set is authoritative.
-      contextualSources = approved as Src[];
+      contextualSources = approved;
       console.log(`[bio] Using ${approved.length} approved vault sources for artist ${artistId}`);
     } else if (pending.length > 0) {
       // Already-discovered material awaiting curation — synthesize from it rather
       // than re-running discovery on every view (discovery dedups, so a re-run would
       // return nothing new and wrongly collapse to the nudge).
-      contextualSources = pending as Src[];
+      contextualSources = pending;
       console.log(`[bio] Using ${pending.length} pending (discovered) vault sources for artist ${artistId}`);
     } else {
       // Empty vault → research: discover sources (identity-anchored, retries
       // internally, writes to the vault as pending) and synthesize from what returns.
-      const discovered = await searchAndPopulateVault(artistId).catch(e => {
-        console.error("[bio] discovery failed:", e);
-        return [] as Src[];
-      });
-      contextualSources = discovered as Src[];
+      // Bound it with its own timeout: discovery now runs inline (up to 4 Gemini
+      // calls + page fetches) and shares the route's 45s budget with synthesis, so a
+      // slow (not hung) run must not starve synthesis and 408 the whole request.
+      const discovered = await Promise.race([
+        searchAndPopulateVault(artistId).catch(e => {
+          console.error("[bio] discovery failed:", e);
+          return [] as ArtistVaultSource[];
+        }),
+        new Promise<ArtistVaultSource[]>(resolve =>
+          setTimeout(() => { console.warn("[bio] discovery timed out; falling back"); resolve([]); }, DISCOVERY_TIMEOUT_MS)
+        ),
+      ]);
+      contextualSources = discovered;
       console.log(`[bio] Discovered ${discovered.length} sources for artist ${artistId}`);
     }
   } catch (e) {
     console.error("[bio] source gathering failed:", e);
   }
 
-  // No contextual sources → don't flatten to a catalog list. Save + return the
+  // No contextual sources → don't flatten to a catalog list. Cache + return the
   // claim-nudge so the profile invites the artist to add context (and we don't
   // re-run the expensive discovery on every view). An explicit regenerate retries.
   if (contextualSources.length === 0) {
-    await db.update(artists).set({ bio: ABOUT_EMPTY_STATE }).where(eq(artists.id, artistId));
+    // Don't clobber an existing real About with the nudge: discovery is flaky (it can
+    // return sources one run and none the next), so a regenerate that happens to come
+    // up empty must NOT wipe a good bio. Only cache the nudge when there's nothing real
+    // to preserve.
+    if (isRealBio(artist.bio)) {
+      console.log(`[bio] Discovery empty but preserving existing bio for artist ${artistId}`);
+      return NextResponse.json({ bio: artist.bio });
+    }
+    await saveBio(artistId, ABOUT_EMPTY_STATE);
     return NextResponse.json({ bio: ABOUT_EMPTY_STATE, empty: true });
   }
 
@@ -217,7 +243,7 @@ You have NO web access for this task. Write the About using ONLY the curated sou
     console.debug("Gemini call duration:", `${geminiDurationMs}ms`);
 
     if (bio) {
-      await db.update(artists).set({ bio }).where(eq(artists.id, artistId));
+      await saveBio(artistId, bio);
     }
 
     return NextResponse.json({ bio });

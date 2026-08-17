@@ -223,6 +223,19 @@ describe("artistBioQuery (unified sourcing flow)", () => {
     expect(setMock).toHaveBeenCalledWith({ bio: ABOUT_EMPTY_STATE }); // cached so we don't re-discover every view
   });
 
+  it("preserves an existing real bio when discovery returns no sources (regenerate must not clobber)", async () => {
+    const { generateArtistBio, getArtistById, db } = await setup();
+    mockSearchAndPopulate.mockResolvedValue([]); // flaky discovery comes up empty this run
+    getArtistById.mockResolvedValue(artist({ name: "Established Artist", spotify: "sp1", bio: "A solid, accurate existing About." }));
+
+    const result = await generateArtistBio("artist-1");
+    const data = await result.json();
+
+    expect(data.bio).toBe("A solid, accurate existing About."); // kept, not overwritten
+    expect(mockGenerateContent).not.toHaveBeenCalled();          // no re-synthesis
+    expect(db.update).not.toHaveBeenCalled();                    // nudge NOT written over the good bio
+  });
+
   it("does NOT use Google Search grounding — synthesis is offline (namesake conflation fix)", async () => {
     const { generateArtistBio, getArtistById } = await setup();
     getArtistById.mockResolvedValue(artist({ spotify: "sp1" }));
