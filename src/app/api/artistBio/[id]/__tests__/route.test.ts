@@ -20,6 +20,11 @@ jest.mock('@/server/utils/queries/artistBioQuery', () => ({
   generateArtistBio: jest.fn(),
 }));
 
+jest.mock('@/server/utils/queries/dashboardQueries', () => ({
+  ...jest.requireActual('@/server/utils/queries/dashboardQueries'),
+  getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+}));
+
 // Polyfill Response.json for test environment
 if (!('json' in Response)) {
   Response.json = (data, init) =>
@@ -63,6 +68,8 @@ describe('/api/artistBio/[id]', () => {
       '@/server/utils/queries/artistQueries'
     );
     const { generateArtistBio } = await import('@/server/utils/queries/artistBioQuery');
+    const { getVaultSourcesByArtistId } = await import('@/server/utils/queries/dashboardQueries');
+    (getVaultSourcesByArtistId as jest.Mock).mockResolvedValue([]);
     const { GET, PUT } = await import('../route');
 
     return {
@@ -73,6 +80,7 @@ describe('/api/artistBio/[id]', () => {
       mockGetArtistById: getArtistById as jest.Mock,
       mockUpdateArtistBio: updateArtistBio as jest.Mock,
       mockGenerateArtistBio: generateArtistBio as jest.Mock,
+      mockGetVaultSources: getVaultSourcesByArtistId as jest.Mock,
     };
   }
 
@@ -218,6 +226,38 @@ describe('/api/artistBio/[id]', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.bio).toBe('Existing artist bio');
+    });
+
+    it('serves a cached claim-nudge WITHOUT regenerating when no vault sources exist', async () => {
+      const { GET, mockGetArtistById, mockGenerateArtistBio, mockGetVaultSources } = await setup();
+      const { ABOUT_EMPTY_STATE } = await import('@/lib/bioConstants');
+      mockGetArtistById.mockResolvedValue({ id: 'artist-123', bio: ABOUT_EMPTY_STATE, spotify: 'sp1' });
+      mockGetVaultSources.mockResolvedValue([]); // still genuinely sourceless
+
+      const response = await GET(createGetRequest(), { params: paramsPromise });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.bio).toBe(ABOUT_EMPTY_STATE);
+      expect(mockGenerateArtistBio).not.toHaveBeenCalled(); // no expensive re-discovery
+    });
+
+    it('self-heals a cached nudge by regenerating when vault sources have since appeared', async () => {
+      const { GET, mockGetArtistById, mockGenerateArtistBio, mockGetVaultSources } = await setup();
+      const { ABOUT_EMPTY_STATE } = await import('@/lib/bioConstants');
+      mockGetArtistById.mockResolvedValue({ id: 'artist-123', bio: ABOUT_EMPTY_STATE, spotify: 'sp1' });
+      // A truncated discovery inserted pending sources after the nudge was cached.
+      mockGetVaultSources.mockImplementation((_id: string, status: string) =>
+        Promise.resolve(status === 'pending' ? [{ url: 'http://e/1', title: 'T', snippet: 's' }] : []));
+      mockGenerateArtistBio.mockResolvedValue(
+        Response.json({ bio: 'Synthesized from the pending sources' })
+      );
+
+      const response = await GET(createGetRequest(), { params: paramsPromise });
+
+      const data = await response.json();
+      expect(mockGenerateArtistBio).toHaveBeenCalledWith('artist-123'); // regenerated from sources
+      expect(data.bio).toBe('Synthesized from the pending sources');
     });
 
     it('returns 404 when artist not found', async () => {

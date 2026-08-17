@@ -46,6 +46,22 @@ describe("searchAndPopulateVault — retry on empty/unparseable response", () =>
     expect(result).toHaveLength(1);
   }, 15000);
 
+  it("returns sources immediately and enriches page content in the background (not awaited)", async () => {
+    // Enrichment is fire-and-forget so it never adds latency to inline About generation;
+    // the snippet is enough for synthesis and the fuller text lands for later views.
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://example.com/a","title":"A","snippet":"snip","type":"article"}]',
+    });
+
+    const { fetchPageContent } = await import("@/server/utils/fetchPageContent");
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+
+    expect(result).toHaveLength(1);
+    // Background enrichment fetch was fired (not awaited) for the inserted source.
+    expect(fetchPageContent).toHaveBeenCalledWith("https://example.com/a");
+  }, 15000);
+
   it("returns [] after exhausting attempts if every response is empty", async () => {
     mockGenerate.mockResolvedValue({ text: "" });
 

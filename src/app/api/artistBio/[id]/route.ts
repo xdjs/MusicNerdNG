@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
+import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { requireArtistEditor } from "@/lib/auth-helpers";
-import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ABOUT_EMPTY_STATE, isRealBio, isAboutEmptyState } from "@/lib/bioConstants";
 
-// Bio generation does Gemini + Google Search grounding; we race against a 45s in-handler
-// timeout (see below). Vercel's default serverless function ceiling is 10s, which would
-// kill the function long before our 45s race ever fires. Declaring maxDuration tells
-// Vercel to allow up to 60s for this route (requires Pro plan — Hobby caps at 60s too).
+// This route reads from the DB (getArtistById + the self-heal vault lookup); force dynamic
+// so Next.js never statically caches the response at build time (per CLAUDE.md convention).
+export const dynamic = "force-dynamic";
+
+// Bio generation runs inline: artist fetch + (concurrently) platform data / verified
+// grounding / catalog / source discovery (discovery bounded ~38s — grounded Gemini calls
+// measured ~12-33s and may retry) + Gemini synthesis (grounding OFF, ~8s). We race the whole
+// thing against a 57s in-handler timeout (see below), under the 60s ceiling. Vercel's default
+// serverless ceiling is 10s, which would kill the function long before our race fires;
+// maxDuration lets Vercel allow up to 60s for this route (requires Pro plan — Hobby caps at 60s too).
 export const maxDuration = 60;
 
 // CORS configuration for this route
@@ -33,7 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // Set a timeout for the entire operation to prevent Vercel timeouts
   const timeoutPromise = new Promise<NextResponse>((_, reject) =>
-    setTimeout(() => reject(new Error('Bio generation timeout')), 45000) // 45 second timeout for Gemini + Google Search grounding
+    setTimeout(() => reject(new Error('Bio generation timeout')), 57000) // 57s: fits inline discovery (~38s) + synthesis under the 60s maxDuration ceiling
   );
 
   const bioOperation = async (): Promise<NextResponse> => {
@@ -43,17 +50,30 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Artist not found" }, { status: 404, headers: CORS_HEADERS });
     }
 
-    //If the artist lacks vital info (instagram, X, Youtube etc), then display a generic message from the aiprompts table
-    // Empty-state only when there's NO usable identity anchor at all (no bio, no
-    // Spotify, no socials). A Spotify ID alone is enough to generate a grounded About.
+    // Empty-state only when there's NO usable identity anchor at all (no bio, no Spotify,
+    // no socials) — there's nothing to research from. A Spotify ID alone is enough to try.
     if (!forceRegenerate && !artist.bio && !artist.spotify && !artist.youtubechannel && !artist.instagram && !artist.x && !artist.soundcloud) {
-      const emptyState = "We couldn't find enough verified information about this artist yet — and Music Nerd won't guess. If this is you, claim your profile and add a few sources, and your About will fill in within seconds.";
-      return NextResponse.json({ bio: emptyState }, { headers: CORS_HEADERS });
+      return NextResponse.json({ bio: ABOUT_EMPTY_STATE }, { headers: CORS_HEADERS });
     }
 
-    // If bio already exists in the database and not forcing regeneration, return cached
-    if (!forceRegenerate && artist.bio && artist.bio.trim().length > 0) {
+    // A real cached About → return it.
+    if (!forceRegenerate && isRealBio(artist.bio)) {
       return NextResponse.json({ bio: artist.bio }, { headers: CORS_HEADERS });
+    }
+
+    // A cached claim-nudge SELF-HEALS: discovery is slow/flaky and can time out after
+    // inserting pending sources. If vault sources have since appeared, regenerate from them
+    // (synthesis only — no re-discovery). If there are genuinely none, serve the nudge
+    // without re-running the expensive discovery on every view.
+    if (!forceRegenerate && isAboutEmptyState(artist.bio)) {
+      const [approved, pending] = await Promise.all([
+        getVaultSourcesByArtistId(id, "approved"),
+        getVaultSourcesByArtistId(id, "pending"),
+      ]);
+      if (approved.length === 0 && pending.length === 0) {
+        return NextResponse.json({ bio: ABOUT_EMPTY_STATE }, { headers: CORS_HEADERS });
+      }
+      // else fall through to generateArtistBio — it will use the now-present sources.
     }
 
     //generate a bio and return it

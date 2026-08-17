@@ -5,6 +5,9 @@ import { SOURCE_TYPES, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
+// External fetches (redirect resolution) fan out with plain Promise.all — the result set
+// is capped at 8 (see the discovery prompt), so bounded concurrency (p-limit) isn't needed.
+
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
 };
@@ -148,15 +151,19 @@ If you cannot find any results specifically about this artist, return an empty a
             existingSources.map((s) => normalizeUrl(s.url))
         );
 
+        // Resolve vertexaisearch redirect URLs to their real destinations in PARALLEL.
+        // Each redirect fetch can take several seconds and there can be up to 8; doing
+        // them sequentially could blow the request budget now that discovery runs inside
+        // About generation (bounded by the route's 45s race).
+        const validResults = results.filter((r) => r.url && r.title);
+        await Promise.all(
+            validResults.map(async (r) => { r.url = await resolveRedirectUrl(r.url); })
+        );
+
         // Insert each result as a pending vault source, skipping duplicates
         const insertedSources: ArtistVaultSource[] = [];
         let skipped = 0;
-        for (const result of results) {
-            if (!result.url || !result.title) continue;
-
-            // Resolve vertexaisearch redirect URLs to actual destinations
-            result.url = await resolveRedirectUrl(result.url);
-
+        for (const result of validResults) {
             // Reject non-http(s) schemes and private/local hosts. Gemini can return
             // (or be prompt-injected into returning) javascript:/data:/file: URLs that
             // would become stored XSS when rendered as <a href> on the public page.
@@ -185,7 +192,11 @@ If you cannot find any results specifically about this artist, return an empty a
                 });
                 if (source) insertedSources.push(source);
 
-                // Fire background content fetch to populate extractedText
+                // Fire-and-forget page-content enrichment: populate extractedText/ogImage in
+                // the background. Deliberately NOT awaited — this runs inside About generation
+                // (bounded by the route's budget), and a grounded discovery call is already
+                // slow (~12-33s). The snippet is enough for synthesis (validated on Black Dave
+                // + Grimes); the fuller text lands for later views/regenerations.
                 if (source?.id) {
                     fetchPageContent(result.url).then(content => {
                         updateVaultSourceContent(source.id, {
