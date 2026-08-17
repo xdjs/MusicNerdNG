@@ -5,9 +5,6 @@
 import { db } from "@/server/db/drizzle";
 import { eq, sql } from "drizzle-orm";
 import { artists } from "@/server/db/schema";
-import { regenerateArtistBio } from "./queries/artistBioQuery";
-
-export const BIO_RELEVANT_COLUMNS = ["spotify", "deezer", "instagram", "x", "soundcloud", "youtube", "youtubechannel"];
 
 // Whitelist of platform columns that can be written via link helpers.
 // Derived from the artists table schema — only platform/social columns.
@@ -73,13 +70,11 @@ export async function setArtistLink(
   // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
   const oldValue = getArtistLinkValue(artist, columnName);
 
-  // For bio-relevant columns, set value and null bio in a single statement
-  if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
-    await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value}, bio = NULL WHERE id = ${artistId}`);
-    regenerateArtistBio(artistId).catch((e) => console.error("[artistLinkService] Bio regen failed", e));
-  } else {
-    await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
-  }
+  // Update the link column only. We intentionally do NOT null or regenerate the
+  // bio on link changes — that overwrote artist edits and re-ran generation on
+  // every UGC/agent submission. The About refreshes on explicit regenerate, or
+  // lazily when it's absent (see the artistBio route).
+  await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
 
   return { oldValue, artistName: artist.name ?? null };
 }
@@ -102,12 +97,8 @@ export async function clearArtistLink(
   // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
   const oldValue = getArtistLinkValue(artist, columnName);
 
-  if (BIO_RELEVANT_COLUMNS.includes(columnName)) {
-    await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL, bio = NULL WHERE id = ${artistId}`);
-    regenerateArtistBio(artistId).catch((e) => console.error("[artistLinkService] Bio regen failed", e));
-  } else {
-    await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
-  }
+  // See setArtistLink: link changes no longer null/regenerate the bio.
+  await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
 
   return { oldValue };
 }

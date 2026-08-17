@@ -142,7 +142,7 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
 
                 {/* 3. Bio */}
                 <RevealSection className="glass p-4 sm:p-5 space-y-3">
-                    <h2 className="text-black dark:text-white text-xl font-bold">Artist Summary</h2>
+                    <h2 className="text-black dark:text-white text-xl font-bold">About</h2>
                     <BlurbSection
                         key={artist.bio ?? ""}
                         artistName={artist.name ?? ""}

@@ -236,7 +236,7 @@ export default function VaultManager({ artistId, pendingSources, approvedSources
     <div className="space-y-4">
       {/* What the vault is for */}
       <p className="text-xs text-muted-foreground leading-relaxed">
-        Your vault powers your profile. Approved sources — articles, interviews, reviews, uploaded files — become context for your AI-generated <strong>Artist Summary</strong> and the <strong>Ask About</strong> answers. The more quality sources you add, the better and more accurate that content gets.
+        Your vault powers your profile. Approved sources — articles, interviews, reviews, uploaded files — become context for your AI-generated <strong>About</strong> and the <strong>Ask About</strong> answers. The more quality sources you add, the better and more accurate that content gets.
       </p>
 
       {/* Add a source by URL */}

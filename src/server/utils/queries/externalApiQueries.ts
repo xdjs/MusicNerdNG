@@ -284,4 +284,33 @@ export const getArtistTopTrackName = unstable_cache(async (id: string | null, he
     }
 }, ["spotify-top-track"], { tags: ["spotify-top-track"], revalidate: 60 * 60 * 24 });
 
+/**
+ * Real catalog NAMES (not just a count) for use as ground-truth in bio generation.
+ * Returns the artist's actual release titles + top-track names so the generator
+ * writes from the real discography instead of guessing from an open-web namesake.
+ * Best-effort: returns empty arrays on any failure.
+ */
+export const getSpotifyCatalogNames = unstable_cache(async (
+    id: string | null,
+    headers: SpotifyHeaderType
+): Promise<{ releases: string[]; topTracks: string[] }> => {
+    if (!id) return { releases: [], topTracks: [] };
+    try {
+        const [albumsRes, tracksRes] = await Promise.allSettled([
+            axios.get(`https://api.spotify.com/v1/artists/${id}/albums?include_groups=album%2Csingle&limit=20&market=US`, headers),
+            axios.get(`https://api.spotify.com/v1/artists/${id}/top-tracks?market=US`, headers),
+        ]);
+        const releases = albumsRes.status === "fulfilled"
+            ? Array.from(new Set(((albumsRes.value.data.items ?? []) as Array<{ name?: string }>).map(a => a.name).filter((n): n is string => !!n))).slice(0, 15)
+            : [];
+        const topTracks = tracksRes.status === "fulfilled"
+            ? ((tracksRes.value.data.tracks ?? []) as Array<{ name?: string }>).map(t => t.name).filter((n): n is string => !!n).slice(0, 8)
+            : [];
+        return { releases, topTracks };
+    } catch (e) {
+        console.error(`Error fetching Spotify catalog names for artist`, e);
+        return { releases: [], topTracks: [] };
+    }
+}, ["spotify-catalog-names"], { tags: ["spotify-catalog-names"], revalidate: 60 * 60 * 24 });
+
 

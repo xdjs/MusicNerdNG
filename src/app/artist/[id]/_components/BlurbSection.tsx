@@ -123,7 +123,8 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
         refetch(); // Update the hook's displayed bio
         toast({ title: "Bio regenerated" });
       } else {
-        // PUT failed (not admin) — use GET with force-regenerate param
+        // PUT failed — retry via GET force-regenerate. Both paths are editor-gated now,
+        // so this only helps an authorized editor whose PUT hit a transient (non-auth) error.
         const getResp = await fetch(`/api/artistBio/${artistId}?regenerate=true`);
         const getData = await getResp.json();
         if (getResp.ok && getData.bio) {

@@ -16,6 +16,7 @@ import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier
 import { notifyDiscordOfArtistLinkAdded } from "@/server/utils/artistLinkDiscordNotifier";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { regenerateArtistBio } from "@/server/utils/queries/artistBioQuery";
+import { isAboutEmptyState } from "@/lib/bioConstants";
 import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
 
 // ----------------------------------
@@ -654,13 +655,24 @@ export async function removeArtistData(artistId: string, siteName: string): Prom
 export async function updateArtistBio(artistId: string, bio: string, regenerate: boolean = false): Promise<RemoveArtistDataResp> {
     try {
         if (regenerate) {
-            // Generate new bio using Gemini
+            // Snapshot the current About so we can tell a real regeneration apart from a
+            // no-op (discovery is flaky; when it finds nothing new the clobber-guard in
+            // generateArtistBio preserves the existing bio unchanged).
+            const priorBio = (await getArtistById(artistId))?.bio ?? null;
             const generatedBio = await regenerateArtistBio(artistId);
-            if (generatedBio) {
-                return { status: "success", message: "Bio regenerated", data: generatedBio };
-            } else {
+            if (!generatedBio) {
                 return { status: "error", message: "Failed to generate bio" };
             }
+            // Discovery found nothing verifiable — the About degraded to the claim-nudge.
+            // Surface that distinctly so an admin regenerate doesn't look like a normal success.
+            if (isAboutEmptyState(generatedBio)) {
+                return { status: "success", message: "No verified sources found — showing the claim prompt", data: generatedBio };
+            }
+            // Discovery found nothing new — the existing About was preserved, not regenerated.
+            if (priorBio !== null && generatedBio === priorBio) {
+                return { status: "success", message: "No new sources found — About unchanged", data: generatedBio };
+            }
+            return { status: "success", message: "Bio regenerated", data: generatedBio };
         } else {
             // Update with provided bio
             await db.update(artists).set({ bio }).where(eq(artists.id, artistId));

@@ -5,6 +5,9 @@ import { SOURCE_TYPES, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
+// External fetches (redirect resolution) fan out with plain Promise.all — the result set
+// is capped at 8 (see the discovery prompt), so bounded concurrency (p-limit) isn't needed.
+
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
 };
@@ -78,10 +81,9 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         ? `\n\nThis artist's known profiles:\n${identityParts.join("\n")}`
         : "";
 
-    try {
-        const response = await getGemini().models.generateContent({
-            model: GEMINI_MODEL_FLASH,
-            contents: `Search the web for articles, interviews, reviews, profiles, and notable content specifically about the music artist "${artistName}".${identityContext}
+    const searchRequest = {
+        model: GEMINI_MODEL_FLASH,
+        contents: `Search the web for articles, interviews, reviews, profiles, and notable content specifically about the music artist "${artistName}".${identityContext}
 
 IMPORTANT: Every result MUST be specifically about "${artistName}" the music artist. Do NOT include results about other people, bands, or websites that happen to share a similar name.
 
@@ -101,31 +103,43 @@ Return ONLY a JSON array in this format, no other text:
 [{"url": "...", "title": "...", "snippet": "...", "type": "..."}]
 
 If you cannot find any results specifically about this artist, return an empty array: []`,
-            config: {
-                systemInstruction: "You are a music research assistant. You search the web for articles, interviews, reviews, and content specifically about a given music artist. You must be precise — only return results that are directly about the specified artist, not about other artists or people with similar names.",
-                tools: [{ googleSearch: {} }],
-            },
-        });
+        config: {
+            systemInstruction: "You are a music research assistant. You search the web for articles, interviews, reviews, and content specifically about a given music artist. You must be precise — only return results that are directly about the specified artist, not about other artists or people with similar names.",
+            tools: [{ googleSearch: {} }],
+        },
+    };
 
-        const outputText = response.text ?? "";
-        console.log(`[vaultWebSearch] Raw response for "${artistName}":`, outputText.slice(0, 500));
-
-        // Extract JSON array from the response
-        const jsonMatch = outputText.match(/\[[\s\S]*\]/);
-        if (!jsonMatch) {
-            console.error("[vaultWebSearch] No JSON array found in response");
-            return [];
+    try {
+        // Gemini intermittently returns an EMPTY or unparseable grounded response
+        // (transient — not artist-specific). Treating that as "no sources" wrongly
+        // reduced even famous artists (e.g. Grimes) to nothing. Retry until we get a
+        // parseable non-empty list; a genuinely sourceless artist exhausts attempts → [].
+        const MAX_ATTEMPTS = 4;
+        let results: WebSearchResult[] = [];
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            let outputText = "";
+            try {
+                const response = await getGemini().models.generateContent(searchRequest);
+                outputText = response.text ?? "";
+            } catch (e) {
+                console.error(`[vaultWebSearch] Gemini call failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, e);
+            }
+            const jsonMatch = outputText.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                try {
+                    const parsed = JSON.parse(jsonMatch[0]);
+                    if (Array.isArray(parsed) && parsed.length > 0) { results = parsed; break; }
+                } catch {
+                    console.error(`[vaultWebSearch] Unparseable JSON (attempt ${attempt}/${MAX_ATTEMPTS}):`, jsonMatch[0].slice(0, 120));
+                }
+            }
+            if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 700 * attempt));
         }
 
-        let results: WebSearchResult[];
-        try {
-            results = JSON.parse(jsonMatch[0]);
-        } catch {
-            console.error("[vaultWebSearch] Failed to parse JSON:", jsonMatch[0].slice(0, 200));
+        if (results.length === 0) {
+            console.log(`[vaultWebSearch] No usable results for "${artistName}" after ${MAX_ATTEMPTS} attempts`);
             return [];
         }
-
-        if (!Array.isArray(results) || results.length === 0) return [];
 
         // Only dedup against pending + approved sources (allow re-discovery of deleted/rejected URLs)
         const [pendingSources, approvedSources] = await Promise.all([
@@ -137,15 +151,19 @@ If you cannot find any results specifically about this artist, return an empty a
             existingSources.map((s) => normalizeUrl(s.url))
         );
 
+        // Resolve vertexaisearch redirect URLs to their real destinations in PARALLEL.
+        // Each redirect fetch can take several seconds and there can be up to 8; doing
+        // them sequentially could blow the request budget now that discovery runs inside
+        // About generation (bounded by the route's 57s race).
+        const validResults = results.filter((r) => r.url && r.title);
+        await Promise.all(
+            validResults.map(async (r) => { r.url = await resolveRedirectUrl(r.url); })
+        );
+
         // Insert each result as a pending vault source, skipping duplicates
         const insertedSources: ArtistVaultSource[] = [];
         let skipped = 0;
-        for (const result of results) {
-            if (!result.url || !result.title) continue;
-
-            // Resolve vertexaisearch redirect URLs to actual destinations
-            result.url = await resolveRedirectUrl(result.url);
-
+        for (const result of validResults) {
             // Reject non-http(s) schemes and private/local hosts. Gemini can return
             // (or be prompt-injected into returning) javascript:/data:/file: URLs that
             // would become stored XSS when rendered as <a href> on the public page.
@@ -174,7 +192,11 @@ If you cannot find any results specifically about this artist, return an empty a
                 });
                 if (source) insertedSources.push(source);
 
-                // Fire background content fetch to populate extractedText
+                // Fire-and-forget page-content enrichment: populate extractedText/ogImage in
+                // the background. Deliberately NOT awaited — this runs inside About generation
+                // (bounded by the route's budget), and a grounded discovery call is already
+                // slow (~12-33s). The snippet is enough for synthesis (validated on Black Dave
+                // + Grimes); the fuller text lands for later views/regenerations.
                 if (source?.id) {
                     fetchPageContent(result.url).then(content => {
                         updateVaultSourceContent(source.id, {
