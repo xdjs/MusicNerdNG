@@ -42,4 +42,13 @@ describe('sendClaimApprovedEmail', () => {
         expect(body.html).toContain('Music Nerd');
         expect(body.html).not.toMatch(/MusicNerd[^ ]/);
     });
+
+    it('escapes HTML markup in artist name to prevent injection', async () => {
+        jest.mock('@/env', () => ({ RESEND_API_KEY: 'rk_test', NEXTAUTH_URL: 'https://staging.musicnerd.xyz' }));
+        const { sendClaimApprovedEmail } = await import('@/server/utils/email');
+        await sendClaimApprovedEmail('artist@example.com', '<script>alert(1)</script>Nova', 'artist-uuid-1');
+        const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+        expect(body.html).not.toContain('<script>');
+        expect(body.html).toContain('&lt;script&gt;');
+    });
 });
