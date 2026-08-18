@@ -12,6 +12,8 @@ import type { ArtistVaultSource } from "@/server/db/DbTypes";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
+import { getArtistDoc } from "@/server/utils/queries/onboardingQueries";
+import { ARTIST_DOC_CONTEXT_CAP } from "@/server/utils/artistDocService";
 
 // Every I/O the generator does runs concurrently inside the route's budget, so each gets
 // its own bound: no single slow dependency can starve synthesis and 408 the request.
@@ -207,6 +209,13 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
     return parts.join(" — ");
   }).join("\n");
   promptParts.push(`\n--- SOURCES (synthesize the About ONLY from these + the verified data above; they are about this exact artist) ---\n${vaultContext}\n--- END SOURCES ---`);
+
+  // The artist doc, when present, carries the artist's own words + curated story
+  // hooks — highest-quality About material we have.
+  const artistDoc = await getArtistDoc(artistId);
+  if (artistDoc?.content) {
+    promptParts.push(`\n--- ARTIST DOC (compiled with the artist during onboarding; interview quotes are their own words — quote, don't paraphrase) ---\n${artistDoc.content.slice(0, ARTIST_DOC_CONTEXT_CAP)}\n--- END ARTIST DOC ---`);
+  }
 
   try {
     const artistData = promptParts.join("\n");
