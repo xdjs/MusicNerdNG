@@ -181,6 +181,34 @@ export async function extractArtistId(artistUrl: string) {
                 }
             }
             
+            // Handle Spotify URL parsing. The urlmap regex is
+            // `^https:\/\/open\.spotify\.com\/(track|album|artist|playlist|episode|show)\/([a-zA-Z0-9]+)(?:\?.*)?$`
+            // — group 1 is the URL *type* segment (e.g. the literal string
+            // "artist"), NOT the ID; group 2 is the real base62 ID. The
+            // generic `match[1] || match[2] || match[3]` fallback below would
+            // wrongly return the literal string "artist" as the ID. Only a
+            // /artist/ URL identifies an artist profile — a track/album/
+            // playlist/episode/show URL is not an artist profile and must be
+            // rejected rather than silently saving the wrong kind of ID.
+            if (siteName === 'spotify') {
+                const urlType = match[1];
+                const spotifyId = match[2];
+
+                if (urlType?.toLowerCase() !== 'artist') {
+                    return null;
+                }
+
+                if (!spotifyId || !/^[A-Za-z0-9]{22}$/.test(spotifyId)) {
+                    return null;
+                }
+
+                return {
+                    siteName: 'spotify',
+                    cardPlatformName,
+                    id: spotifyId
+                };
+            }
+
             let extractedId = match[1] || match[2] || match[3];
 
             // Decode any percent-encoded characters in the captured ID as well

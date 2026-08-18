@@ -103,6 +103,68 @@ function fallbackDisplayName(siteName: string): string {
     return siteName.charAt(0).toUpperCase() + siteName.slice(1);
 }
 
+// --- confirm_profiles failure messaging (Bug 3) -------------------------
+// Two distinct failure causes need distinct copy: a link we couldn't even
+// parse (no username/profile path) vs. a link we understood but the DB
+// write rejected (e.g. a unique-constraint collision — already linked to
+// another profile). Conflating them as "unrecognized" is misleading in the
+// second case, so each gets its own message naming the offending link(s).
+
+const FAILURE_URL_DISPLAY_MAX = 48;
+
+/** Truncate a long URL sensibly for inline chat copy. */
+function truncateUrlForDisplay(url: string): string {
+    return url.length > FAILURE_URL_DISPLAY_MAX ? `${url.slice(0, FAILURE_URL_DISPLAY_MAX - 1)}…` : url;
+}
+
+function formatFailedLinkList(urls: string[]): string {
+    return urls.map(truncateUrlForDisplay).join(", ");
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+    return count === 1 ? singular : plural;
+}
+
+/** extractArtistId returned nothing — the URL didn't include a recognizable
+ *  username/profile path (e.g. a bare `https://www.instagram.com/`). Keeps
+ *  the phrase "couldn't recognize" for backward compatibility with earlier
+ *  copy, while now naming the offending link(s) and explaining why.
+ *
+ *  `blocked` must match what actually happens next: when the step is about
+ *  to be re-emitted for a retry (Bug 2's all-failed path) the closing line
+ *  invites a paste; when the step is confirming and advancing to vault
+ *  instead, inviting a paste right before "Profiles confirmed" would be a
+ *  message that doesn't match reality — so it points to Social Links later. */
+function buildUnrecognizedLinksMessage(urls: string[], blocked: boolean): string {
+    const list = formatFailedLinkList(urls);
+    const noun = pluralize(urls.length, "one of your links", `${urls.length} of your links`);
+    const subject = urls.length === 1 ? "It" : "They";
+    const verb = pluralize(urls.length, "doesn't", "don't");
+    const linkNoun = pluralize(urls.length, "a direct profile link", "direct profile links");
+    const tail = blocked
+        ? "paste the profile URL and I'll try again."
+        : `you can add ${pluralize(urls.length, "it", "them")} anytime from the Social Links section of your page.`;
+    return `Heads up — I couldn't recognize ${noun}: ${list}. ${subject} ${verb} look like ${linkNoun} (no username or handle at the end) — ${tail}`;
+}
+
+/** setArtistLink threw — extraction succeeded but the write was rejected,
+ *  most likely a unique-constraint collision (already linked elsewhere).
+ *  Deliberately avoids the word "recognize" so it reads as a different
+ *  failure than buildUnrecognizedLinksMessage. See `blocked` note above. */
+function buildWriteRejectedLinksMessage(urls: string[], blocked: boolean): string {
+    const list = formatFailedLinkList(urls);
+    const noun = pluralize(urls.length, "one of your links", `${urls.length} of your links`);
+    const pronoun = pluralize(urls.length, "it's", "they're");
+    const tail = blocked
+        ? "try a different link, or reach out if that seems wrong."
+        : "you can try again anytime from the Social Links section of your page, or reach out if that seems wrong.";
+    return `Heads up — I couldn't save ${noun}: ${list}. Looks like ${pronoun} already linked to another profile on Music Nerd — ${tail}`;
+}
+
+/** Bug 2 recovery copy: every submitted link failed and nothing ended up
+ *  saved, so the profiles step is re-emitted instead of being confirmed. */
+const PROFILES_RETRY_NUDGE = "Nothing saved yet — let's fix that before moving on. Paste the direct profile link below and I'll give it another shot.";
+
 /** Bounds the whole preview-gathering phase so a slow/hostile site can never
  *  blow the turn budget — links whose preview didn't resolve in time simply
  *  get `previewImage: null`. Each individual `fetchLinkPreview` call already
@@ -321,7 +383,6 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, state.currentStep);
             return;
         }
-        const failures: string[] = [];
         for (const siteName of turn.removedSiteNames ?? []) {
             try {
                 await clearArtistLink(artistId, siteName);
@@ -329,26 +390,63 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
                 console.error(`[onboarding] clearArtistLink failed for ${siteName}:`, e);
             }
         }
+
+        // Bug 3: track the two failure causes separately — a URL we couldn't
+        // parse at all (unrecognized) vs. one we parsed fine but whose write
+        // was rejected (e.g. a unique-constraint collision) — they get
+        // different copy below.
+        const unrecognized: string[] = [];
+        const writeRejected: string[] = [];
         for (const raw of turn.addedLinks ?? []) {
+            let extracted;
             try {
-                const extracted = await extractArtistId(raw.url);
-                if (!extracted?.siteName || !extracted?.id) {
-                    failures.push(raw.url);
-                    continue;
-                }
+                extracted = await extractArtistId(raw.url);
+            } catch (e) {
+                console.error(`[onboarding] extractArtistId failed for ${raw.url}:`, e);
+                unrecognized.push(raw.url);
+                continue;
+            }
+            if (!extracted?.siteName || !extracted?.id) {
+                unrecognized.push(raw.url);
+                continue;
+            }
+            try {
                 await setArtistLink(artistId, extracted.siteName, extracted.id);
             } catch (e) {
                 console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
-                failures.push(raw.url);
+                writeRejected.push(raw.url);
             }
         }
-        await confirmOnboardingStep(artistId, "profiles");
-        if (failures.length > 0) {
-            yield {
-                kind: "chat",
-                text: `Heads up — I couldn't recognize ${failures.length === 1 ? "one of your links" : `${failures.length} of your links`}. You can add ${failures.length === 1 ? "it" : "them"} anytime from the Social Links section of your page.`,
-            };
+
+        // Bug 2: never infer success from the request payload — a write can
+        // silently fail. Re-read the artist's own link columns (the same set
+        // buildProfilesPayload uses) so "at least one link" reflects reality.
+        const artistAfterWrites = await getArtistById(artistId);
+        const linkRecord = (artistAfterWrites ?? {}) as unknown as Record<string, unknown>;
+        const hasAtLeastOneLink = PROFILE_DISPLAY_COLUMNS.some(col => {
+            const value = linkRecord[col];
+            return typeof value === "string" && value.length > 0;
+        });
+        const submittedAdditions = (turn.addedLinks ?? []).length > 0;
+        const allAdditionsFailed = submittedAdditions
+            && unrecognized.length + writeRejected.length === (turn.addedLinks ?? []).length;
+
+        if (submittedAdditions && allAdditionsFailed && !hasAtLeastOneLink) {
+            // The user submitted links, every single one failed, and the
+            // artist still has zero saved links. Do NOT confirm/advance —
+            // that would show "Profiles confirmed" over an empty profile
+            // (the exact bug seen in live testing). Report what went wrong
+            // and re-emit the profiles step as the recovery path.
+            if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, true) };
+            if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, true) };
+            yield { kind: "chat", text: PROFILES_RETRY_NUDGE };
+            yield* emitStep(artistId, "profiles");
+            return;
         }
+
+        await confirmOnboardingStep(artistId, "profiles");
+        if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };
+        if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, false) };
         yield { kind: "chat", text: NARRATION.profilesDone };
         yield* emitStep(artistId, "vault");
         return;

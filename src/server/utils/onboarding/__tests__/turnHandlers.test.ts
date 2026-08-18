@@ -168,6 +168,105 @@ describe('runOnboardingTurn', () => {
         expect(events.some(e => e.kind === 'error')).toBe(false); // degradation, not failure
     });
 
+    it('confirm_profiles: all additions fail and the artist still has zero links — does NOT confirm/advance, re-emits the profiles step (Bug 2)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes' }); // zero link columns, before AND after the writes
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+        extractArtistId
+            .mockResolvedValueOnce(undefined) // unrecognized: no username in the URL
+            .mockResolvedValueOnce({ siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'novareyes' }); // recognized, write rejected
+        setArtistLink.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint "artists_tiktok_unique"'));
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://www.instagram.com/' }, { url: 'https://tiktok.com/@novareyes' }],
+            removedSiteNames: [],
+        }));
+        expect(oq.confirmOnboardingStep).not.toHaveBeenCalledWith('a1', 'profiles');
+        expect(events.some(e => e.kind === 'step' && e.step === 'profiles')).toBe(true);
+        expect(events.some(e => e.kind === 'chat' && e.text.includes('Profiles confirmed'))).toBe(false);
+        expect(events.some(e => e.kind === 'error')).toBe(false); // recovery is a re-emitted step, not an error event
+        // The closing line must match what actually happens next: on the
+        // blocked path (re-emitting the step) it invites a retry paste, NOT
+        // the "add it later from Social Links" copy that only makes sense on
+        // the confirm-and-advance path (the closing-line bug the advisor flagged).
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes("I'll try again"))).toBe(true);
+        expect(chats.some(t => t.includes('Social Links section'))).toBe(false);
+    });
+
+    it('confirm_profiles: at least one addition succeeds — confirms the step and advances to vault as before', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes', instagram: 'nova' }); // reflects the successful write
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce({ siteName: 'instagram', cardPlatformName: 'Instagram', id: 'nova' });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://instagram.com/nova' }],
+            removedSiteNames: [],
+        }));
+        expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'profiles');
+        expect(events.some(e => e.kind === 'chat' && e.text.includes('Profiles confirmed'))).toBe(true);
+        expect(events.some(e => e.kind === 'step' && e.step === 'vault')).toBe(true);
+    });
+
+    it('confirm_profiles: zero additions submitted and the artist has zero links — blank-slate skip still confirms and advances', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes' }); // zero links, nothing submitted either
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [],
+            removedSiteNames: [],
+        }));
+        expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'profiles');
+        expect(events.some(e => e.kind === 'chat' && e.text.includes('Profiles confirmed'))).toBe(true);
+        expect(events.some(e => e.kind === 'step' && e.step === 'vault')).toBe(true);
+    });
+
+    it('confirm_profiles: distinguishes an unrecognized URL from a write that was rejected (Bug 3)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes', spotify: 'spot1' }); // pre-existing link keeps this on the "confirm" path
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+        extractArtistId
+            .mockResolvedValueOnce(undefined) // unrecognized: bare instagram.com with no username
+            .mockResolvedValueOnce({ siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'novareyes' }); // recognized, write rejected
+        setArtistLink.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://www.instagram.com/' }, { url: 'https://tiktok.com/@novareyes' }],
+            removedSiteNames: [],
+        }));
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        const unrecognizedMsg = chats.find(t => t.includes('instagram.com'));
+        const writeRejectedMsg = chats.find(t => t.includes('tiktok.com'));
+        expect(unrecognizedMsg).toBeDefined();
+        expect(writeRejectedMsg).toBeDefined();
+        expect(unrecognizedMsg).not.toBe(writeRejectedMsg);
+        expect(unrecognizedMsg).toMatch(/recognize/i);
+        expect(writeRejectedMsg).toMatch(/save/i);
+        expect(writeRejectedMsg).not.toMatch(/recognize/i);
+        // This turn advances to vault (a pre-existing link means it's not the
+        // all-failed/blocked path) — the closing line must point to Social
+        // Links, NOT invite a paste-and-retry that has nowhere to land once
+        // "Profiles confirmed" and the vault card have already been sent.
+        expect(unrecognizedMsg).toContain('Social Links section');
+        expect(writeRejectedMsg).toContain('Social Links section');
+        expect(unrecognizedMsg).not.toContain("I'll try again");
+    });
+
     it('vault step passes each pending source\'s ogImage (or null) through into the payload', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
