@@ -28,6 +28,9 @@ export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?
 // Gemini
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
 
+// Resend (transactional email — approval notifications). Empty = sends are skipped.
+export const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
+
 // Privy Configuration
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 export const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET ?? "";

@@ -5,6 +5,8 @@ import { getUserById } from "@/server/utils/queries/userQueries";
 import { approveClaim, rejectClaim, getAllClaims, getClaimById, revokeApprovedClaim } from "@/server/utils/queries/dashboardQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
+import { sendClaimApprovedEmail } from "@/server/utils/email";
+import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { logMcpAudit } from "@/app/api/mcp/audit";
 import { getSupabaseAdmin, VAULT_BUCKET } from "@/server/lib/supabase";
 
@@ -33,6 +35,20 @@ export async function approveClaimAction(claimId: string): Promise<{ success: bo
         searchAndPopulateVault(claim.artistId).catch(e =>
             console.error("[approveClaimAction] Background web search failed:", e)
         );
+
+        // Approval email — fire-and-forget; approval NEVER blocks on email.
+        // Legacy wallet users may have no email; the on-page banner is the fallback channel.
+        void (async () => {
+            const [claimUser, artist] = await Promise.all([
+                getUserById(claim.userId),
+                getArtistById(claim.artistId),
+            ]);
+            if (!claimUser?.email) {
+                console.log(`[approveClaimAction] No email for user ${claim.userId} — skipping approval email`);
+                return;
+            }
+            await sendClaimApprovedEmail(claimUser.email, artist?.name ?? "your artist", claim.artistId);
+        })().catch(e => console.error("[approveClaimAction] Approval email failed:", e));
 
         sendDiscordMessage(
             `Claim APPROVED: ${claim.referenceCode} | Artist ID: ${claim.artistId} | Approved by: ${session.user.email ?? session.user.id}`
