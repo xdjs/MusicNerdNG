@@ -165,4 +165,81 @@ describe('OnboardingChat', () => {
         fireEvent.click(screen.getByRole('button', { name: /publish/i }));
         expect(sendTurn).toHaveBeenCalledWith({ type: 'publish', doc: '## Overview', about: 'An About.' });
     });
+
+    // ---- Three-way scroll-anchoring rule (see the comment above the effect
+    // in OnboardingChat.tsx): every items-change takes exactly one of
+    // (1) force-scroll on action-requiring items, (2) auto-scroll when near
+    // bottom, or (3) show the "New messages" pill. JSDOM has no real layout,
+    // so these tests simulate scroll position via defineProperty on the
+    // scroll container's scrollHeight/clientHeight/scrollTop, mirroring how
+    // the bug was originally diagnosed with real DOM measurements.
+    describe('scroll anchoring', () => {
+        function scrollFarFromBottom(container) {
+            Object.defineProperty(container, 'scrollHeight', { value: 3000, configurable: true });
+            Object.defineProperty(container, 'clientHeight', { value: 500, configurable: true });
+            Object.defineProperty(container, 'scrollTop', { value: 100, configurable: true, writable: true });
+            fireEvent.scroll(container);
+        }
+
+        it('branch 3: shows the "New messages" pill for non-action items while scrolled away from the bottom, and clicking it dismisses the pill', () => {
+            setChat({ items: [{ id: 'b1', kind: 'bot', text: 'Hi' }] });
+            const { rerender } = render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+            const scrollEl = screen.getByTestId('onboarding-scroll');
+            scrollFarFromBottom(scrollEl);
+            // The initial mount also auto-scrolled once (default "near bottom"
+            // before we simulated being scrolled away) — clear that call so the
+            // assertions below are about THIS update only.
+            Element.prototype.scrollTo.mockClear();
+
+            expect(screen.queryByText('↓ New messages')).not.toBeInTheDocument();
+
+            setChat({ items: [
+                { id: 'b1', kind: 'bot', text: 'Hi' },
+                { id: 'b2', kind: 'bot', text: 'Still working on it' },
+            ] });
+            rerender(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+
+            expect(screen.getByText('↓ New messages')).toBeInTheDocument();
+            // Branch 3 must not scroll — that's the whole point of the pill.
+            expect(Element.prototype.scrollTo).not.toHaveBeenCalled();
+            // Clicking scrolls to the first unseen item and dismisses the pill.
+            // JSDOM has no layout (every rect is 0), so we can't assert *which*
+            // item it scrolled to — only that the scroll-to-target call fired.
+            fireEvent.click(screen.getByText('↓ New messages'));
+            expect(Element.prototype.scrollTo).toHaveBeenCalled();
+            expect(screen.queryByText('↓ New messages')).not.toBeInTheDocument();
+        });
+
+        it('branch 1: force-scrolls (no pill) when a draft arrives even while scrolled away from the bottom', () => {
+            setChat({ items: [{ id: 'b1', kind: 'bot', text: 'Hi' }] });
+            const { rerender } = render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+            const scrollEl = screen.getByTestId('onboarding-scroll');
+            scrollFarFromBottom(scrollEl);
+
+            setChat({ items: [
+                { id: 'b1', kind: 'bot', text: 'Hi' },
+                { id: 'd1', kind: 'draft', doc: '## Overview', about: 'An About.' },
+            ] });
+            rerender(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+
+            // Action-requiring content (the draft) must always anchor-scroll,
+            // regardless of "near bottom" — so no pill, ever.
+            expect(screen.queryByText('↓ New messages')).not.toBeInTheDocument();
+            expect(screen.getByText('An About.')).toBeInTheDocument();
+        });
+
+        it('branch 2: auto-scrolls non-action items (no pill) when the user was already near the bottom', () => {
+            setChat({ items: [{ id: 'b1', kind: 'bot', text: 'Hi' }] });
+            const { rerender } = render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+            // wasNearBottomRef defaults to true — no scroll event needed.
+
+            setChat({ items: [
+                { id: 'b1', kind: 'bot', text: 'Hi' },
+                { id: 'b2', kind: 'bot', text: 'More' },
+            ] });
+            rerender(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+
+            expect(screen.queryByText('↓ New messages')).not.toBeInTheDocument();
+        });
+    });
 });

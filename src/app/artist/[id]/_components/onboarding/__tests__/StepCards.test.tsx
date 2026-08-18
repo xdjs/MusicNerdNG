@@ -336,4 +336,16 @@ describe('AboutDraftCard', () => {
         expect(screen.getByRole('button', { name: /publish/i })).toBeDisabled();
         expect(screen.getByText(/can't be empty/i)).toBeInTheDocument();
     });
+
+    // Regression test for the "Edit is unreachable at the moment of decision"
+    // bug: with a long About, the Edit control used to live up near the card's
+    // heading while "Publish this" sat far below — scrolled apart. Assert on
+    // DOM containment (same action-row parent), not pixel positions, since
+    // JSDOM has no layout.
+    it('renders Edit in the same action row as Publish this, as siblings', () => {
+        render(<AboutDraftCard doc="## Overview" about="An About." onPublish={jest.fn()} disabled={false} />);
+        const editButton = screen.getByRole('button', { name: 'Edit' });
+        const publishButton = screen.getByRole('button', { name: /publish/i });
+        expect(editButton.parentElement).toBe(publishButton.parentElement);
+    });
 });

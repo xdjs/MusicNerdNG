@@ -67,11 +67,16 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
         if (near) setHasNewBelow(false);
     }, []);
 
-    // Fix 1 + Fix 2: on new items, anchor to the TOP of the newest content
-    // instead of jumping to the absolute bottom — but only when the user was
-    // already following along (near the bottom) or the new content requires
-    // their action (their own echo, a step/draft card). Otherwise leave their
-    // scroll position alone and surface a "New messages" affordance instead.
+    // Three-way, total scroll-anchoring rule. Every items-change takes EXACTLY
+    // one of these branches — there is no silent fourth "do nothing" outcome:
+    //   1. The new items include something the user just drove (their own
+    //      echo) or something that demands their attention (a step, draft, or
+    //      complete card) → ALWAYS anchor-scroll to it, no matter where
+    //      they've scrolled. This must never depend on "near bottom".
+    //   2. Else, if they were already near the bottom → anchor-scroll to the
+    //      newest content, same as always.
+    //   3. Else → leave their scroll position alone and surface the
+    //      "↓ New messages" pill instead.
     useEffect(() => {
         const container = scrollRef.current;
         const prevIds = prevIdsRef.current;
@@ -79,19 +84,22 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
         prevIdsRef.current = new Set(items.map(i => i.id));
         if (!container || newItems.length === 0) return;
 
-        const actionRequiring = newItems.some(i => i.kind === "user" || i.kind === "step" || i.kind === "draft");
-        const shouldAutoScroll = wasNearBottomRef.current || actionRequiring;
-        // Anchor to the first newly-added item that isn't the user's own echo
-        // bubble (their own message always follows them) — falls back to the
-        // first new item when the echo is all there is so far.
-        const anchorItem = newItems.find(i => i.kind !== "user") ?? newItems[0];
+        // Only the items that actually demand attention decide branch 1 — a
+        // bot/progress item that happened to batch in alongside a real step
+        // or draft (e.g. multiple SSE frames flushed in one React update)
+        // shouldn't win the anchor target over the thing the user needs to
+        // see.
+        const actionItems = newItems.filter(
+            i => i.kind === "user" || i.kind === "step" || i.kind === "draft" || i.kind === "complete"
+        );
+        // Anchor to the action item itself — falls back to the user's own
+        // echo bubble when that's the only action item in this update, or to
+        // the first new item at all when there's no action item (branch 2).
+        const anchorItem = actionItems.length > 0 ? actionItems.find(i => i.kind !== "user") ?? actionItems[0] : newItems[0];
+
+        const shouldAutoScroll = actionItems.length > 0 || wasNearBottomRef.current;
 
         if (!shouldAutoScroll) {
-            // A transient status chip on its own isn't worth interrupting the
-            // user's reading for — the real content that follows it shortly
-            // will decide the pill on its own merits (or force-scroll, if
-            // it's action-requiring).
-            if (newItems.every(i => i.kind === "progress")) return;
             if (!pillTargetIdRef.current) pillTargetIdRef.current = anchorItem.id;
             setHasNewBelow(true);
             return;
@@ -230,6 +238,7 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                     <div
                         ref={scrollRef}
                         onScroll={handleScroll}
+                        data-testid="onboarding-scroll"
                         className="h-full overflow-y-auto scrollbar-glass p-4 flex flex-col gap-2.5"
                     >
                         {items.map(item => (

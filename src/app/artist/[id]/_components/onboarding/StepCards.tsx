@@ -419,17 +419,7 @@ export function AboutDraftCard({ doc, about, onPublish, disabled }: {
 
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-3 w-full">
-            <div className="flex items-center justify-between gap-2">
-                <h3 className="font-bold text-pink-500">Your About</h3>
-                <button
-                    type="button"
-                    onClick={() => setIsEditing(prev => !prev)}
-                    disabled={disabled}
-                    className="text-sm px-3 py-1 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                    {isEditing ? "Done" : "Edit"}
-                </button>
-            </div>
+            <h3 className="font-bold text-pink-500">Your About</h3>
             {isEditing ? (
                 <div className="space-y-1.5">
                     <textarea
@@ -467,13 +457,28 @@ export function AboutDraftCard({ doc, about, onPublish, disabled }: {
                         : `That's over the ${MAX_BIO_LENGTH.toLocaleString()}-character limit — trim it down before publishing.`}
                 </p>
             )}
-            <button
-                onClick={() => onPublish({ doc, about: aboutText })}
-                disabled={publishDisabled}
-                className="w-full bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                Publish this
-            </button>
+            {/* Bottom action row: Edit/Done stays reachable right beside the
+                publish decision, instead of scrolling off-screen above a long
+                About (the affordance is otherwise invisible at the moment the
+                artist is deciding whether to publish). Edit is the clearly
+                secondary (outline) action; Publish this stays primary. */}
+            <div className="flex items-stretch gap-2">
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(prev => !prev)}
+                    disabled={disabled}
+                    className="flex-none text-sm px-3 py-2.5 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    {isEditing ? "Done" : "Edit"}
+                </button>
+                <button
+                    onClick={() => onPublish({ doc, about: aboutText })}
+                    disabled={publishDisabled}
+                    className="flex-1 bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Publish this
+                </button>
+            </div>
             <p className="text-xs text-gray-600 dark:text-gray-300">
                 This also saves your artist doc — it powers your page&apos;s Q&amp;A and fun facts.
             </p>
