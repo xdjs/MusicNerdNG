@@ -82,8 +82,16 @@ describe('POST /api/onboarding/[artistId]/chat', () => {
         // global.Response in every jest environment with a node-fetch polyfill
         // that stringifies a ReadableStream body to "[object ReadableStream]".
         // Swap in StreamCaptureResponse — which stores the route's real stream
-        // untouched — only while POST runs, then restore the global so other
-        // tests (and the auth tests above) keep using the polyfilled Response.
+        // untouched. beforeEach installs the swap BEFORE setup() dynamically
+        // imports the route module (which transitively re-evaluates
+        // next/server), so this covers module re-import through POST — not
+        // merely "while POST runs". afterEach restores the global so the
+        // auth tests above (and any other suite) keep using the polyfilled
+        // Response. Caution: any error-path assertion added inside this
+        // block runs against a NextResponse (e.g. Response.json(...)) built
+        // on StreamCaptureResponse, a test double, not a spec-compliant
+        // Response — its .json()/.text() behavior is not guaranteed to
+        // match a real fetch Response.
         let OriginalResponse;
 
         beforeEach(() => {
@@ -98,10 +106,15 @@ describe('POST /api/onboarding/[artistId]/chat', () => {
         it('streams turn events as SSE data lines', async () => {
             const { POST } = await setup();
             const res = await POST(makeReq({ type: 'open' }), params);
+            expect(res.status).toBe(200);
             expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+            expect(res.headers.get('Cache-Control')).toBe('no-cache, no-transform');
+            expect(res.headers.get('Connection')).toBe('keep-alive');
             const text = await readAll(res);
-            expect(text).toContain('data: {"kind":"chat","text":"hello"}');
-            expect(text).toContain('data: {"kind":"complete"}');
+            // Exact equality (not toContain) pins the \n\n frame terminator,
+            // ordering, and absence of stray bytes — Task 9's client parser
+            // splits SSE frames on \n\n, so this framing is load-bearing.
+            expect(text).toBe('data: {"kind":"chat","text":"hello"}\n\ndata: {"kind":"complete"}\n\n');
         });
 
         it('converts a thrown handler error into an error event, not a crash', async () => {
