@@ -286,6 +286,11 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
     }
 
     if (turn.type === "publish") {
+        if (state.currentStep === null) {
+            yield { kind: "chat", text: NARRATION.alreadyDone };
+            yield { kind: "complete" };
+            return;
+        }
         if (state.currentStep !== "publish") {
             yield { kind: "error", message: "We're not quite there yet — let's finish the earlier steps first." };
             if (state.currentStep) yield* emitStep(artistId, state.currentStep);
@@ -314,6 +319,11 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         return;
     }
 
+    if (state.currentStep === null) {
+        yield { kind: "chat", text: NARRATION.alreadyDone };
+        yield { kind: "complete" };
+        return;
+    }
     yield { kind: "error", message: "I didn't understand that — let's continue." };
-    if (state.currentStep) yield* emitStep(artistId, state.currentStep);
+    yield* emitStep(artistId, state.currentStep);
 }

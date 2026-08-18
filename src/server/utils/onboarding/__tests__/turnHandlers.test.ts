@@ -106,11 +106,15 @@ describe('runOnboardingTurn', () => {
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
         const dq = await import('@/server/utils/queries/dashboardQueries');
         const { db } = await import('@/server/db/drizzle');
-        db.update.mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }) });
+        const where = jest.fn().mockResolvedValue(undefined);
+        const set = jest.fn().mockReturnValue({ where });
+        db.update.mockReturnValue({ set });
         const { runOnboardingTurn } = await import('../turnHandlers');
         const events = await collect(runOnboardingTurn('a1', { type: 'publish', doc: '## Overview\nd', about: 'About text' }));
         expect(oq.upsertArtistDoc).toHaveBeenCalledWith('a1', '## Overview\nd');
         expect(dq.saveBioVersion).toHaveBeenCalledWith('a1', 'About text');
+        expect(db.update).toHaveBeenCalled();
+        expect(set).toHaveBeenCalledWith({ bio: 'About text' });
         expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'publish');
         expect(events.some(e => e.kind === 'complete')).toBe(true);
     });
@@ -122,5 +126,17 @@ describe('runOnboardingTurn', () => {
         const events = await collect(runOnboardingTurn('a1', { type: 'publish', doc: 'd', about: 'a' }));
         expect(events.some(e => e.kind === 'error')).toBe(true);
         expect(oq.upsertArtistDoc).not.toHaveBeenCalled();
+    });
+
+    it('publish arriving after onboarding is already complete just completes — no false "not quite there" error', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: true, currentStep: null });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'publish', doc: 'd', about: 'a' }));
+        expect(oq.upsertArtistDoc).not.toHaveBeenCalled();
+        expect(dq.saveBioVersion).not.toHaveBeenCalled();
+        expect(events.some(e => e.kind === 'complete')).toBe(true);
+        expect(events.some(e => e.kind === 'chat' && e.text.includes('not quite there'))).toBe(false);
     });
 });
