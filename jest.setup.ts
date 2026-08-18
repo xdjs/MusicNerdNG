@@ -73,6 +73,11 @@ if (typeof window !== 'undefined') {
         unobserve: jest.fn(),
         disconnect: jest.fn(),
     }));
+
+    // Mock Element.scrollTo (not implemented in JSDOM)
+    if (!window.Element.prototype.scrollTo) {
+        window.Element.prototype.scrollTo = jest.fn();
+    }
 }
 
 // Mock window.fetch
