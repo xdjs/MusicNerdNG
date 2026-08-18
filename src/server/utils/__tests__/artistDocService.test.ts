@@ -50,8 +50,11 @@ describe('artistDocService', () => {
     });
 
     it('generateAboutFromDoc returns trimmed text within MAX_BIO_LENGTH', async () => {
-        const { svc } = await setup({ geminiText: '  A concrete About.  ' });
+        const { svc, generateContent } = await setup({ geminiText: '  A concrete About.  ' });
         await expect(svc.generateAboutFromDoc('Nova Reyes', '## Overview\ndoc')).resolves.toBe('A concrete About.');
+        const call = generateContent.mock.calls[0][0];
+        expect(call.config.tools).toBeUndefined(); // ungrounded by design
+        expect(call.config.systemInstruction).toContain('About');
     });
 
     it('getArtistDocContext caps the slice and returns null with no doc', async () => {
