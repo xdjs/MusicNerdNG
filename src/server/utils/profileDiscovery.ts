@@ -22,10 +22,17 @@
  *
  * A grounded model will confidently invent URLs, so every candidate from
  * EVERY tier — DB-sourced and API-sourced included — is validated before
- * it's ever shown to an artist; see the numbered gates in `discoverInner`
+ * it's ever shown to an artist; see the numbered gates in `validateCandidate`
  * below. Nothing here writes to the database; discovery only PROPOSES, the
  * existing `confirm_profiles` → `extractArtistId` → `setArtistLink` path
  * (unchanged) is what actually saves an accepted link.
+ *
+ * Results STREAM: `discoverArtistProfilesStream` is an async generator that
+ * yields a `searching`/`checked` pair as each platform lookup starts/settles
+ * and a `found` event the instant a candidate clears validation — never a
+ * silent `Promise.all` that dumps everything at once. `discoverArtistProfiles`
+ * is a thin array-returning wrapper over it for callers that just want the
+ * final list.
  */
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
 import { extractArtistId } from "@/server/utils/services";
@@ -67,13 +74,14 @@ export interface DiscoveredProfile {
 // DB read, tier 2 is one or two deterministic HTTP calls, and tier 3 is N
 // small single-platform grounded calls run in PARALLEL — the slowest of
 // those (not their sum) bounds the tier. Worst case is roughly
-// tier1(<1s) + tier2(~1-2s) + tier3(TIER3_CALL_TIMEOUT_MS) + the unchanged
-// PREVIEW_BUDGET_MS gate ≈ well under 15s. DISCOVERY_BUDGET_MS remains a hard
-// backstop so a pathological run (e.g. a hung DB connection) still can't
-// blow the turn budget — it degrades to [] instead.
+// tier1(<1s) + tier2(~1-2s) + tier3(TIER3_CALL_TIMEOUT_MS) + a per-candidate
+// preview fetch (≤4s, 8s worst case chained for Spotify — see linkPreview.ts)
+// ≈ well under 15s. DISCOVERY_BUDGET_MS remains a hard backstop, checked
+// between tiers inside the generator itself, so a pathological run (e.g. a
+// hung DB connection) still can't blow the turn budget — it stops yielding
+// instead.
 const DISCOVERY_BUDGET_MS = 20_000;
 const TIER3_CALL_TIMEOUT_MS = 8_000;
-const PREVIEW_BUDGET_MS = 5_000;
 
 // Platforms whose og:image scrape reliably resolves for a real profile
 // (verified against the live sites — see linkPreview.ts). A miss here is a
@@ -85,7 +93,7 @@ const OG_RELIABLE_SITENAMES = new Set(["spotify", "instagram", "youtube"]);
 /** A candidate proposed by one tier, tagged with which tier proposed it and
  *  which PROFILE_DISPLAY_COLUMN it's a proposal FOR (not yet validated —
  *  every candidate, regardless of tier, still runs the full gate pipeline
- *  in `discoverInner`). */
+ *  in `validateCandidate`). */
 interface TierCandidate {
     tier: 1 | 2 | 3;
     platform: ProfileDisplayColumn;
@@ -173,18 +181,46 @@ function pickExactNameMatch(matches: MusicPlatformArtist[], artistName: string):
     return exact[0];
 }
 
+/** Drains a set of KEYED promises in COMPLETION order (not creation order) —
+ *  the primitive that lets tier 2/3 stream a fast platform's result the
+ *  instant it lands instead of waiting on `Promise.all` for the slowest one
+ *  in the batch. Each promise is wrapped once (so repeated `Promise.race`
+ *  calls don't re-trigger already-settled work) and removed from the pool as
+ *  soon as it wins a race, so every entry is yielded exactly once.
+ *
+ *  A REJECTED input promise is coerced to `null` rather than left to reject
+ *  the race — every current caller already self-catches inside its own async
+ *  IIFE (so this never fires today), but without this, one rejecting job
+ *  would blow up the whole `for await` and silently truncate every later
+ *  platform/tier rather than degrading just that one job to "no candidate". */
+async function* settleAsCompleted<K, V>(entries: [key: K, promise: Promise<V>][]): AsyncGenerator<[K, V | null]> {
+    const remaining = new Map(entries.map(([key, p]) => [
+        key,
+        p.then(value => ({ key, value: value as V | null }), () => ({ key, value: null as V | null })),
+    ] as const));
+    while (remaining.size > 0) {
+        const { key, value } = await Promise.race(remaining.values());
+        remaining.delete(key);
+        yield [key, value];
+    }
+}
+
 /** Deterministic, sub-second: resolve a missing spotify/deezer column via
- *  that platform's own search-by-name API. Runs both lookups (when both are
- *  missing) in parallel. Never throws — a provider error degrades to no
- *  candidate for that platform, same as an ambiguous/no-match search. */
-async function tierTwoPlatformSearch(
+ *  that platform's own search-by-name API. Kicks off both lookups (when both
+ *  are missing) in parallel and yields each as its own job resolves —
+ *  Spotify must never wait on Deezer or vice versa. Never throws — a
+ *  provider error degrades to no candidate for that platform, same as an
+ *  ambiguous/no-match search. Yields `[platform, candidate | null]` for
+ *  EVERY targeted platform (not just hits) so the caller can emit a
+ *  "checked" signal even when nothing was found. */
+async function* tierTwoPlatformSearchStream(
     artistName: string,
     missing: Set<ProfileDisplayColumn>,
-): Promise<TierCandidate[]> {
-    const jobs: Promise<TierCandidate | null>[] = [];
+): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
+    const jobs: [ProfileDisplayColumn, Promise<TierCandidate | null>][] = [];
 
     if (missing.has("spotify")) {
-        jobs.push((async () => {
+        jobs.push(["spotify", (async (): Promise<TierCandidate | null> => {
             try {
                 const matches = await spotifyProvider.searchArtists(artistName, 5);
                 const best = pickExactNameMatch(matches, artistName);
@@ -194,11 +230,11 @@ async function tierTwoPlatformSearch(
                 console.error("[profileDiscovery] tier2 spotify search failed:", e);
                 return null;
             }
-        })());
+        })()]);
     }
 
     if (missing.has("deezer")) {
-        jobs.push((async () => {
+        jobs.push(["deezer", (async (): Promise<TierCandidate | null> => {
             try {
                 const matches = await deezerProvider.searchArtists(artistName, 5);
                 const best = pickExactNameMatch(matches, artistName);
@@ -208,11 +244,10 @@ async function tierTwoPlatformSearch(
                 console.error("[profileDiscovery] tier2 deezer search failed:", e);
                 return null;
             }
-        })());
+        })()]);
     }
 
-    const settled = await Promise.all(jobs);
-    return settled.filter((c): c is TierCandidate => c !== null);
+    yield* settleAsCompleted(jobs);
 }
 
 // --- Tier 3: per-platform, domain-scoped grounded search -------------------
@@ -277,16 +312,21 @@ function parseTierThreeResponse(text: string): { url: string; reasoning: string 
     return { url: urlMatch[0].replace(/[)\].,'"]+$/, ""), reasoning: null };
 }
 
-async function tierThreeGroundedSearch(
+/** One small Gemini call PER remaining platform, all kicked off together but
+ *  yielded as EACH individual call resolves (via `settleAsCompleted`) — never
+ *  a `Promise.all` barrier that lets the slowest platform hold up the rest.
+ *  Yields `[platform, candidate | null]` for every targeted platform so the
+ *  caller can emit a "checked" signal even for a `NONE`/failed response. */
+async function* tierThreeGroundedSearchStream(
     artistName: string,
     identityContext: string,
     missing: Set<ProfileDisplayColumn>,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
-): Promise<TierCandidate[]> {
+): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
     const platforms = (Object.keys(TIER3_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
-    if (platforms.length === 0) return [];
+    if (platforms.length === 0) return;
 
-    const settled = await Promise.all(platforms.map(async (platform): Promise<TierCandidate | null> => {
+    const jobs: [ProfileDisplayColumn, Promise<TierCandidate | null>][] = platforms.map(platform => [platform, (async (): Promise<TierCandidate | null> => {
         const domain = TIER3_DOMAINS[platform]!;
         const displayName = urlmapBySiteName.get(platform)?.cardPlatformName || fallbackDisplayName(platform);
         const prompt = buildTierThreePrompt(artistName, identityContext, displayName, domain);
@@ -309,132 +349,76 @@ async function tierThreeGroundedSearch(
             console.error(`[profileDiscovery] tier3 (${platform}) search failed:`, e);
             return null;
         }
-    }));
+    })()]);
 
-    return settled.filter((c): c is TierCandidate => c !== null);
+    yield* settleAsCompleted(jobs);
 }
 
-/** Fetch link previews for every {siteName, url} pair in parallel, bounded
- *  by PREVIEW_BUDGET_MS overall. Never throws; a miss/timeout is simply
- *  absent from the map (callers treat that as `null`). Same shape as
- *  `gatherProfilePreviews` in turnHandlers.ts, kept local here so this
- *  module has no dependency on the onboarding step engine. */
-async function gatherPreviews(entries: [siteName: string, url: string][]): Promise<Map<string, string | null>> {
-    const settled = new Map<string, string | null>();
-    if (entries.length === 0) return settled;
-    const gathering = Promise.all(entries.map(async ([siteName, url]) => {
-        const preview = await fetchLinkPreview(url);
-        settled.set(siteName, preview.imageUrl);
-    }));
-    let timer: ReturnType<typeof setTimeout>;
-    const budget = new Promise<void>(resolve => { timer = setTimeout(resolve, PREVIEW_BUDGET_MS); });
-    try {
-        await Promise.race([gathering, budget]);
-    } finally {
-        clearTimeout(timer!);
-    }
-    return settled;
+/** A live progress/result signal from `discoverArtistProfilesStream`, emitted
+ *  as each individual platform lookup starts and settles — the SSE layer
+ *  (`turnHandlers.ts`) translates these 1:1 into `progress`/`candidate`
+ *  frames so the artist watches profiles get found in real time, instead of
+ *  the whole three-tier cascade running silently and dumping a single result
+ *  array at the end.
+ *
+ *  `searching`/`checked` always come in pairs for a given platform (start,
+ *  then settle — regardless of whether anything was found) so a client can
+ *  flip a "Searching X…" chip to a checkmark by matching on `displayName`.
+ *  `found` fires the instant a candidate clears every validation gate — it
+ *  is NOT batched behind its tier's other in-flight platforms. */
+export type DiscoveryEvent =
+    | { kind: "searching"; platform: ProfileDisplayColumn; displayName: string }
+    | { kind: "checked"; platform: ProfileDisplayColumn; displayName: string }
+    | { kind: "found"; profile: DiscoveredProfile };
+
+function platformDisplayName(platform: ProfileDisplayColumn, urlmapBySiteName: Map<string, UrlmapPresentationRow>): string {
+    return urlmapBySiteName.get(platform)?.cardPlatformName || fallbackDisplayName(platform);
 }
 
-async function discoverInner(artistId: string): Promise<DiscoveredProfile[]> {
-    const artist = await getArtistById(artistId);
-    if (!artist) return [];
-    const record = artist as unknown as Record<string, unknown>;
+interface ValidationContext {
+    artistId: string;
+    record: Record<string, unknown>;
+    urlmapBySiteName: Map<string, UrlmapPresentationRow>;
+    /** Shared across the WHOLE run (all tiers) — dedupe gate (d): first
+     *  validated hit for a siteName wins, a later one is dropped. */
+    seen: Set<string>;
+}
 
-    // Nothing to search for — the artist already has every platform we'd propose.
-    const missing = new Set<ProfileDisplayColumn>(PROFILE_DISPLAY_COLUMNS.filter(col => !artistHasRawLinkValue(record, col)));
-    if (missing.size === 0) return [];
-
-    let allLinks: Awaited<ReturnType<typeof getAllLinks>> = [];
+/** Runs a single raw tier candidate through every validation gate a
+ *  discovered profile must clear before it's ever shown to an artist — the
+ *  exact gates `discoverInner` used to run once over a fully-collected batch,
+ *  now run inline per-candidate so a hit can be yielded the instant it's
+ *  proven real, without waiting on the rest of its tier:
+ *  (0) the URL resolves back to the SAME platform the tier proposed it for
+ *      (a tier-3 Instagram-scoped call must not smuggle in a TikTok URL),
+ *  (a) `extractArtistId` resolves the URL to a real {siteName, id},
+ *  (b) that siteName is one MusicNerd can actually write (curated,
+ *      writable-by-construction `PROFILE_DISPLAY_COLUMNS`),
+ *  (c) the artist doesn't already have a value for that column,
+ *  (d) dedupe by siteName (first validated hit wins),
+ *  (e) a preview (og:image) resolves — but ONLY for tier 3. This gate exists
+ *      to catch a GROUNDED MODEL hallucinating a plausible-but-dead URL;
+ *      tiers 1 (our own DB) and 2 (deterministic platform search APIs) never
+ *      hallucinate, so a real deterministic match is never discarded just
+ *      because an unrelated oEmbed/scrape blipped. Only enforced for
+ *      platforms known to reliably serve OG data in the first place
+ *      (`OG_RELIABLE_SITENAMES`) — a miss anywhere else is normal, not a
+ *      red flag. */
+async function validateCandidate(candidate: TierCandidate, ctx: ValidationContext): Promise<DiscoveredProfile | null> {
+    let extracted;
     try {
-        allLinks = await getAllLinks();
+        extracted = await extractArtistId(candidate.url);
     } catch (e) {
-        console.error("[profileDiscovery] getAllLinks failed, presentation metadata will degrade:", e);
+        console.error(`[profileDiscovery] extractArtistId threw for ${candidate.url}:`, e);
+        return null;
     }
-    const urlmapBySiteName = new Map<string, UrlmapPresentationRow>(allLinks.map(l => [l.siteName, l]));
-
-    // --- Tier 1 — free, instant, authoritative ----------------------------
-    const tier1 = await tierOneIdMappings(artistId, missing, urlmapBySiteName);
-    for (const c of tier1) missing.delete(c.platform);
-
-    // --- Tiers 2/3 both need a real name to search/ask about. A bare
-    // platform ID (e.g. only `deezer` set) is useless as a search anchor on
-    // its own — resolve the real name/image/fan count first. Skipped
-    // entirely once tier 1 alone has satisfied everything missing.
-    let tier2: TierCandidate[] = [];
-    let tier3: TierCandidate[] = [];
-    let artistName: string | null = null;
-    if (missing.size > 0) {
-        const enrichment = await musicPlatformData.getArtist(artist).catch(() => null);
-        artistName = enrichment?.name?.trim() || artist.name?.trim() || null;
-        if (artistName) {
-            // --- Tier 2 — deterministic platform search APIs ------------------
-            tier2 = await tierTwoPlatformSearch(artistName, missing);
-            for (const c of tier2) missing.delete(c.platform);
-
-            // --- Tier 3 — per-platform, domain-scoped grounded search, parallel
-            if (missing.size > 0) {
-                const identityContext = buildIdentityContext(record, enrichment);
-                tier3 = await tierThreeGroundedSearch(artistName, identityContext, missing, urlmapBySiteName);
-                for (const c of tier3) missing.delete(c.platform);
-            }
-        }
-    }
-
-    const allRaw: TierCandidate[] = [...tier1, ...tier2, ...tier3];
-    if (allRaw.length === 0) {
-        console.log(`[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" — no tier proposed any candidates`);
-        return [];
-    }
-
-    // --- Validation gates -------------------------------------------------
-    // Every candidate from EVERY tier runs through the SAME gates — a tier-1
-    // or tier-2 result is not exempt:
-    // (0) [new — tier-scoping check] the URL must resolve back to the SAME
-    //     platform the tier proposed it for (e.g. a tier-3 Instagram-scoped
-    //     call must not smuggle in a TikTok URL). Not one of the six
-    //     original gates below — an additive safety check the per-platform
-    //     tier-3 design specifically needs, since each call now carries an
-    //     implicit "this answer is about platform X" contract to enforce.
-    // (a) extractArtistId resolves the URL to a real {siteName, id}, and
-    // (b) that siteName is one MusicNerd can actually write (the curated,
-    //     writable-by-construction PROFILE_DISPLAY_COLUMNS set) — otherwise
-    //     an accepted candidate would round-trip into a confusing
-    //     "already linked to another profile" write-rejection message.
-    // (c) the artist doesn't already have a value for that column, and
-    // (d) dedupe by siteName, keeping the first (highest-confidence /
-    //     highest-authority-tier) hit.
-    type Survivor = { siteName: string; id: string; reasoning: string | null; originalUrl: string; tier: 1 | 2 | 3 };
-    const survivors: Survivor[] = [];
-    const seen = new Set<string>();
-    let unresolved = 0, unsupported = 0, alreadyHave = 0, duplicate = 0, mismatch = 0;
-    for (const candidate of allRaw) {
-        let extracted;
-        try {
-            extracted = await extractArtistId(candidate.url);
-        } catch (e) {
-            console.error(`[profileDiscovery] extractArtistId threw for ${candidate.url}:`, e);
-            unresolved++;
-            continue;
-        }
-        if (!extracted?.siteName || !extracted?.id) { unresolved++; continue; }
-        const siteName = extracted.siteName;
-        if (siteName !== candidate.platform) { mismatch++; continue; }
-        if (!(PROFILE_DISPLAY_COLUMNS as readonly string[]).includes(siteName)) { unsupported++; continue; }
-        if (artistHasRawLinkValue(record, siteName)) { alreadyHave++; continue; }
-        if (seen.has(siteName)) { duplicate++; continue; }
-        seen.add(siteName);
-        survivors.push({ siteName, id: extracted.id, reasoning: candidate.reasoning, originalUrl: candidate.url, tier: candidate.tier });
-    }
-
-    if (survivors.length === 0) {
-        console.log(
-            `[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" ` +
-            `proposed(t1=${tier1.length},t2=${tier2.length},t3=${tier3.length}) survivors=0 ` +
-            `(unresolved=${unresolved} mismatch=${mismatch} unsupported=${unsupported} alreadyHave=${alreadyHave} duplicate=${duplicate})`,
-        );
-        return [];
-    }
+    if (!extracted?.siteName || !extracted?.id) return null;
+    const siteName = extracted.siteName;
+    if (siteName !== candidate.platform) return null; // gate (0) — tier-scoping mismatch
+    if (!(PROFILE_DISPLAY_COLUMNS as readonly string[]).includes(siteName)) return null; // gate (b)
+    if (artistHasRawLinkValue(ctx.record, siteName)) return null; // gate (c)
+    if (ctx.seen.has(siteName)) return null; // gate (d)
+    ctx.seen.add(siteName);
 
     // Build the canonical profile URL from urlmap (matches confirmed-link
     // presentation exactly), but verify it round-trips back through
@@ -443,77 +427,163 @@ async function discoverInner(artistId: string): Promise<DiscoveredProfile[]> {
     // guaranteed to be the inverse of every regex (YouTube's `@` handles,
     // SoundCloud's numeric-ID guard, Facebook's full-URL column). When it
     // doesn't round-trip, fall back to the original URL we already proved
-    // extracts correctly (gate a) — used for submission; the urlmap
-    // metadata is still used for display (logo/color/name).
-    const enrichedSurvivors = await Promise.all(survivors.map(async s => {
-        const row = urlmapBySiteName.get(s.siteName);
-        const meta = buildLinkPresentationMeta(row, s.siteName, s.id);
-        let profileUrl = meta.profileUrl || s.originalUrl;
-        if (meta.profileUrl) {
-            try {
-                const roundTrip = await extractArtistId(meta.profileUrl);
-                if (!roundTrip || roundTrip.siteName !== s.siteName || roundTrip.id !== s.id) {
-                    profileUrl = s.originalUrl;
-                }
-            } catch {
-                profileUrl = s.originalUrl;
+    // extracts correctly — used for submission; the urlmap metadata is
+    // still used for display (logo/color/name).
+    const row = ctx.urlmapBySiteName.get(siteName);
+    const meta = buildLinkPresentationMeta(row, siteName, extracted.id);
+    let profileUrl = meta.profileUrl || candidate.url;
+    if (meta.profileUrl) {
+        try {
+            const roundTrip = await extractArtistId(meta.profileUrl);
+            if (!roundTrip || roundTrip.siteName !== siteName || roundTrip.id !== extracted.id) {
+                profileUrl = candidate.url;
             }
+        } catch {
+            profileUrl = candidate.url;
         }
-        return { ...s, meta, profileUrl };
-    }));
-
-    // (e) Preview fetch — a miss on a platform that reliably serves OG data
-    // is a signal the profile may not actually exist (a grounded model can
-    // hallucinate a plausible-looking but dead URL). Platforms known not to
-    // serve OG data (X, and anything outside OG_RELIABLE_SITENAMES) are not
-    // penalized for a miss.
-    const previewBySiteName = await gatherPreviews(enrichedSurvivors.map(e => [e.siteName, e.profileUrl]));
-
-    let noOg = 0;
-    const results: DiscoveredProfile[] = [];
-    const tierBySiteName = new Map<string, 1 | 2 | 3>();
-    for (const s of enrichedSurvivors) {
-        const previewImage = previewBySiteName.get(s.siteName) ?? null;
-        if (!previewImage && OG_RELIABLE_SITENAMES.has(s.siteName)) { noOg++; continue; }
-        tierBySiteName.set(s.siteName, s.tier);
-        results.push({
-            siteName: s.siteName,
-            displayName: s.meta.displayName,
-            value: s.id,
-            profileUrl: s.profileUrl,
-            logoUrl: s.meta.logoUrl,
-            colorHex: s.meta.colorHex,
-            previewImage,
-            reasoning: s.reasoning,
-        });
     }
 
-    // Per-tier proposed/survived counts — lets us judge which tier earns its
-    // keep over time (see the discovery-rebuild report).
-    const survivedByTier = { 1: 0, 2: 0, 3: 0 };
-    for (const tier of tierBySiteName.values()) survivedByTier[tier]++;
+    const preview = await fetchLinkPreview(profileUrl);
+    const previewImage = preview.imageUrl ?? null;
+    if (!previewImage && candidate.tier === 3 && OG_RELIABLE_SITENAMES.has(siteName)) return null; // gate (e)
 
-    console.log(
-        `[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" ` +
-        `tier1 proposed=${tier1.length} survived=${survivedByTier[1]} | ` +
-        `tier2 proposed=${tier2.length} survived=${survivedByTier[2]} | ` +
-        `tier3 proposed=${tier3.length} survived=${survivedByTier[3]} | ` +
-        `total survivors=${results.length} (unresolved=${unresolved} mismatch=${mismatch} unsupported=${unsupported} alreadyHave=${alreadyHave} duplicate=${duplicate} noOg=${noOg}) ` +
-        `keptSiteNames=${JSON.stringify(results.map(r => r.siteName))}`,
-    );
-    return results;
+    return {
+        siteName,
+        displayName: meta.displayName,
+        value: extracted.id,
+        profileUrl,
+        logoUrl: meta.logoUrl,
+        colorHex: meta.colorHex,
+        previewImage,
+        reasoning: candidate.reasoning,
+    };
 }
 
 /** Discover platform profiles the artist likely has but hasn't linked yet,
- *  from whatever identity anchors are already on file. Bounded to
- *  ~`DISCOVERY_BUDGET_MS` end-to-end and NEVER throws — any failure (DB
- *  down, provider down, Gemini down, malformed JSON, network errors)
+ *  from whatever identity anchors are already on file — streamed as an async
+ *  generator so each finding renders the instant it's proven real instead of
+ *  the whole cascade running silently and dumping one array at the end (see
+ *  `DiscoveryEvent` above). Tiers still run in authority order (1 → 2 → 3,
+ *  each skipping platforms an earlier tier already proposed for), but WITHIN
+ *  a tier, multiple platforms are checked in parallel and yielded as each one
+ *  individually settles — a slow platform must never delay a fast one.
+ *
+ *  Carries its own `DISCOVERY_BUDGET_MS` deadline (checked between tiers) so
+ *  a hung tier can't eat the onboarding turn's budget — this generator is
+ *  consumed directly in production (`turnHandlers.ts`), so unlike the old
+ *  array-returning function it has no outer `Promise.race` backstop of its
+ *  own; `discoverArtistProfiles` below adds one anyway for any other caller.
+ *
+ *  NEVER throws — any failure (DB down, provider down, Gemini down, bad
+ *  JSON, network) simply stops yielding, degrading to whatever was already
+ *  found (possibly nothing) so a discovery failure can never break the
+ *  `profiles` onboarding turn. */
+export async function* discoverArtistProfilesStream(artistId: string): AsyncGenerator<DiscoveryEvent> {
+    const startedAt = Date.now();
+    const pastBudget = () => Date.now() - startedAt > DISCOVERY_BUDGET_MS;
+
+    let artist;
+    try {
+        artist = await getArtistById(artistId);
+    } catch (e) {
+        console.error(`[profileDiscovery] getArtistById failed for ${artistId}:`, e);
+        return;
+    }
+    if (!artist) return;
+    const record = artist as unknown as Record<string, unknown>;
+
+    // Nothing to search for — the artist already has every platform we'd propose.
+    const missing = new Set<ProfileDisplayColumn>(PROFILE_DISPLAY_COLUMNS.filter(col => !artistHasRawLinkValue(record, col)));
+    if (missing.size === 0) return;
+
+    let allLinks: Awaited<ReturnType<typeof getAllLinks>> = [];
+    try {
+        allLinks = await getAllLinks();
+    } catch (e) {
+        console.error("[profileDiscovery] getAllLinks failed, presentation metadata will degrade:", e);
+    }
+    const urlmapBySiteName = new Map<string, UrlmapPresentationRow>(allLinks.map(l => [l.siteName, l]));
+    const ctx: ValidationContext = { artistId, record, urlmapBySiteName, seen: new Set<string>() };
+    let foundCount = 0;
+
+    // --- Tier 1 — free, instant, authoritative ----------------------------
+    const tier1Targets = (Object.values(MAPPING_PLATFORM_TO_COLUMN) as (ProfileDisplayColumn | undefined)[])
+        .filter((p): p is ProfileDisplayColumn => !!p && missing.has(p));
+    for (const p of tier1Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+    const tier1Raw = await tierOneIdMappings(artistId, missing, urlmapBySiteName);
+    for (const c of tier1Raw) missing.delete(c.platform);
+    for (const c of tier1Raw) {
+        const profile = await validateCandidate(c, ctx);
+        if (profile) { foundCount++; yield { kind: "found", profile }; }
+    }
+    for (const p of tier1Targets) yield { kind: "checked", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+
+    // --- Tiers 2/3 both need a real name to search/ask about. A bare
+    // platform ID (e.g. only `deezer` set) is useless as a search anchor on
+    // its own — resolve the real name/image/fan count first. Skipped
+    // entirely once tier 1 alone has satisfied everything missing.
+    if (missing.size === 0 || pastBudget()) return;
+    let enrichment: MusicPlatformArtist | null = null;
+    try {
+        enrichment = await musicPlatformData.getArtist(artist);
+    } catch {
+        enrichment = null;
+    }
+    const artistName = enrichment?.name?.trim() || artist.name?.trim() || null;
+    if (!artistName) return;
+
+    // --- Tier 2 — deterministic platform search APIs -----------------------
+    if (!pastBudget()) {
+        const tier2Targets = (["spotify", "deezer"] as const).filter(p => missing.has(p));
+        for (const p of tier2Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+        for await (const [platform, candidate] of tierTwoPlatformSearchStream(artistName, missing)) {
+            if (candidate) {
+                missing.delete(candidate.platform);
+                const profile = await validateCandidate(candidate, ctx);
+                if (profile) { foundCount++; yield { kind: "found", profile }; }
+            }
+            yield { kind: "checked", platform, displayName: platformDisplayName(platform, urlmapBySiteName) };
+        }
+    }
+
+    // --- Tier 3 — per-platform, domain-scoped grounded search, parallel ----
+    if (missing.size > 0 && !pastBudget()) {
+        const identityContext = buildIdentityContext(record, enrichment);
+        const tier3Targets = (Object.keys(TIER3_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
+        for (const p of tier3Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+        for await (const [platform, candidate] of tierThreeGroundedSearchStream(artistName, identityContext, missing, urlmapBySiteName)) {
+            if (candidate) {
+                missing.delete(candidate.platform);
+                const profile = await validateCandidate(candidate, ctx);
+                if (profile) { foundCount++; yield { kind: "found", profile }; }
+            }
+            yield { kind: "checked", platform, displayName: platformDisplayName(platform, urlmapBySiteName) };
+        }
+    }
+
+    console.log(`[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" found=${foundCount} elapsedMs=${Date.now() - startedAt}`);
+}
+
+/** Array-returning wrapper over `discoverArtistProfilesStream` — kept for any
+ *  caller that just wants the final list (a page reload/resume, or a future
+ *  non-streaming consumer) rather than live events. The production onboarding
+ *  path (`turnHandlers.ts`) consumes the generator directly for live
+ *  progress/candidate frames; this wrapper runs the exact same underlying
+ *  work, just drained to an array instead of surfaced as it lands. Bounded to
+ *  ~`DISCOVERY_BUDGET_MS` end-to-end (belt-and-suspenders on top of the
+ *  generator's own internal deadline check) and NEVER throws — any failure
  *  resolves to `[]`, leaving the `profiles` onboarding step exactly as it
  *  behaves without discovery. */
 export async function discoverArtistProfiles(artistId: string): Promise<DiscoveredProfile[]> {
     try {
         return await Promise.race([
-            discoverInner(artistId),
+            (async () => {
+                const results: DiscoveredProfile[] = [];
+                for await (const event of discoverArtistProfilesStream(artistId)) {
+                    if (event.kind === "found") results.push(event.profile);
+                }
+                return results;
+            })(),
             new Promise<DiscoveredProfile[]>(resolve => setTimeout(() => resolve([]), DISCOVERY_BUDGET_MS)),
         ]);
     } catch (e) {

@@ -31,7 +31,7 @@ import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { synthesizeArtistDoc, generateAboutFromDoc, ARTIST_DOC_MAX_CHARS, GEMINI_TIMEOUT_MS } from "@/server/utils/artistDocService";
-import { discoverArtistProfiles, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
+import { discoverArtistProfilesStream, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
 import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/utils/linkPresentation";
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
@@ -48,6 +48,13 @@ export type TurnEvent =
     | { kind: "chat"; text: string }
     | { kind: "progress"; label: string; done: boolean }
     | { kind: "step"; step: OnboardingStep; payload: unknown }
+    // Incremental live feedback while the profiles step's discovery runs —
+    // fired the instant a candidate clears validation, ahead of the terminal
+    // `step` event. Additive only: the terminal `step` event's payload still
+    // carries the complete candidate list (the source of truth for a page
+    // reload/resume), so a client that ignores `candidate` entirely still
+    // renders correctly, just without the live-discovery feel.
+    | { kind: "candidate"; profile: DiscoveredProfile }
     | { kind: "draft"; doc: string; about: string }
     | { kind: "complete" }
     | { kind: "error"; message: string };
@@ -251,11 +258,33 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             const payload = await buildProfilesPayload(artistId);
             yield { kind: "progress", label: "Gathering your profiles", done: true };
 
-            let candidates: DiscoveredProfile[] = [];
+            // Streamed live: each platform lookup renders as "searching" the
+            // instant it starts and flips to a checkmark the instant it
+            // settles, and every validated candidate renders the instant it's
+            // found — never a silent wait followed by one batch dump. The
+            // generator itself never throws (profileDiscovery.ts's contract),
+            // but the try/catch here is defense-in-depth so a bug in the
+            // stream can't take down the whole `profiles` turn.
+            const candidates: DiscoveredProfile[] = [];
             if (discoverProfiles) {
-                yield { kind: "progress", label: "Searching for your other profiles", done: false };
-                candidates = await discoverArtistProfiles(artistId).catch(() => []);
-                yield { kind: "progress", label: "Searching for your other profiles", done: true };
+                try {
+                    for await (const event of discoverArtistProfilesStream(artistId)) {
+                        switch (event.kind) {
+                            case "searching":
+                                yield { kind: "progress", label: `Searching ${event.displayName}`, done: false };
+                                break;
+                            case "checked":
+                                yield { kind: "progress", label: `Searching ${event.displayName}`, done: true };
+                                break;
+                            case "found":
+                                candidates.push(event.profile);
+                                yield { kind: "candidate", profile: event.profile };
+                                break;
+                        }
+                    }
+                } catch (e) {
+                    console.error("[onboarding] profile discovery stream failed:", e);
+                }
             }
 
             const baseNarration = payload.links.length > 0 ? NARRATION.profiles : NARRATION.profilesEmpty;

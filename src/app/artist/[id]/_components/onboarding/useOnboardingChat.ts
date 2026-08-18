@@ -1,16 +1,21 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import type { ProfileCandidate } from "./StepCards";
 
 export type ChatItem = {
     id: string;
-    kind: "bot" | "user" | "progress" | "step" | "draft" | "complete" | "error";
+    kind: "bot" | "user" | "progress" | "step" | "draft" | "complete" | "error" | "candidates";
     text?: string;
     step?: string;
     payload?: unknown;
     doc?: string;
     about?: string;
     done?: boolean;
+    // Live-accumulated discovered profiles for a "candidates" item — grows as
+    // `candidate` SSE events arrive, one at a time, ahead of the terminal
+    // `step` event (see the `push` reconciliation logic below).
+    candidates?: ProfileCandidate[];
 };
 
 export type ClientTurnShape =
@@ -48,6 +53,33 @@ export function useOnboardingChat(artistId: string) {
                     next[idx] = { ...next[idx], done: item.done };
                     return next;
                 }
+            }
+            // A `candidate` SSE event arrives here as a one-item "candidates"
+            // push — accumulate into the single live-discovery item in place
+            // (like progress chips above) instead of spawning a new bubble
+            // per profile found.
+            if (item.kind === "candidates") {
+                const idx = prev.findIndex(p => p.kind === "candidates");
+                if (idx >= 0) {
+                    const next = [...prev];
+                    const existing = next[idx].candidates ?? [];
+                    const incoming = item.candidates ?? [];
+                    const merged = [...existing];
+                    for (const c of incoming) {
+                        if (!merged.some(m => m.siteName === c.siteName)) merged.push(c);
+                    }
+                    next[idx] = { ...next[idx], candidates: merged };
+                    return next;
+                }
+            }
+            // The terminal `step` event for the profiles step carries the
+            // complete, authoritative candidate list — drop the transient
+            // live-discovery item so it isn't shown twice (reconcile, don't
+            // duplicate). The candidates the artist already watched arrive
+            // live now render instead as the opt-in section of ProfilesCard.
+            if (item.kind === "step" && item.step === "profiles") {
+                const withoutLiveCandidates = prev.filter(p => p.kind !== "candidates");
+                return [...withoutLiveCandidates, { id, ...item }];
             }
             return [...prev, { id, ...item }];
         });
@@ -91,6 +123,14 @@ export function useOnboardingChat(artistId: string) {
                         switch (event.kind) {
                             case "chat": push({ kind: "bot", text: event.text }); break;
                             case "progress": push({ kind: "progress", text: event.label, done: event.done }); break;
+                            // Additive live feedback, not a terminal frame — the
+                            // terminal `step` event still carries the complete
+                            // candidate list (see the reconciliation logic in
+                            // `push` above), so a stream that ends after only
+                            // `candidate` events with no `step`/`draft`/`complete`/
+                            // `error` still correctly falls into the
+                            // no-terminal-frame error path below.
+                            case "candidate": push({ kind: "candidates", candidates: [event.profile] }); break;
                             case "step": push({ kind: "step", step: event.step, payload: event.payload }); receivedTerminalFrame = true; break;
                             case "draft": push({ kind: "draft", doc: event.doc, about: event.about }); receivedTerminalFrame = true; break;
                             case "complete": push({ kind: "complete" }); receivedTerminalFrame = true; break;

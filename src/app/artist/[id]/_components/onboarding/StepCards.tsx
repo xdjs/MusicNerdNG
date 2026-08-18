@@ -20,7 +20,9 @@ type ProfileLink = {
 // (so it can reuse ProfileAvatar/ProfileLogo/profileSubtitle unchanged) plus
 // `reasoning` and a non-optional `profileUrl` (discovery only ever returns
 // candidates it could build a real, round-tripped click-through URL for).
-type ProfileCandidate = {
+// Exported so useOnboardingChat.ts can type the live-streamed-candidate
+// accumulator without redeclaring this shape.
+export type ProfileCandidate = {
     siteName: string;
     value: string;
     displayName: string;
@@ -200,6 +202,37 @@ function CandidateRow({ candidate, accepted, onToggleAccept, onDismiss, disabled
                 >
                     Not me
                 </button>
+            </div>
+        </div>
+    );
+}
+
+/** Live discovery feed — the "magic" moment: renders each candidate the
+ *  instant its `candidate` SSE event arrives, one row appearing at a time as
+ *  discovery finds them, instead of the whole search running silently and
+ *  dumping a finished list. Read-only (no Add/Not-me here — that opt-in
+ *  decision lives in the terminal `ProfilesCard`'s candidates section, which
+ *  reconciles this same data once the step completes). Renders nothing until
+ *  the first candidate lands, so it never shows an empty "finding…" shell
+ *  ahead of real results. */
+export function LiveDiscoveryFeed({ candidates }: { candidates: ProfileCandidate[] }) {
+    if (candidates.length === 0) return null;
+    return (
+        <div className="glass-subtle rounded-2xl rounded-bl-md px-3 py-2.5 max-w-[80%] self-start space-y-1.5" data-testid="live-discovery-feed">
+            <p className="text-xs text-gray-600 dark:text-gray-300 px-1">Finding your profiles…</p>
+            <div className="space-y-1">
+                {candidates.map(candidate => {
+                    const subtitle = profileSubtitle(candidate);
+                    return (
+                        <div key={candidate.siteName} className="flex items-center gap-2 rounded-lg px-1 py-1 motion-safe:animate-onboarding-panel-in">
+                            <ProfileAvatar link={candidate} />
+                            <div className="min-w-0">
+                                <span className="text-sm font-medium text-black dark:text-white">{candidate.displayName}</span>
+                                {subtitle && <span className="block text-xs text-gray-600 dark:text-gray-300 break-all">{subtitle}</span>}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

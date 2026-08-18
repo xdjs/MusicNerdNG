@@ -20,7 +20,23 @@ export type SpotifyHeaders = {
     headers: { Authorization: string | null }
 }
 
-export const getSpotifyHeaders = unstable_cache(async () => {
+/** Helper function to check if a token is expired or about to expire. Declared
+ *  above its first use (`getSpotifyHeaders` below) since `const` bindings are
+ *  not hoisted. */
+const isTokenExpired = (headers: SpotifyHeaderType): boolean => {
+    const expiryTime = parseInt(headers.headers['x-token-expiry'] || '0');
+    // Return true if token expires in less than 5 minutes
+    return Date.now() + (5 * 60 * 1000) >= expiryTime;
+};
+
+/** The actual network round-trip to Spotify's client-credentials token
+ *  endpoint — always fetches a brand-new token, bypassing any cache. Exported
+ *  so callers that already hold a token and got a 401 anyway (a real request
+ *  can fail even when our own expiry bookkeeping says "not yet expired" —
+ *  clock skew, early revocation) can force a genuinely fresh one for a
+ *  single self-heal retry, rather than re-reading a cache that may just hand
+ *  back the same token. */
+export async function refreshSpotifyToken(): Promise<SpotifyHeaderType> {
     try {
         if (!SPOTIFY_WEB_CLIENT_ID || !SPOTIFY_WEB_CLIENT_SECRET) {
             console.error("Missing Spotify credentials");
@@ -32,7 +48,7 @@ export const getSpotifyHeaders = unstable_cache(async () => {
                 "Content-Type": "application/x-www-form-urlencoded",
             }
         };
-        
+
         const payload = {
             grant_type: "client_credentials",
             client_id: SPOTIFY_WEB_CLIENT_ID,
@@ -54,7 +70,7 @@ export const getSpotifyHeaders = unstable_cache(async () => {
         const expiresAt = Date.now() + (data.expires_in * 1000);
 
         return {
-            headers: { 
+            headers: {
                 Authorization: `Bearer ${data.access_token}`,
                 'x-token-expiry': expiresAt.toString()
             }
@@ -66,17 +82,34 @@ export const getSpotifyHeaders = unstable_cache(async () => {
         }
         throw new Error("Error fetching Spotify headers");
     }
-}, ["spotify-headers"], { 
-    tags: ["spotify-headers"], 
+}
+
+const cachedSpotifyToken = unstable_cache(refreshSpotifyToken, ["spotify-headers"], {
+    tags: ["spotify-headers"],
     revalidate: 3300 // 55 minutes - refresh slightly before the token expires
 });
 
-// Helper function to check if token is expired or about to expire
-const isTokenExpired = (headers: SpotifyHeaderType): boolean => {
-    const expiryTime = parseInt(headers.headers['x-token-expiry'] || '0');
-    // Return true if token expires in less than 5 minutes
-    return Date.now() + (5 * 60 * 1000) >= expiryTime;
-};
+/**
+ * Returns Spotify client-credentials auth headers.
+ *
+ * BUG THIS FIXES: `unstable_cache`'s `revalidate` option is stale-while-
+ * revalidate, not a hard TTL — once the window elapses, a read can still get
+ * back the STALE (already-expired) token while a fresh one is fetched in the
+ * background, so the caller's very next API call 401s. That was hitting the
+ * whole app (SpotifyProvider.searchArtists, artist images, follower counts,
+ * bio catalog data), not just onboarding.
+ *
+ * Fix: never trust the cache's own timing. Check the token's embedded
+ * `x-token-expiry` on every read and, whenever it's expired or within 5
+ * minutes of expiring, bypass the cache entirely for a synchronous fresh
+ * fetch — so a caller is never handed a token that's already dead or about
+ * to die mid-request.
+ */
+export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
+    const cached = await cachedSpotifyToken();
+    if (!isTokenExpired(cached)) return cached;
+    return refreshSpotifyToken();
+}
 
 export type SpotifyArtistApiResponse = {
     error: string | null,

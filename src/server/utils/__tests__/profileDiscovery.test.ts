@@ -206,21 +206,49 @@ describe('discoverArtistProfiles', () => {
         expect(result[0].reasoning).toBe('first');
     });
 
-    it('drops a candidate on a platform that reliably serves OG data (spotify) when the preview has no image (gate d)', async () => {
-        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, discoverArtistProfiles } = await setup();
+    // NOTE: this test used to run a Spotify match through TIER 2 (platform
+    // search) and expect the OG gate to drop it. That's no longer correct —
+    // tiers 1/2 are deterministic/DB-sourced and never hallucinate a URL, so
+    // the OG gate (which exists specifically to catch a grounded MODEL
+    // hallucinating a plausible-but-dead link) now only applies to tier 3.
+    // Relocated here to keep exercising the SAME assertion (an OG-reliable
+    // platform with no preview image gets dropped) against the tier it still
+    // applies to — see the new tier-2-survives test right below for the
+    // behavior change itself.
+    it('drops a tier-3 (grounded-search) candidate on a platform that reliably serves OG data (instagram) when the preview has no image (gate e)', async () => {
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        // Spotify is missing here, so tier 2 (not Gemini) is what's under test —
-        // a search hit still has to clear the OG gate like any other candidate.
-        spotifyProvider.searchArtists.mockResolvedValue([
-            { platform: 'spotify', platformId: 'fake123', name: 'Pete Rango', imageUrl: null, followerCount: 10, albumCount: 1, genres: [], profileUrl: 'https://open.spotify.com/artist/fake123', topTrackName: null },
-        ]);
-        extractArtistId.mockResolvedValue({ siteName: 'spotify', cardPlatformName: 'Spotify', id: 'fake123' });
+        mockGenerate.mockImplementation(async (args: { contents: string }) => (
+            args.contents.includes('Instagram') ? { text: 'https://instagram.com/peterango' } : { text: 'NONE' }
+        ));
+        extractArtistId.mockResolvedValue({ siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterango' });
         fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null });
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([]);
+    });
+
+    // Regression guard for the reported bug: a deterministic Spotify-API
+    // exact-name match (tier 2) must NOT be discarded just because its
+    // og:image preview didn't resolve (a Spotify oEmbed blip, a transient
+    // fetch timeout, etc.) — the OG gate exists to catch model hallucination,
+    // and a tier-2 platform-search hit was never a guess in the first place.
+    it('keeps a tier-2 platform-search match (spotify) even when the preview has no og:image', async () => {
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, discoverArtistProfiles } = await setup();
+        artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
+        artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+        musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+        spotifyProvider.searchArtists.mockResolvedValue([
+            { platform: 'spotify', platformId: 'real123', name: 'Pete Rango', imageUrl: null, followerCount: 10, albumCount: 1, genres: [], profileUrl: 'https://open.spotify.com/artist/real123', topTrackName: null },
+        ]);
+        extractArtistId.mockResolvedValue({ siteName: 'spotify', cardPlatformName: 'Spotify', id: 'real123' });
+        fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null }); // no og:image — must not disqualify a tier-2 hit
+        mockGenerate.mockResolvedValue({ text: 'NONE' });
+
+        const result = await discoverArtistProfiles('a1');
+        expect(result.find(r => r.siteName === 'spotify')).toMatchObject({ siteName: 'spotify', value: 'real123', previewImage: null });
     });
 
     it('keeps a candidate on a platform known NOT to serve OG data (x) even with no preview image', async () => {

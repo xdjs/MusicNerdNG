@@ -33,7 +33,13 @@ jest.mock('@/server/utils/linkPreview', () => ({
 jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnValue('article') }));
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
-jest.mock('@/server/utils/profileDiscovery', () => ({ discoverArtistProfiles: jest.fn().mockResolvedValue([]) }));
+jest.mock('@/server/utils/profileDiscovery', () => ({
+    discoverArtistProfiles: jest.fn().mockResolvedValue([]),
+    // Default: an empty stream (no searching/found events) — matches the old
+    // default-empty-array behavior for every test that doesn't care about
+    // discovery. Individual tests override with their own async generator.
+    discoverArtistProfilesStream: jest.fn(async function* () {}),
+}));
 jest.mock('@/server/utils/artistDocService', () => ({
     ARTIST_DOC_MAX_CHARS: 20000,
     GEMINI_TIMEOUT_MS: 20000,
@@ -149,19 +155,27 @@ describe('runOnboardingTurn', () => {
         expect(chats.some(t => t.includes("Leaving a card as-is confirms it"))).toBe(false);
     });
 
-    it('profiles step (fresh open) runs discovery, merges candidates into the payload, and narrates the found count', async () => {
+    it('profiles step (fresh open) streams discovery, merges candidates into the payload, and narrates the found count', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
-        const { discoverArtistProfiles } = await import('@/server/utils/profileDiscovery');
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
         const candidate = {
             siteName: 'tiktok', displayName: 'TikTok', value: 'novareyes',
             profileUrl: 'https://tiktok.com/@novareyes', logoUrl: null, colorHex: null,
             previewImage: null, reasoning: 'Matches the artist name and bio.',
         };
-        discoverArtistProfiles.mockResolvedValueOnce([candidate]);
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'searching', platform: 'tiktok', displayName: 'TikTok' };
+            yield { kind: 'found', profile: candidate };
+            yield { kind: 'checked', platform: 'tiktok', displayName: 'TikTok' };
+        });
         const { runOnboardingTurn } = await import('../turnHandlers');
         const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
-        expect(discoverArtistProfiles).toHaveBeenCalledWith('a1');
+        expect(discoverArtistProfilesStream).toHaveBeenCalledWith('a1');
+        // The incremental `candidate` event fires as its own frame, ahead of
+        // the terminal `step` event — additive live feedback, not the only
+        // source of the candidate.
+        expect(events.some(e => e.kind === 'candidate' && e.profile.siteName === 'tiktok')).toBe(true);
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.candidates).toEqual([candidate]);
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
-import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard } from "./StepCards";
+import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, LiveDiscoveryFeed } from "./StepCards";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
@@ -168,6 +168,8 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                         {item.done ? "✓" : "⚙"} {item.text}
                     </div>
                 );
+            case "candidates":
+                return <LiveDiscoveryFeed candidates={item.candidates ?? []} />;
             case "error":
                 return (
                     <div className="self-start flex flex-col items-start gap-1.5">
