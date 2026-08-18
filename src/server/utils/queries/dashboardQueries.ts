@@ -1,6 +1,6 @@
 import { db } from "@/server/db/drizzle";
 import { eq, and, or, sql } from "drizzle-orm";
-import { artistClaims, artistVaultSources, artistBioVersions, artists } from "@/server/db/schema";
+import { artistClaims, artistVaultSources, artistBioVersions, artists, artistDocs, artistInterviewAnswers, artistOnboardingSteps } from "@/server/db/schema";
 
 /**
  * Returns the artist's **active** claim (pending or approved), if any.
@@ -188,6 +188,28 @@ export async function revokeApprovedClaim(claimId: string) {
             await tx
                 .delete(artistVaultSources)
                 .where(eq(artistVaultSources.artistId, deleted.artistId));
+
+            // Onboarding content is the revoked owner's — it must not survive for
+            // (or silently skip onboarding of) the next claimant. Same tx as the
+            // vault wipe, same invariant (see spec §5).
+            await tx
+                .delete(artistInterviewAnswers)
+                .where(eq(artistInterviewAnswers.artistId, deleted.artistId));
+            await tx
+                .delete(artistOnboardingSteps)
+                .where(eq(artistOnboardingSteps.artistId, deleted.artistId));
+            const deletedDocs = await tx
+                .delete(artistDocs)
+                .where(eq(artistDocs.artistId, deleted.artistId))
+                .returning();
+            if (deletedDocs.length > 0) {
+                // The owner published — the live bio (doc-generated or later hand-edited)
+                // is their content. Clear it so the next state regenerates from scratch.
+                await tx
+                    .update(artists)
+                    .set({ bio: null })
+                    .where(eq(artists.id, deleted.artistId));
+            }
 
             return deleted;
         });
