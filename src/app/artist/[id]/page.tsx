@@ -20,6 +20,8 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import OnboardingGate from "./_components/onboarding/OnboardingGate";
+import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 
 type ArtistProfileProps = {
     params: Promise<{ id: string }>;
@@ -100,6 +102,9 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const directEditLinks = isClaimedByUser;
     const autoApproveLinkSubmissions = isAdmin || !!dbUser?.isWhiteListed;
 
+    // Onboarding state costs a query — computed ONLY for the approved claimant.
+    const onboardingState = isClaimedByUser ? await getOnboardingState(id) : null;
+
     const pendingSources = canEdit ? pendingSourcesRaw : [];
 
     const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
@@ -109,6 +114,14 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
             <EditModeProvider canEdit={canEdit}>
             <AutoRefresh showLoading={false} />
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
+
+                {onboardingState && !onboardingState.complete && (
+                    <OnboardingGate
+                        artistId={artist.id}
+                        artistName={artist.name ?? "your profile"}
+                        currentStep={onboardingState.currentStep}
+                    />
+                )}
 
                 {/* 1. Hero Section */}
                 <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} artistId={artist.id} />
