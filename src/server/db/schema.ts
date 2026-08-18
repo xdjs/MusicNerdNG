@@ -410,6 +410,71 @@ export const artistBioVersions = pgTable("artist_bio_versions", {
 	pgPolicy("mnweb_delete_artist_bio_versions", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
 ]);
 
+// Post-claim onboarding: the artist knowledgebase doc (one current doc per artist).
+export const artistDocs = pgTable("artist_docs", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	content: text().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_docs_artist_id_key").on(table.artistId),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_docs_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_docs", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_docs", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_docs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_docs", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// Raw interview answers — the artist's own words, never lost to doc regeneration.
+// answer NULL = explicitly skipped (counts as asked; returns to the follow-up bank).
+export const artistInterviewAnswers = pgTable("artist_interview_answers", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	questionKey: text("question_key").notNull(),
+	question: text().notNull(),
+	answer: text(),
+	source: text().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_interview_answers_artist_question_uniq").on(table.artistId, table.questionKey),
+	index("idx_artist_interview_answers_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_interview_answers_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_interview_answers", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_interview_answers", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_interview_answers", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_interview_answers", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// Step confirmations: "the artist saw and confirmed it", not "data exists".
+// Written ONLY by explicit artist actions in the onboarding chat.
+export const artistOnboardingSteps = pgTable("artist_onboarding_steps", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	step: text().notNull(),
+	confirmedAt: timestamp("confirmed_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_onboarding_steps_artist_step_uniq").on(table.artistId, table.step),
+	index("idx_artist_onboarding_steps_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_onboarding_steps_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_onboarding_steps", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_onboarding_steps", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_onboarding_steps", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+	// No UPDATE policy: confirmation rows are insert-once, delete-on-revoke.
+]);
+
 export const exclusionReason = pgEnum("exclusion_reason", [
   "conflict",       // platform ID already mapped to different artist
   "name_mismatch",  // Deezer name doesn't match MusicNerd name
@@ -531,6 +596,9 @@ export const artistsRelations = relations(artists, ({one, many}) => ({
 	artistClaims: many(artistClaims),
 	artistVaultSources: many(artistVaultSources),
 	artistBioVersions: many(artistBioVersions),
+	artistDocs: many(artistDocs),
+	artistInterviewAnswers: many(artistInterviewAnswers),
+	artistOnboardingSteps: many(artistOnboardingSteps),
 }));
 
 export const artistBioVersionsRelations = relations(artistBioVersions, ({one}) => ({
@@ -600,4 +668,16 @@ export const artistMappingExclusionsRelations = relations(artistMappingExclusion
 		fields: [artistMappingExclusions.artistId],
 		references: [artists.id],
 	}),
+}));
+
+export const artistDocsRelations = relations(artistDocs, ({one}) => ({
+	artist: one(artists, { fields: [artistDocs.artistId], references: [artists.id] }),
+}));
+
+export const artistInterviewAnswersRelations = relations(artistInterviewAnswers, ({one}) => ({
+	artist: one(artists, { fields: [artistInterviewAnswers.artistId], references: [artists.id] }),
+}));
+
+export const artistOnboardingStepsRelations = relations(artistOnboardingSteps, ({one}) => ({
+	artist: one(artists, { fields: [artistOnboardingSteps.artistId], references: [artists.id] }),
 }));
