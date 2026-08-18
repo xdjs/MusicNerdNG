@@ -7,6 +7,9 @@ import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard } from "./StepC
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
+// Presentational only — progress rail order + stage derivation for display purposes.
+const STEP_ORDER = ["profiles", "vault", "interview", "publish"] as const;
+
 export default function OnboardingChat({ artistId, artistName, onSkip, onFinish }: Props) {
     const { items, busy, sendTurn } = useOnboardingChat(artistId);
     const router = useRouter();
@@ -27,6 +30,10 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
     const complete = items.some(i => i.kind === "complete");
     // Only the LAST step/draft item is interactive — earlier ones are history.
     const lastInteractiveId = [...items].reverse().find(i => i.kind === "step" || i.kind === "draft")?.id;
+    // Progress rail (presentational): most recent step/draft/complete item decides the stage.
+    const lastStageItem = [...items].reverse().find(i => i.kind === "step" || i.kind === "draft" || i.kind === "complete");
+    const currentStage = lastStageItem ? (lastStageItem.kind === "step" ? lastStageItem.step : "publish") : null;
+    const currentStepIndex = currentStage ? STEP_ORDER.indexOf(currentStage as (typeof STEP_ORDER)[number]) : -1;
     // Spec §9 retry affordance: only the LAST error item gets a "Try again"
     // button, and only when nothing newer (a step/draft) already superseded it.
     const lastErrorIndex = items.reduce((acc, item, idx) => (item.kind === "error" ? idx : acc), -1);
@@ -39,12 +46,26 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
         const interactive = item.id === lastInteractiveId && !busy && !complete;
         switch (item.kind) {
             case "bot":
-                return <div className="glass rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[85%] self-start">{item.text}</div>;
+                return (
+                    <div className="glass-subtle !rounded-2xl !rounded-bl-md px-4 py-2.5 max-w-[80%] self-start text-black dark:text-white">
+                        {item.text}
+                    </div>
+                );
             case "user":
-                return <div className="bg-pink-500 text-white rounded-2xl rounded-br-md px-4 py-2.5 max-w-[85%] self-end">{item.text}</div>;
+                return (
+                    <div className="bg-pink-500 text-white !rounded-2xl !rounded-br-md px-4 py-2.5 max-w-[80%] self-end shadow-sm shadow-pink-500/30">
+                        {item.text}
+                    </div>
+                );
             case "progress":
                 return (
-                    <div className="self-start text-xs px-3 py-1 rounded-full border border-blue-300/40 text-gray-500">
+                    <div
+                        className={`self-start text-xs px-3 py-1 rounded-full border text-gray-700 dark:text-gray-300 ${
+                            item.done
+                                ? "border-pink-400/50 dark:border-pink-400/40"
+                                : "border-gray-300/60 dark:border-gray-600/60 motion-safe:animate-pulse"
+                        }`}
+                    >
                         {item.done ? "✓" : "⚙"} {item.text}
                     </div>
                 );
@@ -55,7 +76,7 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                         {item.id === lastErrorId && !busy && !complete && (
                             <button
                                 onClick={() => void sendTurn({ type: "open" })}
-                                className="text-sm font-semibold text-pink-500 hover:text-pink-600 px-1"
+                                className="text-sm font-semibold text-pink-500 hover:text-pink-600 transition-colors px-1"
                             >
                                 Try again
                             </button>
@@ -72,12 +93,12 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 return <AboutDraftCard doc={item.doc ?? ""} about={item.about ?? ""} disabled={!interactive} onPublish={r => void sendTurn({ type: "publish", ...r })} />;
             case "complete":
                 return (
-                    <div className="self-stretch text-center glass rounded-xl p-4">
+                    <div className="self-stretch text-center glass rounded-xl p-4 shadow-lg shadow-pink-500/10">
                         <p className="text-2xl">🎉</p>
-                        <p className="font-semibold">You&apos;re live!</p>
+                        <p className="font-bold text-lg text-black dark:text-white">You&apos;re live!</p>
                         <button
                             onClick={() => { router.refresh(); onFinish(); }}
-                            className="mt-2 bg-pink-500 text-white font-semibold px-4 py-2 rounded-lg"
+                            className="mt-2 bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold px-4 py-2 rounded-lg shadow-sm"
                         >
                             See my page
                         </button>
@@ -89,21 +110,42 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="w-full max-w-[480px] h-[85vh] glass rounded-2xl flex flex-col overflow-hidden bg-white/90 dark:bg-gray-900/90">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <p className="font-bold">Set up {artistName}</p>
-                    {!complete && (
-                        <button onClick={onSkip} className="text-sm text-gray-500 hover:text-gray-700">
-                            Skip for now
-                        </button>
-                    )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="w-full max-w-[480px] h-[85vh] glass rounded-2xl flex flex-col overflow-hidden shadow-2xl shadow-black/30 dark:shadow-black/50 animate-onboarding-panel-in">
+                <div className="flex flex-col border-b border-black/10 dark:border-white/10">
+                    <div className="flex items-center justify-between px-4 py-3">
+                        <p className="font-bold text-black dark:text-white">Set up {artistName}</p>
+                        {!complete && (
+                            <button
+                                onClick={onSkip}
+                                className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                            >
+                                Skip for now
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex gap-1 px-4 pb-3" aria-hidden="true">
+                        {STEP_ORDER.map((step, idx) => (
+                            <div
+                                key={step}
+                                className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                                    idx <= currentStepIndex ? "bg-pink-500" : "bg-black/10 dark:bg-white/10"
+                                }`}
+                            />
+                        ))}
+                    </div>
                 </div>
-                <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-2.5">
+                <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-glass p-4 flex flex-col gap-2.5">
                     {items.map(item => (
                         <div key={item.id} className="flex flex-col">{renderItem(item)}</div>
                     ))}
-                    {busy && <div className="self-start text-gray-400 text-sm px-2 animate-pulse">…</div>}
+                    {busy && (
+                        <div className="glass-subtle self-start !rounded-2xl !rounded-bl-md px-4 py-3 flex items-center gap-1.5" aria-hidden="true">
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce [animation-delay:-0.3s]" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce [animation-delay:-0.15s]" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce" />
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

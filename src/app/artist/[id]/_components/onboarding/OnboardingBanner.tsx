@@ -23,7 +23,7 @@ export default function OnboardingBanner({ currentStep, onContinue }: Props) {
             </div>
             <button
                 onClick={onContinue}
-                className="bg-pink-500 hover:bg-pink-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+                className="bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
             >
                 Continue →
             </button>
