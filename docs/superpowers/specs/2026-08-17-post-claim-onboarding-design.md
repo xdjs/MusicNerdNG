@@ -96,7 +96,7 @@ artist_onboarding_steps (
 - `onboardingComplete` = the `'publish'` confirmation row exists.
 - Always derive from the `(userId, artistId)` pair via `getApprovedClaimForArtistByUserId` / `canEditArtist` — never from single-claim `getApprovedClaimByUserId` (`findFirst`; breaks for multi-claim users).
 
-**Claim revocation (required change):** `revokeApprovedClaim` (`src/server/utils/queries/dashboardQueries.ts`) additionally deletes this artist's `artist_docs`, `artist_interview_answers`, and `artist_onboarding_steps` rows **in the same transaction** — same invariant as the existing vault-source wipe: a re-claimer must not inherit (or be silently skipped past onboarding by) the previous owner's content. If `artists.bio` was doc-derived, clear it so it regenerates from scratch.
+**Claim revocation (required change):** `revokeApprovedClaim` (`src/server/utils/queries/dashboardQueries.ts`) additionally deletes this artist's `artist_docs`, `artist_interview_answers`, and `artist_onboarding_steps` rows **in the same transaction** — same invariant as the existing vault-source wipe: a re-claimer must not inherit (or be silently skipped past onboarding by) the previous owner's content. If the transaction deleted a doc row (i.e. the revoked owner had published), also clear `artists.bio` — whether doc-generated or later hand-edited, it is the revoked owner's content.
 
 ## 6. The chat chain (forced steps)
 
@@ -109,10 +109,10 @@ Show the artist's current links plus auto-found candidates (existing Deezer/Spot
 Present pending vault sources (from approval-time discovery) as keep/skip cards; keep/skip maps to the existing approve/reject path (`updateSourceStatus`). Empty vault → run discovery within deadline, or degrade to "we didn't find much — paste a link?" Empty-confirm is valid.
 
 **Step `interview` — three questions, ~90 seconds, all skippable.**
-`sound_in_own_words` ("How would you describe your sound, in your own words?"), `offline_fact` ("What's something fans should know that isn't written anywhere online?"), `working_on_now` ("What are you working on right now?"). Answers upsert with `source='onboarding'`; skip writes `answer = NULL`. Skipped questions return to the future follow-up bank.
+`sound_in_own_words` ("How would you describe your sound, in your own words?"), `offline_fact` ("What's something fans should know that isn't written anywhere online?"), `working_on_now` ("What are you working on right now?"). Answers upsert with `source='onboarding'`; skip writes `answer = NULL`. Skipped questions return to the future follow-up bank. On resume, ask the first `question_key` lacking a row — answered or skipped questions are never re-asked.
 
 **Step `publish` — the payoff.**
-Two generations, in order: `artistDocService.synthesizeDoc(artistId)` gathers links + ID mappings + approved vault sources + interview answers → Gemini synthesizes the **doc** (the knowledgebase artifact); then the public **About** is generated *from the doc* and **streams live in the chat**. On the artist's explicit "Publish": upsert `artist_docs`, save the bio via the existing `saveBioVersion` path and set `artists.bio`, write the `publish` confirmation. **The doc→bio write happens only at this explicit moment; later doc regenerations never implicitly touch `artists.bio`** (preserves the existing invariant that link changes don't clobber bios, `src/server/utils/artistLinkService.ts`).
+Two generations, in order: `artistDocService.synthesizeDoc(artistId)` gathers links + ID mappings + approved vault sources + interview answers → Gemini synthesizes the **doc** (the knowledgebase artifact); then the public **About** is generated *from the doc* and **streams live in the chat**. Turns are stateless, so the generation turn streams the doc and About to the client, and the Publish action POSTs both back; the server validates (bio ≤ `MAX_BIO_LENGTH`, doc ≤ a fixed cap, e.g. 20,000 chars) before writing. Claimant-supplied content is already the trust model for bio writes (`saveCurrentBio`), so this adds no new surface. On the artist's explicit "Publish": upsert `artist_docs`, save the bio via the existing `saveBioVersion` path and set `artists.bio`, write the `publish` confirmation. **The doc→bio write happens only at this explicit moment; later doc regenerations never implicitly touch `artists.bio`** (preserves the existing invariant that link changes don't clobber bios, `src/server/utils/artistLinkService.ts`).
 
 ## 7. The artist doc
 
@@ -142,7 +142,7 @@ src/app/artist/[id]/_components/onboarding/   — chat surface, useOnboardingCha
   cards: profile (accepted-by-default), source (keep/skip), streaming About
 ```
 
-Client note: `useOnboardingChat` must handle a JSON 429 body on a route it otherwise expects to stream SSE.
+Client note: `useOnboardingChat` must handle a JSON 429 body on a route it otherwise expects to stream SSE. The server only reports onboarding state; the takeover-vs-banner branch is decided client-side, since the skip flag lives in `sessionStorage` and is invisible to the server component.
 
 ## 9. Error handling
 
