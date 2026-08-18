@@ -18,7 +18,12 @@ import OnboardingGate, { skipFlagKey } from '../OnboardingGate';
 
 jest.mock('../OnboardingChat', () => ({
     __esModule: true,
-    default: ({ onSkip }) => <div data-testid="onboarding-chat"><button onClick={onSkip}>skip</button></div>,
+    default: ({ onSkip, onFinish }) => (
+        <div data-testid="onboarding-chat">
+            <button onClick={onSkip}>skip</button>
+            <button onClick={onFinish}>finish</button>
+        </div>
+    ),
 }));
 
 describe('OnboardingGate', () => {
@@ -49,5 +54,13 @@ describe('OnboardingGate', () => {
         sessionStorage.setItem(skipFlagKey('a1'), '1');
         render(<OnboardingGate artistId="a1" artistName="Nova Reyes" currentStep="interview" />);
         expect(screen.getByText(/tell us your story/i)).toBeInTheDocument();
+    });
+
+    it('finishing closes the takeover WITHOUT setting the skip flag (no banner flash on a real finish)', () => {
+        render(<OnboardingGate artistId="a1" artistName="Nova Reyes" currentStep="publish" />);
+        fireEvent.click(screen.getByText('finish'));
+        expect(sessionStorage.getItem(skipFlagKey('a1'))).toBeNull();
+        expect(screen.queryByTestId('onboarding-chat')).not.toBeInTheDocument();
+        expect(screen.queryByText(/finish setting up/i)).not.toBeInTheDocument();
     });
 });

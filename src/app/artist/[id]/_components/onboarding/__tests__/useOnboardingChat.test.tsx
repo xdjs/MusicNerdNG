@@ -88,6 +88,33 @@ describe('useOnboardingChat', () => {
         expect(result.current.busy).toBe(false);
     });
 
+    it('f) stream ends with no terminal frame (only progress) — pushes an error item so the hook never dead-ends silently', async () => {
+        (global.fetch as jest.Mock).mockResolvedValueOnce(
+            fakeStreamResponse(['data: {"kind":"progress","label":"Thinking","done":false}\n\n'])
+        );
+
+        const { result } = renderHook(() => useOnboardingChat('artist-1'));
+        await act(async () => {
+            await result.current.sendTurn({ type: 'open' });
+        });
+
+        expect(result.current.items.some(i => i.kind === 'error')).toBe(true);
+        expect(result.current.busy).toBe(false);
+    });
+
+    it('g) stream ending WITH a terminal frame (complete) does not push a spurious extra error', async () => {
+        (global.fetch as jest.Mock).mockResolvedValueOnce(
+            fakeStreamResponse(['data: {"kind":"chat","text":"hi"}\n\ndata: {"kind":"complete"}\n\n'])
+        );
+
+        const { result } = renderHook(() => useOnboardingChat('artist-1'));
+        await act(async () => {
+            await result.current.sendTurn({ type: 'open' });
+        });
+
+        expect(result.current.items.some(i => i.kind === 'error')).toBe(false);
+    });
+
     it('e) userEcho — interview_answer with null answer echoes "Skip that one."; with an answer echoes the answer', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(fakeStreamResponse(['']));
 

@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
 import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard } from "./StepCards";
 
-type Props = { artistId: string; artistName: string; onSkip: () => void };
+type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
-export default function OnboardingChat({ artistId, artistName, onSkip }: Props) {
+export default function OnboardingChat({ artistId, artistName, onSkip, onFinish }: Props) {
     const { items, busy, sendTurn } = useOnboardingChat(artistId);
     const router = useRouter();
     const opened = useRef(false);
@@ -27,6 +27,13 @@ export default function OnboardingChat({ artistId, artistName, onSkip }: Props) 
     const complete = items.some(i => i.kind === "complete");
     // Only the LAST step/draft item is interactive — earlier ones are history.
     const lastInteractiveId = [...items].reverse().find(i => i.kind === "step" || i.kind === "draft")?.id;
+    // Spec §9 retry affordance: only the LAST error item gets a "Try again"
+    // button, and only when nothing newer (a step/draft) already superseded it.
+    const lastErrorIndex = items.reduce((acc, item, idx) => (item.kind === "error" ? idx : acc), -1);
+    const lastErrorId =
+        lastErrorIndex !== -1 && !items.slice(lastErrorIndex + 1).some(i => i.kind === "step" || i.kind === "draft")
+            ? items[lastErrorIndex].id
+            : null;
 
     const renderItem = (item: ChatItem) => {
         const interactive = item.id === lastInteractiveId && !busy && !complete;
@@ -42,7 +49,19 @@ export default function OnboardingChat({ artistId, artistName, onSkip }: Props) 
                     </div>
                 );
             case "error":
-                return <div className="self-start text-sm text-amber-600 dark:text-amber-400 px-1">{item.text}</div>;
+                return (
+                    <div className="self-start flex flex-col items-start gap-1.5">
+                        <div className="text-sm text-amber-600 dark:text-amber-400 px-1">{item.text}</div>
+                        {item.id === lastErrorId && !busy && !complete && (
+                            <button
+                                onClick={() => void sendTurn({ type: "open" })}
+                                className="text-sm font-semibold text-pink-500 hover:text-pink-600 px-1"
+                            >
+                                Try again
+                            </button>
+                        )}
+                    </div>
+                );
             case "step": {
                 if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
                 if (item.step === "vault") return <VaultCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "vault_review", ...r })} />;
@@ -57,7 +76,7 @@ export default function OnboardingChat({ artistId, artistName, onSkip }: Props) 
                         <p className="text-2xl">🎉</p>
                         <p className="font-semibold">You&apos;re live!</p>
                         <button
-                            onClick={() => { router.refresh(); onSkip(); }}
+                            onClick={() => { router.refresh(); onFinish(); }}
                             className="mt-2 bg-pink-500 text-white font-semibold px-4 py-2 rounded-lg"
                         >
                             See my page

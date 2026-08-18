@@ -38,6 +38,10 @@ export default function OnboardingGate({ artistId, artistName, currentStep }: Pr
                     sessionStorage.setItem(skipFlagKey(artistId), "1");
                     setMode("banner");
                 }}
+                // "See my page" after a real finish: close the takeover WITHOUT the
+                // skip flag, so a later visit (onboarding now complete) never shows
+                // the "Finish setting up" banner it would flash before refresh.
+                onFinish={() => setMode("closed")}
             />
         );
     }

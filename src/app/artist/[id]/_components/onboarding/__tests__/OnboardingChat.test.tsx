@@ -115,16 +115,44 @@ describe('OnboardingChat', () => {
         expect(screen.getByPlaceholderText(/type your answer/i)).toBeDisabled();
     });
 
-    it('renders the complete state and "See my page" calls router.refresh and onSkip', () => {
+    it('renders the complete state and "See my page" calls router.refresh and onFinish (NOT onSkip — no skip flag on a real finish)', () => {
         const onSkip = jest.fn();
+        const onFinish = jest.fn();
         setChat({ items: [{ id: 'c1', kind: 'complete' }] });
-        render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={onSkip} />);
+        render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={onSkip} onFinish={onFinish} />);
 
         expect(screen.getByText(/you're live/i)).toBeInTheDocument();
         const router = useRouter();
         fireEvent.click(screen.getByRole('button', { name: /see my page/i }));
         expect(router.refresh).toHaveBeenCalledTimes(1);
-        expect(onSkip).toHaveBeenCalledTimes(1);
+        expect(onFinish).toHaveBeenCalledTimes(1);
+        expect(onSkip).not.toHaveBeenCalled();
+    });
+
+    it('renders a "Try again" button on the last error item when nothing newer follows it, and it resyncs via sendTurn({type:"open"})', () => {
+        const sendTurn = setChat({
+            items: [{ id: 'e1', kind: 'error', text: 'Something broke' }],
+        });
+        render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} onFinish={jest.fn()} />);
+
+        // Mount already dispatched one {type:'open'} turn — assert the count before
+        // and after the click so the assertion can't pass on the mount call alone.
+        expect(sendTurn).toHaveBeenCalledTimes(1);
+        fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+        expect(sendTurn).toHaveBeenCalledTimes(2);
+        expect(sendTurn).toHaveBeenNthCalledWith(2, { type: 'open' });
+    });
+
+    it('does NOT render "Try again" when a newer interactive step already followed the error', () => {
+        setChat({
+            items: [
+                { id: 'e1', kind: 'error', text: 'Something broke' },
+                { id: 's1', kind: 'step', step: 'interview', payload: { questionKey: 'k', question: 'Q?', number: 1, total: 1 } },
+            ],
+        });
+        render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} onFinish={jest.fn()} />);
+
+        expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
     });
 
     it('renders a draft item and publish calls sendTurn with the exact doc + about', () => {

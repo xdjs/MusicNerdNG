@@ -73,6 +73,10 @@ export function useOnboardingChat(artistId: string) {
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let buffer = "";
+            // A stream that ends without ever reaching a terminal frame (step,
+            // draft, complete, or error) would otherwise flip `busy` false with
+            // no interactive item and no message — a silent dead end.
+            let receivedTerminalFrame = false;
             for (;;) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -87,15 +91,18 @@ export function useOnboardingChat(artistId: string) {
                         switch (event.kind) {
                             case "chat": push({ kind: "bot", text: event.text }); break;
                             case "progress": push({ kind: "progress", text: event.label, done: event.done }); break;
-                            case "step": push({ kind: "step", step: event.step, payload: event.payload }); break;
-                            case "draft": push({ kind: "draft", doc: event.doc, about: event.about }); break;
-                            case "complete": push({ kind: "complete" }); break;
-                            case "error": push({ kind: "error", text: event.message }); break;
+                            case "step": push({ kind: "step", step: event.step, payload: event.payload }); receivedTerminalFrame = true; break;
+                            case "draft": push({ kind: "draft", doc: event.doc, about: event.about }); receivedTerminalFrame = true; break;
+                            case "complete": push({ kind: "complete" }); receivedTerminalFrame = true; break;
+                            case "error": push({ kind: "error", text: event.message }); receivedTerminalFrame = true; break;
                         }
                     } catch {
                         // malformed line — skip
                     }
                 }
+            }
+            if (!receivedTerminalFrame) {
+                push({ kind: "error", text: "Something went wrong — try again in a moment." });
             }
         } catch (e) {
             console.error("[useOnboardingChat] stream error:", e);
