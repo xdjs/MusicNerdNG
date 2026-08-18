@@ -14,8 +14,6 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: jest.f
 jest.mock('@/app/api/mcp/audit', () => ({ logMcpAudit: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('@/server/lib/supabase', () => ({ getSupabaseAdmin: jest.fn(), VAULT_BUCKET: 'vault' }));
 
-const flush = () => new Promise(r => setTimeout(r, 0));
-
 describe('approveClaimAction sends the approval email', () => {
     beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
@@ -38,10 +36,14 @@ describe('approveClaimAction sends the approval email', () => {
         return { approveClaimAction, sendClaimApprovedEmail };
     }
 
-    it('emails the claimant when they have an email', async () => {
+    it('emails the claimant when they have an email — AWAITED, not a floating promise (I5)', async () => {
         const { approveClaimAction, sendClaimApprovedEmail } = await setup({ email: 'artist@example.com' });
         const result = await approveClaimAction('claim-1');
-        await flush();
+        // No flush()/setTimeout(0) here on purpose: if the send were still a
+        // fire-and-forget `void (async () => {...})()`, this assertion would run
+        // before the microtask queue drains and could see zero calls — that's
+        // exactly the failure mode I5 fixes. Asserting immediately after the
+        // awaited action returns is what pins "awaited" vs "floating".
         expect(result.success).toBe(true);
         expect(sendClaimApprovedEmail).toHaveBeenCalledWith('artist@example.com', 'Nova Reyes', 'artist-1');
     });
@@ -49,8 +51,22 @@ describe('approveClaimAction sends the approval email', () => {
     it('skips the send (and still succeeds) when users.email is NULL — legacy wallet user', async () => {
         const { approveClaimAction, sendClaimApprovedEmail } = await setup({ email: null });
         const result = await approveClaimAction('claim-1');
-        await flush();
         expect(result.success).toBe(true);
         expect(sendClaimApprovedEmail).not.toHaveBeenCalled();
+    });
+
+    it('still succeeds (and never fails approval) when the email send itself rejects', async () => {
+        const { approveClaimAction, sendClaimApprovedEmail } = await setup({ email: 'artist@example.com' });
+        sendClaimApprovedEmail.mockRejectedValueOnce(new Error('resend down'));
+        const result = await approveClaimAction('claim-1');
+        expect(result.success).toBe(true);
+    });
+
+    it('passes null (not a "your artist" placeholder) to sendClaimApprovedEmail when the artist name is unknown', async () => {
+        const { getArtistById } = await import('@/server/utils/queries/artistQueries');
+        const { approveClaimAction, sendClaimApprovedEmail } = await setup({ email: 'artist@example.com' });
+        getArtistById.mockResolvedValue(undefined); // artist lookup came back empty
+        await approveClaimAction('claim-1');
+        expect(sendClaimApprovedEmail).toHaveBeenCalledWith('artist@example.com', null, 'artist-1');
     });
 });

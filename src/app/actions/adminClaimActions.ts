@@ -36,19 +36,26 @@ export async function approveClaimAction(claimId: string): Promise<{ success: bo
             console.error("[approveClaimAction] Background web search failed:", e)
         );
 
-        // Approval email — fire-and-forget; approval NEVER blocks on email.
-        // Legacy wallet users may have no email; the on-page banner is the fallback channel.
-        void (async () => {
+        // Approval email — AWAITED (not fire-and-forget). On Vercel a serverless
+        // lambda can freeze immediately after the action returns, so a floating
+        // promise here may never actually send. sendEmail/sendClaimApprovedEmail
+        // are documented to never throw, but the try/catch here is defense in
+        // depth anyway: approval must NEVER fail because of email, and it already
+        // committed to the DB above. The null-email guard still skips legacy
+        // wallet users. The on-page banner remains the fallback channel either way.
+        try {
             const [claimUser, artist] = await Promise.all([
                 getUserById(claim.userId),
                 getArtistById(claim.artistId),
             ]);
             if (!claimUser?.email) {
                 console.log(`[approveClaimAction] No email for user ${claim.userId} — skipping approval email`);
-                return;
+            } else {
+                await sendClaimApprovedEmail(claimUser.email, artist?.name ?? null, claim.artistId);
             }
-            await sendClaimApprovedEmail(claimUser.email, artist?.name ?? "your artist", claim.artistId);
-        })().catch(e => console.error("[approveClaimAction] Approval email failed:", e));
+        } catch (e) {
+            console.error("[approveClaimAction] Approval email failed:", e);
+        }
 
         sendDiscordMessage(
             `Claim APPROVED: ${claim.referenceCode} | Artist ID: ${claim.artistId} | Approved by: ${session.user.email ?? session.user.id}`

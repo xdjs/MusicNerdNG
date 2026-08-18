@@ -51,4 +51,15 @@ describe('sendClaimApprovedEmail', () => {
         expect(body.html).not.toContain('<script>');
         expect(body.html).toContain('&lt;script&gt;');
     });
+
+    it('degrades to generic-but-grammatical copy when artistName is null (no "Your your artist" doubling)', async () => {
+        jest.mock('@/env', () => ({ RESEND_API_KEY: 'rk_test', NEXTAUTH_URL: 'https://staging.musicnerd.xyz' }));
+        const { sendClaimApprovedEmail } = await import('@/server/utils/email');
+        await sendClaimApprovedEmail('artist@example.com', null, 'artist-uuid-1');
+        const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+        expect(body.subject).toBe('Your Music Nerd profile is approved 🎉');
+        expect(body.subject).not.toMatch(/your your/i);
+        expect(body.html).not.toMatch(/your your/i);
+        expect(body.html).toContain('You now manage your artist profile on Music Nerd.');
+    });
 });

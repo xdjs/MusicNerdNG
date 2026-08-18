@@ -47,14 +47,19 @@ export async function sendEmail(input: { to: string; subject: string; html: stri
     }
 }
 
-export function claimApprovedEmailHtml(artistName: string, artistId: string): string {
-    const safeName = escapeHtml(artistName);
+export function claimApprovedEmailHtml(artistName: string | null, artistId: string): string {
     const url = `${BASE_URL}/artist/${artistId}`;
+    // `artistName` is null when the artist record couldn't be looked up — degrade
+    // to generic-but-grammatical copy instead of interpolating a placeholder like
+    // "your artist" into "You now manage your artist on Music Nerd."
+    const manageLine = artistName
+        ? `You now manage <strong>${escapeHtml(artistName)}</strong> on Music Nerd.`
+        : `You now manage your artist profile on Music Nerd.`;
     return `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
   <h1 style="font-size: 22px; margin: 0 0 12px;">Your profile is approved 🎉</h1>
   <p style="font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-    You now manage <strong>${safeName}</strong> on Music Nerd. Take two minutes to finish
+    ${manageLine} Take two minutes to finish
     setting up — confirm your links, tell us your story, and publish your About page.
   </p>
   <a href="${url}" style="display: inline-block; background: #ff4b84; color: #fff; text-decoration: none; font-weight: 600; padding: 12px 24px; border-radius: 10px; font-size: 15px;">
@@ -66,10 +71,12 @@ export function claimApprovedEmailHtml(artistName: string, artistId: string): st
 </div>`;
 }
 
-export async function sendClaimApprovedEmail(to: string, artistName: string, artistId: string): Promise<boolean> {
+export async function sendClaimApprovedEmail(to: string, artistName: string | null, artistId: string): Promise<boolean> {
     return sendEmail({
         to,
-        subject: `Your ${artistName.replace(/[\r\n]+/g, " ")} profile on Music Nerd is approved 🎉`,
+        subject: artistName
+            ? `Your ${artistName.replace(/[\r\n]+/g, " ")} profile on Music Nerd is approved 🎉`
+            : `Your Music Nerd profile is approved 🎉`,
         html: claimApprovedEmailHtml(artistName, artistId),
     });
 }
