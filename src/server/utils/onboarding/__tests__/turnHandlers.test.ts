@@ -284,6 +284,34 @@ describe('runOnboardingTurn', () => {
         ]);
     });
 
+    // Fix 4: the narration states the scale up front, correctly pluralized,
+    // so the artist knows how much there is before the card renders.
+    it('vault narration states the correct pluralized source count (many sources)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        dq.getVaultSourcesByArtistId.mockResolvedValueOnce(
+            Array.from({ length: 11 }, (_, i) => ({ id: `s${i}`, title: `Source ${i}`, url: `https://example.com/${i}`, snippet: null, ogImage: null }))
+        );
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const chat = events.find(e => e.kind === 'chat' && /found/i.test(e.text));
+        expect(chat.text).toContain('We found 11 sources about you.');
+    });
+
+    it('vault narration uses singular "source" for exactly one source', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        dq.getVaultSourcesByArtistId.mockResolvedValueOnce([
+            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: null },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const chat = events.find(e => e.kind === 'chat' && /found/i.test(e.text));
+        expect(chat.text).toContain('We found 1 source about you.');
+    });
+
     it('vault_review only updates sources belonging to this artist', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });

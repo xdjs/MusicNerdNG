@@ -27,6 +27,13 @@ const PROFILE_OPAQUE_ID_SITENAMES = new Set(["spotify", "youtubechannel", "faceb
 const PROFILE_HANDLE_SITENAMES = new Set(["instagram", "x", "tiktok", "youtube"]);
 const OPAQUE_VALUE_LENGTH = 20;
 
+// Fix 3: past this many rows, a card's list of links/sources can blow well
+// past the panel's height and bury its confirm button below the fold. Cap the
+// LIST in its own scroll region (paste-row + confirm button stay outside it,
+// always reachable) rather than letting the whole card grow unbounded.
+const PROFILES_SCROLL_THRESHOLD = 6;
+const VAULT_SCROLL_THRESHOLD = 4;
+
 function isOpaqueId(link: ProfileLink): boolean {
     // A purely numeric value (e.g. a Deezer artist ID like "4050205", or a
     // numeric Facebook/TikTok page ID) is never a human-readable handle,
@@ -123,60 +130,69 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
     };
 
     const isEmpty = payload.links.length === 0;
+    // Fix 3: cap the list itself, not the whole card — the paste row and the
+    // confirm button below stay outside this region so they're always
+    // reachable without hunting through a long scroll.
+    const manyLinks = payload.links.length > PROFILES_SCROLL_THRESHOLD;
+    const listClassName = manyLinks
+        ? "space-y-2 max-h-[40vh] overflow-y-auto overscroll-contain scrollbar-glass pr-1"
+        : "space-y-2";
 
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-2 w-full">
-            {payload.links.map(link => {
-                const displayName = link.displayName || link.siteName.charAt(0).toUpperCase() + link.siteName.slice(1);
-                const subtitle = profileSubtitle(link);
-                const showFollowers = payload.enrichment && link.siteName === payload.enrichment.platform && payload.enrichment.followerCount != null;
-                const nameBlock = (
-                    <div className="min-w-0">
-                        <span className="font-medium text-black dark:text-white inline-flex items-center gap-1">
-                            {displayName}
-                            {link.profileUrl && (
-                                <svg aria-hidden="true" viewBox="0 0 24 24" className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0">
-                                    <path fill="currentColor" d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
-                                </svg>
-                            )}
-                        </span>
-                        {subtitle && <span className="block text-sm text-gray-600 dark:text-gray-300 break-all">{subtitle}</span>}
-                        {showFollowers && (
-                            <span className="block text-xs text-gray-600 dark:text-gray-300">{fmtFollowers(payload.enrichment!.followerCount!)} fans</span>
-                        )}
-                    </div>
-                );
-                return (
-                    <div
-                        key={link.siteName}
-                        className={`flex items-center justify-between gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 ${removed.has(link.siteName) ? "opacity-40 line-through" : ""}`}
-                    >
-                        <div className="flex items-center gap-3 min-w-0">
-                            <ProfileAvatar link={link} />
-                            {link.profileUrl ? (
-                                <a
-                                    href={link.profileUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="min-w-0 rounded hover:underline focus:outline-none focus:ring-2 focus:ring-pink-500"
-                                >
-                                    {nameBlock}
-                                </a>
-                            ) : (
-                                nameBlock
+            <div data-testid="profiles-link-list" className={listClassName}>
+                {payload.links.map(link => {
+                    const displayName = link.displayName || link.siteName.charAt(0).toUpperCase() + link.siteName.slice(1);
+                    const subtitle = profileSubtitle(link);
+                    const showFollowers = payload.enrichment && link.siteName === payload.enrichment.platform && payload.enrichment.followerCount != null;
+                    const nameBlock = (
+                        <div className="min-w-0">
+                            <span className="font-medium text-black dark:text-white inline-flex items-center gap-1">
+                                {displayName}
+                                {link.profileUrl && (
+                                    <svg aria-hidden="true" viewBox="0 0 24 24" className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                        <path fill="currentColor" d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+                                    </svg>
+                                )}
+                            </span>
+                            {subtitle && <span className="block text-sm text-gray-600 dark:text-gray-300 break-all">{subtitle}</span>}
+                            {showFollowers && (
+                                <span className="block text-xs text-gray-600 dark:text-gray-300">{fmtFollowers(payload.enrichment!.followerCount!)} fans</span>
                             )}
                         </div>
-                        <button
-                            aria-label={`remove ${link.siteName}`}
-                            onClick={() => toggleRemoved(link.siteName)}
-                            disabled={disabled}
-                            className="text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors rounded-full px-2 py-1"
+                    );
+                    return (
+                        <div
+                            key={link.siteName}
+                            className={`flex items-center justify-between gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 ${removed.has(link.siteName) ? "opacity-40 line-through" : ""}`}
                         >
-                            ✕
-                        </button>
-                    </div>
-                );
-            })}
+                            <div className="flex items-center gap-3 min-w-0">
+                                <ProfileAvatar link={link} />
+                                {link.profileUrl ? (
+                                    <a
+                                        href={link.profileUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="min-w-0 rounded hover:underline focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                    >
+                                        {nameBlock}
+                                    </a>
+                                ) : (
+                                    nameBlock
+                                )}
+                            </div>
+                            <button
+                                aria-label={`remove ${link.siteName}`}
+                                onClick={() => toggleRemoved(link.siteName)}
+                                disabled={disabled}
+                                className="text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors rounded-full px-2 py-1"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
             {isEmpty && added.length === 0 && (
                 <div className="text-sm text-gray-600 dark:text-gray-300 px-1 py-2">
                     No profiles linked yet — paste one below whenever you&apos;re ready.
@@ -271,34 +287,44 @@ export function VaultCard({ payload, onConfirm, disabled }: {
         addedUrls: added,
     });
 
+    // Fix 3: cap the list itself, not the whole card — the paste row and the
+    // "Keep these, continue" button below stay outside this region so they're
+    // always reachable without hunting through a long scroll of sources.
+    const manySources = payload.sources.length > VAULT_SCROLL_THRESHOLD;
+    const listClassName = manySources
+        ? "space-y-2 max-h-[40vh] overflow-y-auto overscroll-contain scrollbar-glass pr-1"
+        : "space-y-2";
+
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-2 w-full">
-            {payload.sources.map(s => {
-                const domain = s.ogImage ? sourceDomain(s.url) : null;
-                return (
-                    <div
-                        key={s.id}
-                        className={`rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 flex items-start gap-3 ${skipped.has(s.id) ? "opacity-40" : ""}`}
-                    >
-                        {s.ogImage && <VaultThumbnail src={s.ogImage} />}
-                        <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                                <p className="font-medium truncate text-black dark:text-white">{s.title ?? s.url}</p>
-                                {s.snippet && <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{s.snippet}</p>}
-                                {domain && <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{domain}</p>}
+            <div data-testid="vault-source-list" className={listClassName}>
+                {payload.sources.map(s => {
+                    const domain = s.ogImage ? sourceDomain(s.url) : null;
+                    return (
+                        <div
+                            key={s.id}
+                            className={`rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 flex items-start gap-3 ${skipped.has(s.id) ? "opacity-40" : ""}`}
+                        >
+                            {s.ogImage && <VaultThumbnail src={s.ogImage} />}
+                            <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-medium truncate text-black dark:text-white">{s.title ?? s.url}</p>
+                                    {s.snippet && <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{s.snippet}</p>}
+                                    {domain && <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{domain}</p>}
+                                </div>
+                                <button
+                                    aria-label={`${skipped.has(s.id) ? "keep" : "skip"} ${s.title ?? s.url}`}
+                                    onClick={() => toggle(s.id)}
+                                    disabled={disabled}
+                                    className="text-sm whitespace-nowrap px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-pink-400 dark:hover:border-pink-400 hover:text-pink-600 dark:hover:text-pink-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {skipped.has(s.id) ? "keep" : "skip"}
+                                </button>
                             </div>
-                            <button
-                                aria-label={`${skipped.has(s.id) ? "keep" : "skip"} ${s.title ?? s.url}`}
-                                onClick={() => toggle(s.id)}
-                                disabled={disabled}
-                                className="text-sm whitespace-nowrap px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-pink-400 dark:hover:border-pink-400 hover:text-pink-600 dark:hover:text-pink-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {skipped.has(s.id) ? "keep" : "skip"}
-                            </button>
                         </div>
-                    </div>
-                );
-            })}
+                    );
+                })}
+            </div>
             {added.map(url => (
                 <div key={url} className="text-sm text-green-600 dark:text-green-400 px-3">+ {url}</div>
             ))}

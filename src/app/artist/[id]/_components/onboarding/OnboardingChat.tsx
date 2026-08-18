@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
 import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard } from "./StepCards";
@@ -10,11 +10,46 @@ type Props = { artistId: string; artistName: string; onSkip: () => void; onFinis
 // Presentational only — progress rail order + stage derivation for display purposes.
 const STEP_ORDER = ["profiles", "vault", "interview", "publish"] as const;
 
+// Scroll-anchoring tuning: how close to the true bottom counts as "the user
+// was following along" (vs. deliberately scrolled up to re-read something),
+// and how much breathing room to leave above a newly-anchored item's top edge.
+const NEAR_BOTTOM_PX = 120;
+const ANCHOR_OFFSET_PX = 12;
+
+/** Scrolls `container` so `itemId`'s top edge sits just below the container's
+ *  top edge, rather than snapping to the absolute bottom of everything. Uses
+ *  getBoundingClientRect deltas (not offsetTop) so it doesn't depend on the
+ *  container being a positioned offsetParent. No-ops safely when the target
+ *  isn't found, or when JSDOM's zeroed-out layout rects make the math trivial
+ *  (rect.top - rect.top - offset = a small negative number, clamped to 0). */
+function anchorToItem(container: HTMLDivElement, itemId: string, behavior: ScrollBehavior) {
+    const target = container.querySelector<HTMLElement>(`[data-item-id="${itemId}"]`);
+    if (!target) return;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const delta = targetRect.top - containerRect.top - ANCHOR_OFFSET_PX;
+    container.scrollTo({ top: Math.max(0, container.scrollTop + delta), behavior });
+}
+
+function prefersReducedMotion(): boolean {
+    return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
 export default function OnboardingChat({ artistId, artistName, onSkip, onFinish }: Props) {
     const { items, busy, sendTurn } = useOnboardingChat(artistId);
     const router = useRouter();
     const opened = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    // Ids already rendered as of the last items-change effect run — lets us
+    // diff to find just-added items instead of re-anchoring on every render.
+    const prevIdsRef = useRef<Set<string>>(new Set());
+    // Updated only by real scroll events (ours or the user's) — reflects the
+    // scroll position as it was BEFORE new items grew the container, since
+    // appending content below the fold doesn't itself fire a "scroll" event.
+    const wasNearBottomRef = useRef(true);
+    // The earliest still-unread item id, set when we decide not to auto-scroll.
+    const pillTargetIdRef = useRef<string | null>(null);
+    const [hasNewBelow, setHasNewBelow] = useState(false);
 
     useEffect(() => {
         if (!opened.current) {
@@ -23,9 +58,65 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
         }
     }, [sendTurn]);
 
+    const handleScroll = useCallback(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const near = distance <= NEAR_BOTTOM_PX;
+        wasNearBottomRef.current = near;
+        if (near) setHasNewBelow(false);
+    }, []);
+
+    // Fix 1 + Fix 2: on new items, anchor to the TOP of the newest content
+    // instead of jumping to the absolute bottom — but only when the user was
+    // already following along (near the bottom) or the new content requires
+    // their action (their own echo, a step/draft card). Otherwise leave their
+    // scroll position alone and surface a "New messages" affordance instead.
     useEffect(() => {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+        const container = scrollRef.current;
+        const prevIds = prevIdsRef.current;
+        const newItems = items.filter(i => !prevIds.has(i.id));
+        prevIdsRef.current = new Set(items.map(i => i.id));
+        if (!container || newItems.length === 0) return;
+
+        const actionRequiring = newItems.some(i => i.kind === "user" || i.kind === "step" || i.kind === "draft");
+        const shouldAutoScroll = wasNearBottomRef.current || actionRequiring;
+        // Anchor to the first newly-added item that isn't the user's own echo
+        // bubble (their own message always follows them) — falls back to the
+        // first new item when the echo is all there is so far.
+        const anchorItem = newItems.find(i => i.kind !== "user") ?? newItems[0];
+
+        if (!shouldAutoScroll) {
+            // A transient status chip on its own isn't worth interrupting the
+            // user's reading for — the real content that follows it shortly
+            // will decide the pill on its own merits (or force-scroll, if
+            // it's action-requiring).
+            if (newItems.every(i => i.kind === "progress")) return;
+            if (!pillTargetIdRef.current) pillTargetIdRef.current = anchorItem.id;
+            setHasNewBelow(true);
+            return;
+        }
+
+        anchorToItem(container, anchorItem.id, prefersReducedMotion() ? "auto" : "smooth");
+        pillTargetIdRef.current = null;
+        setHasNewBelow(false);
+        // We just placed the user at the top of the newest content — treat
+        // that as "caught up" without waiting for a scroll event to confirm
+        // it, since a same-position or clamped-to-zero anchor may not fire
+        // one (e.g. jsdom, or the target was already at the top).
+        wasNearBottomRef.current = true;
     }, [items]);
+
+    const jumpToNewMessages = useCallback(() => {
+        const container = scrollRef.current;
+        const targetId = pillTargetIdRef.current;
+        pillTargetIdRef.current = null;
+        setHasNewBelow(false);
+        if (container && targetId) anchorToItem(container, targetId, prefersReducedMotion() ? "auto" : "smooth");
+        // Clicking the pill is an explicit "I'm following along again"
+        // signal — don't wait on a scroll event that might not fire.
+        wasNearBottomRef.current = true;
+    }, []);
 
     const complete = items.some(i => i.kind === "complete");
     // Only the LAST step/draft item is interactive — earlier ones are history.
@@ -135,16 +226,30 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                         ))}
                     </div>
                 </div>
-                <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-glass p-4 flex flex-col gap-2.5">
-                    {items.map(item => (
-                        <div key={item.id} className="flex flex-col">{renderItem(item)}</div>
-                    ))}
-                    {busy && (
-                        <div className="glass-subtle self-start !rounded-2xl !rounded-bl-md px-4 py-3 flex items-center gap-1.5" aria-hidden="true">
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce [animation-delay:-0.3s]" />
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce [animation-delay:-0.15s]" />
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce" />
-                        </div>
+                <div className="relative flex-1 min-h-0">
+                    <div
+                        ref={scrollRef}
+                        onScroll={handleScroll}
+                        className="h-full overflow-y-auto scrollbar-glass p-4 flex flex-col gap-2.5"
+                    >
+                        {items.map(item => (
+                            <div key={item.id} data-item-id={item.id} className="flex flex-col">{renderItem(item)}</div>
+                        ))}
+                        {busy && (
+                            <div className="glass-subtle self-start !rounded-2xl !rounded-bl-md px-4 py-3 flex items-center gap-1.5" aria-hidden="true">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce [animation-delay:-0.3s]" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce [animation-delay:-0.15s]" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-gray-400 motion-safe:animate-bounce" />
+                            </div>
+                        )}
+                    </div>
+                    {hasNewBelow && (
+                        <button
+                            onClick={jumpToNewMessages}
+                            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 glass-subtle text-xs font-semibold text-pink-500 dark:text-pink-400 px-3 py-1.5 rounded-full shadow-lg shadow-black/20 dark:shadow-black/40 hover:text-pink-600 dark:hover:text-pink-300 transition-colors"
+                        >
+                            ↓ New messages
+                        </button>
                     )}
                 </div>
             </div>

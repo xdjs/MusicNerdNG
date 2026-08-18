@@ -70,7 +70,8 @@ const NARRATION = {
     profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a link we missed.",
     profilesEmpty: "Let's start with where people can find you. Paste your Spotify, Instagram, or anywhere else you live online — or skip ahead and add them later.",
     profilesDone: "Profiles confirmed. Now let's look at what the internet says about you.",
-    vault: "We found these sources about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.",
+    vault: (count: number) =>
+        `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.`,
     vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue.",
     vaultDone: "Sources sorted. Now the fun part — three quick questions. Skip any of them.",
     generating: "Okay, I have everything I need. Watch this — I'm writing your About page from your links, your sources, and your own words.",
@@ -285,7 +286,7 @@ async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator
                     yield { kind: "progress", label: "Searching the web for sources about you", done: true };
                 }
             }
-            yield { kind: "chat", text: pending.length > 0 ? NARRATION.vault : NARRATION.vaultEmpty };
+            yield { kind: "chat", text: pending.length > 0 ? NARRATION.vault(pending.length) : NARRATION.vaultEmpty };
             yield {
                 kind: "step",
                 step: "vault",

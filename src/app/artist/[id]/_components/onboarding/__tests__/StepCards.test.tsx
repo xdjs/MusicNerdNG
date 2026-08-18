@@ -134,6 +134,35 @@ describe('ProfilesCard — accepted-by-default', () => {
         expect(container.querySelectorAll('img').length).toBe(1);
         expect(container.querySelector('img')).toHaveAttribute('src', 'https://utfs.io/f/instagram-logo.png');
     });
+
+    // Fix 3: a long list of links must not push the "Looks good, continue"
+    // button out of reach — the list itself scrolls, not the whole card.
+    it('constrains the link list to a scrollable region when there are more than 6 links', () => {
+        const manyLinksPayload = {
+            artistName: 'Nova Reyes',
+            links: Array.from({ length: 7 }, (_, i) => ({ siteName: `site${i}`, value: `v${i}` })),
+            enrichment: null,
+        };
+        const { getByTestId } = render(<ProfilesCard payload={manyLinksPayload} onConfirm={jest.fn()} disabled={false} />);
+        const list = getByTestId('profiles-link-list');
+        expect(list.className).toEqual(expect.stringContaining('overflow-y-auto'));
+        expect(list.className).toEqual(expect.stringContaining('max-h-'));
+        // The paste-a-link input and confirm button stay reachable outside the capped region.
+        expect(screen.getByPlaceholderText(/paste a link/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /looks good/i })).toBeInTheDocument();
+    });
+
+    it('does NOT constrain the link list when there are 6 or fewer links', () => {
+        const fewLinksPayload = {
+            artistName: 'Nova Reyes',
+            links: Array.from({ length: 6 }, (_, i) => ({ siteName: `site${i}`, value: `v${i}` })),
+            enrichment: null,
+        };
+        const { getByTestId } = render(<ProfilesCard payload={fewLinksPayload} onConfirm={jest.fn()} disabled={false} />);
+        const list = getByTestId('profiles-link-list');
+        expect(list.className).not.toEqual(expect.stringContaining('overflow-y-auto'));
+        expect(list.className).not.toEqual(expect.stringContaining('max-h-'));
+    });
 });
 
 describe('VaultCard — keep-by-default', () => {
@@ -198,6 +227,31 @@ describe('VaultCard — keep-by-default', () => {
         expect(container.querySelector('img')).toBeNull();
         expect(screen.getByText('Fan wiki')).toBeInTheDocument();
         expect(screen.queryByText('wiki.example')).not.toBeInTheDocument();
+    });
+
+    // Fix 3: an 11-source vault (the reported case) must not bury "Keep these,
+    // continue" below a wall of source rows — the list scrolls, not the card.
+    it('constrains the source list to a scrollable region when there are more than 4 sources', () => {
+        const manySourcesPayload = {
+            sources: Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, title: `Source ${i}`, url: `https://example.com/${i}`, snippet: null })),
+        };
+        const { getByTestId } = render(<VaultCard payload={manySourcesPayload} onConfirm={jest.fn()} disabled={false} />);
+        const list = getByTestId('vault-source-list');
+        expect(list.className).toEqual(expect.stringContaining('overflow-y-auto'));
+        expect(list.className).toEqual(expect.stringContaining('max-h-'));
+        // The paste-a-link input and confirm button stay reachable outside the capped region.
+        expect(screen.getByPlaceholderText(/paste a link/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /keep these/i })).toBeInTheDocument();
+    });
+
+    it('does NOT constrain the source list when there are 4 or fewer sources', () => {
+        const fewSourcesPayload = {
+            sources: Array.from({ length: 4 }, (_, i) => ({ id: `s${i}`, title: `Source ${i}`, url: `https://example.com/${i}`, snippet: null })),
+        };
+        const { getByTestId } = render(<VaultCard payload={fewSourcesPayload} onConfirm={jest.fn()} disabled={false} />);
+        const list = getByTestId('vault-source-list');
+        expect(list.className).not.toEqual(expect.stringContaining('overflow-y-auto'));
+        expect(list.className).not.toEqual(expect.stringContaining('max-h-'));
     });
 });
 
