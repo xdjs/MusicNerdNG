@@ -13,9 +13,10 @@ import {
     updateVaultSourceStatus,
     saveBioVersion,
     insertVaultSource,
+    updateVaultSourceContent,
 } from "@/server/utils/queries/dashboardQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
-import { isUnsafeUrl } from "@/server/utils/fetchPageContent";
+import { isUnsafeUrl, fetchPageContent } from "@/server/utils/fetchPageContent";
 import { inferTypeFromUrl } from "@/lib/sourceTypes";
 import {
     type OnboardingStep,
@@ -28,10 +29,17 @@ import {
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
-import { synthesizeArtistDoc, generateAboutFromDoc, ARTIST_DOC_MAX_CHARS } from "@/server/utils/artistDocService";
+import { synthesizeArtistDoc, generateAboutFromDoc, ARTIST_DOC_MAX_CHARS, GEMINI_TIMEOUT_MS } from "@/server/utils/artistDocService";
 import { ONBOARDING_QUESTIONS } from "./questions";
-import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
+
+/** Two ungrounded Gemini calls, each with one retry at up to `GEMINI_TIMEOUT_MS`,
+ *  is a 4x-call worst case (~80s) against `maxDuration = 60` on the chat route.
+ *  Once the publish step has already burned this much wall-clock time, skip any
+ *  further retry and let the failure propagate — the step stays unconfirmed and
+ *  the next turn resumes it (spec §9), instead of blowing past the deadline. */
+const PUBLISH_RETRY_BUDGET_MS = GEMINI_TIMEOUT_MS + 10_000;
 
 export type TurnEvent =
     | { kind: "chat"; text: string }
@@ -162,12 +170,17 @@ async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator
         case "publish": {
             yield { kind: "chat", text: NARRATION.generating };
             yield { kind: "progress", label: "Reading your sources and answers", done: false };
+            const publishStartedAt = Date.now();
             // Gemini failure policy: apologize in-stream, retry ONCE, else let the
             // throw reach the route (error event; checkpoint stays unmet — spec §9).
+            // The retry is skipped once we're already past budget so the worst
+            // case fits `maxDuration` instead of stacking to ~80s (see
+            // PUBLISH_RETRY_BUDGET_MS above).
             let doc: string;
             try {
                 doc = await synthesizeArtistDoc(artistId);
-            } catch {
+            } catch (e) {
+                if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
                 yield { kind: "chat", text: "Hmm, that didn't come together — give me one more second." };
                 doc = await synthesizeArtistDoc(artistId);
             }
@@ -177,7 +190,8 @@ async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator
             let about: string;
             try {
                 about = await generateAboutFromDoc(artist?.name ?? "this artist", doc);
-            } catch {
+            } catch (e) {
+                if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
                 yield { kind: "chat", text: "One more try on the wording…" };
                 about = await generateAboutFromDoc(artist?.name ?? "this artist", doc);
             }
@@ -193,6 +207,13 @@ async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator
 
 export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): AsyncGenerator<TurnEvent> {
     const state = await getOnboardingState(artistId);
+    // `null` = the confirmed-steps read failed (e.g. migration/grants issue) —
+    // state is UNKNOWN, not "incomplete". Never guess a step or write anything;
+    // error out and let the next turn retry the read (fail CLOSED — spec C1).
+    if (state === null) {
+        yield { kind: "error", message: "We couldn't load your onboarding status — try again in a moment." };
+        return;
+    }
 
     if (turn.type === "open") {
         if (state.complete || state.currentStep === null) {
@@ -206,6 +227,19 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
     }
 
     if (turn.type === "confirm_profiles") {
+        // Gate on the derived step so a stale re-enabled card (e.g. a second
+        // browser tab left open on an already-confirmed step) can't overwrite
+        // state out of order — resync instead of acting (spec I1).
+        if (state.currentStep === null) {
+            yield { kind: "chat", text: NARRATION.alreadyDone };
+            yield { kind: "complete" };
+            return;
+        }
+        if (state.currentStep !== "profiles") {
+            yield { kind: "error", message: "We're not quite there yet — let's finish the earlier steps first." };
+            yield* emitStep(artistId, state.currentStep);
+            return;
+        }
         const failures: string[] = [];
         for (const siteName of turn.removedSiteNames ?? []) {
             try {
@@ -240,6 +274,17 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
     }
 
     if (turn.type === "vault_review") {
+        // Gate on the derived step (spec I1) — see confirm_profiles above.
+        if (state.currentStep === null) {
+            yield { kind: "chat", text: NARRATION.alreadyDone };
+            yield { kind: "complete" };
+            return;
+        }
+        if (state.currentStep !== "vault") {
+            yield { kind: "error", message: "We're not quite there yet — let's finish the earlier steps first." };
+            yield* emitStep(artistId, state.currentStep);
+            return;
+        }
         for (const decision of turn.decisions ?? []) {
             // Ownership: only touch sources that belong to THIS artist.
             const source = await getVaultSourceByIdAndArtist(decision.sourceId, artistId);
@@ -250,7 +295,20 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         for (const url of turn.addedUrls ?? []) {
             try {
                 if (isUnsafeUrl(url)) continue;
-                await insertVaultSource({ artistId, url, type: inferTypeFromUrl(url), status: "approved" });
+                const source = await insertVaultSource({ artistId, url, type: inferTypeFromUrl(url), status: "approved" });
+                // Fire-and-forget content enrichment (title/snippet/extractedText) so
+                // doc synthesis isn't left with a bare URL — mirrors addVaultSource's
+                // background fetch pattern (src/app/actions/dashboardActions.ts).
+                if (source?.id) {
+                    fetchPageContent(url).then(content => {
+                        updateVaultSourceContent(source.id, {
+                            title: content.title,
+                            snippet: content.snippet,
+                            extractedText: content.extractedText,
+                            ogImage: content.ogImage,
+                        }).catch(e => console.error("[onboarding] Background content update failed:", e));
+                    }).catch(e => console.error("[onboarding] Background fetch failed:", e));
+                }
             } catch (e) {
                 console.error(`[onboarding] insertVaultSource failed for ${url}:`, e);
             }
@@ -262,10 +320,23 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
     }
 
     if (turn.type === "interview_answer") {
+        // Gate on the derived step (spec I1) — see confirm_profiles above. Without
+        // this, a stale re-enabled card can overwrite a real answer with NULL via
+        // onConflictDoUpdate.
+        if (state.currentStep === null) {
+            yield { kind: "chat", text: NARRATION.alreadyDone };
+            yield { kind: "complete" };
+            return;
+        }
+        if (state.currentStep !== "interview") {
+            yield { kind: "error", message: "We're not quite there yet — let's finish the earlier steps first." };
+            yield* emitStep(artistId, state.currentStep);
+            return;
+        }
         const question = ONBOARDING_QUESTIONS.find(q => q.key === turn.questionKey);
         if (!question) {
             yield { kind: "error", message: "Unknown question — let's continue from where we were." };
-            yield* emitStep(artistId, state.currentStep ?? "interview");
+            yield* emitStep(artistId, "interview"); // step guard above already pinned currentStep === "interview"
             return;
         }
         const answer = turn.answer?.trim() || null;
@@ -307,6 +378,17 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield { kind: "error", message: "That About looks off — let me regenerate it." };
             yield* emitStep(artistId, "publish");
             return;
+        }
+        // Snapshot a pre-existing REAL bio before it's overwritten. An artist who
+        // hand-edited their About via updateArtistBio/saveBio has a live bio with
+        // NO version row — publishing here must not destroy it irrecoverably. The
+        // empty-state/claim-nudge bio is not real content and is never versioned.
+        // Any failure here (e.g. version cap reached) should fail the publish, not
+        // silently proceed to overwrite an unsaved bio — do not swallow it.
+        const existingArtist = await getArtistById(artistId);
+        const existingBio = existingArtist?.bio;
+        if (isRealBio(existingBio)) {
+            await saveBioVersion(artistId, existingBio as string);
         }
         await upsertArtistDoc(artistId, doc);
         await saveBioVersion(artistId, about);

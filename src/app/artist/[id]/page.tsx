@@ -103,6 +103,10 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
     const autoApproveLinkSubmissions = isAdmin || !!dbUser?.isWhiteListed;
 
     // Onboarding state costs a query — computed ONLY for the approved claimant.
+    // getOnboardingState returns null when the confirmed-steps read FAILED (fail
+    // CLOSED — spec C1), not just when there's nothing to show. The `onboardingState
+    // && ...` gate below already renders neither the takeover nor the banner in
+    // that case — never fall back to a default/guessed state here.
     const onboardingState = isClaimedByUser ? await getOnboardingState(id) : null;
 
     const pendingSources = canEdit ? pendingSourcesRaw : [];

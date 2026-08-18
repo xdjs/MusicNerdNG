@@ -19,7 +19,12 @@ export function firstUnconfirmedStep(confirmed: ReadonlySet<string>): Onboarding
     return null;
 }
 
-export async function getConfirmedSteps(artistId: string): Promise<Set<OnboardingStep>> {
+/** `null` return means the read FAILED (e.g. migration not applied, missing
+ *  grants) — distinguishable from a brand-new claimant with zero confirmed
+ *  steps (an empty Set). Callers MUST treat `null` as "unknown", never as
+ *  "incomplete, start at profiles" — conflating the two fails OPEN into a
+ *  permanent stuck takeover for every claimant whenever this read breaks. */
+export async function getConfirmedSteps(artistId: string): Promise<Set<OnboardingStep> | null> {
     try {
         const rows = await db.query.artistOnboardingSteps.findMany({
             where: eq(artistOnboardingSteps.artistId, artistId),
@@ -27,7 +32,7 @@ export async function getConfirmedSteps(artistId: string): Promise<Set<Onboardin
         return new Set(rows.map(r => r.step as OnboardingStep));
     } catch (e) {
         console.error("[getConfirmedSteps] Error:", e);
-        return new Set();
+        return null;
     }
 }
 
@@ -39,8 +44,12 @@ export async function confirmOnboardingStep(artistId: string, step: OnboardingSt
         .onConflictDoNothing({ target: [artistOnboardingSteps.artistId, artistOnboardingSteps.step] });
 }
 
-export async function getOnboardingState(artistId: string): Promise<OnboardingState> {
+/** `null` return means onboarding state is UNKNOWN (the confirmed-steps read
+ *  failed) — callers must render/act as if there is no onboarding takeover at
+ *  all, not fall back to a default state (spec fail-CLOSED requirement). */
+export async function getOnboardingState(artistId: string): Promise<OnboardingState | null> {
     const confirmed = await getConfirmedSteps(artistId);
+    if (confirmed === null) return null;
     return { complete: confirmed.has("publish"), currentStep: firstUnconfirmedStep(confirmed) };
 }
 

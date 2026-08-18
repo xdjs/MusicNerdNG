@@ -4,6 +4,7 @@ import {
     ONBOARDING_STEPS,
     firstUnconfirmedStep,
     getOnboardingState,
+    getConfirmedSteps,
     confirmOnboardingStep,
     upsertInterviewAnswer,
     upsertArtistDoc,
@@ -45,10 +46,26 @@ describe('getOnboardingState', () => {
         expect(state).toEqual({ complete: false, currentStep: 'vault' });
     });
 
-    it('fails safe (incomplete, first step) when the query throws', async () => {
+    it('fails CLOSED (null — unknown, not a default state) when the query throws', async () => {
         db.query.artistOnboardingSteps.findMany.mockRejectedValue(new Error('boom'));
         const state = await getOnboardingState('artist-1');
-        expect(state).toEqual({ complete: false, currentStep: 'profiles' });
+        expect(state).toBeNull();
+    });
+});
+
+describe('getConfirmedSteps', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    it('returns null (not an empty Set) when the query throws — distinguishable from a new claimant', async () => {
+        db.query.artistOnboardingSteps.findMany.mockRejectedValue(new Error('boom'));
+        const confirmed = await getConfirmedSteps('artist-1');
+        expect(confirmed).toBeNull();
+    });
+
+    it('returns an empty Set (not null) for a genuine new claimant with zero confirmations', async () => {
+        db.query.artistOnboardingSteps.findMany.mockResolvedValue([]);
+        const confirmed = await getConfirmedSteps('artist-1');
+        expect(confirmed).toEqual(new Set());
     });
 });
 

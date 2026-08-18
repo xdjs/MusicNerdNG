@@ -11,7 +11,9 @@ import { getInterviewAnswers, getArtistDoc } from "@/server/utils/queries/onboar
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP } from "@/lib/bioConstants";
 
 export { ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP };
-const GEMINI_TIMEOUT_MS = 20_000;
+/** Exported so callers (e.g. the publish-turn retry budget) can reason about
+ *  worst-case Gemini call duration without re-declaring the constant. */
+export const GEMINI_TIMEOUT_MS = 20_000;
 
 const DOC_SYSTEM_INSTRUCTION = (artistName: string) => `You compile an internal knowledge document about the music artist "${artistName}" for Music Nerd.
 Output pure markdown. Use ONLY these section headers, in this order, and OMIT any section entirely if you have no real, specific material for it:
