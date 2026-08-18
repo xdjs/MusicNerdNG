@@ -9,6 +9,12 @@ import './src/test/setup/testEnv';
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
+// Polyfill ReadableStream for streaming responses (SSE, etc.)
+if (!global.ReadableStream) {
+    const { ReadableStream: NodeReadableStream } = require('stream/web');
+    global.ReadableStream = NodeReadableStream;
+}
+
 // Make React available globally for tests
 global.React = React;
 
