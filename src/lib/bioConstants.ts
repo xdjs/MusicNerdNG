@@ -1,6 +1,12 @@
 /** Max characters allowed in an artist bio (Save and Save-to-vault both enforce this). */
 export const MAX_BIO_LENGTH = 10_000;
 
+/** Hard cap on a synthesized artist doc's stored size. */
+export const ARTIST_DOC_MAX_CHARS = 20_000;
+
+/** Cap on the artist-doc slice injected into prompts (askArtist / funFacts / bio). */
+export const ARTIST_DOC_CONTEXT_CAP = 8_000;
+
 /**
  * The "About" empty-state / claim-nudge. Shown (and cached into artists.bio) when we
  * have no verified context to synthesize a real About from — never a hollow catalog

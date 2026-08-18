@@ -7,13 +7,12 @@ import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { sanitizeBioText } from "@/lib/bioText";
-import { ABOUT_EMPTY_STATE, isRealBio } from "@/lib/bioConstants";
+import { ABOUT_EMPTY_STATE, isRealBio, ARTIST_DOC_CONTEXT_CAP } from "@/lib/bioConstants";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { getArtistDoc } from "@/server/utils/queries/onboardingQueries";
-import { ARTIST_DOC_CONTEXT_CAP } from "@/server/utils/artistDocService";
 
 // Every I/O the generator does runs concurrently inside the route's budget, so each gets
 // its own bound: no single slow dependency can starve synthesis and 408 the request.

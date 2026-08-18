@@ -8,10 +8,9 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { getInterviewAnswers, getArtistDoc } from "@/server/utils/queries/onboardingQueries";
-import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP } from "@/lib/bioConstants";
 
-export const ARTIST_DOC_MAX_CHARS = 20_000;
-export const ARTIST_DOC_CONTEXT_CAP = 8_000;
+export { ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP };
 const GEMINI_TIMEOUT_MS = 20_000;
 
 const DOC_SYSTEM_INSTRUCTION = (artistName: string) => `You compile an internal knowledge document about the music artist "${artistName}" for Music Nerd.
