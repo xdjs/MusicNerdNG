@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
 
 // ---------- Profiles: accepted-by-default. Leaving a card as-is IS confirmation. ----------
 
@@ -406,13 +407,69 @@ export function AboutDraftCard({ doc, about, onPublish, disabled }: {
     onPublish: (r: { doc: string; about: string }) => void;
     disabled: boolean;
 }) {
+    const [isEditing, setIsEditing] = useState(false);
+    // Edits live here independent of `isEditing` so toggling the textarea off
+    // (without publishing) keeps whatever the artist typed instead of quietly
+    // reverting to the generated `about` prop.
+    const [aboutText, setAboutText] = useState(about);
+
+    const isEmpty = aboutText.trim().length === 0;
+    const overCap = aboutText.length > MAX_BIO_LENGTH;
+    const publishDisabled = disabled || isEmpty || overCap;
+
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-3 w-full">
-            <h3 className="font-bold text-pink-500">Your About</h3>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-black dark:text-white">{about}</p>
+            <div className="flex items-center justify-between gap-2">
+                <h3 className="font-bold text-pink-500">Your About</h3>
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(prev => !prev)}
+                    disabled={disabled}
+                    className="text-sm px-3 py-1 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    {isEditing ? "Done" : "Edit"}
+                </button>
+            </div>
+            {isEditing ? (
+                <div className="space-y-1.5">
+                    <textarea
+                        value={aboutText}
+                        onChange={e => setAboutText(e.target.value)}
+                        disabled={disabled}
+                        rows={14}
+                        aria-label="Edit your About"
+                        className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm leading-relaxed text-black dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y min-h-[220px]"
+                    />
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className={overCap || isEmpty ? "text-red-500 dark:text-red-400" : "text-gray-600 dark:text-gray-300"}>
+                            {aboutText.length.toLocaleString()} / {MAX_BIO_LENGTH.toLocaleString()} characters
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setAboutText(about)}
+                            disabled={disabled}
+                            className="text-gray-600 dark:text-gray-300 hover:text-pink-500 dark:hover:text-pink-400 underline underline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                        >
+                            Reset to generated
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-black dark:text-white">{aboutText}</p>
+            )}
+            {/* Publish-blocking reason: rendered regardless of edit mode, so
+                emptying the text and then leaving edit mode (via Done) doesn't
+                leave a disabled button with no visible explanation. */}
+            {(isEmpty || overCap) && (
+                <p className="text-xs text-red-500 dark:text-red-400">
+                    {isEmpty
+                        ? "Your About can't be empty — add some text before publishing."
+                        : `That's over the ${MAX_BIO_LENGTH.toLocaleString()}-character limit — trim it down before publishing.`}
+                </p>
+            )}
             <button
-                onClick={() => onPublish({ doc, about })}
-                disabled={disabled}
+                onClick={() => onPublish({ doc, about: aboutText })}
+                disabled={publishDisabled}
                 className="w-full bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 Publish this

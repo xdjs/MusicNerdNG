@@ -74,9 +74,9 @@ const NARRATION = {
         `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.`,
     vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue.",
     vaultDone: "Sources sorted. Now the fun part — three quick questions. Skip any of them.",
-    generating: "Okay, I have everything I need. Watch this — I'm writing your About page from your links, your sources, and your own words.",
-    draftReady: "There it is. Publish it as-is, or copy it out and tweak — your call.",
-    published: "You're live! 🎉 Your About is published, and everything you shared is saved as your artist doc — it now powers your page's Q&A and fun facts too.",
+    generating: "Okay, I have everything I need — writing your About page now from your links, your sources, and your own answers.",
+    draftReady: "Your About is ready. Publish it as-is, or edit it first — your call.",
+    published: "You're live! Your About is published, and everything you shared is saved as your artist doc — it now powers your page's Q&A and fun facts too.",
 } as const;
 
 /** One warm Gemini sentence reacting to an interview answer. Bounded at 5s;

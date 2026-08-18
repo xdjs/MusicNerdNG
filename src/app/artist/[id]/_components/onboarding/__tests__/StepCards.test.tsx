@@ -289,4 +289,51 @@ describe('AboutDraftCard', () => {
         fireEvent.click(screen.getByRole('button', { name: /publish/i }));
         expect(onPublish).toHaveBeenCalledWith({ doc: '## Overview\nd', about: 'An About.' });
     });
+
+    it('clicking Edit reveals a textarea pre-filled with the generated About text', () => {
+        render(<AboutDraftCard doc="## Overview" about="An About." onPublish={jest.fn()} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        expect(screen.getByRole('textbox', { name: /edit your about/i })).toHaveValue('An About.');
+    });
+
+    it('editing the text and publishing sends the EDITED about with the ORIGINAL doc', () => {
+        const onPublish = jest.fn();
+        render(<AboutDraftCard doc={"## Overview\nd"} about="An About." onPublish={onPublish} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        fireEvent.change(screen.getByRole('textbox', { name: /edit your about/i }), { target: { value: 'A rewritten About.' } });
+        fireEvent.click(screen.getByRole('button', { name: /publish/i }));
+        expect(onPublish).toHaveBeenCalledWith({ doc: '## Overview\nd', about: 'A rewritten About.' });
+    });
+
+    it('blocks publishing when the edited text is emptied', () => {
+        const onPublish = jest.fn();
+        render(<AboutDraftCard doc="## Overview" about="An About." onPublish={onPublish} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        fireEvent.change(screen.getByRole('textbox', { name: /edit your about/i }), { target: { value: '   ' } });
+        const publishButton = screen.getByRole('button', { name: /publish/i });
+        expect(publishButton).toBeDisabled();
+        fireEvent.click(publishButton);
+        expect(onPublish).not.toHaveBeenCalled();
+    });
+
+    it('"Reset to generated" restores the original generated text after edits', () => {
+        render(<AboutDraftCard doc="## Overview" about="An About." onPublish={jest.fn()} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        const textarea = screen.getByRole('textbox', { name: /edit your about/i });
+        fireEvent.change(textarea, { target: { value: 'Something else entirely.' } });
+        expect(textarea).toHaveValue('Something else entirely.');
+        fireEvent.click(screen.getByRole('button', { name: /reset to generated/i }));
+        expect(textarea).toHaveValue('An About.');
+    });
+
+    it('keeps the disabled-publish reason visible after leaving edit mode with emptied text', () => {
+        render(<AboutDraftCard doc="## Overview" about="An About." onPublish={jest.fn()} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        fireEvent.change(screen.getByRole('textbox', { name: /edit your about/i }), { target: { value: '   ' } });
+        // Leave edit mode without publishing — the edit (now empty) must persist,
+        // and the reason publishing is blocked must stay visible, not disappear.
+        fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+        expect(screen.getByRole('button', { name: /publish/i })).toBeDisabled();
+        expect(screen.getByText(/can't be empty/i)).toBeInTheDocument();
+    });
 });
