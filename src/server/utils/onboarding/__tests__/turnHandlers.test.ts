@@ -33,6 +33,7 @@ jest.mock('@/server/utils/linkPreview', () => ({
 jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnValue('article') }));
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
+jest.mock('@/server/utils/profileDiscovery', () => ({ discoverArtistProfiles: jest.fn().mockResolvedValue([]) }));
 jest.mock('@/server/utils/artistDocService', () => ({
     ARTIST_DOC_MAX_CHARS: 20000,
     GEMINI_TIMEOUT_MS: 20000,
@@ -146,6 +147,84 @@ describe('runOnboardingTurn', () => {
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes('Paste your Spotify'))).toBe(true);
         expect(chats.some(t => t.includes("Leaving a card as-is confirms it"))).toBe(false);
+    });
+
+    it('profiles step (fresh open) runs discovery, merges candidates into the payload, and narrates the found count', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfiles } = await import('@/server/utils/profileDiscovery');
+        const candidate = {
+            siteName: 'tiktok', displayName: 'TikTok', value: 'novareyes',
+            profileUrl: 'https://tiktok.com/@novareyes', logoUrl: null, colorHex: null,
+            previewImage: null, reasoning: 'Matches the artist name and bio.',
+        };
+        discoverArtistProfiles.mockResolvedValueOnce([candidate]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(discoverArtistProfiles).toHaveBeenCalledWith('a1');
+        const step = events.find(e => e.kind === 'step');
+        expect(step.payload.candidates).toEqual([candidate]);
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes('1 more profile') && /confirm/i.test(t))).toBe(true);
+    });
+
+    it('profiles step (fresh open) sets candidates to an empty array and skips the found-count narration when discovery finds nothing', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step');
+        expect(step.payload.candidates).toEqual([]);
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => /found \d+ more/i.test(t))).toBe(false);
+    });
+
+    it('does NOT run discovery when resuming on a non-profiles step', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        const { discoverArtistProfiles } = await import('@/server/utils/profileDiscovery');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(discoverArtistProfiles).not.toHaveBeenCalled();
+    });
+
+    it('does NOT re-run discovery on the Bug-2 retry re-emission of the profiles step', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes' }); // zero links throughout
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined); // unrecognized -> all additions fail
+        const { discoverArtistProfiles } = await import('@/server/utils/profileDiscovery');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://www.instagram.com/' }],
+            removedSiteNames: [],
+        }));
+        expect(events.some(e => e.kind === 'step' && e.step === 'profiles')).toBe(true); // re-emitted, per Bug 2
+        expect(discoverArtistProfiles).not.toHaveBeenCalled();
+    });
+
+    it('confirm_profiles: an accepted discovery candidate URL round-trips through extractArtistId + setArtistLink exactly like a pasted link (end-to-end contract check)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes', tiktok: 'novareyes' }); // reflects the successful write
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+        extractArtistId.mockResolvedValueOnce({ siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'novareyes' });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        // The client sends an accepted candidate the exact same way it sends a
+        // pasted link — a bare {url} in addedLinks (spec: no server contract change).
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://tiktok.com/@novareyes' }],
+            removedSiteNames: [],
+        }));
+        expect(setArtistLink).toHaveBeenCalledWith('a1', 'tiktok', 'novareyes');
+        expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'profiles');
+        expect(events.some(e => e.kind === 'error')).toBe(false);
     });
 
     it('confirm_profiles writes added links via extractArtistId and reports bad URLs politely', async () => {

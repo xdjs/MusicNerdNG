@@ -31,6 +31,8 @@ import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { synthesizeArtistDoc, generateAboutFromDoc, ARTIST_DOC_MAX_CHARS, GEMINI_TIMEOUT_MS } from "@/server/utils/artistDocService";
+import { discoverArtistProfiles, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
+import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/utils/linkPresentation";
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
@@ -57,18 +59,14 @@ export type ClientTurn =
     | { type: "interview_answer"; questionKey: string; answer: string | null }
     | { type: "publish"; doc: string; about: string };
 
-// Link columns surfaced as profile cards (display subset of the writable whitelist).
-const PROFILE_DISPLAY_COLUMNS = [
-    "spotify", "deezer", "instagram", "tiktok", "x", "youtube",
-    "soundcloud", "bandcamp", "twitch", "facebook",
-] as const;
-
 const NARRATION = {
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",
     profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a link we missed.",
     profilesEmpty: "Let's start with where people can find you. Paste your Spotify, Instagram, or anywhere else you live online — or skip ahead and add them later.",
+    profilesCandidatesFound: (count: number) =>
+        `I also found ${count} more ${pluralize(count, "profile", "profiles")} by searching the web — take a look below and confirm the ones that are yours, then let me know if anything's still missing.`,
     profilesDone: "Profiles confirmed. Now let's look at what the internet says about you.",
     vault: (count: number) =>
         `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.`,
@@ -96,12 +94,6 @@ async function generateInterviewAck(question: string, answer: string): Promise<s
     } catch {
         return FALLBACK;
     }
-}
-
-/** Fallback used only when urlmap has no row (or the lookup itself failed) for a
- *  siteName — a plain capitalized column name, same as the old bare-card look. */
-function fallbackDisplayName(siteName: string): string {
-    return siteName.charAt(0).toUpperCase() + siteName.slice(1);
 }
 
 // --- confirm_profiles failure messaging (Bug 3) -------------------------
@@ -211,18 +203,7 @@ async function buildProfilesPayload(artistId: string) {
         const allLinks = await getAllLinks();
         const bySiteName = new Map(allLinks.map(l => [l.siteName, l]));
         metaBySiteName = new Map(
-            rawLinks.map(({ siteName, value }) => {
-                const row = bySiteName.get(siteName);
-                const displayName = row?.cardPlatformName || fallbackDisplayName(siteName);
-                const logoUrl = row?.siteImage || null;
-                // The urlmap column defaults to '#000000' for rows that never got a
-                // real brand color — treat that placeholder as "no color" so the
-                // client's tint doesn't render a black ring in dark mode.
-                const trimmedColor = row?.colorHex?.trim() || null;
-                const colorHex = trimmedColor && trimmedColor.toLowerCase() !== "#000000" ? trimmedColor : null;
-                const profileUrl = row?.appStringFormat ? row.appStringFormat.replace("%@", value) : null;
-                return [siteName, { displayName, logoUrl, colorHex, profileUrl }] as const;
-            }),
+            rawLinks.map(({ siteName, value }) => [siteName, buildLinkPresentationMeta(bySiteName.get(siteName), siteName, value)] as const),
         );
     } catch (e) {
         console.error("[onboarding] getAllLinks failed, degrading profile cards to bare shape:", e);
@@ -257,15 +238,32 @@ async function buildProfilesPayload(artistId: string) {
     };
 }
 
-/** Emit the entry payload for a step. The interview case advances itself when done. */
-async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator<TurnEvent> {
+/** Emit the entry payload for a step. The interview case advances itself when done.
+ *  `discoverProfiles` gates the auto-discovery search (Gemini + validation, up to
+ *  ~25s) that only makes sense on a FRESH entry into the profiles step (from
+ *  `open`) — re-emissions after a failed confirm or an out-of-step resync would
+ *  otherwise stack another ~25s of search on top of write work already done this
+ *  turn, for no benefit (the artist already saw the candidates once). */
+async function* emitStep(artistId: string, step: OnboardingStep, discoverProfiles = false): AsyncGenerator<TurnEvent> {
     switch (step) {
         case "profiles": {
             yield { kind: "progress", label: "Gathering your profiles", done: false };
             const payload = await buildProfilesPayload(artistId);
             yield { kind: "progress", label: "Gathering your profiles", done: true };
-            yield { kind: "chat", text: payload.links.length > 0 ? NARRATION.profiles : NARRATION.profilesEmpty };
-            yield { kind: "step", step: "profiles", payload };
+
+            let candidates: DiscoveredProfile[] = [];
+            if (discoverProfiles) {
+                yield { kind: "progress", label: "Searching for your other profiles", done: false };
+                candidates = await discoverArtistProfiles(artistId).catch(() => []);
+                yield { kind: "progress", label: "Searching for your other profiles", done: true };
+            }
+
+            const baseNarration = payload.links.length > 0 ? NARRATION.profiles : NARRATION.profilesEmpty;
+            const narration = candidates.length > 0
+                ? `${baseNarration} ${NARRATION.profilesCandidatesFound(candidates.length)}`
+                : baseNarration;
+            yield { kind: "chat", text: narration };
+            yield { kind: "step", step: "profiles", payload: { ...payload, candidates } };
             return;
         }
         case "vault": {
@@ -366,7 +364,9 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             return;
         }
         yield { kind: "chat", text: state.currentStep === "profiles" ? NARRATION.welcome : NARRATION.welcomeBack };
-        yield* emitStep(artistId, state.currentStep);
+        // Discovery only runs on a fresh/resumed entry into the profiles step —
+        // see the `discoverProfiles` doc comment on emitStep.
+        yield* emitStep(artistId, state.currentStep, state.currentStep === "profiles");
         return;
     }
 

@@ -15,11 +15,39 @@ type ProfileLink = {
     previewImage?: string | null;
 };
 
+// A GUESS, not a confirmed link — surfaced by server-side discovery
+// (`profileDiscovery.discoverArtistProfiles`). Same shape as ProfileLink
+// (so it can reuse ProfileAvatar/ProfileLogo/profileSubtitle unchanged) plus
+// `reasoning` and a non-optional `profileUrl` (discovery only ever returns
+// candidates it could build a real, round-tripped click-through URL for).
+type ProfileCandidate = {
+    siteName: string;
+    value: string;
+    displayName: string;
+    logoUrl: string | null;
+    colorHex: string | null;
+    profileUrl: string;
+    previewImage: string | null;
+    reasoning: string | null;
+};
+
 type ProfilesPayload = {
     artistName: string;
     links: ProfileLink[];
+    candidates?: ProfileCandidate[];
     enrichment: { platform: string; followerCount: number | null; imageUrl: string | null } | null;
 };
+
+// The full set of platforms MusicNerd's onboarding treats as "your profiles"
+// — mirrors `PROFILE_DISPLAY_COLUMNS` in `src/server/utils/linkPresentation.ts`.
+// Used only for the "still missing" hint below the candidates section; keep
+// the two lists in sync if that server-side set ever changes.
+const SUPPORTED_PLATFORM_LABELS: Record<string, string> = {
+    spotify: "Spotify", deezer: "Deezer", instagram: "Instagram", tiktok: "TikTok",
+    x: "X", youtube: "YouTube", soundcloud: "SoundCloud", bandcamp: "Bandcamp",
+    twitch: "Twitch", facebook: "Facebook",
+};
+const SUPPORTED_PLATFORMS = Object.keys(SUPPORTED_PLATFORM_LABELS);
 
 // siteNames whose stored value is a platform-issued opaque ID, never a human
 // handle — never render these raw (see PROFILE_HANDLE_SITENAMES below for the
@@ -113,6 +141,70 @@ function ProfileAvatar({ link }: { link: ProfileLink }) {
     );
 }
 
+/** A single discovered-but-unconfirmed profile suggestion. Opt-in by design
+ *  (the inverse of a confirmed ProfileLink row): nothing here is submitted
+ *  unless the artist explicitly clicks "Add" — see the ProfilesCard doc
+ *  comment for why confirmed links and candidates use opposite defaults. */
+function CandidateRow({ candidate, accepted, onToggleAccept, onDismiss, disabled }: {
+    candidate: ProfileCandidate;
+    accepted: boolean;
+    onToggleAccept: () => void;
+    onDismiss: () => void;
+    disabled: boolean;
+}) {
+    const subtitle = profileSubtitle(candidate);
+    return (
+        <div
+            className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                accepted
+                    ? "border-green-500/50 bg-green-500/10"
+                    : "border-dashed border-black/15 dark:border-white/15"
+            }`}
+        >
+            <div className="flex items-center gap-3 min-w-0">
+                <ProfileAvatar link={candidate} />
+                <a
+                    href={candidate.profileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={candidate.reasoning ?? undefined}
+                    className="min-w-0 rounded hover:underline focus:outline-none focus:ring-2 focus:ring-pink-500"
+                >
+                    <span className="font-medium text-black dark:text-white inline-flex items-center gap-1">
+                        {candidate.displayName}
+                        <span aria-hidden="true" className="text-gray-500 dark:text-gray-400 text-xs">↗</span>
+                    </span>
+                    {subtitle && <span className="block text-sm text-gray-600 dark:text-gray-300 break-all">{subtitle}</span>}
+                </a>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                    type="button"
+                    aria-label={`add ${candidate.siteName} profile`}
+                    onClick={onToggleAccept}
+                    disabled={disabled}
+                    className={`text-sm px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        accepted
+                            ? "border-green-500 text-green-600 dark:text-green-400"
+                            : "border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10"
+                    }`}
+                >
+                    {accepted ? "Added ✓" : "Add"}
+                </button>
+                <button
+                    type="button"
+                    aria-label={`dismiss ${candidate.siteName} suggestion`}
+                    onClick={onDismiss}
+                    disabled={disabled}
+                    className="text-sm px-2 py-1 rounded-lg text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    Not me
+                </button>
+            </div>
+        </div>
+    );
+}
+
 export function ProfilesCard({ payload, onConfirm, disabled }: {
     payload: ProfilesPayload;
     onConfirm: (r: { addedLinks: { url: string }[]; removedSiteNames: string[] }) => void;
@@ -121,6 +213,12 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
     const [removed, setRemoved] = useState<Set<string>>(new Set());
     const [added, setAdded] = useState<string[]>([]);
     const [draft, setDraft] = useState("");
+    // Candidates are the INVERSE of confirmed links: nothing here is
+    // submitted unless explicitly accepted (opt-in), vs. confirmed links
+    // which are submitted unless explicitly removed (opt-out) — a guessed
+    // profile is never auto-saved.
+    const [accepted, setAccepted] = useState<Set<string>>(new Set());
+    const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
     const toggleRemoved = (siteName: string) => {
         setRemoved(prev => {
@@ -129,6 +227,38 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
             return next;
         });
     };
+
+    const toggleAccepted = (siteName: string) => {
+        setAccepted(prev => {
+            const next = new Set(prev);
+            if (next.has(siteName)) next.delete(siteName); else next.add(siteName);
+            return next;
+        });
+    };
+
+    const dismissCandidate = (siteName: string) => {
+        setDismissed(prev => new Set(prev).add(siteName));
+        // Dismissing an already-accepted suggestion must also un-accept it —
+        // a dismissed candidate can never end up in the submitted payload.
+        setAccepted(prev => {
+            if (!prev.has(siteName)) return prev;
+            const next = new Set(prev);
+            next.delete(siteName);
+            return next;
+        });
+    };
+
+    const candidates = payload.candidates ?? [];
+    const visibleCandidates = candidates.filter(c => !dismissed.has(c.siteName));
+
+    // "Still missing" hint: platforms with neither a confirmed link nor even
+    // a discovered lead — makes the paste-a-link ask concrete instead of
+    // open-ended once there's something to react to.
+    const coveredSiteNames = new Set([
+        ...payload.links.filter(l => !removed.has(l.siteName)).map(l => l.siteName),
+        ...candidates.map(c => c.siteName),
+    ]);
+    const stillMissing = SUPPORTED_PLATFORMS.filter(p => !coveredSiteNames.has(p));
 
     const isEmpty = payload.links.length === 0;
     // Fix 3: cap the list itself, not the whole card — the paste row and the
@@ -194,14 +324,42 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
                     );
                 })}
             </div>
-            {isEmpty && added.length === 0 && (
+            {isEmpty && added.length === 0 && visibleCandidates.length === 0 && (
                 <div className="text-sm text-gray-600 dark:text-gray-300 px-1 py-2">
                     No profiles linked yet — paste one below whenever you&apos;re ready.
+                </div>
+            )}
+            {visibleCandidates.length > 0 && (
+                <div className="pt-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                        <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                        <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                            We also found these — confirm the ones that are yours
+                        </p>
+                        <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                    </div>
+                    <div data-testid="profiles-candidate-list" className="space-y-2">
+                        {visibleCandidates.map(candidate => (
+                            <CandidateRow
+                                key={candidate.siteName}
+                                candidate={candidate}
+                                accepted={accepted.has(candidate.siteName)}
+                                onToggleAccept={() => toggleAccepted(candidate.siteName)}
+                                onDismiss={() => dismissCandidate(candidate.siteName)}
+                                disabled={disabled}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
             {added.map(url => (
                 <div key={url} className="text-sm text-green-600 dark:text-green-400 px-3">+ {url}</div>
             ))}
+            {stillMissing.length > 0 && (
+                <p className="text-xs text-gray-600 dark:text-gray-300 px-1">
+                    Still missing: {stillMissing.map(p => SUPPORTED_PLATFORM_LABELS[p]).join(", ")} — paste a link below if you have one.
+                </p>
+            )}
             <div className="flex gap-2 pt-1">
                 <input
                     value={draft}
@@ -220,7 +378,13 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
                 </button>
             </div>
             <button
-                onClick={() => onConfirm({ addedLinks: added.map(url => ({ url })), removedSiteNames: [...removed] })}
+                onClick={() => onConfirm({
+                    addedLinks: [
+                        ...added.map(url => ({ url })),
+                        ...candidates.filter(c => accepted.has(c.siteName)).map(c => ({ url: c.profileUrl })),
+                    ],
+                    removedSiteNames: [...removed],
+                })}
                 disabled={disabled}
                 className="w-full bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >

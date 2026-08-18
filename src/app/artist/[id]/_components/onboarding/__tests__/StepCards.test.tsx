@@ -165,6 +165,113 @@ describe('ProfilesCard — accepted-by-default', () => {
     });
 });
 
+describe('ProfilesCard — discovered candidates (opt-in, never auto-saved)', () => {
+    const candidate = {
+        siteName: 'tiktok',
+        value: 'novareyes',
+        displayName: 'TikTok',
+        logoUrl: 'https://utfs.io/f/tiktok-logo.png',
+        colorHex: '#000000',
+        profileUrl: 'https://tiktok.com/@novareyes',
+        previewImage: null,
+        reasoning: 'Bio and photos match the artist.',
+    };
+    const payloadWithCandidate = {
+        artistName: 'Nova Reyes',
+        links: [{ siteName: 'spotify', value: 'spot1', displayName: 'Spotify' }],
+        candidates: [candidate],
+        enrichment: null,
+    };
+
+    it('renders candidates in their own section, separate from the confirmed-links list', () => {
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getByText(/we also found these/i)).toBeInTheDocument();
+        const candidateList = screen.getByTestId('profiles-candidate-list');
+        expect(candidateList).toBeInTheDocument();
+        expect(screen.getByText('TikTok')).toBeInTheDocument();
+        expect(screen.getByText('@novareyes')).toBeInTheDocument();
+        // Distinct click-through affordance from confirmed rows' SVG icon.
+        expect(candidateList.textContent).toContain('↗');
+    });
+
+    it('does NOT render a candidates section, and adds no extra <img>, when payload.candidates is absent (pre-discovery payload shape)', () => {
+        const payload = { artistName: 'Nova Reyes', links: [{ siteName: 'spotify', value: 'spot1' }], enrichment: null };
+        const { container } = render(<ProfilesCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.queryByTestId('profiles-candidate-list')).not.toBeInTheDocument();
+        expect(screen.queryByText(/we also found these/i)).not.toBeInTheDocument();
+        expect(container.querySelectorAll('img').length).toBe(0);
+    });
+
+    it('does NOT include an unaccepted candidate in the submitted payload — a guess is never auto-saved', () => {
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm).toHaveBeenCalledWith({
+            addedLinks: [],
+            removedSiteNames: [],
+        });
+    });
+
+    it('accepting a candidate (explicit "Add" click) includes its profileUrl in addedLinks on submit', () => {
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
+        fireEvent.click(screen.getByLabelText('add tiktok profile'));
+        expect(screen.getByText(/added/i)).toBeInTheDocument(); // visual accepted state
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm).toHaveBeenCalledWith({
+            addedLinks: [{ url: 'https://tiktok.com/@novareyes' }],
+            removedSiteNames: [],
+        });
+    });
+
+    it('clicking Add again un-accepts the candidate (toggle)', () => {
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
+        const addButton = screen.getByLabelText('add tiktok profile');
+        fireEvent.click(addButton);
+        fireEvent.click(addButton);
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: [] });
+    });
+
+    it('dismissing a candidate ("Not me") hides it and excludes it from submission even if it had been accepted first', () => {
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
+        fireEvent.click(screen.getByLabelText('add tiktok profile')); // accept first
+        fireEvent.click(screen.getByLabelText('dismiss tiktok suggestion')); // then dismiss
+        expect(screen.queryByText('TikTok')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('profiles-candidate-list')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: [] });
+    });
+
+    it('hints which supported platforms still have neither a confirmed link nor a discovered candidate', () => {
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={jest.fn()} disabled={false} />);
+        // payloadWithCandidate covers spotify (link) + tiktok (candidate) only.
+        const hint = screen.getByText(/still missing/i);
+        expect(hint.textContent).toContain('Instagram');
+        expect(hint.textContent).toContain('Facebook');
+        expect(hint.textContent).not.toContain('Spotify');
+        expect(hint.textContent).not.toContain('TikTok');
+    });
+
+    it('a pasted link plus an accepted candidate both land in addedLinks together', () => {
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
+        fireEvent.click(screen.getByLabelText('add tiktok profile'));
+        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://bandcamp.com/novareyes' } });
+        fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm).toHaveBeenCalledWith({
+            addedLinks: [
+                { url: 'https://bandcamp.com/novareyes' },
+                { url: 'https://tiktok.com/@novareyes' },
+            ],
+            removedSiteNames: [],
+        });
+    });
+});
+
 describe('VaultCard — keep-by-default', () => {
     const payload = {
         sources: [
