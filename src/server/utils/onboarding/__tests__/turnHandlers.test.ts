@@ -27,6 +27,9 @@ jest.mock('@/server/utils/fetchPageContent', () => ({
     isUnsafeUrl: jest.fn().mockReturnValue(false),
     fetchPageContent: jest.fn().mockResolvedValue({ title: 't', snippet: 's', extractedText: 'e', ogImage: null }),
 }));
+jest.mock('@/server/utils/linkPreview', () => ({
+    fetchLinkPreview: jest.fn().mockResolvedValue({ imageUrl: null, title: null }),
+}));
 jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnValue('article') }));
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
@@ -77,6 +80,31 @@ describe('runOnboardingTurn', () => {
                 profileUrl: 'https://instagram.com/nova',
             }),
         ]));
+    });
+
+    it('profiles step fetches link previews in parallel for every link with a profileUrl and attaches previewImage', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getAllLinks.mockResolvedValueOnce([
+            { siteName: 'spotify', cardPlatformName: 'Spotify', siteImage: 'https://utfs.io/f/spotify.png', colorHex: '#1DB954', appStringFormat: 'https://open.spotify.com/artist/%@' },
+            { siteName: 'instagram', cardPlatformName: 'Instagram', siteImage: null, colorHex: null, appStringFormat: 'https://instagram.com/%@' },
+        ]);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockImplementation(async (url) => (
+            url.includes('spotify')
+                ? { imageUrl: 'https://i.scdn.co/image/spot1.jpg', title: 'Nova Reyes' }
+                : { imageUrl: null, title: null }
+        ));
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step');
+        expect(fetchLinkPreview).toHaveBeenCalledWith('https://open.spotify.com/artist/spot1');
+        expect(fetchLinkPreview).toHaveBeenCalledWith('https://instagram.com/nova');
+        const spotifyLink = step.payload.links.find(l => l.siteName === 'spotify');
+        const instagramLink = step.payload.links.find(l => l.siteName === 'instagram');
+        expect(spotifyLink.previewImage).toBe('https://i.scdn.co/image/spot1.jpg');
+        expect(instagramLink.previewImage).toBeNull();
     });
 
     it('profiles step normalizes the urlmap placeholder color (#000000, meaning "never set") to null', async () => {
@@ -138,6 +166,23 @@ describe('runOnboardingTurn', () => {
         expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'profiles');
         expect(events.some(e => e.kind === 'chat' && e.text.includes("couldn't recognize"))).toBe(true);
         expect(events.some(e => e.kind === 'error')).toBe(false); // degradation, not failure
+    });
+
+    it('vault step passes each pending source\'s ogImage (or null) through into the payload', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        dq.getVaultSourcesByArtistId.mockResolvedValueOnce([
+            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: 'https://pitchfork.com/img.jpg' },
+            { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step' && e.step === 'vault');
+        expect(step.payload.sources).toEqual([
+            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: 'https://pitchfork.com/img.jpg' },
+            { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null },
+        ]);
     });
 
     it('vault_review only updates sources belonging to this artist', async () => {

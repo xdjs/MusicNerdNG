@@ -6,7 +6,7 @@ export interface PageContent {
 }
 
 /** Decode HTML entities (&#8217; → ', &amp; → &, etc.) */
-function decodeEntities(str: string): string {
+export function decodeEntities(str: string): string {
     return str
         .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
         .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
@@ -23,6 +23,31 @@ function decodeEntities(str: string): string {
         .replace(/&rdquo;/g, "\u201D")
         .replace(/&ldquo;/g, "\u201C")
         .replace(/&hellip;/g, "…");
+}
+
+/** Extract `og:image` from raw HTML (tolerant of either attribute order).
+ *  Only ever returns an `https://` URL — data URIs and relative paths are
+ *  rejected. Shared by `fetchPageContent` and `linkPreview.ts` so the two
+ *  never drift out of sync. */
+export function extractOgImage(html: string): string | null {
+    const match = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+        ?? html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    if (match?.[1]) {
+        // Entity-decode BEFORE the scheme check: serializers escape `&` as
+        // `&amp;` inside attribute values, so a query-string-bearing image URL
+        // (e.g. Instagram's signed CDN links) comes back as
+        // `...?a=1&amp;b=2` — decode first or it's used broken as an <img src>.
+        const imgUrl = decodeEntities(match[1].trim());
+        if (imgUrl.startsWith("https://")) return imgUrl;
+    }
+    return null;
+}
+
+/** Extract `og:title` from raw HTML (tolerant of either attribute order). */
+export function extractOgTitle(html: string): string | null {
+    const match = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+        ?? html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+    return match?.[1] ? decodeEntities(match[1].trim()) : null;
 }
 
 /** Block SSRF: reject internal/private network URLs */
@@ -112,13 +137,7 @@ export async function fetchPageContent(url: string): Promise<PageContent> {
             }
 
             // Extract og:image
-            const ogImgMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
-                ?? html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
-            if (ogImgMatch?.[1]) {
-                const imgUrl = ogImgMatch[1].trim();
-                // Only use https images, skip data URIs and relative paths
-                if (imgUrl.startsWith("https://")) ogImage = imgUrl;
-            }
+            ogImage = extractOgImage(html) ?? undefined;
 
             // Extract body text (strip tags, collapse whitespace)
             const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);

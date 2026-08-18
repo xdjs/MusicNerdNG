@@ -17,6 +17,7 @@ import {
 } from "@/server/utils/queries/dashboardQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { isUnsafeUrl, fetchPageContent } from "@/server/utils/fetchPageContent";
+import { fetchLinkPreview } from "@/server/utils/linkPreview";
 import { inferTypeFromUrl } from "@/lib/sourceTypes";
 import {
     type OnboardingStep,
@@ -102,6 +103,34 @@ function fallbackDisplayName(siteName: string): string {
     return siteName.charAt(0).toUpperCase() + siteName.slice(1);
 }
 
+/** Bounds the whole preview-gathering phase so a slow/hostile site can never
+ *  blow the turn budget — links whose preview didn't resolve in time simply
+ *  get `previewImage: null`. Each individual `fetchLinkPreview` call already
+ *  carries its own ~4s hard timeout and never throws; this is a second,
+ *  belt-and-suspenders cap on the batch as a whole. */
+const PROFILE_PREVIEW_BUDGET_MS = 5000;
+
+/** Fetch link previews for every {siteName, profileUrl} pair, all in
+ *  parallel, bounded by PROFILE_PREVIEW_BUDGET_MS overall. Never throws;
+ *  entries that fail or don't resolve in time are simply absent from the
+ *  returned map (callers treat a miss as `null`). */
+async function gatherProfilePreviews(entries: [siteName: string, profileUrl: string][]): Promise<Map<string, string | null>> {
+    const settled = new Map<string, string | null>();
+    if (entries.length === 0) return settled;
+    const gathering = Promise.all(entries.map(async ([siteName, profileUrl]) => {
+        const preview = await fetchLinkPreview(profileUrl);
+        settled.set(siteName, preview.imageUrl);
+    }));
+    let timer: ReturnType<typeof setTimeout>;
+    const budget = new Promise<void>(resolve => { timer = setTimeout(resolve, PROFILE_PREVIEW_BUDGET_MS); });
+    try {
+        await Promise.race([gathering, budget]);
+    } finally {
+        clearTimeout(timer!);
+    }
+    return settled;
+}
+
 async function buildProfilesPayload(artistId: string) {
     const artist = await getArtistById(artistId);
     if (!artist) throw new Error(`Artist not found: ${artistId}`);
@@ -136,12 +165,26 @@ async function buildProfilesPayload(artistId: string) {
         console.error("[onboarding] getAllLinks failed, degrading profile cards to bare shape:", e);
     }
 
+    // Real artist-photo previews for the card avatars. Bounded + parallel
+    // (never sequential) and run concurrently with the enrichment lookup
+    // below rather than before it, so the two don't stack on the turn's
+    // wall-clock budget.
+    const previewTargets: [string, string][] = [];
+    for (const [siteName, meta] of metaBySiteName ?? []) {
+        if (meta.profileUrl) previewTargets.push([siteName, meta.profileUrl]);
+    }
+    const [previewBySiteName, enrichment] = await Promise.all([
+        gatherProfilePreviews(previewTargets),
+        musicPlatformData.getArtist(artist).catch(() => null),
+    ]);
+
     const links = rawLinks.map(({ siteName, value }) => {
         const meta = metaBySiteName?.get(siteName);
-        return meta ? { siteName, value, ...meta } : { siteName, value };
+        if (!meta) return { siteName, value };
+        const previewImage = meta.profileUrl ? (previewBySiteName.get(siteName) ?? null) : null;
+        return { siteName, value, ...meta, previewImage };
     });
 
-    const enrichment = await musicPlatformData.getArtist(artist).catch(() => null);
     return {
         artistName: artist.name ?? "your profile",
         links,
@@ -184,7 +227,7 @@ async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator
             yield {
                 kind: "step",
                 step: "vault",
-                payload: { sources: pending.map(s => ({ id: s.id, title: s.title, url: s.url, snippet: s.snippet })) },
+                payload: { sources: pending.map(s => ({ id: s.id, title: s.title, url: s.url, snippet: s.snippet, ogImage: s.ogImage ?? null })) },
             };
             return;
         }

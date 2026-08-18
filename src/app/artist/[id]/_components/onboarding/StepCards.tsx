@@ -11,6 +11,7 @@ type ProfileLink = {
     logoUrl?: string | null;
     colorHex?: string | null;
     profileUrl?: string | null;
+    previewImage?: string | null;
 };
 
 type ProfilesPayload = {
@@ -71,6 +72,39 @@ function ProfileLogo({ link }: { link: ProfileLink }) {
     );
 }
 
+/** Leading visual for a profile row. When `previewImage` resolved (the
+ *  artist's real photo, e.g. from Spotify's oEmbed thumbnail or an og:image
+ *  scrape), render it as a compact ~40px avatar with the platform logo as a
+ *  small corner badge overlapping it — an iMessage/Slack-style unfurl instead
+ *  of a bare platform tile. Falls back to the plain logo tile when there's no
+ *  preview, or if the image fails to load. */
+function ProfileAvatar({ link }: { link: ProfileLink }) {
+    const [imgFailed, setImgFailed] = useState(false);
+    if (!link.previewImage || imgFailed) {
+        return <ProfileLogo link={link} />;
+    }
+    const color = link.colorHex ?? undefined;
+    const ringStyle = color ? { boxShadow: `0 0 0 2px ${color}99` } : undefined;
+    return (
+        <span className="relative flex-shrink-0 w-10 h-10 rounded-full" style={ringStyle}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- user-controlled preview image; next/image would require a next.config domain allowlist */}
+            <img
+                src={link.previewImage}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={() => setImgFailed(true)}
+                className="w-10 h-10 rounded-full object-cover bg-black/5 dark:bg-white/10"
+            />
+            {link.logoUrl && (
+                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full overflow-hidden bg-white dark:bg-black ring-1 ring-white dark:ring-black flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- fixed-size third-party logo badge; next/image would require a next.config domain change */}
+                    <img src={link.logoUrl} alt="" referrerPolicy="no-referrer" className="w-3 h-3 object-contain" />
+                </span>
+            )}
+        </span>
+    );
+}
+
 export function ProfilesCard({ payload, onConfirm, disabled }: {
     payload: ProfilesPayload;
     onConfirm: (r: { addedLinks: { url: string }[]; removedSiteNames: string[] }) => void;
@@ -118,7 +152,7 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
                         className={`flex items-center justify-between gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 ${removed.has(link.siteName) ? "opacity-40 line-through" : ""}`}
                     >
                         <div className="flex items-center gap-3 min-w-0">
-                            <ProfileLogo link={link} />
+                            <ProfileAvatar link={link} />
                             {link.profileUrl ? (
                                 <a
                                     href={link.profileUrl}
@@ -181,7 +215,38 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
 
 // ---------- Vault: keep-by-default ----------
 
-type VaultPayload = { sources: { id: string; title: string | null; url: string; snippet: string | null }[] };
+type VaultPayload = {
+    sources: { id: string; title: string | null; url: string; snippet: string | null; ogImage?: string | null }[];
+};
+
+/** The domain line of a real link unfurl (e.g. "pitchfork.com") — helps the
+ *  artist judge a source's credibility at a glance. Returns null on an
+ *  unparseable URL rather than throwing. */
+function sourceDomain(url: string): string | null {
+    try {
+        return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+        return null;
+    }
+}
+
+/** Leading thumbnail for a vault source that has an `ogImage`. Hides itself
+ *  on load failure (no logo-tile equivalent to fall back to for arbitrary
+ *  web sources — the row just reverts to today's text-only layout). */
+function VaultThumbnail({ src }: { src: string }) {
+    const [failed, setFailed] = useState(false);
+    if (failed) return null;
+    return (
+        // eslint-disable-next-line @next/next/no-img-element -- user-controlled source image; next/image would require a next.config domain allowlist
+        <img
+            src={src}
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setFailed(true)}
+            className="flex-shrink-0 w-14 h-14 rounded-lg object-cover bg-black/5 dark:bg-white/10"
+        />
+    );
+}
 
 export function VaultCard({ payload, onConfirm, disabled }: {
     payload: VaultPayload;
@@ -208,25 +273,32 @@ export function VaultCard({ payload, onConfirm, disabled }: {
 
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-2 w-full">
-            {payload.sources.map(s => (
-                <div
-                    key={s.id}
-                    className={`rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 flex items-start justify-between gap-2 ${skipped.has(s.id) ? "opacity-40" : ""}`}
-                >
-                    <div className="min-w-0">
-                        <p className="font-medium truncate text-black dark:text-white">{s.title ?? s.url}</p>
-                        {s.snippet && <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{s.snippet}</p>}
-                    </div>
-                    <button
-                        aria-label={`${skipped.has(s.id) ? "keep" : "skip"} ${s.title ?? s.url}`}
-                        onClick={() => toggle(s.id)}
-                        disabled={disabled}
-                        className="text-sm whitespace-nowrap px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-pink-400 dark:hover:border-pink-400 hover:text-pink-600 dark:hover:text-pink-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            {payload.sources.map(s => {
+                const domain = s.ogImage ? sourceDomain(s.url) : null;
+                return (
+                    <div
+                        key={s.id}
+                        className={`rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 flex items-start gap-3 ${skipped.has(s.id) ? "opacity-40" : ""}`}
                     >
-                        {skipped.has(s.id) ? "keep" : "skip"}
-                    </button>
-                </div>
-            ))}
+                        {s.ogImage && <VaultThumbnail src={s.ogImage} />}
+                        <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <p className="font-medium truncate text-black dark:text-white">{s.title ?? s.url}</p>
+                                {s.snippet && <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{s.snippet}</p>}
+                                {domain && <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{domain}</p>}
+                            </div>
+                            <button
+                                aria-label={`${skipped.has(s.id) ? "keep" : "skip"} ${s.title ?? s.url}`}
+                                onClick={() => toggle(s.id)}
+                                disabled={disabled}
+                                className="text-sm whitespace-nowrap px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-pink-400 dark:hover:border-pink-400 hover:text-pink-600 dark:hover:text-pink-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {skipped.has(s.id) ? "keep" : "skip"}
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
             {added.map(url => (
                 <div key={url} className="text-sm text-green-600 dark:text-green-400 px-3">+ {url}</div>
             ))}

@@ -91,6 +91,49 @@ describe('ProfilesCard — accepted-by-default', () => {
         fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
         expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: [] });
     });
+
+    it('renders the real artist photo as the leading avatar when previewImage is present, with the platform logo as a corner badge', () => {
+        const payload = {
+            artistName: 'Nova Reyes',
+            links: [{
+                siteName: 'spotify',
+                value: 'spot1',
+                displayName: 'Spotify',
+                logoUrl: 'https://utfs.io/f/spotify-logo.png',
+                colorHex: '#1DB954',
+                profileUrl: 'https://open.spotify.com/artist/spot1',
+                previewImage: 'https://i.scdn.co/image/spot1.jpg',
+            }],
+            enrichment: null,
+        };
+        const { container } = render(<ProfilesCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        const avatar = container.querySelector('img[src="https://i.scdn.co/image/spot1.jpg"]');
+        expect(avatar).toBeInTheDocument();
+        expect(avatar).toHaveAttribute('alt', '');
+        expect(avatar).toHaveAttribute('referrerPolicy', 'no-referrer');
+        // Platform logo still renders too — as the corner badge overlapping the avatar.
+        const badge = container.querySelector('img[src="https://utfs.io/f/spotify-logo.png"]');
+        expect(badge).toBeInTheDocument();
+    });
+
+    it('falls back to the plain logo tile (no previewImage) when the card has no preview image at all', () => {
+        const payload = {
+            artistName: 'Nova Reyes',
+            links: [{
+                siteName: 'instagram',
+                value: 'nova',
+                displayName: 'Instagram',
+                logoUrl: 'https://utfs.io/f/instagram-logo.png',
+                profileUrl: 'https://instagram.com/nova',
+                previewImage: null,
+            }],
+            enrichment: null,
+        };
+        const { container } = render(<ProfilesCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        // Exactly one img (the logo tile) — no separate avatar image was attempted.
+        expect(container.querySelectorAll('img').length).toBe(1);
+        expect(container.querySelector('img')).toHaveAttribute('src', 'https://utfs.io/f/instagram-logo.png');
+    });
 });
 
 describe('VaultCard — keep-by-default', () => {
@@ -129,6 +172,32 @@ describe('VaultCard — keep-by-default', () => {
         render(<VaultCard payload={{ sources: [] }} onConfirm={onConfirm} disabled={false} />);
         fireEvent.click(screen.getByRole('button', { name: /continue/i }));
         expect(onConfirm).toHaveBeenCalledWith({ decisions: [], addedUrls: [] });
+    });
+
+    it('renders a leading thumbnail and the source domain when ogImage is present', () => {
+        const withImage = {
+            sources: [
+                { id: 's1', title: 'Pitchfork review', url: 'https://www.pitchfork.com/reviews/x', snippet: 'bedroom auteur', ogImage: 'https://media.pitchfork.com/photos/cover.jpg' },
+            ],
+        };
+        const { container } = render(<VaultCard payload={withImage} onConfirm={jest.fn()} disabled={false} />);
+        const thumb = container.querySelector('img[src="https://media.pitchfork.com/photos/cover.jpg"]');
+        expect(thumb).toBeInTheDocument();
+        expect(thumb).toHaveAttribute('alt', '');
+        expect(thumb).toHaveAttribute('referrerPolicy', 'no-referrer');
+        expect(screen.getByText('pitchfork.com')).toBeInTheDocument(); // domain, "www." stripped
+    });
+
+    it('renders correctly with no thumbnail and no domain line when a source has no ogImage', () => {
+        const withoutImage = {
+            sources: [
+                { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null },
+            ],
+        };
+        const { container } = render(<VaultCard payload={withoutImage} onConfirm={jest.fn()} disabled={false} />);
+        expect(container.querySelector('img')).toBeNull();
+        expect(screen.getByText('Fan wiki')).toBeInTheDocument();
+        expect(screen.queryByText('wiki.example')).not.toBeInTheDocument();
     });
 });
 
