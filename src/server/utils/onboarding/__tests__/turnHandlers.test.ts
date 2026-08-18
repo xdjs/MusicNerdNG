@@ -10,7 +10,10 @@ jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     upsertArtistDoc: jest.fn().mockResolvedValue(undefined),
     getArtistDoc: jest.fn(),
 }));
-jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: jest.fn().mockResolvedValue({ id: 'a1', name: 'Nova Reyes', spotify: 'spot1', instagram: 'nova' }) }));
+jest.mock('@/server/utils/queries/artistQueries', () => ({
+    getArtistById: jest.fn().mockResolvedValue({ id: 'a1', name: 'Nova Reyes', spotify: 'spot1', instagram: 'nova' }),
+    getAllLinks: jest.fn().mockResolvedValue([]),
+}));
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({
     getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
     getVaultSourceByIdAndArtist: jest.fn(),
@@ -49,6 +52,72 @@ describe('runOnboardingTurn', () => {
         const { runOnboardingTurn } = await import('../turnHandlers');
         const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
         expect(events.find(e => e.kind === 'step')?.step).toBe('vault');
+    });
+
+    it('profiles step enriches links with urlmap metadata (display name, logo, trimmed color, profile URL)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getAllLinks.mockResolvedValueOnce([
+            { siteName: 'spotify', cardPlatformName: 'Spotify', siteImage: 'https://utfs.io/f/spotify.png', colorHex: '#1DB954', appStringFormat: 'https://open.spotify.com/artist/%@' },
+            { siteName: 'instagram', cardPlatformName: 'Instagram', siteImage: null, colorHex: '#E1306C\r', appStringFormat: 'https://instagram.com/%@' },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step');
+        expect(step.payload.links).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                siteName: 'spotify', value: 'spot1', displayName: 'Spotify',
+                logoUrl: 'https://utfs.io/f/spotify.png', colorHex: '#1DB954',
+                profileUrl: 'https://open.spotify.com/artist/spot1',
+            }),
+            expect.objectContaining({
+                siteName: 'instagram', value: 'nova', displayName: 'Instagram',
+                logoUrl: null, colorHex: '#E1306C', // trailing \r trimmed
+                profileUrl: 'https://instagram.com/nova',
+            }),
+        ]));
+    });
+
+    it('profiles step normalizes the urlmap placeholder color (#000000, meaning "never set") to null', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getAllLinks.mockResolvedValueOnce([
+            { siteName: 'spotify', cardPlatformName: 'Spotify', siteImage: null, colorHex: '#000000', appStringFormat: 'https://open.spotify.com/artist/%@' },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step');
+        const spotifyLink = step.payload.links.find(l => l.siteName === 'spotify');
+        expect(spotifyLink.colorHex).toBeNull();
+    });
+
+    it('profiles step degrades to the bare {siteName, value} shape when getAllLinks throws (urlmap failure must never break the turn)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getAllLinks.mockRejectedValueOnce(new Error('urlmap down'));
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step');
+        expect(step.payload.links).toEqual([
+            { siteName: 'spotify', value: 'spot1' },
+            { siteName: 'instagram', value: 'nova' },
+        ]);
+        expect(events.some(e => e.kind === 'error')).toBe(false);
+    });
+
+    it('profiles step narrates the empty variant when the artist has zero links, and the populated variant otherwise', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+        artistQ.getArtistById.mockResolvedValueOnce({ id: 'a1', name: 'Nova Reyes' }); // no link columns set
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes('Paste your Spotify'))).toBe(true);
+        expect(chats.some(t => t.includes("Leaving a card as-is confirms it"))).toBe(false);
     });
 
     it('confirm_profiles writes added links via extractArtistId and reports bad URLs politely', async () => {

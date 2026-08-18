@@ -34,6 +34,63 @@ describe('ProfilesCard — accepted-by-default', () => {
             removedSiteNames: [],
         });
     });
+
+    it('renders a platform logo and a clickable profile link when logoUrl/profileUrl are present', () => {
+        const richPayload = {
+            artistName: 'Nova Reyes',
+            links: [{
+                siteName: 'instagram',
+                value: 'nova',
+                displayName: 'Instagram',
+                logoUrl: 'https://utfs.io/f/instagram-logo.png',
+                colorHex: '#E1306C',
+                profileUrl: 'https://instagram.com/nova',
+            }],
+            enrichment: null,
+        };
+        const onConfirm = jest.fn();
+        // `<img alt="">` has an implicit ARIA role of "presentation", so it's
+        // deliberately excluded from getByRole('img') — query the DOM directly.
+        const { container } = render(<ProfilesCard payload={richPayload} onConfirm={onConfirm} disabled={false} />);
+        const img = container.querySelector('img');
+        expect(img).toHaveAttribute('src', 'https://utfs.io/f/instagram-logo.png');
+        expect(img).toHaveAttribute('alt', '');
+        const link = screen.getByRole('link');
+        expect(link).toHaveAttribute('href', 'https://instagram.com/nova');
+        expect(link).toHaveAttribute('target', '_blank');
+        expect(link.getAttribute('rel')).toEqual(expect.stringContaining('noopener'));
+    });
+
+    it('does not render an opaque platform ID (e.g. a raw Spotify ID) as visible text', () => {
+        const opaquePayload = {
+            artistName: 'Nova Reyes',
+            links: [{ siteName: 'spotify', value: '3DmaZbBPnKSGnxYRpHobss', displayName: 'Spotify' }],
+            enrichment: null,
+        };
+        render(<ProfilesCard payload={opaquePayload} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getByText('Spotify')).toBeInTheDocument();
+        expect(screen.queryByText('3DmaZbBPnKSGnxYRpHobss')).not.toBeInTheDocument();
+    });
+
+    it('does not render a purely numeric ID (e.g. a Deezer artist ID) as visible text, even when short', () => {
+        const numericPayload = {
+            artistName: 'Nova Reyes',
+            links: [{ siteName: 'deezer', value: '4050205', displayName: 'Deezer' }],
+            enrichment: null,
+        };
+        render(<ProfilesCard payload={numericPayload} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getByText('Deezer')).toBeInTheDocument();
+        expect(screen.queryByText('4050205')).not.toBeInTheDocument();
+    });
+
+    it('shows a friendly empty state and a Continue button when there are no links, and still submits empty arrays', () => {
+        const emptyPayload = { artistName: 'Nova Reyes', links: [], enrichment: null };
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={emptyPayload} onConfirm={onConfirm} disabled={false} />);
+        expect(screen.getByText(/no profiles linked yet/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+        expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: [] });
+    });
 });
 
 describe('VaultCard — keep-by-default', () => {

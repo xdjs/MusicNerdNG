@@ -6,7 +6,7 @@
 import { db } from "@/server/db/drizzle";
 import { eq } from "drizzle-orm";
 import { artists } from "@/server/db/schema";
-import { getArtistById } from "@/server/utils/queries/artistQueries";
+import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
 import {
     getVaultSourcesByArtistId,
     getVaultSourceByIdAndArtist,
@@ -67,6 +67,7 @@ const NARRATION = {
     welcomeBack: "Welcome back — picking up right where you left off.",
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",
     profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a link we missed.",
+    profilesEmpty: "Let's start with where people can find you. Paste your Spotify, Instagram, or anywhere else you live online — or skip ahead and add them later.",
     profilesDone: "Profiles confirmed. Now let's look at what the internet says about you.",
     vault: "We found these sources about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.",
     vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue.",
@@ -95,14 +96,51 @@ async function generateInterviewAck(question: string, answer: string): Promise<s
     }
 }
 
+/** Fallback used only when urlmap has no row (or the lookup itself failed) for a
+ *  siteName — a plain capitalized column name, same as the old bare-card look. */
+function fallbackDisplayName(siteName: string): string {
+    return siteName.charAt(0).toUpperCase() + siteName.slice(1);
+}
+
 async function buildProfilesPayload(artistId: string) {
     const artist = await getArtistById(artistId);
     if (!artist) throw new Error(`Artist not found: ${artistId}`);
     const record = artist as unknown as Record<string, unknown>;
-    const links = PROFILE_DISPLAY_COLUMNS.flatMap(col => {
+    const rawLinks = PROFILE_DISPLAY_COLUMNS.flatMap(col => {
         const value = record[col];
-        return typeof value === "string" && value ? [{ siteName: col, value }] : [];
+        return typeof value === "string" && value ? [{ siteName: col as string, value }] : [];
     });
+
+    // Presentation metadata (logo/color/display name/profile URL) comes from
+    // urlmap, keyed by siteName. A failed lookup must never break the onboarding
+    // turn — degrade every link back to the bare {siteName, value} shape.
+    let metaBySiteName: Map<string, { displayName: string; logoUrl: string | null; colorHex: string | null; profileUrl: string | null }> | null = null;
+    try {
+        const allLinks = await getAllLinks();
+        const bySiteName = new Map(allLinks.map(l => [l.siteName, l]));
+        metaBySiteName = new Map(
+            rawLinks.map(({ siteName, value }) => {
+                const row = bySiteName.get(siteName);
+                const displayName = row?.cardPlatformName || fallbackDisplayName(siteName);
+                const logoUrl = row?.siteImage || null;
+                // The urlmap column defaults to '#000000' for rows that never got a
+                // real brand color — treat that placeholder as "no color" so the
+                // client's tint doesn't render a black ring in dark mode.
+                const trimmedColor = row?.colorHex?.trim() || null;
+                const colorHex = trimmedColor && trimmedColor.toLowerCase() !== "#000000" ? trimmedColor : null;
+                const profileUrl = row?.appStringFormat ? row.appStringFormat.replace("%@", value) : null;
+                return [siteName, { displayName, logoUrl, colorHex, profileUrl }] as const;
+            }),
+        );
+    } catch (e) {
+        console.error("[onboarding] getAllLinks failed, degrading profile cards to bare shape:", e);
+    }
+
+    const links = rawLinks.map(({ siteName, value }) => {
+        const meta = metaBySiteName?.get(siteName);
+        return meta ? { siteName, value, ...meta } : { siteName, value };
+    });
+
     const enrichment = await musicPlatformData.getArtist(artist).catch(() => null);
     return {
         artistName: artist.name ?? "your profile",
@@ -120,7 +158,7 @@ async function* emitStep(artistId: string, step: OnboardingStep): AsyncGenerator
             yield { kind: "progress", label: "Gathering your profiles", done: false };
             const payload = await buildProfilesPayload(artistId);
             yield { kind: "progress", label: "Gathering your profiles", done: true };
-            yield { kind: "chat", text: NARRATION.profiles };
+            yield { kind: "chat", text: payload.links.length > 0 ? NARRATION.profiles : NARRATION.profilesEmpty };
             yield { kind: "step", step: "profiles", payload };
             return;
         }

@@ -4,11 +4,72 @@ import { useState } from "react";
 
 // ---------- Profiles: accepted-by-default. Leaving a card as-is IS confirmation. ----------
 
+type ProfileLink = {
+    siteName: string;
+    value: string;
+    displayName?: string;
+    logoUrl?: string | null;
+    colorHex?: string | null;
+    profileUrl?: string | null;
+};
+
 type ProfilesPayload = {
     artistName: string;
-    links: { siteName: string; value: string }[];
+    links: ProfileLink[];
     enrichment: { platform: string; followerCount: number | null; imageUrl: string | null } | null;
 };
+
+// siteNames whose stored value is a platform-issued opaque ID, never a human
+// handle — never render these raw (see PROFILE_HANDLE_SITENAMES below for the
+// inverse: platforms where the value IS a readable handle worth showing as-is).
+const PROFILE_OPAQUE_ID_SITENAMES = new Set(["spotify", "youtubechannel", "facebookID", "tiktokID", "soundcloudID"]);
+const PROFILE_HANDLE_SITENAMES = new Set(["instagram", "x", "tiktok", "youtube"]);
+const OPAQUE_VALUE_LENGTH = 20;
+
+function isOpaqueId(link: ProfileLink): boolean {
+    // A purely numeric value (e.g. a Deezer artist ID like "4050205", or a
+    // numeric Facebook/TikTok page ID) is never a human-readable handle,
+    // regardless of length — same "meaningless ID" defect as the long opaque
+    // strings below.
+    return (
+        PROFILE_OPAQUE_ID_SITENAMES.has(link.siteName) ||
+        link.value.length > OPAQUE_VALUE_LENGTH ||
+        /^\d+$/.test(link.value)
+    );
+}
+
+function fmtFollowers(n: number) {
+    return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}K` : `${n}`;
+}
+
+/** The human-readable line under the platform name — never the raw ID for
+ *  opaque values (spec: "Spotify 3DmaZbBPnKSGnxYRpHobss" is meaningless). */
+function profileSubtitle(link: ProfileLink): string | null {
+    if (isOpaqueId(link)) return null;
+    return PROFILE_HANDLE_SITENAMES.has(link.siteName) ? `@${link.value}` : link.value;
+}
+
+function ProfileLogo({ link }: { link: ProfileLink }) {
+    const color = link.colorHex ?? undefined;
+    const tintStyle = color ? { backgroundColor: `${color}26`, boxShadow: `inset 0 0 0 1px ${color}66` } : undefined;
+    if (link.logoUrl) {
+        return (
+            <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden bg-black/5 dark:bg-white/10" style={tintStyle}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- fixed-size third-party logo; next/image would require a next.config domain change */}
+                <img src={link.logoUrl} alt="" className="w-5 h-5 object-contain" />
+            </span>
+        );
+    }
+    const initial = (link.displayName ?? link.siteName).charAt(0).toUpperCase();
+    return (
+        <span
+            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold text-black dark:text-white bg-black/10 dark:bg-white/10"
+            style={tintStyle}
+        >
+            {initial}
+        </span>
+    );
+}
 
 export function ProfilesCard({ payload, onConfirm, disabled }: {
     payload: ProfilesPayload;
@@ -27,33 +88,66 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
         });
     };
 
-    const fmtFollowers = (n: number) =>
-        n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}K` : `${n}`;
+    const isEmpty = payload.links.length === 0;
 
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-2 w-full">
-            {payload.links.map(link => (
-                <div
-                    key={link.siteName}
-                    className={`flex items-center justify-between gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 ${removed.has(link.siteName) ? "opacity-40 line-through" : ""}`}
-                >
+            {payload.links.map(link => {
+                const displayName = link.displayName || link.siteName.charAt(0).toUpperCase() + link.siteName.slice(1);
+                const subtitle = profileSubtitle(link);
+                const showFollowers = payload.enrichment && link.siteName === payload.enrichment.platform && payload.enrichment.followerCount != null;
+                const nameBlock = (
                     <div className="min-w-0">
-                        <span className="font-medium capitalize text-black dark:text-white">{link.siteName}</span>
-                        <span className="text-sm text-gray-600 dark:text-gray-300 ml-2 break-all">{link.value}</span>
-                        {payload.enrichment && link.siteName === payload.enrichment.platform && payload.enrichment.followerCount != null && (
-                            <span className="text-xs text-gray-600 dark:text-gray-300 ml-2">{fmtFollowers(payload.enrichment.followerCount)} fans</span>
+                        <span className="font-medium text-black dark:text-white inline-flex items-center gap-1">
+                            {displayName}
+                            {link.profileUrl && (
+                                <svg aria-hidden="true" viewBox="0 0 24 24" className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                    <path fill="currentColor" d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+                                </svg>
+                            )}
+                        </span>
+                        {subtitle && <span className="block text-sm text-gray-600 dark:text-gray-300 break-all">{subtitle}</span>}
+                        {showFollowers && (
+                            <span className="block text-xs text-gray-600 dark:text-gray-300">{fmtFollowers(payload.enrichment!.followerCount!)} fans</span>
                         )}
                     </div>
-                    <button
-                        aria-label={`remove ${link.siteName}`}
-                        onClick={() => toggleRemoved(link.siteName)}
-                        disabled={disabled}
-                        className="text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors rounded-full px-2 py-1"
+                );
+                return (
+                    <div
+                        key={link.siteName}
+                        className={`flex items-center justify-between gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 ${removed.has(link.siteName) ? "opacity-40 line-through" : ""}`}
                     >
-                        ✕
-                    </button>
+                        <div className="flex items-center gap-3 min-w-0">
+                            <ProfileLogo link={link} />
+                            {link.profileUrl ? (
+                                <a
+                                    href={link.profileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="min-w-0 rounded hover:underline focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                >
+                                    {nameBlock}
+                                </a>
+                            ) : (
+                                nameBlock
+                            )}
+                        </div>
+                        <button
+                            aria-label={`remove ${link.siteName}`}
+                            onClick={() => toggleRemoved(link.siteName)}
+                            disabled={disabled}
+                            className="text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors rounded-full px-2 py-1"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                );
+            })}
+            {isEmpty && added.length === 0 && (
+                <div className="text-sm text-gray-600 dark:text-gray-300 px-1 py-2">
+                    No profiles linked yet — paste one below whenever you&apos;re ready.
                 </div>
-            ))}
+            )}
             {added.map(url => (
                 <div key={url} className="text-sm text-green-600 dark:text-green-400 px-3">+ {url}</div>
             ))}
@@ -79,7 +173,7 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
                 disabled={disabled}
                 className="w-full bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                Looks good, continue
+                {isEmpty ? "Continue" : "Looks good, continue"}
             </button>
         </div>
     );
