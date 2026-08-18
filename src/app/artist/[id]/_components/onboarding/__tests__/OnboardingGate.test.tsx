@@ -1,4 +1,18 @@
 // @ts-nocheck
+// NOTE: intentionally NOT `import { jest } from '@jest/globals'` here. This repo's
+// SWC-based next/jest transform only hoists `jest.mock()` above ES `import`
+// statements when `jest` is the ambient global — importing `jest` from
+// '@jest/globals' disables that hoisting, so `jest.mock('../OnboardingChat', ...)`
+// below would run AFTER `OnboardingGate` (and its transitive import of the real
+// OnboardingChat) has already been required, and the mock silently never applies.
+// Confirmed empirically: reordering `jest.mock()` before the static `OnboardingGate`
+// import (the pattern used in `src/app/_components/__tests__/ActivityFeed.test.tsx`,
+// which keeps the `@jest/globals` import) does NOT fix it for this file — that
+// precedent isn't actually proof the mock takes effect there, since the real
+// `next/link` would render the same href-bearing `<a>` its mock does. `jest` is
+// globally available in the Jest environment, so dropping this import changes
+// nothing about test behavior; it only restores mock hoisting. See
+// `src/app/profile/__tests__/ClientWrapper.test.tsx` for the same working pattern.
 import { render, screen, fireEvent } from '@testing-library/react';
 import OnboardingGate, { skipFlagKey } from '../OnboardingGate';
 
