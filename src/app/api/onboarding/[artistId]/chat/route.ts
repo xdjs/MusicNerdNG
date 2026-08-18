@@ -29,13 +29,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ art
     if (!turn || typeof turn !== "object" || typeof (turn as { type?: unknown }).type !== "string") {
         return NextResponse.json({ error: "Invalid turn" }, { status: 400 });
     }
+    // Reject oversized batches before they reach the handler loops (decisions/
+    // addedLinks/addedUrls are all client-controlled arrays).
+    const MAX_TURN_ARRAY_LEN = 100;
+    const fieldTooLong = (key: string) => {
+        const value = (turn as Record<string, unknown>)[key];
+        return Array.isArray(value) && value.length > MAX_TURN_ARRAY_LEN;
+    };
+    if (fieldTooLong("decisions") || fieldTooLong("addedLinks") || fieldTooLong("addedUrls")) {
+        return NextResponse.json({ error: "Too many items in one turn" }, { status: 400 });
+    }
 
     const encoder = new TextEncoder();
     const startedAt = Date.now();
     const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
-            const send = (event: unknown) =>
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            // Both enqueue() and close() throw once the client has disconnected
+            // (the reader was cancelled) — guard both so an abandoned stream
+            // never produces an unhandled rejection.
+            const send = (event: unknown) => {
+                try {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+                } catch (e) {
+                    console.error("[onboarding/chat] send after stream closed:", e);
+                }
+            };
             try {
                 for await (const event of runOnboardingTurn(artistId, turn)) {
                     send(event);
@@ -49,7 +67,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ art
                 console.error("[onboarding/chat] Turn error:", e);
                 send({ kind: "error", message: "Something went wrong on our end — try that again." });
             } finally {
-                controller.close();
+                try {
+                    controller.close();
+                } catch (e) {
+                    console.error("[onboarding/chat] close after stream closed:", e);
+                }
             }
         },
     });

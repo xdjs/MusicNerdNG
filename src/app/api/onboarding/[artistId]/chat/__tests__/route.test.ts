@@ -77,6 +77,18 @@ describe('POST /api/onboarding/[artistId]/chat', () => {
         expect(res.status).toBe(400);
     });
 
+    it.each(['decisions', 'addedLinks', 'addedUrls'])(
+        '400s when %s has more than 100 entries',
+        async (field) => {
+            const { POST } = await setup();
+            const res = await POST(
+                makeReq({ type: 'vault_review', [field]: Array.from({ length: 101 }, (_, i) => i) }),
+                params
+            );
+            expect(res.status).toBe(400);
+        }
+    );
+
     describe('streaming responses', () => {
         // jest-fetch-mock's enableFetchMocks() (called in testEnv.ts) replaces
         // global.Response in every jest environment with a node-fetch polyfill
@@ -126,6 +138,44 @@ describe('POST /api/onboarding/[artistId]/chat', () => {
             const res = await POST(makeReq({ type: 'open' }), params);
             const text = await readAll(res);
             expect(text).toContain('"kind":"error"');
+        });
+
+        it('does not 400 at exactly 100 entries (boundary) — streams normally', async () => {
+            const { POST } = await setup();
+            const res = await POST(
+                makeReq({ type: 'vault_review', decisions: Array.from({ length: 100 }, (_, i) => i), addedUrls: [] }),
+                params
+            );
+            expect(res.status).toBe(200);
+        });
+
+        it('guards enqueue/close against a disconnected client — logs instead of throwing', async () => {
+            const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+            const { POST, runOnboardingTurn } = await setup();
+            let resolveContinue;
+            const paused = new Promise(r => { resolveContinue = r; });
+            runOnboardingTurn.mockImplementation(async function* () {
+                yield { kind: 'chat', text: 'first' };
+                await paused;
+                // Enqueuing after the reader below cancels the stream throws per
+                // spec — the guard must catch it (and the subsequent close()) and
+                // log instead of propagating an unhandled rejection.
+                yield { kind: 'chat', text: 'after-disconnect' };
+                yield { kind: 'complete' };
+            });
+            const res = await POST(makeReq({ type: 'open' }), params);
+            const reader = res.body.getReader();
+            await reader.read(); // consume "first"
+            await reader.cancel('client went away');
+            resolveContinue();
+            // Give the producer's microtask queue a tick to attempt the guarded
+            // enqueue()/close() calls on the now-cancelled stream.
+            await new Promise(r => setTimeout(r, 20));
+            const loggedGuard = errorSpy.mock.calls.some(
+                call => typeof call[0] === 'string' && call[0].includes('after stream closed')
+            );
+            expect(loggedGuard).toBe(true);
+            errorSpy.mockRestore();
         });
     });
 });
