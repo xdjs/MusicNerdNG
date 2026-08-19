@@ -164,22 +164,35 @@ function resolveInterviewQuestionText(questionKey: string, clientQuestion: strin
     return null;
 }
 
+// Even with thinking off the race can still be lost — rotate by question
+// index so a run of misses never repeats the same line in one interview.
+const ACK_FALLBACKS = [
+    "Love that — noted, in your words.",
+    "Got it — that's in, just how you put it.",
+    "Appreciate you sharing that — saved, word for word.",
+    "Noted — thanks for putting that so plainly.",
+];
+
 /** One warm Gemini sentence reacting to an interview answer. Bounded at 5s;
- *  any failure falls back to a template — the ack is garnish, never a blocker. */
-async function generateInterviewAck(question: string, answer: string): Promise<string> {
-    const FALLBACK = "Love that — noted, in your words.";
+ *  any failure falls back to a rotating template — the ack is garnish, never
+ *  a blocker. `questionIndex` (0-based position of this question within the
+ *  interview) selects the fallback variant so a run of failures never repeats. */
+async function generateInterviewAck(question: string, answer: string, questionIndex: number): Promise<string> {
+    const fallback = ACK_FALLBACKS[questionIndex % ACK_FALLBACKS.length];
     try {
         const response = await Promise.race([
             getGemini().models.generateContent({
                 model: GEMINI_MODEL_FLASH,
                 contents: `The artist was asked: "${question}" and answered: "${answer}". Reply with ONE short, warm, specific sentence reacting to their answer. No questions, no emoji, no hype words.`,
-                config: { temperature: 0.7 },
+                // Thinking defaults ON for gemini-2.5-flash and burns ~1.5s+ on a
+                // one-line reply — enough to lose this 5s race. Off ONLY here.
+                config: { temperature: 0.7, thinkingConfig: { thinkingBudget: 0 } },
             }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ack timeout")), 5000)),
         ]);
-        return response.text?.trim() || FALLBACK;
+        return response.text?.trim() || fallback;
     } catch {
-        return FALLBACK;
+        return fallback;
     }
 }
 
@@ -406,13 +419,16 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             let pending = await getVaultSourcesByArtistId(artistId, "pending");
             if (pending.length === 0) {
                 // Approval-time discovery may have found nothing or still be running.
-                // Re-run ONLY when the vault is entirely empty (spec §4). Bounded
-                // ~38s inside the route's 55s deadline; failure degrades gracefully.
+                // Re-run ONLY when the vault is entirely empty (spec §4). Capped at 25s;
+                // on timeout `pending` stays empty and the vaultEmpty degrade path runs.
                 const approved = await getVaultSourcesByArtistId(artistId, "approved");
                 if (approved.length === 0) {
                     yield { kind: "progress", label: "Searching the web for sources about you", done: false };
                     try {
-                        await searchAndPopulateVault(artistId);
+                        await Promise.race([
+                            searchAndPopulateVault(artistId),
+                            new Promise(resolve => setTimeout(resolve, 25_000)),
+                        ]);
                         pending = await getVaultSourcesByArtistId(artistId, "pending");
                     } catch (e) {
                         console.error("[onboarding] vault discovery failed:", e);
@@ -678,6 +694,9 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             return;
         }
         const answer = turn.answer?.trim() || null;
+        // Count of questions already asked BEFORE this one — its 0-based
+        // position, used to pick a non-repeating ack fallback on a miss.
+        const priorAnswers = await getInterviewAnswers(artistId);
         await upsertInterviewAnswer({
             artistId,
             questionKey: turn.questionKey,
@@ -686,7 +705,7 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             source: "onboarding",
         });
         if (answer) {
-            yield { kind: "chat", text: await generateInterviewAck(questionText, answer) };
+            yield { kind: "chat", text: await generateInterviewAck(questionText, answer, priorAnswers.length) };
         }
         // On resume, ask the first question lacking a row — answered or skipped
         // questions are never re-asked (spec §6). emitStep handles completion.

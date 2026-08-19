@@ -106,11 +106,18 @@ export function useOnboardingChat(artistId: string) {
         setBusy(true);
         const echo = userEcho(turn);
         if (echo) push({ kind: "user", text: echo });
+        // next dev has no server-side deadline enforcement (maxDuration is
+        // Vercel-only) — without a client ceiling, a hung fetch leaves `busy`
+        // true forever and every card disabled. Abort forces the catch block
+        // below to run so `finally` always clears it.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65_000);
         try {
             const res = await fetch(`/api/onboarding/${artistId}/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(turn),
+                signal: controller.signal,
             });
             if (!res.ok || !res.body) {
                 // Non-SSE failure (401/403/429/500) comes back as JSON
@@ -164,6 +171,7 @@ export function useOnboardingChat(artistId: string) {
             console.error("[useOnboardingChat] stream error:", e);
             push({ kind: "error", text: "Connection dropped — your progress is saved, just try again." });
         } finally {
+            clearTimeout(timeoutId);
             setBusy(false);
         }
     }, [artistId, busy, push]);

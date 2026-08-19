@@ -88,6 +88,40 @@ describe('useOnboardingChat', () => {
         expect(result.current.busy).toBe(false);
     });
 
+    // Blocker 2 (pre-demo review): next dev has no server-side deadline
+    // (maxDuration is Vercel-only), so a hung fetch with no client ceiling
+    // would leave `busy` true forever — every card disabled, no recovery.
+    it('l) a fetch that never resolves is aborted after the client-side timeout — pushes the connection-dropped error and clears busy', async () => {
+        jest.useFakeTimers();
+        try {
+            (global.fetch as jest.Mock).mockImplementationOnce((_url: string, options: RequestInit) =>
+                new Promise((_resolve, reject) => {
+                    options.signal?.addEventListener('abort', () => reject(new Error('The operation was aborted.')));
+                })
+            );
+
+            const { result } = renderHook(() => useOnboardingChat('artist-1'));
+
+            let sendPromise: Promise<void>;
+            act(() => {
+                sendPromise = result.current.sendTurn({ type: 'open' });
+            });
+            expect(result.current.busy).toBe(true);
+
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(65_000);
+                await sendPromise;
+            });
+
+            expect(result.current.items.some(i =>
+                i.kind === 'error' && i.text === 'Connection dropped — your progress is saved, just try again.'
+            )).toBe(true);
+            expect(result.current.busy).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('f) stream ends with no terminal frame (only progress) — pushes an error item so the hook never dead-ends silently', async () => {
         (global.fetch as jest.Mock).mockResolvedValueOnce(
             fakeStreamResponse(['data: {"kind":"progress","label":"Thinking","done":false}\n\n'])

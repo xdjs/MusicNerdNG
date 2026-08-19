@@ -54,6 +54,14 @@ jest.mock('@/server/utils/questionGenerator', () => ({
     generateGroundedQuestions: jest.fn().mockResolvedValue([]),
     GROUNDED_QUESTION_KEY_PREFIX: 'social_',
 }));
+// Controlled Gemini double for generateInterviewAck (its only call site in
+// turnHandlers.ts) — lets tests inspect the request config and force the
+// fallback path deterministically, independent of GEMINI_API_KEY in the env.
+const mockGenerateContent = jest.fn().mockResolvedValue({ text: 'mocked gemini response' });
+jest.mock('@/server/lib/gemini', () => ({
+    getGemini: jest.fn(() => ({ models: { generateContent: mockGenerateContent } })),
+    GEMINI_MODEL_FLASH: 'gemini-2.5-flash',
+}));
 
 async function collect(gen) {
     const events = [];
@@ -478,6 +486,32 @@ describe('runOnboardingTurn', () => {
         expect(chat.text).toContain('We found 1 source about you.');
     });
 
+    // Blocker 1 (pre-demo review): searchAndPopulateVault can hang for tens of
+    // seconds with no timeout of its own. The vault step must not inherit that
+    // hang — it's raced against a 25s cap so the turn always reaches the
+    // empty-state degrade path (paste-a-link) instead of stalling the stream.
+    it('vault: an unresolved searchAndPopulateVault still proceeds to the empty-state narration after the 25s cap, not before', async () => {
+        jest.useFakeTimers();
+        try {
+            const oq = await import('@/server/utils/queries/onboardingQueries');
+            oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+            const vw = await import('@/server/utils/queries/vaultWebSearch');
+            vw.searchAndPopulateVault.mockImplementationOnce(() => new Promise(() => {})); // never resolves
+            const { runOnboardingTurn } = await import('../turnHandlers');
+
+            const eventsPromise = collect(runOnboardingTurn('a1', { type: 'open' }));
+            await jest.advanceTimersByTimeAsync(25_000);
+            const events = await eventsPromise;
+
+            expect(events.some(e =>
+                e.kind === 'chat' && e.text === "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue."
+            )).toBe(true);
+            expect(events.some(e => e.kind === 'step' && e.step === 'vault' && e.payload.sources.length === 0)).toBe(true);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('vault_review only updates sources belonging to this artist', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
@@ -626,6 +660,43 @@ describe('runOnboardingTurn', () => {
         }));
         expect(oq.upsertInterviewAnswer).not.toHaveBeenCalled();
         expect(events.some(e => e.kind === 'error')).toBe(true);
+    });
+
+    // Blocker 3 (pre-demo review): gemini-2.5-flash has thinking enabled by
+    // default and burns most of the 5s ack race on a one-sentence prompt.
+    it('interview_answer\'s ack call disables Gemini thinking so the 5s race is winnable', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        oq.getInterviewAnswers.mockResolvedValue([]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'interview_answer', questionKey: 'sound_in_own_words', answer: 'Dreamy synth-pop',
+        }));
+        expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({
+            config: expect.objectContaining({ thinkingConfig: { thinkingBudget: 0 } }),
+        }));
+    });
+
+    // Blocker 3 continued: even with thinking off, a run of misses (measured
+    // 4.70s/5.91s/6.85s against the 5s race) must not hand the artist the
+    // same canned acknowledgement for all three interview questions.
+    it('ack fallback rotates by question index — three consecutive Gemini misses never repeat the same line', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const acks: string[] = [];
+        for (let priorCount = 0; priorCount < 3; priorCount++) {
+            // Once-only so the rejection never leaks into a later test's turn.
+            mockGenerateContent.mockRejectedValueOnce(new Error('gemini down'));
+            oq.getInterviewAnswers.mockResolvedValueOnce(Array(priorCount).fill({ questionKey: 'x', answer: 'y' }));
+            const events = await collect(runOnboardingTurn('a1', {
+                type: 'interview_answer', questionKey: 'sound_in_own_words', answer: `take ${priorCount}`,
+            }));
+            acks.push(events.find(e => e.kind === 'chat').text);
+        }
+
+        expect(new Set(acks).size).toBe(3);
     });
 
     it('publish validates caps, persists doc + bio version + artists.bio, confirms publish, completes', async () => {
