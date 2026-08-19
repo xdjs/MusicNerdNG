@@ -243,7 +243,15 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                         <p className="text-2xl">🎉</p>
                         <p className="font-bold text-lg text-black dark:text-white">You&apos;re live!</p>
                         <button
-                            onClick={() => { router.refresh(); onFinish(); }}
+                            onClick={() => {
+                                // The takeover covered the page for the whole flow, so the
+                                // body is still wherever it was when the artist arrived —
+                                // usually scrolled down. Land them at the top of the profile
+                                // they just built rather than in the middle of it.
+                                window.scrollTo({ top: 0, behavior: "auto" });
+                                router.refresh();
+                                onFinish();
+                            }}
                             className="mt-2 bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold px-4 py-2 rounded-lg shadow-sm"
                         >
                             See my page

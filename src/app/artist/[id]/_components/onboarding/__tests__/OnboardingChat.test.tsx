@@ -129,6 +129,19 @@ describe('OnboardingChat', () => {
         expect(onSkip).not.toHaveBeenCalled();
     });
 
+    // Publishing ends with a page the artist has never seen — the takeover covered it
+    // the whole time. Leaving them at whatever offset the body happened to hold drops
+    // them into the middle of their own profile.
+    it('"See my page" returns the artist to the top of their page', () => {
+        const scrollTo = jest.fn();
+        window.scrollTo = scrollTo;
+        setChat({ items: [{ id: 'c1', kind: 'complete' }] });
+        render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} onFinish={jest.fn()} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /see my page/i }));
+        expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0 }));
+    });
+
     it('renders a "Try again" button on the last error item when nothing newer follows it, and it resyncs via sendTurn({type:"open"})', () => {
         const sendTurn = setChat({
             items: [{ id: 'e1', kind: 'error', text: 'Something broke' }],
