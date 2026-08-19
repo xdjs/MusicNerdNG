@@ -47,9 +47,12 @@ describe('revokeApprovedClaim wipes onboarding content in the same transaction',
         const result = await revokeApprovedClaim('claim-1');
 
         expect(result).toMatchObject({ artistId: 'artist-1' });
-        // Strict delete order: vault before onboarding content, per implementation invariant
+        // Strict delete order: vault, then scraped social data, then onboarding
+        // content, per implementation invariant. (Social posts/profiles added
+        // alongside post-claim social ingestion — see socialIngest.ts.)
         expect(deletedTables).toEqual([
             schema.artistClaims, schema.artistVaultSources,
+            schema.artistSocialPosts, schema.artistSocialProfiles,
             schema.artistInterviewAnswers, schema.artistOnboardingSteps, schema.artistDocs,
         ]);
         // A doc was deleted → the (doc-derived or hand-edited) bio is the revoked owner's content
@@ -66,9 +69,10 @@ describe('revokeApprovedClaim wipes onboarding content in the same transaction',
         const { revokeApprovedClaim } = require('@/server/utils/queries/dashboardQueries');
         await revokeApprovedClaim('claim-1');
 
-        // Still delete claims and vault, but no onboarding content to clear
+        // Still delete claims, vault, and social data, but no onboarding content to clear
         expect(deletedTables).toEqual([
             schema.artistClaims, schema.artistVaultSources,
+            schema.artistSocialPosts, schema.artistSocialProfiles,
             schema.artistInterviewAnswers, schema.artistOnboardingSteps, schema.artistDocs,
         ]);
         // No artists table update

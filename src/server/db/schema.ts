@@ -578,6 +578,70 @@ export const agentRuns = pgTable("agent_runs", {
 	pgPolicy("mnweb_update_agent_runs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true` }),
 ])
 
+// Post-claim onboarding: ingested social posts (Instagram today). A scraped
+// feed includes posts authored by OTHER people where the artist is a
+// collaborator — `owner_username` + `is_own_post` are load-bearing, never
+// attribute a foreign-owner caption to the artist. UNIQUE(artist, platform,
+// platform_post_id) makes re-ingest idempotent (ON CONFLICT DO UPDATE).
+export const artistSocialPosts = pgTable("artist_social_posts", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	platform: text().notNull(),
+	platformPostId: text("platform_post_id").notNull(),
+	ownerUsername: text("owner_username").notNull(),
+	isOwnPost: boolean("is_own_post").notNull(),
+	caption: text(),
+	url: text().notNull(),
+	postedAt: timestamp("posted_at", { withTimezone: true, mode: 'string' }),
+	likeCount: integer("like_count"),
+	commentCount: integer("comment_count"),
+	playCount: integer("play_count"),
+	hashtags: text().array().default([]).notNull(),
+	mentions: text().array().default([]).notNull(),
+	coauthors: text().array().default([]).notNull(),
+	musicTitle: text("music_title"),
+	musicArtist: text("music_artist"),
+	raw: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_social_posts_artist_platform_post_uniq").on(table.artistId, table.platform, table.platformPostId),
+	index("idx_artist_social_posts_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	index("idx_artist_social_posts_own").using("btree", table.artistId.asc().nullsLast(), table.isOwnPost.asc().nullsLast()),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_social_posts_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_social_posts", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_social_posts", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_social_posts", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_social_posts", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// One row per artist+platform — the scraped profile itself (follower count, bio, avatar).
+export const artistSocialProfiles = pgTable("artist_social_profiles", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	platform: text().notNull(),
+	handle: text().notNull(),
+	followersCount: integer("followers_count"),
+	bio: text(),
+	avatarUrl: text("avatar_url"),
+	scrapedAt: timestamp("scraped_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_social_profiles_artist_platform_uniq").on(table.artistId, table.platform),
+	index("idx_artist_social_profiles_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_social_profiles_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_social_profiles", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_social_profiles", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_social_profiles", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_social_profiles", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
 // Relations
 export const artistsRelations = relations(artists, ({one, many}) => ({
 	user: one(users, {
@@ -599,6 +663,8 @@ export const artistsRelations = relations(artists, ({one, many}) => ({
 	artistDocs: many(artistDocs),
 	artistInterviewAnswers: many(artistInterviewAnswers),
 	artistOnboardingSteps: many(artistOnboardingSteps),
+	artistSocialPosts: many(artistSocialPosts),
+	artistSocialProfiles: many(artistSocialProfiles),
 }));
 
 export const artistBioVersionsRelations = relations(artistBioVersions, ({one}) => ({
@@ -680,4 +746,12 @@ export const artistInterviewAnswersRelations = relations(artistInterviewAnswers,
 
 export const artistOnboardingStepsRelations = relations(artistOnboardingSteps, ({one}) => ({
 	artist: one(artists, { fields: [artistOnboardingSteps.artistId], references: [artists.id] }),
+}));
+
+export const artistSocialPostsRelations = relations(artistSocialPosts, ({one}) => ({
+	artist: one(artists, { fields: [artistSocialPosts.artistId], references: [artists.id] }),
+}));
+
+export const artistSocialProfilesRelations = relations(artistSocialProfiles, ({one}) => ({
+	artist: one(artists, { fields: [artistSocialProfiles.artistId], references: [artists.id] }),
 }));

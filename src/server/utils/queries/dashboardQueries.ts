@@ -1,6 +1,6 @@
 import { db } from "@/server/db/drizzle";
 import { eq, and, or, sql } from "drizzle-orm";
-import { artistClaims, artistVaultSources, artistBioVersions, artists, artistDocs, artistInterviewAnswers, artistOnboardingSteps } from "@/server/db/schema";
+import { artistClaims, artistVaultSources, artistBioVersions, artists, artistDocs, artistInterviewAnswers, artistOnboardingSteps, artistSocialPosts, artistSocialProfiles } from "@/server/db/schema";
 
 /**
  * Returns the artist's **active** claim (pending or approved), if any.
@@ -188,6 +188,16 @@ export async function revokeApprovedClaim(claimId: string) {
             await tx
                 .delete(artistVaultSources)
                 .where(eq(artistVaultSources.artistId, deleted.artistId));
+
+            // Scraped social data (posts + profile) is the revoked owner's too — a
+            // re-claimer must not inherit the previous owner's Instagram history or
+            // the grounded questions derived from it. Same tx, same invariant.
+            await tx
+                .delete(artistSocialPosts)
+                .where(eq(artistSocialPosts.artistId, deleted.artistId));
+            await tx
+                .delete(artistSocialProfiles)
+                .where(eq(artistSocialProfiles.artistId, deleted.artistId));
 
             // Onboarding content is the revoked owner's — it must not survive for
             // (or silently skip onboarding of) the next claimant. Same tx as the

@@ -39,3 +39,6 @@ export const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
 // Privy Configuration
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 export const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET ?? "";
+
+// Apify (Instagram post ingestion — see socialIngest.ts). Empty = ingestion no-ops.
+export const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN ?? "";
