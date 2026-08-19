@@ -16,6 +16,10 @@ export type ChatItem = {
     // `candidate` SSE events arrive, one at a time, ahead of the terminal
     // `step` event (see the `push` reconciliation logic below).
     candidates?: ProfileCandidate[];
+    // Set only on "progress" items that belong to a collapsible batch (e.g.
+    // the profiles step's per-platform search) — see the `push` reconciliation
+    // logic below. Undefined for every standalone progress chip.
+    group?: string;
 };
 
 export type ClientTurnShape =
@@ -48,12 +52,21 @@ export function useOnboardingChat(artistId: string) {
         counter.current += 1;
         const id = `c${counter.current}`;
         setItems(prev => {
-            // progress events update their existing chip in place (label match)
+            // progress events update their existing chip in place. Grouped
+            // events (item.group set — currently just the profiles step's
+            // per-platform search) match by group id, since their `text`
+            // deliberately changes on every update (a climbing "Searching N
+            // platforms…" count) — matching by group instead of text is what
+            // collapses every "searching" event in the batch onto the SAME
+            // chip instead of spawning a new one whenever the label changes.
+            // Standalone progress chips keep matching by label text, as before.
             if (item.kind === "progress") {
-                const idx = prev.findIndex(p => p.kind === "progress" && p.text === item.text);
+                const idx = item.group
+                    ? prev.findIndex(p => p.kind === "progress" && p.group === item.group)
+                    : prev.findIndex(p => p.kind === "progress" && p.text === item.text);
                 if (idx >= 0) {
                     const next = [...prev];
-                    next[idx] = { ...next[idx], done: item.done };
+                    next[idx] = { ...next[idx], text: item.text, done: item.done };
                     return next;
                 }
             }
@@ -125,7 +138,7 @@ export function useOnboardingChat(artistId: string) {
                         const event = JSON.parse(line.slice(6));
                         switch (event.kind) {
                             case "chat": push({ kind: "bot", text: event.text }); break;
-                            case "progress": push({ kind: "progress", text: event.label, done: event.done }); break;
+                            case "progress": push({ kind: "progress", text: event.label, done: event.done, group: event.group }); break;
                             // Additive live feedback, not a terminal frame — the
                             // terminal `step` event still carries the complete
                             // candidate list (see the reconciliation logic in

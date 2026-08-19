@@ -190,6 +190,71 @@ describe('runOnboardingTurn', () => {
         expect(chats.some(t => t.includes('1 more profile') && /confirm/i.test(t))).toBe(true);
     });
 
+    it('profiles step collapses every per-platform "searching" event into ONE group-tagged progress line that only grows on a genuinely new platform, and settles to done exactly once after discovery is fully exhausted', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        // Out-of-order-feeling stream: instagram is searched THREE times (tier
+        // probe, then re-probed twice more as confirmed handles propagate —
+        // mirrors the real "Instagram searched 3x in one run" behavior), and
+        // no "checked" events are emitted (the real generator does emit them,
+        // but the client-facing collapse no longer keys off them at all).
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'searching', platform: 'spotify', displayName: 'Spotify' };
+            yield { kind: 'searching', platform: 'instagram', displayName: 'Instagram' };
+            yield { kind: 'checked', platform: 'spotify', displayName: 'Spotify' };
+            yield { kind: 'searching', platform: 'instagram', displayName: 'Instagram' }; // repeat #2
+            yield { kind: 'checked', platform: 'instagram', displayName: 'Instagram' };
+            yield { kind: 'searching', platform: 'tiktok', displayName: 'TikTok' };
+            yield { kind: 'searching', platform: 'instagram', displayName: 'Instagram' }; // repeat #3
+            yield { kind: 'checked', platform: 'tiktok', displayName: 'TikTok' };
+            yield { kind: 'checked', platform: 'instagram', displayName: 'Instagram' };
+        });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        const groupEvents = events.filter(e => e.kind === 'progress' && e.group === 'platform-search');
+        // 3 DISTINCT platforms (spotify, instagram, tiktok) → exactly 3
+        // "grew the count" emissions while running, plus exactly one closing
+        // "done" emission — the 2 instagram repeats emit nothing extra.
+        expect(groupEvents).toHaveLength(4);
+        expect(groupEvents.slice(0, 3).map(e => e.label)).toEqual([
+            'Searching 1 platform…',
+            'Searching 2 platforms…',
+            'Searching 3 platforms…',
+        ]);
+        expect(groupEvents.slice(0, 3).every(e => e.done === false)).toBe(true);
+        // Settles to done EXACTLY once, after the generator is fully drained —
+        // never inferred from a mid-stream lull.
+        const doneEvents = groupEvents.filter(e => e.done === true);
+        expect(doneEvents).toHaveLength(1);
+        expect(doneEvents[0].label).toBe('Searched 3 platforms');
+
+        // The closing group event is the LAST progress event emitted for the
+        // step — i.e. it fires only after the whole discovery stream drains,
+        // not interleaved mid-stream.
+        const profileStepProgress = events.filter(
+            e => (e.kind === 'progress' && (e.group === 'platform-search' || e.label === 'Gathering your profiles'))
+        );
+        expect(profileStepProgress[profileStepProgress.length - 1]).toBe(doneEvents[0]);
+
+        // Ungrouped progress chips (the step-entry "Gathering your profiles"
+        // pair) are completely unaffected — no `group` field at all.
+        const gathering = events.filter(e => e.kind === 'progress' && e.label === 'Gathering your profiles');
+        expect(gathering).toHaveLength(2);
+        expect(gathering.every(e => e.group === undefined)).toBe(true);
+    });
+
+    it('profiles step emits no group-search progress at all when discovery never searches any platform (nothing missing to search for)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        // Default mock (from the top-level jest.mock) is an empty generator —
+        // no "searching" events at all.
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(events.some(e => e.kind === 'progress' && e.group === 'platform-search')).toBe(false);
+    });
+
     it('profiles step (fresh open) sets candidates to an empty array and skips the found-count narration when discovery finds nothing', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });

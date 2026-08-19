@@ -45,9 +45,21 @@ import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQ
  *  the next turn resumes it (spec §9), instead of blowing past the deadline. */
 const PUBLISH_RETRY_BUDGET_MS = GEMINI_TIMEOUT_MS + 10_000;
 
+/** Progress-event group id for the profiles step's per-platform search
+ *  (see emitStep's "profiles" case). Up to ~9 platforms are probed across
+ *  4 tiers plus handle-propagation re-probes, out of order and sometimes
+ *  repeated (e.g. Instagram can be searched 3x as confirmed handles
+ *  propagate) — collapsing them under one group id lets the client render
+ *  ONE live line instead of a chip per platform per attempt. */
+const PROFILE_SEARCH_GROUP = "platform-search";
+
 export type TurnEvent =
     | { kind: "chat"; text: string }
-    | { kind: "progress"; label: string; done: boolean }
+    // `group` is set only for progress events that belong to a collapsible
+    // batch (currently just the profiles step's per-platform search) — see
+    // PROFILE_SEARCH_GROUP below. Omitted (undefined) for every standalone
+    // progress step, which keeps their existing one-chip-per-label behavior.
+    | { kind: "progress"; label: string; done: boolean; group?: string }
     | { kind: "step"; step: OnboardingStep; payload: unknown }
     // Incremental live feedback while the profiles step's discovery runs —
     // fired the instant a candidate clears validation, ahead of the terminal
@@ -326,23 +338,42 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             const payload = await buildProfilesPayload(artistId);
             yield { kind: "progress", label: "Gathering your profiles", done: true };
 
-            // Streamed live: each platform lookup renders as "searching" the
-            // instant it starts and flips to a checkmark the instant it
-            // settles, and every validated candidate renders the instant it's
-            // found — never a silent wait followed by one batch dump. The
-            // generator itself never throws (profileDiscovery.ts's contract),
-            // but the try/catch here is defense-in-depth so a bug in the
-            // stream can't take down the whole `profiles` turn.
+            // Streamed live: every validated candidate renders the instant
+            // it's found — never a silent wait followed by one batch dump.
+            // The many per-platform "searching" events (up to ~9 platforms
+            // across 4 tiers, out of order, sometimes repeated as confirmed
+            // handles propagate) collapse into ONE PROFILE_SEARCH_GROUP
+            // progress line that just names how many DISTINCT platforms have
+            // been searched so far — deduped by the raw `platform` key (a
+            // repeat "searching" for a platform already in `seenPlatforms`
+            // emits nothing, so it can never double-count). That line only
+            // ever flips to `done` ONCE, after the generator is fully
+            // exhausted (success or failure) — the one unambiguous "every
+            // platform has been checked" signal. It is deliberately never
+            // inferred from "no platform is currently in flight", since that
+            // condition is also briefly true between tiers and would flicker
+            // the line between searching/done and back. The generator itself
+            // never throws (profileDiscovery.ts's contract), but the
+            // try/catch here is defense-in-depth so a bug in the stream can't
+            // take down the whole `profiles` turn — and the closing progress
+            // line below still fires afterward either way, so the UI always
+            // settles instead of being left mid-search forever.
             const candidates: DiscoveredProfile[] = [];
             if (discoverProfiles) {
+                const seenPlatforms = new Set<string>();
                 try {
                     for await (const event of discoverArtistProfilesStream(artistId)) {
                         switch (event.kind) {
                             case "searching":
-                                yield { kind: "progress", label: `Searching ${event.displayName}`, done: false };
-                                break;
-                            case "checked":
-                                yield { kind: "progress", label: `Searching ${event.displayName}`, done: true };
+                                if (!seenPlatforms.has(event.platform)) {
+                                    seenPlatforms.add(event.platform);
+                                    yield {
+                                        kind: "progress",
+                                        label: `Searching ${seenPlatforms.size} platform${seenPlatforms.size === 1 ? "" : "s"}…`,
+                                        done: false,
+                                        group: PROFILE_SEARCH_GROUP,
+                                    };
+                                }
                                 break;
                             case "found":
                                 candidates.push(event.profile);
@@ -352,6 +383,14 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                     }
                 } catch (e) {
                     console.error("[onboarding] profile discovery stream failed:", e);
+                }
+                if (seenPlatforms.size > 0) {
+                    yield {
+                        kind: "progress",
+                        label: `Searched ${seenPlatforms.size} platform${seenPlatforms.size === 1 ? "" : "s"}`,
+                        done: true,
+                        group: PROFILE_SEARCH_GROUP,
+                    };
                 }
             }
 
