@@ -13,8 +13,10 @@
 #   blank        clear every link — exercises the empty-state path
 #
 # Unless --keep-progress, this also clears onboarding step confirmations,
-# interview answers, and the generated artist doc, and returns rejected vault
-# sources to pending so there is something to curate again.
+# interview answers, and the generated artist doc, and returns EVERY vault
+# source to pending — approved ones too, since a source already approved is one
+# the vault step won't ask about, and the point is to replay the step from the
+# top.
 #
 # Links are backed up before any clearing; `restore` puts them back.
 set -euo pipefail
@@ -89,7 +91,7 @@ if [ "$KEEP_PROGRESS" -eq 0 ]; then
   psql "$CONN" -q -c "DELETE FROM artist_onboarding_steps WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_interview_answers WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_docs WHERE artist_id='$ARTIST_ID';
-                      UPDATE artist_vault_sources SET status='pending' WHERE artist_id='$ARTIST_ID' AND status='rejected';"
+                      UPDATE artist_vault_sources SET status='pending' WHERE artist_id='$ARTIST_ID';"
 fi
 
 # Pre-run vault discovery, mirroring production's approval-time discovery. The
