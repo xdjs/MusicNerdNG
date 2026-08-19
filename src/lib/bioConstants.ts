@@ -4,6 +4,22 @@ export const MAX_BIO_LENGTH = 10_000;
 /** Hard cap on a synthesized artist doc's stored size. */
 export const ARTIST_DOC_MAX_CHARS = 20_000;
 
+/**
+ * The length rule for a public About, wherever it gets written. The automatic
+ * generator (artistBioQuery) and the onboarding flow (artistDocService) both write
+ * to artists.bio and render in the same place on the page, so they must not disagree
+ * about how long an About is. Onboarding used to ask for "2-4 short paragraphs,
+ * roughly 600-1,200 characters" — a two-paragraph FLOOR, which read as padded next
+ * to a generated bio. Kept as two constants because artistBioQuery places the second
+ * sentence as a Structure bullet rather than beside the first.
+ */
+export const ABOUT_LENGTH_RULE =
+  "Write ONE paragraph, up to ~100 words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.";
+
+/** Anti-padding companion to ABOUT_LENGTH_RULE. */
+export const ABOUT_STOP_RULE =
+  'Stop when the facts run out. No closing "significance" flourish.';
+
 /** Cap on the artist-doc slice injected into prompts (askArtist / funFacts / bio). */
 export const ARTIST_DOC_CONTEXT_CAP = 8_000;
 

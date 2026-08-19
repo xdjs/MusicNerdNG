@@ -62,6 +62,26 @@ describe('artistDocService', () => {
         expect(call.config.systemInstruction).toContain('About');
     });
 
+    // The About and the auto-generated bio write to the same artists.bio field and
+    // render in the same place, so they answer to one length rule — production's,
+    // in artistBioQuery. The old "2-4 short paragraphs" set a two-paragraph FLOOR,
+    // which is what made an About written through onboarding read twice as long as
+    // one generated automatically.
+    it('both About prompts carry production\'s one-paragraph length rule', async () => {
+        const { svc, generateContent } = await setup({ geminiText: 'An About.' });
+
+        await svc.generateAboutFromDoc('Nova Reyes', '## Overview\ndoc');
+        const cited = generateContent.mock.calls[0][0].config.systemInstruction;
+        expect(cited).toContain('ONE paragraph, up to ~100 words');
+        expect(cited).toContain('Stop when the facts run out');
+        expect(cited).not.toContain('2-4 short paragraphs');
+
+        await svc.synthesizeFallbackAbout('a1', 'Nova Reyes', '## Overview\ndoc');
+        const fallback = generateContent.mock.calls[1][0].config.systemInstruction;
+        expect(fallback).toContain('ONE paragraph, up to ~100 words');
+        expect(fallback).not.toContain('2-4 short paragraphs');
+    });
+
     it('getArtistDocContext caps the slice and returns null with no doc', async () => {
         const { svc, getArtistDoc } = await setup();
         getArtistDoc.mockResolvedValueOnce(undefined);

@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { sanitizeBioText } from "@/lib/bioText";
-import { ABOUT_EMPTY_STATE, isRealBio, ARTIST_DOC_CONTEXT_CAP } from "@/lib/bioConstants";
+import { ABOUT_EMPTY_STATE, isRealBio, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE } from "@/lib/bioConstants";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
@@ -224,12 +224,12 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
 
     const musicNerdVoice = `You write clean, factual artist bios for Music Nerd, a music discovery platform. Think well-written encyclopedia entry, not a review or press release. Tell the reader who this artist is and what they're known for — accurately, without embellishment.
 
-Write ONE paragraph, up to ~100 words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.
+${ABOUT_LENGTH_RULE}
 
 Structure:
 - Open with the name and what they are: "[Name] is a [role/genre] from [place]." This is the one place a plain identity sentence is correct — lead with it.
 - Follow with the most significant verifiable facts: bands, notable releases, collaborators, milestones, dates, well-documented activity outside music.
-- Stop when the facts run out. No closing "significance" flourish.
+- ${ABOUT_STOP_RULE}
 
 Rules:
 - Third person. Anchor on the name; use pronouns sparingly.
