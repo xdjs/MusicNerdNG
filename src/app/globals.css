@@ -53,6 +53,31 @@
   }
 }
 
+/* Onboarding progress chip: a slow, deliberate "breathing" glow while work is
+   in flight — reads as clearly alive without the flat, mechanical feel of a
+   plain opacity pulse. Settles instantly to a calm, static pill once `done`
+   (see OnboardingChat.tsx's progress case) — the border/checkmark state
+   change plus this animation's absence together read as "finished", no
+   separate settle animation needed. */
+@keyframes onboarding-progress-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(236, 72, 153, 0.05);
+  }
+}
+
+.animate-onboarding-progress-breathe {
+  animation: onboarding-progress-breathe 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-onboarding-progress-breathe {
+    animation: none;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

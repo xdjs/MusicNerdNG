@@ -161,4 +161,59 @@ describe('generateGroundedQuestions', () => {
         expect(musicSignal.authoredBy).toBe('@dameatlas');
         expect(musicSignal.material).toContain('NOT');
     });
+
+    // --- per-session cache (onboarding chat turns are stateless — the interview
+    // step calls generateGroundedQuestions on every turn it re-enters) ---
+    describe('per-artist TTL cache', () => {
+        const geminiText = JSON.stringify([
+            { signalId: 'collab_dameatlas', question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
+        ]);
+
+        it('a second call for the same artist within the TTL does not re-invoke generation', async () => {
+            const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
+            const first = await generateGroundedQuestions('a1', { max: 3 });
+            const second = await generateGroundedQuestions('a1', { max: 3 });
+            expect(generateContent).toHaveBeenCalledTimes(1);
+            expect(second).toEqual(first);
+        });
+
+        it('a fresh module registry starts with an empty cache — sanity check that jest.resetModules() actually isolates the module-level Map across tests', async () => {
+            const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
+            await generateGroundedQuestions('a1', { max: 3 });
+            expect(generateContent).toHaveBeenCalledTimes(1);
+        });
+
+        it('expiry regenerates — a call after the TTL has elapsed invokes generation again', async () => {
+            jest.useFakeTimers();
+            try {
+                const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
+                await generateGroundedQuestions('a1', { max: 3 });
+                jest.advanceTimersByTime(15 * 60 * 1000 + 1_000); // just past the 15-minute TTL
+                await generateGroundedQuestions('a1', { max: 3 });
+                expect(generateContent).toHaveBeenCalledTimes(2);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('a cache hit never changes which question gets asked — same keys, same order, as the original generation', async () => {
+            const multiGeminiText = JSON.stringify([
+                { signalId: 'collab_dameatlas', question: 'Q1', rationale: 'x' },
+                { signalId: 'theme_hashtag_housemusic', question: 'Q2', rationale: 'x' },
+            ]);
+            const { generateGroundedQuestions } = await setup({ geminiText: multiGeminiText });
+            const first = await generateGroundedQuestions('a1', { max: 3 });
+            const second = await generateGroundedQuestions('a1', { max: 3 });
+            expect(second.map(q => q.key)).toEqual(first.map(q => q.key));
+            expect(second).toEqual(first);
+        });
+
+        it('different artists get independent cache entries — a cache hit for one artist does not serve another artist\'s questions', async () => {
+            const { generateGroundedQuestions, generateContent, getArtistById } = await setup({ geminiText });
+            await generateGroundedQuestions('a1', { max: 3 });
+            getArtistById.mockResolvedValue({ id: 'a2', name: 'Other Artist', instagram: 'other' });
+            await generateGroundedQuestions('a2', { max: 3 });
+            expect(generateContent).toHaveBeenCalledTimes(2);
+        });
+    });
 });

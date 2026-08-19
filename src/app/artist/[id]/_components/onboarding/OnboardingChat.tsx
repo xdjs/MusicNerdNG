@@ -157,12 +157,18 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                     </div>
                 );
             case "progress":
+                // In flight: a slow "breathing" glow (see .animate-onboarding-progress-breathe
+                // in globals.css) reads as clearly alive without the flat mechanical
+                // feel of a plain opacity pulse. Done: the glow simply stops and the
+                // border/background settle into a calm, static pink pill — the
+                // transition-colors on both classes makes that settle a smooth fade
+                // rather than a hard cut.
                 return (
                     <div
-                        className={`self-start text-xs px-3 py-1 rounded-full border text-gray-700 dark:text-gray-300 ${
+                        className={`self-start text-xs px-3 py-1 rounded-full border transition-colors duration-500 text-gray-700 dark:text-gray-300 ${
                             item.done
-                                ? "border-pink-400/50 dark:border-pink-400/40"
-                                : "border-gray-300/60 dark:border-gray-600/60 motion-safe:animate-pulse"
+                                ? "border-pink-400/50 dark:border-pink-400/40 bg-pink-500/5"
+                                : "border-gray-300/60 dark:border-gray-600/60 animate-onboarding-progress-breathe"
                         }`}
                     >
                         {item.done ? "✓" : "⚙"} {item.text}

@@ -45,6 +45,51 @@ const TOP_STANDOUTS = 2;
 const TOP_BURSTS = 2;
 const TOP_MUSIC = 3;
 
+// Short-lived in-process cache for generateGroundedQuestions, keyed by
+// artistId (+ requested `max`, see below). Onboarding chat turns are
+// stateless — the interview step (turnHandlers.ts) calls this fresh on every
+// turn it re-enters, so without a cache a single 3-question interview pays a
+// ~12s Gemini round trip up to THREE times. Same shape as `bioRegenTimestamps`
+// in dashboardActions.ts: a module-level Map with a TTL, a soft size cap, and
+// prune-on-write.
+//
+// Serverless caveat: this lives in the Node process's memory, not shared
+// across workers/regions and wiped on a cold start — best-effort only.
+// Correctness never depends on it: a miss (cold start, TTL expiry, or an
+// artist not seen yet) just regenerates via the normal path below, with the
+// exact same deterministic candidate keys.
+//
+// Keyed by `${artistId}::${max}`, not artistId alone, so a cache entry can
+// never be handed back for a different `max` than it was generated for — in
+// practice every caller today passes the same INTERVIEW_QUESTION_CAP, so this
+// is a correctness safety net more than a real dimension of variation.
+//
+// Only a successful generation is cached — including a Gemini call that
+// legitimately returns [] (the model dropped every candidate signal). That
+// result cost the full ~12s and is stable for the rest of the session, so
+// it's worth caching. A thrown/timed-out Gemini call is NOT cached: that's a
+// transient failure, and the next turn should get a fresh attempt rather than
+// being stuck replaying a failure for the full TTL.
+interface GroundedQuestionsCacheEntry {
+    value: GroundedQuestion[];
+    expiresAt: number;
+}
+const groundedQuestionsCache = new Map<string, GroundedQuestionsCacheEntry>();
+const GROUNDED_QUESTIONS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes — comfortably longer than one onboarding session
+const GROUNDED_QUESTIONS_CACHE_SOFT_CAP = 1_000;
+function pruneGroundedQuestionsCache(now: number): void {
+    if (groundedQuestionsCache.size <= GROUNDED_QUESTIONS_CACHE_SOFT_CAP) return;
+    // First pass: drop entries that have already expired — those can't
+    // possibly be served again.
+    for (const [k, entry] of groundedQuestionsCache) {
+        if (entry.expiresAt <= now) groundedQuestionsCache.delete(k);
+    }
+    // Belt and suspenders: if a worker somehow racked up 1k live entries
+    // anyway, nuke the whole map. Worst case is one extra regeneration per
+    // artist on the next request — best-effort cache, by design.
+    if (groundedQuestionsCache.size > GROUNDED_QUESTIONS_CACHE_SOFT_CAP) groundedQuestionsCache.clear();
+}
+
 /** One candidate handed to Gemini. `key`/`sourceUrls`/`kind` never come back
  *  from the model — they're read off this object after the model picks a
  *  `signalId`, which is what makes fabrication structurally impossible
@@ -212,6 +257,11 @@ function parseModelAnswers(text: string): ModelAnswer[] {
  * `signalId` we ourselves supplied. Bound to ~20s; degrades to `[]` on any
  * failure (missing artist, no posts, Gemini down/timeout/bad output) so the
  * interview always falls back to the static three questions.
+ *
+ * Cached per `artistId`+`max` for `GROUNDED_QUESTIONS_CACHE_TTL_MS` — see the
+ * cache comment above — so repeated calls within one onboarding session (the
+ * interview step calls this on every turn it re-enters) reuse the first
+ * result instead of paying another ~12s Gemini round trip.
  */
 export async function generateGroundedQuestions(
     artistId: string,
@@ -219,6 +269,11 @@ export async function generateGroundedQuestions(
 ): Promise<GroundedQuestion[]> {
     const max = Math.max(0, opts?.max ?? DEFAULT_MAX_QUESTIONS);
     if (!artistId || max === 0) return [];
+
+    const cacheKey = `${artistId}::${max}`;
+    const now = Date.now();
+    const cached = groundedQuestionsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) return cached.value;
 
     try {
         const artist = await getArtistById(artistId);
@@ -277,6 +332,8 @@ export async function generateGroundedQuestions(
             });
         }
 
+        pruneGroundedQuestionsCache(now);
+        groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });
         return questions;
     } catch (e) {
         console.error("[generateGroundedQuestions] Error:", e);

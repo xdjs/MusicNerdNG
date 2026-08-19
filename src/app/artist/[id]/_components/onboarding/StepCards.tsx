@@ -157,10 +157,10 @@ function CandidateRow({ candidate, accepted, onToggleAccept, onDismiss, disabled
     const subtitle = profileSubtitle(candidate);
     return (
         <div
-            className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-colors ${
+            className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
                 accepted
                     ? "border-green-500/50 bg-green-500/10"
-                    : "border-dashed border-black/15 dark:border-white/15"
+                    : "border-dashed border-black/15 dark:border-white/15 hover:border-black/25 dark:hover:border-white/25"
             }`}
         >
             <div className="flex items-center gap-3 min-w-0">
@@ -179,7 +179,7 @@ function CandidateRow({ candidate, accepted, onToggleAccept, onDismiss, disabled
                     {subtitle && <span className="block text-sm text-gray-600 dark:text-gray-300 break-all">{subtitle}</span>}
                 </a>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
                 <button
                     type="button"
                     aria-label={`add ${candidate.siteName} profile`}
@@ -207,6 +207,12 @@ function CandidateRow({ candidate, accepted, onToggleAccept, onDismiss, disabled
     );
 }
 
+// Caps how much a burst of simultaneously-arriving candidates staggers by —
+// enough to read as a sequence, not so much that a late arrival (e.g. the
+// 6th of 6) feels like it's waiting on its own entrance.
+const CANDIDATE_STAGGER_STEP_MS = 60;
+const CANDIDATE_STAGGER_MAX_STEPS = 5;
+
 /** Live discovery feed — the "magic" moment: renders each candidate the
  *  instant its `candidate` SSE event arrives, one row appearing at a time as
  *  discovery finds them, instead of the whole search running silently and
@@ -214,17 +220,32 @@ function CandidateRow({ candidate, accepted, onToggleAccept, onDismiss, disabled
  *  decision lives in the terminal `ProfilesCard`'s candidates section, which
  *  reconciles this same data once the step completes). Renders nothing until
  *  the first candidate lands, so it never shows an empty "finding…" shell
- *  ahead of real results. */
+ *  ahead of real results.
+ *
+ *  Each row fades + rises in on mount (`animate-onboarding-panel-in`, same
+ *  entrance used for the whole chat panel — see globals.css, which already
+ *  disables it under prefers-reduced-motion). Rows already on screen never
+ *  replay it: React keeps their DOM node across re-renders (keyed by
+ *  `siteName`), so only a genuinely new arrival mounts fresh. A per-index
+ *  `animationDelay` staggers a same-tick burst (candidate SSE events that
+ *  land in one batched React update) into a visible sequence instead of a
+ *  simultaneous jump; well-spaced arrivals just get a small, capped head
+ *  start that isn't perceptible as lag. */
 export function LiveDiscoveryFeed({ candidates }: { candidates: ProfileCandidate[] }) {
     if (candidates.length === 0) return null;
     return (
-        <div className="glass-subtle rounded-2xl rounded-bl-md px-3 py-2.5 max-w-[80%] self-start space-y-1.5" data-testid="live-discovery-feed">
-            <p className="text-xs text-gray-600 dark:text-gray-300 px-1">Finding your profiles…</p>
-            <div className="space-y-1">
-                {candidates.map(candidate => {
+        <div className="glass-subtle rounded-2xl rounded-bl-md px-3.5 py-3 max-w-[80%] self-start space-y-2" data-testid="live-discovery-feed">
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-300 px-0.5">Finding your profiles…</p>
+            <div className="space-y-1.5">
+                {candidates.map((candidate, i) => {
                     const subtitle = profileSubtitle(candidate);
+                    const delayMs = Math.min(i, CANDIDATE_STAGGER_MAX_STEPS) * CANDIDATE_STAGGER_STEP_MS;
                     return (
-                        <div key={candidate.siteName} className="flex items-center gap-2 rounded-lg px-1 py-1 motion-safe:animate-onboarding-panel-in">
+                        <div
+                            key={candidate.siteName}
+                            className="flex items-center gap-2.5 rounded-lg px-1 py-1 animate-onboarding-panel-in"
+                            style={{ animationDelay: `${delayMs}ms` }}
+                        >
                             <ProfileAvatar link={candidate} />
                             <div className="min-w-0">
                                 <span className="text-sm font-medium text-black dark:text-white">{candidate.displayName}</span>
@@ -363,10 +384,10 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
                 </div>
             )}
             {visibleCandidates.length > 0 && (
-                <div className="pt-1 space-y-2">
+                <div className="pt-2 space-y-2.5">
                     <div className="flex items-center gap-2">
                         <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-                        <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                        <p className="text-xs font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
                             We also found these — confirm the ones that are yours
                         </p>
                         <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
@@ -580,12 +601,17 @@ function QuestionSources({ sourceUrls }: { sourceUrls?: string[] }) {
     if (!sourceUrls || sourceUrls.length === 0) return null;
     const visible = sourceUrls.slice(0, MAX_VISIBLE_SOURCE_URLS);
     return (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-gray-500/80 dark:text-gray-400/80">
             What prompted this:{" "}
             {visible.map((url, i) => (
                 <span key={url}>
                     {i > 0 && ", "}
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline hover:text-pink-500 dark:hover:text-pink-400">
+                    <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline decoration-dotted underline-offset-2 hover:decoration-solid hover:text-pink-500 dark:hover:text-pink-400 transition-colors"
+                    >
                         {sourceUrlLabel(url)}
                     </a>
                 </span>
