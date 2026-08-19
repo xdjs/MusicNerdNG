@@ -34,6 +34,13 @@ jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnVa
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
 jest.mock('@/server/utils/profileDiscovery', () => ({
+    // titleMatchesArtist stays the REAL implementation — turnHandlers reuses
+    // this exact helper for the website-to-vault ownership check, and the
+    // confirm_profiles tests below need genuine match/no-match behavior
+    // rather than a canned double. Its own module's other imports
+    // (artistQueries/services/linkPreview) are already mocked above, so
+    // requireActual here doesn't reach any unmocked DB/network code.
+    ...jest.requireActual('@/server/utils/profileDiscovery'),
     discoverArtistProfiles: jest.fn().mockResolvedValue([]),
     // Default: an empty stream (no searching/found events) — matches the old
     // default-empty-array behavior for every test that doesn't care about
@@ -439,6 +446,224 @@ describe('runOnboardingTurn', () => {
         expect(unrecognizedMsg).toContain('Social Links section');
         expect(writeRejectedMsg).toContain('Social Links section');
         expect(unrecognizedMsg).not.toContain("I'll try again");
+    });
+
+    it('confirm_profiles: a URL that fails platform extraction but resolves to a real page becomes a vault source, approved when the title matches the artist\'s name, with no "couldn\'t recognize" message', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined); // not a recognized platform URL
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: 'Nova Reyes — Official Site' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { fetchPageContent } = await import('@/server/utils/fetchPageContent');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://novareyesmusic.com/' }],
+            removedSiteNames: [],
+        }));
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
+            type: 'article', status: 'approved',
+        });
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
+        expect(chats.some(t => t.includes('added it as a source for your About'))).toBe(true);
+        expect(events.some(e => e.kind === 'error')).toBe(false);
+        // Confirms and advances like any other successful addition.
+        const oqMod = await import('@/server/utils/queries/onboardingQueries');
+        expect(oqMod.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'profiles');
+        // Background enrichment mirrors the vault_review addedUrls pattern —
+        // but must NOT touch title: we already captured a real og:title
+        // ("Nova Reyes — Official Site") synchronously, and fetchPageContent
+        // falls back to a generic "Source from <host>" on any hiccup, which
+        // must never downgrade it.
+        expect(fetchPageContent).toHaveBeenCalledWith('https://novareyesmusic.com/');
+        await new Promise(r => setTimeout(r, 0)); // flush the fire-and-forget .then() chain
+        expect(dq.updateVaultSourceContent).toHaveBeenCalledWith('new-src', {
+            snippet: 's', extractedText: 'e', ogImage: null,
+        });
+    });
+
+    it('confirm_profiles → vault: a website routed to the vault this turn does not suppress the web-discovery search for OTHER sources (forceVaultDiscovery)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: 'Nova Reyes — Official Site' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        // Simulate the DB actually reflecting our own insert by the time the
+        // vault step's emitStep re-reads it: the dedupe pre-check (no status
+        // arg) sees nothing yet, but the subsequent pending/approved reads
+        // (inside emitStep's vault case) see the approved row that was just
+        // written — exactly what a real Postgres round-trip would show.
+        dq.getVaultSourcesByArtistId
+            .mockResolvedValueOnce([]) // confirm_profiles dedupe pre-check
+            .mockResolvedValueOnce([]) // emitStep vault case: pending
+            .mockResolvedValueOnce([{ id: 'new-src', url: 'https://novareyesmusic.com/', status: 'approved' }]); // emitStep vault case: approved
+        const { searchAndPopulateVault } = await import('@/server/utils/queries/vaultWebSearch');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://novareyesmusic.com/' }],
+            removedSiteNames: [],
+        }));
+        // Without forceVaultDiscovery, approved.length > 0 would short-circuit
+        // discovery entirely — the artist's own site would be mistaken for
+        // "the vault has already been searched" and every OTHER source about
+        // them (press, interviews, reviews) would silently never be found.
+        expect(searchAndPopulateVault).toHaveBeenCalledWith('a1');
+    });
+
+    it('confirm_profiles: resubmitting the same website URL (e.g. a reconnect) is idempotent — no duplicate vault source', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        // The dedupe pre-check finds the URL already vaulted from an earlier
+        // attempt at this same turn (or an identical prior submission).
+        dq.getVaultSourcesByArtistId.mockResolvedValueOnce([
+            { id: 'existing-src', url: 'https://novareyesmusic.com/', status: 'approved' },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://novareyesmusic.com/' }],
+            removedSiteNames: [],
+        }));
+        expect(fetchLinkPreview).not.toHaveBeenCalledWith('https://novareyesmusic.com/');
+        expect(dq.insertVaultSource).not.toHaveBeenCalled();
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
+        expect(chats.some(t => t.includes('added it as a source for your About'))).toBe(true);
+    });
+
+    it('confirm_profiles: a vault insert failure reports a save problem, not "couldn\'t recognize" (the link WAS recognized as a real page)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: 'Nova Reyes — Official Site' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        dq.insertVaultSource.mockRejectedValueOnce(new Error('db boom'));
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://novareyesmusic.com/' }],
+            removedSiteNames: [],
+        }));
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        const failureMsg = chats.find(t => t.includes('novareyesmusic.com'));
+        expect(failureMsg).toBeDefined();
+        expect(failureMsg).not.toMatch(/couldn't recognize/);
+        expect(failureMsg).toMatch(/couldn't save/i);
+    });
+
+    it('confirm_profiles: a resolved page whose title does NOT match the artist\'s name is routed to the vault as pending, not approved', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: 'https://example.com/og.jpg', title: 'Totally Unrelated Blog' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://example.com/blog' }],
+            removedSiteNames: [],
+        }));
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://example.com/blog', title: 'Totally Unrelated Blog',
+            type: 'article', status: 'pending',
+        });
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
+        // Pending (no ownership evidence) gets the hedged copy, NOT the
+        // "it looks like your site" claim — that's reserved for a real match.
+        expect(chats.some(t => t.includes('added it as a possible source for your About'))).toBe(true);
+        expect(chats.some(t => t.includes('it looks like your site'))).toBe(false);
+    });
+
+    it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Social Links support', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        // fetchLinkPreview default mock already resolves { imageUrl: null, title: null } — no real page.
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://deadsite.example/gone' }],
+            removedSiteNames: [],
+        }));
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        const failureMsg = chats.find(t => t.includes('deadsite.example'));
+        expect(failureMsg).toBeDefined();
+        expect(failureMsg).toMatch(/couldn't recognize/);
+        // The fix: no longer unconditionally promises Social Links support —
+        // it's hedged, since urlmap has no generic website platform.
+        expect(failureMsg).toContain('if it\'s on a platform we support');
+        expect(failureMsg).toContain('Social Links section');
+        expect(dq.insertVaultSource).not.toHaveBeenCalled();
+        expect(chats.some(t => t.includes('added it as a source'))).toBe(false);
+    });
+
+    it('confirm_profiles: an unsafe URL is rejected by isUnsafeUrl before any fetch is attempted', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { isUnsafeUrl, fetchPageContent } = await import('@/server/utils/fetchPageContent');
+        isUnsafeUrl.mockReturnValueOnce(true);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'http://169.254.169.254/latest/meta-data' }],
+            removedSiteNames: [],
+        }));
+        expect(fetchLinkPreview).not.toHaveBeenCalledWith('http://169.254.169.254/latest/meta-data');
+        expect(fetchPageContent).not.toHaveBeenCalledWith('http://169.254.169.254/latest/meta-data');
+        expect(dq.insertVaultSource).not.toHaveBeenCalled();
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes('169.254.169.254') && t.includes("couldn't recognize"))).toBe(true);
+    });
+
+    it('confirm_profiles: a recognized platform URL and a fetchable non-platform URL in the same turn are each routed correctly (no interference)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+        extractArtistId
+            .mockResolvedValueOnce({ siteName: 'instagram', cardPlatformName: 'Instagram', id: 'nova' }) // recognized
+            .mockResolvedValueOnce(undefined); // not a platform — the artist's own site
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: 'Nova Reyes — Official Site' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://instagram.com/nova' }, { url: 'https://novareyesmusic.com/' }],
+            removedSiteNames: [],
+        }));
+        // Platform link: existing behavior, untouched.
+        expect(setArtistLink).toHaveBeenCalledWith('a1', 'instagram', 'nova');
+        // Non-platform link: routed to the vault, approved (name match).
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
+            type: 'article', status: 'approved',
+        });
+        const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
+        expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
+        expect(events.some(e => e.kind === 'error')).toBe(false);
     });
 
     it('vault step passes each pending source\'s ogImage (or null) through into the payload', async () => {

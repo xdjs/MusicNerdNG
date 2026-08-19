@@ -31,7 +31,7 @@ import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { synthesizeArtistDoc, generateAboutFromDoc, ARTIST_DOC_MAX_CHARS, GEMINI_TIMEOUT_MS } from "@/server/utils/artistDocService";
-import { discoverArtistProfilesStream, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
+import { discoverArtistProfilesStream, titleMatchesArtist, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
 import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/utils/linkPresentation";
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
@@ -202,6 +202,11 @@ async function generateInterviewAck(question: string, answer: string, questionIn
 // write rejected (e.g. a unique-constraint collision — already linked to
 // another profile). Conflating them as "unrecognized" is misleading in the
 // second case, so each gets its own message naming the offending link(s).
+//
+// A URL that fails platform extraction is no longer assumed unrecognized —
+// see the confirm_profiles handler's addedLinks loop, which tries it as a
+// vault source (an artist's own website) before giving up. Only a link that
+// ALSO fails to resolve to a real page still reaches buildUnrecognizedLinksMessage.
 
 const FAILURE_URL_DISPLAY_MAX = 48;
 
@@ -218,10 +223,18 @@ function pluralize(count: number, singular: string, plural: string): string {
     return count === 1 ? singular : plural;
 }
 
-/** extractArtistId returned nothing — the URL didn't include a recognizable
- *  username/profile path (e.g. a bare `https://www.instagram.com/`). Keeps
- *  the phrase "couldn't recognize" for backward compatibility with earlier
- *  copy, while now naming the offending link(s) and explaining why.
+/** extractArtistId returned nothing AND the URL also failed to resolve to a
+ *  real page (dead link, unsafe, or no usable metadata) — see the addedLinks
+ *  loop, which tries a fetchable non-platform URL as a vault source first.
+ *  Keeps the phrase "couldn't recognize" for backward compatibility with
+ *  earlier copy, while now naming the offending link(s) and explaining why.
+ *
+ *  The closing line is hedged ("if it's on a platform we support") rather
+ *  than asserting Social Links can hold it: urlmap has no generic website
+ *  platform (only `linktree`), so that used to be flatly wrong advice for
+ *  anything that isn't a supported platform — a bare `instagram.com` (no
+ *  username) genuinely can be added from Social Links, but a dead personal
+ *  domain can't, and the copy must not promise otherwise.
  *
  *  `blocked` must match what actually happens next: when the step is about
  *  to be re-emitted for a retry (Bug 2's all-failed path) the closing line
@@ -236,7 +249,7 @@ function buildUnrecognizedLinksMessage(urls: string[], blocked: boolean): string
     const linkNoun = pluralize(urls.length, "a direct profile link", "direct profile links");
     const tail = blocked
         ? "paste the profile URL and I'll try again."
-        : `you can add ${pluralize(urls.length, "it", "them")} anytime from the Social Links section of your page.`;
+        : `if it's on a platform we support, you can add ${pluralize(urls.length, "it", "them")} anytime from the Social Links section of your page.`;
     return `Heads up — I couldn't recognize ${noun}: ${list}. ${subject} ${verb} look like ${linkNoun} (no username or handle at the end) — ${tail}`;
 }
 
@@ -252,6 +265,48 @@ function buildWriteRejectedLinksMessage(urls: string[], blocked: boolean): strin
         ? "try a different link, or reach out if that seems wrong."
         : "you can try again anytime from the Social Links section of your page, or reach out if that seems wrong.";
     return `Heads up — I couldn't save ${noun}: ${list}. Looks like ${pronoun} already linked to another profile on Music Nerd — ${tail}`;
+}
+
+/** A pasted link that isn't a recognized platform profile but resolved to a
+ *  real page whose title carries the artist's own name — routed to the vault
+ *  as `approved` instead of rejected (the personal-website fix: urlmap has
+ *  no generic platform for an artist's own domain, so rejecting it outright
+ *  would throw away the best About source an artist can hand us). Only this
+ *  branch is allowed to claim "it looks like your site" — that claim is
+ *  exactly the evidence buildRoutedToVaultPendingMessage's URLs lack. One
+ *  short, plain line — no showmanship. */
+function buildRoutedToVaultOwnedMessage(urls: string[]): string {
+    const list = formatFailedLinkList(urls);
+    const subject = pluralize(urls.length, "That's not a platform profile", "Those aren't platform profiles");
+    const rest = pluralize(urls.length, "it looks like your site", "they look like your own sites");
+    const pronoun = pluralize(urls.length, "it", "them");
+    const noun = pluralize(urls.length, "a source", "sources");
+    return `${subject}: ${list} — but ${rest}, so I've added ${pronoun} as ${noun} for your About.`;
+}
+
+/** Same routing as buildRoutedToVaultOwnedMessage, but the page's title
+ *  didn't carry the artist's name — added as `pending` for curation at the
+ *  vault step (next) rather than approved outright, so the copy must not
+ *  assert ownership it doesn't have evidence for. */
+function buildRoutedToVaultPendingMessage(urls: string[]): string {
+    const list = formatFailedLinkList(urls);
+    const subject = pluralize(urls.length, "That's not a platform profile", "Those aren't platform profiles");
+    const pronoun = pluralize(urls.length, "it", "them");
+    const noun = pluralize(urls.length, "a possible source", "possible sources");
+    const verb = pluralize(urls.length, "it's", "they're");
+    return `${subject}: ${list} — I've added ${pronoun} as ${noun} for your About; you'll get to confirm ${verb} accurate in a moment.`;
+}
+
+/** extractArtistId found nothing, the URL resolved to a real page, but the
+ *  vault insert itself threw (a genuine DB failure). Distinct from
+ *  buildUnrecognizedLinksMessage — the link WAS recognized as a real page,
+ *  so calling it unrecognized would misreport what actually went wrong. */
+function buildVaultInsertFailedMessage(urls: string[]): string {
+    const list = formatFailedLinkList(urls);
+    const noun = pluralize(urls.length, "one of your links", `${urls.length} of your links`);
+    const pronoun = pluralize(urls.length, "it", "them");
+    const sourceNoun = pluralize(urls.length, "a source", "sources");
+    return `Heads up — I couldn't save ${noun} as ${sourceNoun} for your About: ${list}. Try again in a moment, or add ${pronoun} later from the vault step.`;
 }
 
 /** Bug 2 recovery copy: every submitted link failed and nothing ended up
@@ -344,7 +399,7 @@ async function buildProfilesPayload(artistId: string) {
  *  `open`) — re-emissions after a failed confirm or an out-of-step resync would
  *  otherwise stack another ~25s of search on top of write work already done this
  *  turn, for no benefit (the artist already saw the candidates once). */
-async function* emitStep(artistId: string, step: OnboardingStep, discoverProfiles = false): AsyncGenerator<TurnEvent> {
+async function* emitStep(artistId: string, step: OnboardingStep, discoverProfiles = false, forceVaultDiscovery = false): AsyncGenerator<TurnEvent> {
     switch (step) {
         case "profiles": {
             yield { kind: "progress", label: "Gathering your profiles", done: false };
@@ -417,12 +472,19 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
         }
         case "vault": {
             let pending = await getVaultSourcesByArtistId(artistId, "pending");
-            if (pending.length === 0) {
+            if (forceVaultDiscovery || pending.length === 0) {
                 // Approval-time discovery may have found nothing or still be running.
-                // Re-run ONLY when the vault is entirely empty (spec §4). Capped at 25s;
-                // on timeout `pending` stays empty and the vaultEmpty degrade path runs.
+                // Re-run when the vault is entirely empty (spec §4) — OR when this
+                // is the fresh profiles→vault transition and confirm_profiles just
+                // routed the artist's own website in as a bonus vault source
+                // (forceVaultDiscovery, set exactly once on that one transition).
+                // That source is a gift from the artist, not "the internet's take"
+                // on them, and must never be mistaken for "nothing left to search
+                // for" — see the website-to-vault fix's Notes on profiles→vault.
+                // Capped at 25s; on timeout `pending` stays as-is and the
+                // vaultEmpty degrade path runs if it's still empty.
                 const approved = await getVaultSourcesByArtistId(artistId, "approved");
-                if (approved.length === 0) {
+                if (forceVaultDiscovery || approved.length === 0) {
                     yield { kind: "progress", label: "Searching the web for sources about you", done: false };
                     try {
                         await Promise.race([
@@ -572,6 +634,30 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         // different copy below.
         const unrecognized: string[] = [];
         const writeRejected: string[] = [];
+        // A URL that doesn't extract to any platform (an artist's own
+        // website, most commonly — urlmap has no generic website platform)
+        // routed to the vault instead of rejected. Split by ownership
+        // confidence — the two get different copy below (buildRoutedToVault*),
+        // since only the approved bucket has any evidence it's the artist's
+        // own page.
+        const routedToVaultApproved: string[] = [];
+        const routedToVaultPending: string[] = [];
+        // The write succeeded (recognized fine) but the vault insert itself
+        // threw — a real DB failure, not an "unrecognized" link. Distinct
+        // bucket so the copy doesn't misreport what actually went wrong.
+        const vaultInsertFailed: string[] = [];
+        // Only needed for the ownership cross-check below, which no
+        // platform-recognized URL ever reaches — fetched at most once, so a
+        // turn with no failed-extraction URLs never pays for it.
+        let artistName: string | undefined;
+        // Idempotency: a reconnect can resubmit the exact same addedLinks
+        // (spec §9 — every handler upserts and continues, never double-acts).
+        // setArtistLink/clearArtistLink are naturally idempotent (same column,
+        // same value); a plain insertVaultSource is not, so URLs already in
+        // the vault (from an earlier attempt at this exact turn, or a
+        // duplicate paste) are looked up once and skipped rather than
+        // re-inserted as a second row.
+        let existingVaultStatusByUrl: Map<string, string> | undefined;
         for (const raw of turn.addedLinks ?? []) {
             let extracted;
             try {
@@ -582,7 +668,76 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
                 continue;
             }
             if (!extracted?.siteName || !extracted?.id) {
-                unrecognized.push(raw.url);
+                // Not a recognized platform profile. Before rejecting it, see
+                // if it's a real page we can route to the vault instead — the
+                // single best About source an artist can hand us (their own
+                // site) has nowhere to go in urlmap and must not be thrown
+                // away just because it isn't a platform profile.
+                if (isUnsafeUrl(raw.url)) {
+                    unrecognized.push(raw.url);
+                    continue;
+                }
+                if (existingVaultStatusByUrl === undefined) {
+                    const existing = await getVaultSourcesByArtistId(artistId);
+                    existingVaultStatusByUrl = new Map(existing.map(s => [s.url, s.status]));
+                }
+                const existingStatus = existingVaultStatusByUrl.get(raw.url);
+                if (existingStatus) {
+                    // Already routed to the vault (an earlier attempt at this
+                    // turn, or a duplicate paste) — idempotent no-op, not a
+                    // fresh insert or a fetch.
+                    (existingStatus === "approved" ? routedToVaultApproved : routedToVaultPending).push(raw.url);
+                    continue;
+                }
+                const preview = await fetchLinkPreview(raw.url);
+                if (!preview.title && !preview.imageUrl) {
+                    // Dead link / no metadata to go on — genuinely unrecognized.
+                    unrecognized.push(raw.url);
+                    continue;
+                }
+                // Resolves to a real page. Confidence on ownership: does the
+                // page's own title carry the artist's name? If so, it's
+                // authoritative and self-authored — the artist just handed it
+                // to us — so approve it outright. Otherwise park it as
+                // `pending` for curation at the vault step, same as any other
+                // web-found source. Reuses the same name cross-check the
+                // handle-probing tier uses (`titleMatchesArtist`) rather than
+                // a second matcher.
+                if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
+                const ownedByArtist = !!preview.title && titleMatchesArtist(preview.title, artistName);
+                try {
+                    const source = await insertVaultSource({
+                        artistId,
+                        url: raw.url,
+                        title: preview.title ?? undefined,
+                        type: inferTypeFromUrl(raw.url),
+                        status: ownedByArtist ? "approved" : "pending",
+                    });
+                    existingVaultStatusByUrl.set(raw.url, ownedByArtist ? "approved" : "pending");
+                    // Fire-and-forget content enrichment (snippet/extractedText,
+                    // and title too if we don't already have a good one) so doc
+                    // synthesis isn't left with a bare URL — mirrors the
+                    // vault_review addedUrls background fetch further below.
+                    // Title is deliberately left alone when `preview.title` is
+                    // already set: fetchPageContent falls back to a generic
+                    // "Source from <host>" title on ANY non-ok response, and
+                    // must never be allowed to downgrade the real og:title (e.g.
+                    // "Pete Rango") we already captured synchronously above.
+                    if (source?.id) {
+                        fetchPageContent(raw.url).then(content => {
+                            updateVaultSourceContent(source.id, {
+                                ...(preview.title ? {} : { title: content.title }),
+                                snippet: content.snippet,
+                                extractedText: content.extractedText,
+                                ogImage: content.ogImage,
+                            }).catch(e => console.error("[onboarding] Background content update failed:", e));
+                        }).catch(e => console.error("[onboarding] Background fetch failed:", e));
+                    }
+                    (ownedByArtist ? routedToVaultApproved : routedToVaultPending).push(raw.url);
+                } catch (e) {
+                    console.error(`[onboarding] insertVaultSource failed for ${raw.url}:`, e);
+                    vaultInsertFailed.push(raw.url);
+                }
                 continue;
             }
             try {
@@ -604,7 +759,7 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         });
         const submittedAdditions = (turn.addedLinks ?? []).length > 0;
         const allAdditionsFailed = submittedAdditions
-            && unrecognized.length + writeRejected.length === (turn.addedLinks ?? []).length;
+            && unrecognized.length + writeRejected.length + vaultInsertFailed.length === (turn.addedLinks ?? []).length;
 
         if (submittedAdditions && allAdditionsFailed && !hasAtLeastOneLink) {
             // The user submitted links, every single one failed, and the
@@ -614,6 +769,7 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             // and re-emit the profiles step as the recovery path.
             if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, true) };
             if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, true) };
+            if (vaultInsertFailed.length > 0) yield { kind: "chat", text: buildVaultInsertFailedMessage(vaultInsertFailed) };
             yield { kind: "chat", text: PROFILES_RETRY_NUDGE };
             yield* emitStep(artistId, "profiles");
             return;
@@ -622,8 +778,17 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         await confirmOnboardingStep(artistId, "profiles");
         if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };
         if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, false) };
+        if (vaultInsertFailed.length > 0) yield { kind: "chat", text: buildVaultInsertFailedMessage(vaultInsertFailed) };
+        if (routedToVaultApproved.length > 0) yield { kind: "chat", text: buildRoutedToVaultOwnedMessage(routedToVaultApproved) };
+        if (routedToVaultPending.length > 0) yield { kind: "chat", text: buildRoutedToVaultPendingMessage(routedToVaultPending) };
         yield { kind: "chat", text: NARRATION.profilesDone };
-        yield* emitStep(artistId, "vault");
+        // Fresh profiles→vault transition — fires at most once per artist
+        // (confirmOnboardingStep above permanently moves currentStep off
+        // "profiles"). Force discovery whenever this turn itself dropped a
+        // source into the vault, so that source can never masquerade as
+        // "the vault already has everything it needs" and suppress the real
+        // web search — see emitStep's vault case.
+        yield* emitStep(artistId, "vault", false, routedToVaultApproved.length + routedToVaultPending.length > 0);
         return;
     }
 
