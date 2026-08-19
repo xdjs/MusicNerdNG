@@ -28,6 +28,11 @@ export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?
 // Gemini
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
 
+// Web search (profile discovery's last-resort tier — see webSearch.ts).
+// Empty TAVILY_API_KEY = webSearch() returns [] immediately, no network call.
+export const TAVILY_API_KEY = process.env.TAVILY_API_KEY ?? "";
+export const WEB_SEARCH_PROVIDER = process.env.WEB_SEARCH_PROVIDER ?? "tavily";
+
 // Resend (transactional email — approval notifications). Empty = sends are skipped.
 export const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
 

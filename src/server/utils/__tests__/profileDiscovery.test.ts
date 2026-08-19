@@ -1,10 +1,12 @@
 // @ts-nocheck
 import { jest } from '@jest/globals';
 
-const mockGenerate = jest.fn();
-jest.mock('@/server/lib/gemini', () => ({
-    getGemini: jest.fn(() => ({ models: { generateContent: mockGenerate } })),
-    GEMINI_MODEL_FLASH: 'gemini-2.5-flash',
+// Tier 4 — real web search (Tavily), replacing what used to be a per-platform
+// Gemini call. Defaults to "no results" so any test that doesn't care about
+// tier 4 gets a clean miss for every remaining platform, same as the old
+// `mockGenerate.mockResolvedValue({ text: 'NONE' })` filler used to provide.
+jest.mock('@/server/utils/webSearch', () => ({
+    webSearch: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('@/server/utils/queries/artistQueries', () => ({
@@ -64,9 +66,10 @@ async function setup() {
     const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
     const { musicPlatformData, spotifyProvider, deezerProvider } = await import('@/server/utils/musicPlatform');
     const { getArtistMappings } = await import('@/server/utils/idMappingService');
+    const { webSearch } = await import('@/server/utils/webSearch');
     const { discoverArtistProfiles, deriveNameSlugs, titleMatchesArtist, isProbeHit, stripHandleAndBoilerplate } = await import('../profileDiscovery');
     return {
-        artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, deezerProvider, getArtistMappings,
+        artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, deezerProvider, getArtistMappings, webSearch,
         discoverArtistProfiles, deriveNameSlugs, titleMatchesArtist, isProbeHit, stripHandleAndBoilerplate,
     };
 }
@@ -74,41 +77,40 @@ async function setup() {
 describe('discoverArtistProfiles', () => {
     beforeEach(() => {
         jest.resetModules();
-        mockGenerate.mockReset();
     });
 
-    it('returns [] and never throws when Gemini fails on every attempt', async () => {
-        const { artistQ, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('returns [] and never throws when the web search provider fails on every attempt', async () => {
+        const { artistQ, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockRejectedValue(new Error('Gemini is down'));
+        webSearch.mockRejectedValue(new Error('Tavily is down'));
 
         await expect(discoverArtistProfiles('a1')).resolves.toEqual([]);
     });
 
-    it('tier 3 makes one call PER remaining platform (no combined multi-platform call, no retry) and gives up cleanly on an unparseable response', async () => {
-        const { artistQ, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('tier 4 makes one search PER remaining platform (no combined multi-platform call, no retry) and gives up cleanly when nothing comes back', async () => {
+        const { artistQ, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({ text: 'not json at all' });
+        webSearch.mockResolvedValue([]);
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([]);
-        // One single-platform attempt per tier-3 target, not one shared retry-once budget.
-        expect(mockGenerate).toHaveBeenCalledTimes(TIER3_PLATFORMS.length);
+        // One single-platform search per tier-4 target, not one shared retry-once budget.
+        expect(webSearch).toHaveBeenCalledTimes(TIER3_PLATFORMS.length);
     });
 
     it('never throws and returns [] when getArtistById throws', async () => {
-        const { artistQ, discoverArtistProfiles } = await setup();
+        const { artistQ, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockRejectedValue(new Error('db down'));
         await expect(discoverArtistProfiles('a1')).resolves.toEqual([]);
-        expect(mockGenerate).not.toHaveBeenCalled();
+        expect(webSearch).not.toHaveBeenCalled();
     });
 
-    it('returns [] without calling Gemini when the artist already has every curated platform', async () => {
-        const { artistQ, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('returns [] without calling web search when the artist already has every curated platform', async () => {
+        const { artistQ, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue({
             id: 'a1', name: 'Pete Rango', spotify: 's1', deezer: 'd1', instagram: 'i1', tiktok: 't1',
             x: 'x1', youtube: 'y1', soundcloud: 'sc1', bandcamp: 'b1', twitch: 'tw1', facebook: 'f1',
@@ -117,58 +119,58 @@ describe('discoverArtistProfiles', () => {
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([]);
-        expect(mockGenerate).not.toHaveBeenCalled();
+        expect(webSearch).not.toHaveBeenCalled();
         expect(musicPlatformData.getArtist).not.toHaveBeenCalled(); // short-circuited before enrichment too
     });
 
-    it('resolves the real artist name via musicPlatformData.getArtist (the bare-Deezer-ID case) and uses it in every tier-3 prompt', async () => {
-        const { artistQ, extractArtistId, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('resolves the real artist name via musicPlatformData.getArtist (the bare-Deezer-ID case) and uses it in every tier-4 search query', async () => {
+        const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: null, deezer: '94933462' });
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT); // name: "Pete Rango"
-        mockGenerate.mockResolvedValue({ text: 'NONE' });
+        webSearch.mockResolvedValue([]);
         extractArtistId.mockResolvedValue(null);
 
         await discoverArtistProfiles('a1');
-        expect(mockGenerate).toHaveBeenCalledTimes(TIER3_PLATFORMS.length); // one attempt per platform, no retry
-        for (const call of mockGenerate.mock.calls) {
-            expect(call[0].contents).toContain('Pete Rango');
+        expect(webSearch).toHaveBeenCalledTimes(TIER3_PLATFORMS.length); // one search per platform, no retry
+        for (const call of webSearch.mock.calls) {
+            expect(call[0]).toContain('Pete Rango');
         }
     });
 
-    it('returns [] without calling Gemini when neither artist.name nor enrichment resolves a name', async () => {
-        const { artistQ, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('returns [] without calling web search when neither artist.name nor enrichment resolves a name', async () => {
+        const { artistQ, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: null, deezer: '94933462' });
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(null);
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([]);
-        expect(mockGenerate).not.toHaveBeenCalled();
+        expect(webSearch).not.toHaveBeenCalled();
     });
 
     it('drops a candidate whose URL fails extractArtistId (gate a)', async () => {
-        const { artistQ, extractArtistId, musicPlatformData, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({
-            text: '[{"platform":"X","url":"https://x.com/not-a-real-profile","reasoning":"guess"}]',
-        });
-        extractArtistId.mockResolvedValue(null); // couldn't parse a username/handle
+        webSearch.mockResolvedValue([
+            { url: 'https://x.com/not-a-real-profile', title: 'Pete Rango', snippet: 'guess' },
+        ]);
+        extractArtistId.mockResolvedValue(null); // couldn't parse a username/handle — filtered before it's even a candidate
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([]);
     });
 
     it('drops a candidate that resolves to a platform the artist already has (gate b)', async () => {
-        const { artistQ, extractArtistId, musicPlatformData, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue({ ...BASE_ARTIST, instagram: 'already-linked' });
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({
-            text: '[{"platform":"Instagram","url":"https://instagram.com/petewrango","reasoning":"looks right"}]',
-        });
+        webSearch.mockResolvedValue([
+            { url: 'https://instagram.com/petewrango', title: 'Pete Rango', snippet: 'looks right' },
+        ]);
         extractArtistId.mockResolvedValue({ siteName: 'instagram', cardPlatformName: 'Instagram', id: 'petewrango' });
 
         const result = await discoverArtistProfiles('a1');
@@ -176,27 +178,31 @@ describe('discoverArtistProfiles', () => {
     });
 
     it('drops a candidate that resolves to a platform outside the curated/writable set (e.g. youtubechannel)', async () => {
-        const { artistQ, extractArtistId, musicPlatformData, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({
-            text: '[{"platform":"YouTube","url":"https://youtube.com/channel/UCabc123","reasoning":"channel page"}]',
-        });
+        webSearch.mockResolvedValue([
+            { url: 'https://youtube.com/channel/UCabc123', title: 'Pete Rango', snippet: 'channel page' },
+        ]);
+        // A youtube-domain search resolving to the "youtubechannel" siteName (not
+        // "youtube") mismatches the platform this search was scoped to — filtered
+        // by the same platform-match rule as an outright wrong-platform result.
         extractArtistId.mockResolvedValue({ siteName: 'youtubechannel', cardPlatformName: 'YouTube', id: 'UCabc123' });
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([]);
     });
 
-    it('dedupes by siteName, keeping the first/highest-confidence hit (gate c)', async () => {
-        const { artistQ, extractArtistId, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('keeps the first-ranked web search result when multiple results resolve to the same platform (gate c / rank-order selection)', async () => {
+        const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({
-            text: '[{"url":"https://tiktok.com/@peterango","reasoning":"first"},{"url":"https://www.tiktok.com/@pete.rango","reasoning":"second"}]',
-        });
+        webSearch.mockResolvedValue([
+            { url: 'https://tiktok.com/@peterango', title: 'Pete Rango (first)', snippet: '' },
+            { url: 'https://www.tiktok.com/@pete.rango', title: 'Pete Rango (second)', snippet: '' },
+        ]);
         extractArtistId.mockImplementation(async (url: string) => {
             if (url.includes('@peterango')) return { siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'peterango' };
             if (url.includes('@pete.rango')) return { siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'pete.rango' };
@@ -206,7 +212,7 @@ describe('discoverArtistProfiles', () => {
         const result = await discoverArtistProfiles('a1');
         expect(result).toHaveLength(1);
         expect(result[0].value).toBe('peterango');
-        expect(result[0].reasoning).toBe('first');
+        expect(result[0].reasoning).toContain('(first)'); // the second result was never even tried
     });
 
     // NOTE: this test used to run a Spotify match through TIER 2 (platform
@@ -218,13 +224,15 @@ describe('discoverArtistProfiles', () => {
     // platform with no preview image gets dropped) against the tier it still
     // applies to — see the new tier-2-survives test right below for the
     // behavior change itself.
-    it('drops a tier-3 (grounded-search) candidate on a platform that reliably serves OG data (instagram) when the preview has no image (gate e)', async () => {
-        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+    it('drops a tier-4 (web-search) candidate on a platform that reliably serves OG data (instagram) when the preview has no image (gate e)', async () => {
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockImplementation(async (args: { contents: string }) => (
-            args.contents.includes('Instagram') ? { text: 'https://instagram.com/peterango' } : { text: 'NONE' }
+        webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+            opts?.includeDomains?.[0] === 'instagram.com'
+                ? [{ url: 'https://instagram.com/peterango', title: 'Pete Rango', snippet: '' }]
+                : []
         ));
         extractArtistId.mockResolvedValue({ siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterango' });
         fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null });
@@ -248,20 +256,19 @@ describe('discoverArtistProfiles', () => {
         ]);
         extractArtistId.mockResolvedValue({ siteName: 'spotify', cardPlatformName: 'Spotify', id: 'real123' });
         fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null }); // no og:image — must not disqualify a tier-2 hit
-        mockGenerate.mockResolvedValue({ text: 'NONE' });
 
         const result = await discoverArtistProfiles('a1');
         expect(result.find(r => r.siteName === 'spotify')).toMatchObject({ siteName: 'spotify', value: 'real123', previewImage: null });
     });
 
     it('keeps a candidate on a platform known NOT to serve OG data (x) even with no preview image', async () => {
-        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({
-            text: '[{"url":"https://x.com/peterango","reasoning":"matches bio"}]',
-        });
+        webSearch.mockResolvedValue([
+            { url: 'https://x.com/peterango', title: 'Pete Rango', snippet: 'matches bio' },
+        ]);
         extractArtistId.mockResolvedValue({ siteName: 'x', cardPlatformName: 'X', id: 'peterango' });
         fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null });
 
@@ -273,16 +280,15 @@ describe('discoverArtistProfiles', () => {
 
     it('enriches a surviving candidate with urlmap presentation metadata (displayName/logoUrl/colorHex) exactly like buildProfilesPayload', async () => {
         // NOTE: this candidate is now resolved by tier-3 handle PROBING, not
-        // Gemini (tier 4) — the name-derived slug "peterango" probes clean on
-        // instagram before Gemini is ever consulted, so `reasoning` below is
-        // probe-authored, not the (unused) Gemini "matches" string. Keyed to
-        // one exact URL so exactly one probe hits, deterministically (every
-        // other probed URL — other derived slugs, other platforms — misses).
+        // tier-4 web search — the name-derived slug "peterango" probes clean
+        // on instagram before a search is ever needed, so `reasoning` below
+        // is probe-authored, not a web-search hit. Keyed to one exact URL so
+        // exactly one probe hits, deterministically (every other probed URL
+        // — other derived slugs, other platforms — misses).
         const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
-        musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({ text: 'NONE' }); // tier 4 never needs to contribute anything here
+        musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT); // tier 4 never needs to contribute anything here (default: [])
         extractArtistId.mockImplementation(async (url: string) =>
             url === 'https://instagram.com/peterango' ? { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterango' } : null,
         );
@@ -306,11 +312,13 @@ describe('discoverArtistProfiles', () => {
     });
 
     it('normalizes the urlmap placeholder color (#000000) to null, same as buildProfilesPayload', async () => {
-        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS); // tiktok row has colorHex: '#000000'
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({ text: '[{"url":"https://tiktok.com/@peterango","reasoning":"x"}]' });
+        webSearch.mockResolvedValue([
+            { url: 'https://tiktok.com/@peterango', title: 'Pete Rango', snippet: 'x' },
+        ]);
         extractArtistId.mockResolvedValue({ siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'peterango' });
         fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null });
 
@@ -319,12 +327,14 @@ describe('discoverArtistProfiles', () => {
     });
 
     it('falls back to the original candidate URL as profileUrl when the urlmap-canonical URL does not round-trip through extractArtistId', async () => {
-        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS); // x row: appStringFormat 'https://x.com/%@'
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        const originalUrl = 'https://twitter.com/peterango'; // Gemini found the legacy twitter.com domain
-        mockGenerate.mockResolvedValue({ text: `[{"url":"${originalUrl}","reasoning":"legacy domain"}]` });
+        const originalUrl = 'https://twitter.com/peterango'; // web search found the legacy twitter.com domain
+        webSearch.mockResolvedValue([
+            { url: originalUrl, title: 'Pete Rango', snippet: 'legacy domain' },
+        ]);
         extractArtistId.mockImplementation(async (url: string) => {
             if (url === originalUrl) return { siteName: 'x', cardPlatformName: 'X', id: 'peterango' };
             if (url === 'https://x.com/peterango') return { siteName: 'x', cardPlatformName: 'X', id: 'SOMETHING-ELSE' }; // simulated non-invertible regex
@@ -340,8 +350,8 @@ describe('discoverArtistProfiles', () => {
     // --- Tier 1 — artist_id_mappings -----------------------------------
 
     describe('tier 1 — id mappings', () => {
-        it('turns a high-confidence deezer mapping into a candidate without ever calling Gemini or a platform search', async () => {
-            const { artistQ, extractArtistId, musicPlatformData, getArtistMappings, discoverArtistProfiles } = await setup();
+        it('turns a high-confidence deezer mapping into a candidate without ever calling web search or a platform search', async () => {
+            const { artistQ, extractArtistId, musicPlatformData, getArtistMappings, webSearch, discoverArtistProfiles } = await setup();
             // Missing ONLY deezer — every other column already set, so tier 1
             // alone satisfies everything and tiers 2/3 never engage.
             artistQ.getArtistById.mockResolvedValue({
@@ -367,9 +377,9 @@ describe('discoverArtistProfiles', () => {
                 reasoning: 'Cross-platform ID mapping (high confidence, source: wikidata)',
             }]);
             // deezer was fully satisfied by tier 1 and every other column is
-            // already present — nothing left for tier 2/3 to do.
+            // already present — nothing left for tier 2/3/4 to do.
             expect(musicPlatformData.getArtist).not.toHaveBeenCalled();
-            expect(mockGenerate).not.toHaveBeenCalled();
+            expect(webSearch).not.toHaveBeenCalled();
         });
 
         it('skips a low-confidence mapping row', async () => {
@@ -380,7 +390,6 @@ describe('discoverArtistProfiles', () => {
                 { platform: 'deezer', platformId: '94933462', confidence: 'low', source: 'name_search', reasoning: null },
             ]);
             musicPlatformData.getArtist.mockResolvedValue({ ...ENRICHMENT, platform: 'spotify' });
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             const result = await discoverArtistProfiles('a1');
             // The low-confidence deezer mapping must not appear as a candidate.
@@ -409,7 +418,7 @@ describe('discoverArtistProfiles', () => {
 
     describe('tier 2 — platform search', () => {
         it('picks an exact case-insensitive name match found via Spotify search', async () => {
-            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, discoverArtistProfiles } = await setup();
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, webSearch, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: null, deezer: '94933462' });
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
             musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT); // resolved name: "Pete Rango"
@@ -419,13 +428,12 @@ describe('discoverArtistProfiles', () => {
             ]);
             extractArtistId.mockResolvedValue({ siteName: 'spotify', cardPlatformName: 'Spotify', id: 'right1' });
             fetchLinkPreview.mockResolvedValue({ imageUrl: 'https://cdn/preview.jpg', title: null }); // spotify is OG-reliable (gate d)
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             const result = await discoverArtistProfiles('a1');
             expect(result.find(r => r.siteName === 'spotify')).toMatchObject({ siteName: 'spotify', value: 'right1' });
-            // Never asked Gemini about spotify — tier 3 excludes spotify/deezer entirely.
-            for (const call of mockGenerate.mock.calls) {
-                expect(call[0].contents).not.toMatch(/Spotify/);
+            // Never searched the web for spotify — tier 4 excludes spotify/deezer entirely.
+            for (const call of webSearch.mock.calls) {
+                expect(call[0]).not.toMatch(/Spotify/i);
             }
         });
 
@@ -437,7 +445,6 @@ describe('discoverArtistProfiles', () => {
             spotifyProvider.searchArtists.mockResolvedValue([
                 { platform: 'spotify', platformId: 'wrong1', name: 'DJ Someone Else', imageUrl: null, followerCount: 100000, albumCount: 5, genres: [], profileUrl: 'https://open.spotify.com/artist/wrong1', topTrackName: null },
             ]);
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             const result = await discoverArtistProfiles('a1');
             expect(result.find(r => r.siteName === 'spotify')).toBeUndefined();
@@ -452,7 +459,6 @@ describe('discoverArtistProfiles', () => {
                 { platform: 'spotify', platformId: 'a', name: 'Pete Rango', imageUrl: null, followerCount: 50, albumCount: 1, genres: [], profileUrl: 'https://open.spotify.com/artist/a', topTrackName: null },
                 { platform: 'spotify', platformId: 'b', name: 'Pete Rango', imageUrl: null, followerCount: 50, albumCount: 1, genres: [], profileUrl: 'https://open.spotify.com/artist/b', topTrackName: null },
             ]);
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             const result = await discoverArtistProfiles('a1');
             expect(result.find(r => r.siteName === 'spotify')).toBeUndefined();
@@ -461,65 +467,236 @@ describe('discoverArtistProfiles', () => {
 
     // --- Tier 3 — per-platform grounded search, parallel, fault-tolerant --
 
-    describe('tier 3 — per-platform grounded search', () => {
-        // Probing now runs BEFORE Gemini and resolves most/all platforms for
-        // a well-behaved artist, so a call-count assertion against Gemini
-        // must not leave that outcome to chance. Force every tier-3 probe to
-        // miss (no title, no image at all — a miss under ANY handle-confirmed
-        // vs -derived nuance) so this test isolates tier-4 (Gemini) behavior
-        // specifically: Gemini's answer uses a handle ("petemusicofficial")
-        // no probe would ever try, so the two tiers can't collide.
-        it('runs one call per remaining platform in parallel and tolerates individual failures, once tier-3 probing has fully missed', async () => {
-            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+    describe('tier 4 — per-platform web search', () => {
+        // Probing now runs BEFORE web search and resolves most/all platforms
+        // for a well-behaved artist, so a call-count assertion against
+        // `webSearch` must not leave that outcome to chance. Force every
+        // tier-3 probe to miss (no title, no image at all — a miss under ANY
+        // handle-confirmed vs -derived nuance) so this test isolates tier-4
+        // (web search) behavior specifically: the search hit uses a handle
+        // ("peterangomusic") no probe would ever try, so the two tiers
+        // can't collide.
+        it('runs one search per remaining platform in parallel and tolerates individual failures, once tier-3 probing has fully missed', async () => {
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST); // deezer only — every social platform missing
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
             musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
             fetchLinkPreview.mockImplementation(async (url: string) =>
-                url === 'https://instagram.com/petemusicofficial'
+                url === 'https://instagram.com/peterangomusic'
                     ? { imageUrl: 'https://cdn/preview.jpg', title: null } // instagram is OG-reliable (gate e)
                     : { imageUrl: null, title: null }, // every tier-3 probe URL — guaranteed miss
             );
             extractArtistId.mockImplementation(async (url: string) => {
-                if (url.includes('instagram.com/petemusicofficial')) return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'petemusicofficial' };
+                if (url.includes('instagram.com/peterangomusic')) return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterangomusic' };
                 if (url.includes('youtube.com/@peterango')) return { siteName: 'youtube', cardPlatformName: 'YouTube', id: 'peterango' };
                 return null;
             });
-            mockGenerate.mockImplementation(async (args: { contents: string }) => {
-                if (args.contents.includes('Instagram')) return { text: 'https://instagram.com/petemusicofficial' };
-                if (args.contents.includes('YouTube')) throw new Error('network blip');
-                if (args.contents.includes('X ')) return { text: 'not json, not a url, not NONE either' };
-                return { text: 'NONE' };
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => {
+                const domain = opts?.includeDomains?.[0];
+                if (domain === 'instagram.com') return [{ url: 'https://instagram.com/peterangomusic', title: 'Pete Rango - Official', snippet: '' }];
+                if (domain === 'youtube.com') throw new Error('network blip'); // simulated provider failure
+                if (domain === 'x.com') return [{ url: 'not a real url at all', title: 'Pete Rango', snippet: '' }]; // malformed, filtered by the https check
+                return [];
             });
 
             const result = await discoverArtistProfiles('a1');
 
-            expect(mockGenerate).toHaveBeenCalledTimes(TIER3_PLATFORMS.length); // one call per platform, run in parallel — tier 3 probing confirmed nothing
+            expect(webSearch).toHaveBeenCalledTimes(TIER3_PLATFORMS.length); // one search per platform, run in parallel — tier 3 probing confirmed nothing
             expect(result.map(r => r.siteName).sort()).toEqual(['instagram']);
             // The failing/malformed platforms degraded to "no candidate", not a thrown error.
         });
 
-        it('rejects a response that resolves to a DIFFERENT platform than the one it was asked about', async () => {
-            const { artistQ, extractArtistId, musicPlatformData, discoverArtistProfiles } = await setup();
+        it('rejects a search hit that resolves to a DIFFERENT platform than the one it was asked about', async () => {
+            const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
             musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-            // Every call "helpfully" returns a TikTok URL regardless of which platform was asked about.
-            mockGenerate.mockResolvedValue({ text: 'https://tiktok.com/@peterango' });
+            // Every search "helpfully" returns a TikTok URL regardless of which platform was asked about.
+            webSearch.mockResolvedValue([{ url: 'https://tiktok.com/@peterango', title: 'Pete Rango', snippet: '' }]);
             extractArtistId.mockImplementation(async (url: string) =>
                 url.includes('tiktok.com') ? { siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'peterango' } : null,
             );
 
             const result = await discoverArtistProfiles('a1');
-            // Only the call that was actually asked about tiktok may keep its answer.
+            // Only the search that was actually scoped to tiktok.com may keep its answer.
             expect(result).toHaveLength(1);
             expect(result[0].siteName).toBe('tiktok');
+        });
+
+        it('rejects a search result whose page belongs to a different person, even though the URL/handle looks plausible', async () => {
+            // Regression coverage for the reported live failure: a search-shaped
+            // last resort must not accept a plausible-looking-but-wrong hit —
+            // querying for artist "Pete Rango" must not surface an unrelated
+            // band's page just because the URL is well-formed and resolvable.
+            const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT); // "Pete Rango"
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+                opts?.includeDomains?.[0] === 'instagram.com'
+                    ? [{
+                        url: 'https://instagram.com/sonsofsilverband',
+                        title: 'Sons of Silver (@sonsofsilverband) • Instagram photos and videos',
+                        snippet: 'Official page of the band Sons of Silver.',
+                    }]
+                    : []
+            ));
+            extractArtistId.mockImplementation(async (url: string) =>
+                url === 'https://instagram.com/sonsofsilverband'
+                    ? { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'sonsofsilverband' }
+                    : null,
+            );
+
+            const result = await discoverArtistProfiles('a1');
+            // The name cross-check rejects it before it's even a candidate —
+            // never reaches extractArtistId's downstream gates a second time.
+            expect(result).toEqual([]);
+        });
+
+        it('restricts each platform search to that platform\'s own domain via includeDomains', async () => {
+            const { artistQ, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST); // deezer only — every social platform missing
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            webSearch.mockResolvedValue([]);
+
+            await discoverArtistProfiles('a1');
+
+            const calledDomains = webSearch.mock.calls.map((call: unknown[]) => (call[1] as { includeDomains?: string[] })?.includeDomains);
+            expect(calledDomains.sort()).toEqual([
+                ['bandcamp.com'], ['facebook.com'], ['instagram.com'], ['soundcloud.com'],
+                ['tiktok.com'], ['twitch.tv'], ['x.com'], ['youtube.com'],
+            ].sort());
+        });
+
+        // --- Regression coverage for real false positives observed running
+        // this tier live against the actual Tavily API (see the web-search
+        // report) — these are not hypothetical, they're the exact URL
+        // shapes and name collisions a live run produced before the
+        // looksLikeProfileUrl / handleEchoesArtistName gates were added.
+
+        it('rejects search results whose URLs are not genuine profile pages (reel/watch-query/extra-path-segment) — live Tavily regression', async () => {
+            const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST); // "Pete Rango"
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => {
+                const domain = opts?.includeDomains?.[0];
+                // Live-observed, verbatim shapes (artist name swapped for the fixture's "Pete Rango"):
+                if (domain === 'instagram.com') return [{ url: 'https://instagram.com/reel/DUYpZyADrM-', title: 'Instagram', snippet: 'Pete Rango' }];
+                if (domain === 'youtube.com') return [{ url: 'https://www.youtube.com/watch?v=I15VFyYsSuw', title: 'Pete Rango - a video', snippet: '' }];
+                if (domain === 'twitch.tv') return [{ url: 'https://www.twitch.tv/peterango/about', title: 'Pete Rango', snippet: '' }];
+                return [];
+            });
+            // extractArtistId's DB-driven regexes would happily resolve all
+            // three (that's the bug this regression guards) — the point is
+            // they're rejected by the URL-shape check BEFORE this even runs
+            // for the malformed candidates.
+            extractArtistId.mockImplementation(async (url: string) => {
+                if (url === 'https://instagram.com/reel/DUYpZyADrM-') return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'reel' };
+                if (url === 'https://www.youtube.com/watch?v=I15VFyYsSuw') return { siteName: 'youtube', cardPlatformName: 'YouTube', id: 'watch?v=I15VFyYsSuw' };
+                if (url === 'https://www.twitch.tv/peterango/about') return { siteName: 'twitch', cardPlatformName: 'Twitch', id: 'peterango' };
+                return null;
+            });
+
+            const result = await discoverArtistProfiles('a1');
+            expect(result).toEqual([]);
+        });
+
+        it('accepts Bandcamp\'s canonical bare-domain-root URL shape (<handle>.bandcamp.com, zero path segments)', async () => {
+            // Bandcamp is the ONE platform where a bare `https://<domain>` (zero
+            // path segments) is the CANONICAL profile shape — the subdomain,
+            // not a path segment, is the handle. `looksLikeProfileUrl` has to
+            // allow this case, not just exactly-one-segment.
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+                opts?.includeDomains?.[0] === 'bandcamp.com'
+                    ? [{ url: 'https://peterango.bandcamp.com', title: 'Pete Rango', snippet: '' }]
+                    : []
+            ));
+            extractArtistId.mockImplementation(async (url: string) =>
+                url === 'https://peterango.bandcamp.com' ? { siteName: 'bandcamp', cardPlatformName: 'Bandcamp', id: 'peterango' } : null,
+            );
+            fetchLinkPreview.mockResolvedValue({ imageUrl: null, title: null }); // bandcamp isn't OG-reliable — gate e doesn't apply
+
+            const result = await discoverArtistProfiles('a1');
+            expect(result.find(r => r.siteName === 'bandcamp')).toMatchObject({ siteName: 'bandcamp', value: 'peterango' });
+        });
+
+        it('rejects a Bandcamp editorial/official subdomain (blog.bandcamp.com) even though it matches the bare-domain-root URL shape — live Tavily regression', async () => {
+            const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+                opts?.includeDomains?.[0] === 'bandcamp.com'
+                    ? [{ url: 'https://blog.bandcamp.com', title: 'Pete Rango — Bandcamp Daily', snippet: '' }]
+                    : []
+            ));
+            extractArtistId.mockImplementation(async (url: string) =>
+                url === 'https://blog.bandcamp.com' ? { siteName: 'bandcamp', cardPlatformName: 'Bandcamp', id: 'blog' } : null,
+            );
+
+            const result = await discoverArtistProfiles('a1');
+            expect(result).toEqual([]);
+        });
+
+        it('rejects a handle with zero relation to the artist name even when the TITLE genuinely contains the artist name (same-surname stranger) — live Tavily regression', async () => {
+            // Live-observed: artist on file "shumov" (a bare, generic surname)
+            // matched an unrelated "Ivan Shumov" whose own handle ("inoise")
+            // carries no relation to either name. The title alone ("Ivan
+            // Shumov (@inoise) / X") is NOT contradictory evidence — it
+            // genuinely contains "shumov" as a substring — so only a
+            // handle-level check catches this; a title-only check does not.
+            const { artistQ, extractArtistId, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'shumov', deezer: '94933462' });
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue({ ...ENRICHMENT, name: 'shumov' });
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+                opts?.includeDomains?.[0] === 'x.com'
+                    ? [{ url: 'https://x.com/inoise', title: 'Ivan Shumov (@inoise) / X', snippet: '' }]
+                    : []
+            ));
+            extractArtistId.mockImplementation(async (url: string) =>
+                url === 'https://x.com/inoise' ? { siteName: 'x', cardPlatformName: 'X', id: 'inoise' } : null,
+            );
+
+            const result = await discoverArtistProfiles('a1');
+            expect(result).toEqual([]);
+        });
+
+        it('accepts a handle-echo match even when the search result has no usable title text at all', async () => {
+            // The handle itself is already strong evidence (see
+            // handleEchoesArtistName) — a search result with no title/snippet
+            // text to cross-check must not be treated as a failure, mirroring
+            // tier 3's "confirmed handle -> image alone trusted" exception.
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Grimes', deezer: '94933462' });
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue({ ...ENRICHMENT, name: 'Grimes' });
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+                opts?.includeDomains?.[0] === 'instagram.com'
+                    ? [{ url: 'https://www.instagram.com/grimes', title: '', snippet: '' }]
+                    : []
+            ));
+            extractArtistId.mockImplementation(async (url: string) =>
+                url === 'https://www.instagram.com/grimes' ? { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'grimes' } : null,
+            );
+            fetchLinkPreview.mockResolvedValue({ imageUrl: 'https://cdn/grimes.jpg', title: null }); // instagram is OG-reliable (gate e)
+
+            const result = await discoverArtistProfiles('a1');
+            expect(result).toHaveLength(1);
+            expect(result[0]).toMatchObject({ siteName: 'instagram', value: 'grimes' });
         });
     });
 
     // --- Cross-tier sequencing --------------------------------------------
 
     it('does not re-search a platform in a later tier once an earlier tier already proposed it', async () => {
-        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, getArtistMappings, discoverArtistProfiles } = await setup();
+        const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, getArtistMappings, webSearch, discoverArtistProfiles } = await setup();
         // Missing deezer (tier 1 satisfies it) and spotify (tier 2 satisfies it).
         artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango' });
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
@@ -536,36 +713,36 @@ describe('discoverArtistProfiles', () => {
             if (url.includes('spotify.com')) return { siteName: 'spotify', cardPlatformName: 'Spotify', id: 'spot1' };
             return null;
         });
-        mockGenerate.mockResolvedValue({ text: 'NONE' });
 
         const result = await discoverArtistProfiles('a1');
 
         expect(result.map(r => r.siteName).sort()).toEqual(['deezer', 'spotify']);
-        // Tier 3 never asks about spotify or deezer (no search API platforms are never tier-3 targets),
-        // and having already been satisfied by tiers 1/2 they aren't re-proposed by tier 3 either.
-        for (const call of mockGenerate.mock.calls) {
-            expect(call[0].contents).not.toMatch(/Spotify|Deezer/);
+        // Tier 4 never searches for spotify or deezer (no search API platforms are never tier-4 targets),
+        // and having already been satisfied by tiers 1/2 they aren't re-proposed by tier 4 either.
+        for (const call of webSearch.mock.calls) {
+            expect(call[0]).not.toMatch(/Spotify|Deezer/i);
         }
     });
 
-    it('total failure across every tier (DB throws, providers throw, Gemini throws) still resolves to [] without throwing', async () => {
-        const { artistQ, musicPlatformData, spotifyProvider, deezerProvider, getArtistMappings, discoverArtistProfiles } = await setup();
+    it('total failure across every tier (DB throws, providers throw, web search throws) still resolves to [] without throwing', async () => {
+        const { artistQ, musicPlatformData, spotifyProvider, deezerProvider, getArtistMappings, webSearch, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockRejectedValue(new Error('urlmap down'));
         getArtistMappings.mockRejectedValue(new Error('mappings table down'));
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
         spotifyProvider.searchArtists.mockRejectedValue(new Error('spotify down'));
         deezerProvider.searchArtists.mockRejectedValue(new Error('deezer down'));
-        mockGenerate.mockRejectedValue(new Error('gemini down'));
+        webSearch.mockRejectedValue(new Error('tavily down'));
 
         await expect(discoverArtistProfiles('a1')).resolves.toEqual([]);
     });
 
     // --- Tier 3 (NEW) — deterministic handle probing ----------------------
-    // Replaces the old per-platform Gemini search (still exercised above,
-    // now as the tier-4 last resort). No Gemini/network mocking needed for
-    // the pure-function tests; the end-to-end ones drive the whole cascade
-    // through the public `discoverArtistProfiles`, same as every test above.
+    // Replaces the old per-platform Gemini search (exercised above as the
+    // tier-4 last resort, now a real web search instead). No webSearch/
+    // network mocking needed for the pure-function tests; the end-to-end
+    // ones drive the whole cascade through the public `discoverArtistProfiles`,
+    // same as every test above.
 
     describe('deriveNameSlugs', () => {
         it('derives concatenated, hyphenated, dot- and underscore-joined variants for a two-word name', async () => {
@@ -671,7 +848,6 @@ describe('discoverArtistProfiles', () => {
             extractArtistId.mockImplementation(async (u: string) =>
                 u === scenario.url ? { siteName: scenario.platform, cardPlatformName: scenario.platform, id: 'peterango' } : null,
             );
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
             return discoverArtistProfiles('a1');
         }
 
@@ -742,7 +918,7 @@ describe('discoverArtistProfiles', () => {
             extractArtistId.mockImplementation(async (url: string) =>
                 url === 'https://youtube.com/@peterango' ? { siteName: 'youtube', cardPlatformName: 'YouTube', id: 'peterango' } : null,
             );
-            mockGenerate.mockResolvedValue({ text: 'NONE' }); // tier-4 last resort finds nothing extra
+            // tier-4 last resort finds nothing extra (default webSearch mock: [])
 
             const result = await discoverArtistProfiles('a1');
             expect(result).toHaveLength(1);
@@ -760,7 +936,6 @@ describe('discoverArtistProfiles', () => {
                     : { imageUrl: null, title: null },
             );
             extractArtistId.mockResolvedValue(null);
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             const result = await discoverArtistProfiles('a1');
             expect(result).toEqual([]);
@@ -783,11 +958,59 @@ describe('discoverArtistProfiles', () => {
                 if (url === 'https://facebook.com/p3t3rango') return { siteName: 'facebook', cardPlatformName: 'Facebook', id: 'p3t3rango' };
                 return null;
             });
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             const result = await discoverArtistProfiles('a1');
             expect(result.map(r => r.siteName).sort()).toEqual(['facebook', 'instagram']);
             expect(result.every(r => r.value === 'p3t3rango')).toBe(true);
+        });
+
+        // The highest-value interaction between the two tiers: a handle
+        // CONFIRMED by tier 4's web search must feed back into tier 3's own
+        // probe mechanism, resolving other platforms that reuse the same
+        // handle WITHOUT a second search call for each of them.
+        it('feeds a tier-4 search-confirmed handle back into the probe tier\'s propagation set, resolving another platform without a second search', async () => {
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
+            // The artist's real handle ("p3t3rango") isn't derivable from the
+            // name via slugification and isn't an existing link either — it
+            // can ONLY enter the candidate set via a web search hit.
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST); // deezer only, name "Pete Rango"
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            fetchLinkPreview.mockImplementation(async (url: string) => {
+                // Instagram is OG-reliable, so the tier-4 (web search) candidate
+                // needs an og:image to clear gate (e) — same as any other search hit.
+                if (url === 'https://instagram.com/p3t3rango') return { imageUrl: 'https://cdn/instagram-pic.jpg', title: null };
+                // TikTok's urlmap appStringFormat is 'https://tiktok.com/@%@' — the
+                // propagation probe hits THIS url, confirmed by image alone (no
+                // title to cross-check), which is only trusted for a `confirmed`
+                // handle — exactly the case a search-confirmed handle is.
+                if (url === 'https://tiktok.com/@p3t3rango') return { imageUrl: 'https://cdn/tiktok-pic.jpg', title: null };
+                return { imageUrl: null, title: null }; // every OTHER probe (seed pass, other platforms) misses
+            });
+            extractArtistId.mockImplementation(async (url: string) => {
+                if (url === 'https://instagram.com/p3t3rango') return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'p3t3rango' };
+                if (url === 'https://tiktok.com/@p3t3rango') return { siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'p3t3rango' };
+                return null;
+            });
+            // Only Instagram's search turns anything up.
+            webSearch.mockImplementation(async (_query: string, opts: { includeDomains?: string[] }) => (
+                opts?.includeDomains?.[0] === 'instagram.com'
+                    ? [{ url: 'https://instagram.com/p3t3rango', title: 'Pete Rango (@p3t3rango) • Instagram photos and videos', snippet: '' }]
+                    : [] // every other platform's search comes up empty
+            ));
+
+            const result = await discoverArtistProfiles('a1');
+
+            expect(result.map(r => r.siteName).sort()).toEqual(['instagram', 'tiktok']);
+            expect(result.find(r => r.siteName === 'tiktok')?.value).toBe('p3t3rango');
+            // TikTok was resolved by PROPAGATING the search-confirmed handle
+            // through a probe fetch, not a second search — tiktok.com's search
+            // was only ever called once (the normal per-platform tier-4 sweep),
+            // and it returned nothing.
+            const tiktokSearchCalls = webSearch.mock.calls.filter(
+                (call: unknown[]) => (call[1] as { includeDomains?: string[] })?.includeDomains?.[0] === 'tiktok.com',
+            );
+            expect(tiktokSearchCalls).toHaveLength(1);
         });
 
         it('never probes X — a platform known to block server-side OG scraping — so a miss there can never produce a false "found"', async () => {
@@ -795,7 +1018,6 @@ describe('discoverArtistProfiles', () => {
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
             musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-            mockGenerate.mockResolvedValue({ text: 'NONE' });
 
             await discoverArtistProfiles('a1');
 
@@ -804,12 +1026,12 @@ describe('discoverArtistProfiles', () => {
         });
 
         it('never throws and still resolves to [] when every probe attempt rejects outright', async () => {
-            const { artistQ, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+            const { artistQ, fetchLinkPreview, musicPlatformData, webSearch, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
             musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
             fetchLinkPreview.mockRejectedValue(new Error('network down'));
-            mockGenerate.mockRejectedValue(new Error('gemini also down'));
+            webSearch.mockRejectedValue(new Error('tavily also down'));
 
             await expect(discoverArtistProfiles('a1')).resolves.toEqual([]);
         });

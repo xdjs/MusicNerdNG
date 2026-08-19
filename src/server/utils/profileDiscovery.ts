@@ -35,22 +35,44 @@
  *            on 4 of 7 platforms and found ZERO candidates for an artist who
  *            genuinely has profiles on all of them — see the
  *            discovery-rebuild report).
- *   Tier 4 — Gemini, kept ONLY as a last resort for whatever tier 3's
- *            probing couldn't confirm and only if the time budget allows:
- *            one small call per remaining platform, each restricted to a
- *            single platform's domain — never one big open-web call asking
- *            about every platform at once (that shape measured at 44s
- *            end-to-end with ZERO candidates for an obscure artist).
+ *   Tier 4 — a REAL web search (Tavily, via `webSearch.ts`), kept ONLY as a
+ *            last resort for whatever tier 3's probing couldn't confirm and
+ *            only if the time budget allows: one search per remaining
+ *            platform, each restricted to that platform's own domain via
+ *            `include_domains` — never one big open-web call asking about
+ *            every platform at once. This replaces what used to be a
+ *            per-platform GEMINI search: a grounded LLM deciding whether/
+ *            what to search is not a search API — measured live, that shape
+ *            timed out on most platforms and, when it did answer, confidently
+ *            returned an unrelated stranger's profile (see the web-search
+ *            report). Every search hit is a LEAD, not proof: each result
+ *            first has to look like an actual profile URL (`looksLikeProfileUrl`
+ *            — a search engine returns arbitrary pages, not just profiles,
+ *            and `extractArtistId`'s regexes were never designed to tell the
+ *            difference), then the resolved HANDLE has to echo the artist's
+ *            name (`handleEchoesArtistName` — the primary discriminator; a
+ *            title/snippet-only check is too weak for a same-surname
+ *            stranger or a common-word artist name — see
+ *            `resultPassesNameCheck` for the live-tested detail), before the
+ *            surviving candidate runs the full `validateCandidate` gate
+ *            pipeline below like every other tier.
  *
- * A grounded model (tier 4) will confidently invent URLs, so every candidate
- * it proposes is validated before it's ever shown to an artist; see the
- * numbered gates in `validateCandidate` below. Tiers 1/2/3 are deterministic
- * (DB read, search API, or a direct HTTP probe) and never hallucinate a URL,
- * so the OG-existence gate only re-applies to tier 4 — tier 3's own probe
- * fetch already IS that check, so it isn't repeated. Nothing here writes to
- * the database; discovery only PROPOSES, the existing `confirm_profiles` →
+ * A search result (tier 4) is a lead a stranger's page can satisfy just as
+ * easily as the real artist's, so every candidate it proposes is validated
+ * before it's ever shown to an artist; see the numbered gates in
+ * `validateCandidate` below. Tiers 1/2/3 are deterministic (DB read, search
+ * API, or a direct HTTP probe) and never hallucinate/misattribute a URL, so
+ * the OG-existence gate only re-applies to tier 4 — tier 3's own probe fetch
+ * already IS that check, so it isn't repeated. Nothing here writes to the
+ * database; discovery only PROPOSES, the existing `confirm_profiles` →
  * `extractArtistId` → `setArtistLink` path (unchanged) is what actually
  * saves an accepted link.
+ *
+ * Tier 4 also FEEDS BACK into tier 3's probing: any handle it confirms is
+ * propagated through the exact same probe mechanism tier 3 uses internally
+ * (see `propagateConfirmedHandles`) — so one successful search (say,
+ * Instagram) can resolve X/TikTok/Facebook for free from the confirmed
+ * handle, without a second search call per platform.
  *
  * Results STREAM: `discoverArtistProfilesStream` is an async generator that
  * yields a `searching`/`checked` pair as each platform lookup starts/settles
@@ -64,7 +86,7 @@ import { extractArtistId } from "@/server/utils/services";
 import { fetchLinkPreview, type LinkPreview } from "@/server/utils/linkPreview";
 import { musicPlatformData, spotifyProvider, deezerProvider } from "@/server/utils/musicPlatform";
 import type { MusicPlatformArtist } from "@/server/utils/musicPlatform";
-import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
+import { webSearch, type WebSearchResult } from "@/server/utils/webSearch";
 import { getArtistMappings } from "@/server/utils/idMappingService";
 import {
     PROFILE_DISPLAY_COLUMNS,
@@ -97,19 +119,20 @@ export interface DiscoveredProfile {
 // real, obscure artist, returning ZERO candidates because the call blew its
 // own timeout), the cascade below is fast BY CONSTRUCTION: tier 1 is a DB
 // read, tier 2 is one or two deterministic HTTP calls, tier 3 is a handful of
-// sub-second HTTP probes run with a bounded concurrency, and tier 4 (Gemini,
-// last resort only) is N small single-platform grounded calls run in
-// PARALLEL — the slowest of those (not their sum) bounds the tier. Worst
-// case is roughly tier1(<1s) + tier2(~1-2s) + tier3(a couple probe rounds,
-// each ≤PROBE_CONCURRENCY-wide and individually sub-second) +
-// tier4(TIER3_CALL_TIMEOUT_MS, only for whatever's still missing) + a
-// per-candidate preview fetch (≤4s, 8s worst case chained for Spotify — see
+// sub-second HTTP probes run with a bounded concurrency, and tier 4 (a real
+// web search, last resort only) is N single-platform search calls run in
+// PARALLEL, each bounded by `webSearch.ts`'s own ~6s per-request timeout — the
+// slowest of those (not their sum) bounds the tier, plus one more bounded
+// probe round if tier 4 confirms a handle to propagate. Worst case is roughly
+// tier1(<1s) + tier2(~1-2s) + tier3(a couple probe rounds, each
+// ≤PROBE_CONCURRENCY-wide and individually sub-second) + tier4(~6s, only for
+// whatever's still missing) + a propagate round (sub-second, probe-shaped) +
+// a per-candidate preview fetch (≤4s, 8s worst case chained for Spotify — see
 // linkPreview.ts) ≈ well under 15s. DISCOVERY_BUDGET_MS remains a hard
 // backstop, checked between tiers inside the generator itself, so a
 // pathological run (e.g. a hung DB connection) still can't blow the turn
 // budget — it stops yielding instead.
 const DISCOVERY_BUDGET_MS = 20_000;
-const TIER3_CALL_TIMEOUT_MS = 8_000;
 
 // Platforms whose og:image scrape reliably resolves for a real profile
 // (verified against the live sites — see linkPreview.ts). A miss here is a
@@ -148,20 +171,6 @@ const HANDLE_BASED_PLATFORM_DOMAINS: Partial<Record<ProfileDisplayColumn, string
     facebook: "facebook.com",
 };
 
-function buildIdentityContext(record: Record<string, unknown>, enrichment: MusicPlatformArtist | null): string {
-    const parts: string[] = [];
-    if (enrichment) {
-        const followerPart = enrichment.followerCount != null ? `, ${enrichment.followerCount} fans/followers` : "";
-        parts.push(`Verified via ${enrichment.platform}: "${enrichment.name}"${followerPart}`);
-        if (enrichment.topTrackName) parts.push(`Known track: "${enrichment.topTrackName}"`);
-        if (enrichment.genres.length > 0) parts.push(`Genres: ${enrichment.genres.join(", ")}`);
-    }
-    for (const col of PROFILE_DISPLAY_COLUMNS) {
-        const value = record[col];
-        if (typeof value === "string" && value) parts.push(`${col}: ${value}`);
-    }
-    return parts.length > 0 ? `\n\nWhat we already know about this artist:\n${parts.join("\n")}` : "";
-}
 
 // --- Tier 1: our own cross-platform ID mappings ---------------------------
 // `artist_id_mappings` (see idMappingService.ts) anchors on Spotify and maps
@@ -632,97 +641,254 @@ async function* tierThreeHandleProbeStream(
     }
 }
 
-// --- Tier 4: Gemini, kept ONLY as a last resort -----------------------------
+// --- Tier 4: a real web search, kept ONLY as a last resort -----------------
 // Whatever tier 3's deterministic handle probing couldn't confirm falls
-// through here — one small Gemini call PER platform,
-// each scoped to a single domain and asking for a single URL back — never
-// the retired shape (one call, every platform, JSON array, Google Search
-// grounding wide open). Run in parallel via Promise.all: concurrency is
-// inherently bounded by PROFILE_DISPLAY_COLUMNS' fixed, small size (at most
-// 8 candidates here), so the slowest single call (capped at
-// TIER3_CALL_TIMEOUT_MS) bounds the whole tier, not their sum.
+// through here — one Tavily search PER remaining platform, each restricted
+// to that platform's own domain via `include_domains` — never one big
+// open-web call asking about every platform at once, and never a model
+// deciding whether/what to search (the retired Gemini shape this replaces —
+// see the module docblock and the web-search report). Run in parallel:
+// concurrency is inherently bounded by PROFILE_DISPLAY_COLUMNS' fixed, small
+// size (at most 8 candidates here), so the slowest single search (capped by
+// `webSearch.ts`'s own ~6s request timeout) bounds the whole tier, not their
+// sum.
 
-function buildTierThreePrompt(artistName: string, identityContext: string, platformDisplayName: string, domain: string): string {
-    return `You are researching the real-world music artist "${artistName}" to find their OFFICIAL profile on ${platformDisplayName} ONLY.${identityContext}
+const WEB_SEARCH_MAX_RESULTS = 5;
 
-Search the web, but restrict your search to pages on ${domain}. Find "${artistName}"'s official/verified ${platformDisplayName} profile — not a fan page, not a press article, not a search results page.
-
-Rules:
-- Only return a URL if you are genuinely confident it belongs to THIS specific artist, not a different person or band who happens to share the name. If there is any real ambiguity, return nothing.
-- Never invent or guess a plausible-looking URL — only a URL you actually found via search.
-
-Respond with ONLY the profile URL and nothing else — no other text, no markdown. If you cannot confidently find one on ${domain}, respond with exactly: NONE`;
+/** The search query for a platform: the artist's resolved name plus whatever
+ *  disambiguating context is actually available. `MusicPlatformArtist` has
+ *  no location field, so — unlike a hand-written research prompt — this
+ *  can't include one; genre (when known) plus the literal words "music
+ *  artist" is what's available to disambiguate a same-named stranger. */
+function buildTierFourQuery(artistName: string, enrichment: MusicPlatformArtist | null): string {
+    const parts = [artistName];
+    if (enrichment?.genres?.[0]) parts.push(enrichment.genres[0]);
+    parts.push("music artist");
+    return parts.join(" ");
 }
 
-/** Parses a tier-3 response. The prompt asks for a bare URL (or `NONE`), but
- *  the parser also tolerates a JSON-array shape (`[{"url": ..., "reasoning":
- *  ...}]`) for resilience against a model that ignores the "bare URL only"
- *  instruction — only the first item is used, since this tier is one
- *  platform in, one candidate out by construction. */
-function parseTierThreeResponse(text: string): { url: string; reasoning: string | null } | null {
-    const trimmed = (text ?? "").trim();
-    if (!trimmed) return null;
-
-    const arrayMatch = trimmed.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-        try {
-            const parsed = JSON.parse(arrayMatch[0]);
-            const first = Array.isArray(parsed) ? parsed[0] : null;
-            if (first && typeof first.url === "string" && first.url.length > 0) {
-                return { url: first.url, reasoning: typeof first.reasoning === "string" ? first.reasoning : null };
-            }
-        } catch {
-            // fall through — not valid JSON, try the bare-URL shape below
-        }
-        return null;
+// Tiers 1-3's candidate URLs are always CONSTRUCTED by our own code (a
+// provider's own canonical `profileUrl`, or `urlmap.appStringFormat` filled
+// in with a handle) — so `extractArtistId`'s DB-driven regexes, which
+// capture "the first path segment" as if it were always a handle, never had
+// to distinguish a profile page from any other page on the domain. Tier 4 is
+// the first tier to feed it an ARBITRARY page a search engine actually
+// returned, and live testing against the real Tavily API (see the
+// web-search report) surfaced exactly that gap: `instagram.com/reel/<id>`,
+// `youtube.com/watch?v=<id>`, and `twitch.tv/<handle>/about` all satisfy
+// those regexes, producing a garbage "handle" (`reel`, `watch?v=<id>`,
+// `<handle>`+wrong-page) that would write straight into `artists` if
+// accepted. `looksLikeProfileUrl` is the fix: a POSITIVE shape requirement
+// (not a blocklist of known-bad paths) applied BEFORE `extractArtistId` ever
+// runs. Facebook's regex also legitimately supports `profile.php?id=N` and
+// `people/<slug>/<id>` — both rejected by this rule; tier 4 accepts losing
+// numeric-ID Facebook matches rather than special-case a second URL shape
+// (see the report for the reasoning).
+function looksLikeProfileUrl(rawUrl: string): boolean {
+    let url: URL;
+    try {
+        url = new URL(rawUrl);
+    } catch {
+        return false;
     }
-
-    if (/^none$/i.test(trimmed) || /no confident/i.test(trimmed)) return null;
-    const urlMatch = trimmed.match(/https?:\/\/\S+/);
-    if (!urlMatch) return null;
-    return { url: urlMatch[0].replace(/[)\].,'"]+$/, ""), reasoning: null };
+    if (url.search || url.hash) return false; // e.g. youtube.com/watch?v=...
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length > 1) return false; // e.g. instagram.com/reel/<id>, twitch.tv/<handle>/about
+    // Zero path segments (a bare `https://<domain>`) is allowed, not just
+    // exactly-one: Bandcamp's canonical artist URL IS the domain root
+    // (`https://<handle>.bandcamp.com`, the subdomain — not a path segment —
+    // is the handle; see `isReservedBandcampSubdomain` below). Every OTHER
+    // platform's `extractArtistId` regex requires a path capture, so a bare
+    // `https://x.com`/`https://instagram.com` still fails to resolve
+    // downstream — this doesn't loosen anything for them.
+    if (segments.length === 0) return true;
+    return segments[0].replace(/^@/, "").length > 0;
 }
 
-/** One small Gemini call PER remaining platform, all kicked off together but
- *  yielded as EACH individual call resolves (via `settleAsCompleted`) — never
- *  a `Promise.all` barrier that lets the slowest platform hold up the rest.
- *  Yields `[platform, candidate | null]` for every targeted platform so the
- *  caller can emit a "checked" signal even for a `NONE`/failed response. */
-async function* tierThreeGroundedSearchStream(
+/** Bandcamp's regex captures ANY subdomain as a "handle" (`<sub>.bandcamp.com`
+ *  IS the real URL shape for an artist's own store), which also matches
+ *  Bandcamp's own editorial/official subdomains — `blog.bandcamp.com`
+ *  surfaced live for an unrelated artist. `looksLikeProfileUrl` can't catch
+ *  this (a subdomain isn't a path segment), so this is the one
+ *  platform-specific carve-out: a short, well-known reserved-subdomain list,
+ *  confined to bandcamp only — not a general blocklist pattern. */
+const BANDCAMP_RESERVED_SUBDOMAINS = new Set(["blog", "daily", "help", "support", "get"]);
+
+function isReservedBandcampSubdomain(rawUrl: string): boolean {
+    try {
+        return BANDCAMP_RESERVED_SUBDOMAINS.has(new URL(rawUrl).hostname.toLowerCase().split(".")[0]);
+    } catch {
+        return false;
+    }
+}
+
+/** Best-effort leetspeak/number-substitution normalization layered on top of
+ *  `normalizeForCompare` below — common social handles substitute a digit
+ *  for a visually similar letter (`p3t3rango` for "Pete Rango")
+ *  SPECIFICALLY because the plain name is already taken elsewhere. Without
+ *  this, `handleEchoesArtistName` would reject exactly the real-world
+ *  handle shape this feature exists to find (see the module docblock's
+ *  "instagram.com/sonsofsilverband" motivating failure — the opposite
+ *  problem: a handle with ZERO relation to the artist's name). */
+function deleetHandle(s: string): string {
+    return s.replace(/0/g, "o").replace(/1/g, "i").replace(/3/g, "e").replace(/4/g, "a").replace(/5/g, "s").replace(/7/g, "t");
+}
+
+/** The PRIMARY identity signal for a tier-4 candidate: does the extracted
+ *  HANDLE itself echo the artist's name (loose containment, either
+ *  direction, tolerating leetspeak)? Live testing turned up same-surname
+ *  strangers (artist on file: "shumov"; search hit: an unrelated "Ivan
+ *  Shumov" whose handle "inoise" carries zero relation to either name) that
+ *  a title-only check does NOT catch — "shumov" is a genuine substring of
+ *  "Ivan Shumov", so the title itself is not contradictory evidence, only
+ *  the handle is. This is the check that rejects those. It is deliberately
+ *  a HARD requirement (not one-of-two-signals) — see `resultPassesNameCheck`
+ *  for why title evidence alone can't substitute. */
+function handleEchoesArtistName(handle: string, artistName: string): boolean {
+    const normArtist = normalizeForCompare(artistName);
+    if (!normArtist) return false;
+    for (const candidate of [handle, deleetHandle(handle)]) {
+        const normHandle = normalizeForCompare(candidate);
+        if (normHandle && (normHandle.includes(normArtist) || normArtist.includes(normHandle))) return true;
+    }
+    return false;
+}
+
+/** The name cross-check every tier-4 search RESULT must clear before it's
+ *  even considered a candidate:
+ *   (1) `looksLikeProfileUrl` — the URL has to look like a profile page in
+ *       the first place (see above).
+ *   (2) `extractArtistId` resolves it, for the PLATFORM this search was
+ *       scoped to (never a different platform's URL slipping through).
+ *   (3) `handleEchoesArtistName` — the resolved HANDLE must echo the
+ *       artist's name. This is the primary discriminator (see above) and is
+ *       REQUIRED, not optional.
+ *   (4) if the search result's TITLE (never the snippet — ordinary prose
+ *       can innocently contain a common-word artist name, e.g. an artist
+ *       literally named "Whilst") carries real name text after stripping
+ *       the handle/boilerplate (`stripHandleAndBoilerplate`, the same
+ *       helper tier 3's own probing uses), that text must not contradict
+ *       the artist's name. No usable title text — absent, or a stylized/
+ *       emoji display name that normalizes to nothing — is NOT a failure:
+ *       (3) is already strong evidence on its own, mirroring tier 3's
+ *       "confirmed handle -> image alone trusted" exception.
+ *  A bare search result is a LEAD, never proof — this is what stops a
+ *  plausible-but-wrong hit from ever reaching `validateCandidate`. */
+async function resultPassesNameCheck(
+    result: WebSearchResult,
+    platform: ProfileDisplayColumn,
     artistName: string,
-    identityContext: string,
+): Promise<boolean> {
+    if (!looksLikeProfileUrl(result.url)) return false;
+    if (platform === "bandcamp" && isReservedBandcampSubdomain(result.url)) return false;
+
+    let extracted;
+    try {
+        extracted = await extractArtistId(result.url);
+    } catch {
+        return false;
+    }
+    if (!extracted?.siteName || !extracted?.id || extracted.siteName !== platform) return false;
+    if (!handleEchoesArtistName(extracted.id, artistName)) return false;
+
+    const residual = result.title ? stripHandleAndBoilerplate(result.title, extracted.id) : "";
+    if (normalizeForCompare(residual) && !titleMatchesArtist(residual, artistName)) return false;
+
+    return true;
+}
+
+/** One Tavily search PER remaining platform, all kicked off together but
+ *  yielded as EACH individual search resolves (via `settleAsCompleted`) —
+ *  never a `Promise.all` barrier that lets the slowest platform hold up the
+ *  rest. Each search can return several results; every result that passes
+ *  `resultPassesNameCheck` becomes a candidate, IN RANK ORDER — the caller
+ *  tries them in that order and stops at the first one that also clears
+ *  `validateCandidate`'s gates (a top search hit is often a fan page or the
+ *  wrong same-named artist, so trying only the first raw result would
+ *  under-perform for reasons that look like the search API failing). Yields
+ *  `[platform, candidate[]]` (possibly `[]`) for every targeted platform so
+ *  the caller can emit a "checked" signal even when nothing came back.
+ *  Never throws — a `webSearch` failure or an individual result's failed
+ *  name check degrades to no candidate for that platform only. */
+async function* tierFourWebSearchStream(
+    artistName: string,
+    enrichment: MusicPlatformArtist | null,
     missing: Set<ProfileDisplayColumn>,
-    urlmapBySiteName: Map<string, UrlmapPresentationRow>,
-): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
+): AsyncGenerator<[ProfileDisplayColumn, TierCandidate[] | null]> {
     const platforms = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
     if (platforms.length === 0) return;
 
-    const jobs: [ProfileDisplayColumn, Promise<TierCandidate | null>][] = platforms.map(platform => [platform, (async (): Promise<TierCandidate | null> => {
+    const query = buildTierFourQuery(artistName, enrichment);
+
+    const jobs: [ProfileDisplayColumn, Promise<TierCandidate[]>][] = platforms.map(platform => [platform, (async (): Promise<TierCandidate[]> => {
         const domain = HANDLE_BASED_PLATFORM_DOMAINS[platform]!;
-        const displayName = urlmapBySiteName.get(platform)?.cardPlatformName || fallbackDisplayName(platform);
-        const prompt = buildTierThreePrompt(artistName, identityContext, displayName, domain);
         try {
-            const response = await Promise.race([
-                getGemini().models.generateContent({
-                    model: GEMINI_MODEL_FLASH,
-                    contents: prompt,
-                    config: {
-                        systemInstruction: "You are a precise, conservative music research assistant identifying a single official profile link on one platform. Only return a URL you are confident belongs to the specified artist, restricted to the requested domain — never a guess, never a link to a different platform.",
-                        tools: [{ googleSearch: {} }],
-                    },
-                }),
-                new Promise<never>((_, reject) => setTimeout(() => reject(new Error("tier3 discovery timeout")), TIER3_CALL_TIMEOUT_MS)),
-            ]);
-            const parsed = parseTierThreeResponse(response.text ?? "");
-            if (!parsed) return null;
-            return { tier: 4, platform, url: parsed.url, reasoning: parsed.reasoning };
+            const results = await webSearch(query, { includeDomains: [domain], maxResults: WEB_SEARCH_MAX_RESULTS });
+            const out: TierCandidate[] = [];
+            for (const result of results) {
+                if (typeof result?.url !== "string" || !result.url.startsWith("https://")) continue;
+                if (!(await resultPassesNameCheck(result, platform, artistName))) continue;
+                out.push({
+                    tier: 4,
+                    platform,
+                    url: result.url,
+                    reasoning: `Web search hit on ${domain}: "${result.title || result.snippet}"`,
+                });
+            }
+            return out;
         } catch (e) {
-            console.error(`[profileDiscovery] tier3 (${platform}) search failed:`, e);
-            return null;
+            console.error(`[profileDiscovery] tier4 (${platform}) web search failed:`, e);
+            return [];
         }
     })()]);
 
     yield* settleAsCompleted(jobs);
+}
+
+/** Probes a set of already-CONFIRMED handles against a set of still-missing
+ *  target platforms — the same "propagate" idea tier 3's own two-pass probe
+ *  uses internally (see `tierThreeHandleProbeStream`), exposed standalone so
+ *  tier 4 (web search) can feed a handle IT confirms back into probing too:
+ *  if search confirms Instagram `p3t3rango`, this is what lets X/TikTok/
+ *  Facebook resolve from that handle without a second search call. Every
+ *  probed handle here is `confirmed: true` — propagation of a known-good
+ *  handle (from ANY tier) is strong evidence on its own, the same rule
+ *  `runHandleProbe` already applies to tier 3's own propagate pass. Yielded
+ *  candidates are tagged `tier: 3` (a probe result, not a search result) so
+ *  `validateCandidate`'s gate (e) — which exists to catch tier 4's
+ *  hallucination-adjacent risk — correctly does not re-apply to them; the
+ *  probe fetch that confirmed them already IS that check. Note: X is in
+ *  `PROBE_UNVERIFIABLE_PLATFORMS` (blocks server-side OG scraping — see
+ *  above), so propagation can never confirm a handle there either; that
+ *  limitation is inherited unchanged, not loosened. */
+async function* propagateConfirmedHandles(
+    handles: Set<string>,
+    targets: ProfileDisplayColumn[],
+    urlmapBySiteName: Map<string, UrlmapPresentationRow>,
+    artistName: string,
+): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
+    const probeTargets = targets.filter(p => !PROBE_UNVERIFIABLE_PLATFORMS.has(p));
+    if (probeTargets.length === 0 || handles.size === 0) return;
+
+    const resolved = new Set<ProfileDisplayColumn>();
+    const jobs: HandleProbe[] = [];
+    for (const handle of handles) {
+        for (const platform of probeTargets) {
+            jobs.push({ platform, handle, source: "propagated from web search", confirmed: true });
+        }
+    }
+
+    for await (const [probe, hit] of mapWithConcurrency(jobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+        if (!hit || resolved.has(probe.platform)) continue;
+        resolved.add(probe.platform);
+        yield [probe.platform, {
+            tier: 3,
+            platform: probe.platform,
+            url: hit.url,
+            reasoning: `Handle probe: ${hit.preview.title ? `og:title matched "${artistName}"` : "og:image resolved"} for @${probe.handle} (propagated from a handle confirmed via web search)`,
+            preview: hit.preview,
+        }];
+    }
 }
 
 /** A live progress/result signal from `discoverArtistProfilesStream`, emitted
@@ -936,20 +1102,50 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
         }
     }
 
-    // --- Tier 4 — Gemini, kept ONLY as a last resort for whatever tier 3's
-    // deterministic probing couldn't confirm, and only if the time budget
-    // still allows it (per-platform, domain-scoped grounded search, parallel).
+    // --- Tier 4 — a real web search, kept ONLY as a last resort for whatever
+    // tier 3's deterministic probing couldn't confirm, and only if the time
+    // budget still allows it (per-platform, domain-scoped, parallel).
     if (missing.size > 0 && !pastBudget()) {
-        const identityContext = buildIdentityContext(record, enrichment);
         const tier4Targets = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
         for (const p of tier4Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
-        for await (const [platform, candidate] of tierThreeGroundedSearchStream(artistName, identityContext, missing, urlmapBySiteName)) {
-            if (candidate) {
-                missing.delete(candidate.platform);
+        const confirmedHandles = new Set<string>();
+        for await (const [platform, candidates] of tierFourWebSearchStream(artistName, enrichment, missing)) {
+            for (const candidate of candidates ?? []) {
                 const profile = await validateCandidate(candidate, ctx);
-                if (profile) { foundCount++; yield { kind: "found", profile }; }
+                if (profile) {
+                    missing.delete(candidate.platform);
+                    // Facebook's extractArtistId regex can capture a leading
+                    // "@" verbatim (kept as-is in profile.value for storage/
+                    // display, matching existing extractArtistId behavior —
+                    // out of scope to change here); normalize it away before
+                    // it enters the propagation set so it doesn't waste a
+                    // probe on "instagram.com/@Handle" instead of the real
+                    // "instagram.com/Handle".
+                    confirmedHandles.add(normalizeHandle(profile.value));
+                    foundCount++;
+                    yield { kind: "found", profile };
+                    break; // first result to clear every gate wins — don't try the rest for this platform
+                }
             }
             yield { kind: "checked", platform, displayName: platformDisplayName(platform, urlmapBySiteName) };
+        }
+
+        // --- Feed back: a handle CONFIRMED by search propagates through the
+        // probe tier exactly like a tier-3-confirmed handle does (see
+        // `propagateConfirmedHandles`) — this is what lets one successful
+        // search (say, Instagram) resolve X/TikTok/Facebook for free, from
+        // the confirmed handle, without a second search call per platform.
+        if (missing.size > 0 && confirmedHandles.size > 0 && !pastBudget()) {
+            const propagateTargets = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
+            for (const p of propagateTargets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+            for await (const [, candidate] of propagateConfirmedHandles(confirmedHandles, propagateTargets, urlmapBySiteName, artistName)) {
+                if (candidate) {
+                    missing.delete(candidate.platform);
+                    const profile = await validateCandidate(candidate, ctx);
+                    if (profile) { foundCount++; yield { kind: "found", profile }; }
+                }
+            }
+            for (const p of propagateTargets) yield { kind: "checked", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
         }
     }
 
