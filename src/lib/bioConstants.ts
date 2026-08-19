@@ -13,8 +13,10 @@ export const ARTIST_DOC_MAX_CHARS = 20_000;
  * to a generated bio. Kept as two constants because artistBioQuery places the second
  * sentence as a Structure bullet rather than beside the first.
  */
+export const ABOUT_TARGET_WORDS = 100;
+
 export const ABOUT_LENGTH_RULE =
-  "Write ONE paragraph, up to ~100 words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.";
+  `Write ONE paragraph, up to ~${ABOUT_TARGET_WORDS} words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.`;
 
 /** Anti-padding companion to ABOUT_LENGTH_RULE. */
 export const ABOUT_STOP_RULE =

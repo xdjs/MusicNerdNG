@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ABOUT_TARGET_WORDS } from "@/lib/bioConstants";
 
 // ---------- Profiles: accepted-by-default. Leaving a card as-is IS confirmation. ----------
 
@@ -937,6 +937,11 @@ export function AboutDraftCard({ doc, about, sources = [], startEditing = false,
     const isEmpty = aboutText.trim().length === 0;
     const overCap = aboutText.length > MAX_BIO_LENGTH;
     const publishDisabled = disabled || isEmpty || overCap;
+    // Metered in words against the target the generator writes to, not in characters
+    // against MAX_BIO_LENGTH. 10,000 is a hard cap on the column; showing it here read
+    // as "you have thousands of characters left" under prose aimed at ~100 words.
+    const wordCount = isEmpty ? 0 : aboutText.trim().split(/\s+/).length;
+    const overTarget = wordCount > ABOUT_TARGET_WORDS;
 
     return (
         <div className="glass-subtle rounded-xl p-4 space-y-3 w-full">
@@ -952,8 +957,8 @@ export function AboutDraftCard({ doc, about, sources = [], startEditing = false,
                         className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm leading-relaxed text-black dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y min-h-[220px]"
                     />
                     <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className={overCap || isEmpty ? "text-red-500 dark:text-red-400" : "text-gray-600 dark:text-gray-300"}>
-                            {aboutText.length.toLocaleString()} / {MAX_BIO_LENGTH.toLocaleString()} characters
+                        <span className={overCap || isEmpty ? "text-red-500 dark:text-red-400" : overTarget ? "text-amber-600 dark:text-amber-400" : "text-gray-600 dark:text-gray-300"}>
+                            {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"} — aiming for about {ABOUT_TARGET_WORDS}
                         </span>
                         <button
                             type="button"

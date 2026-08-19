@@ -460,6 +460,17 @@ describe('AboutDraftCard', () => {
         expect(onPublish).toHaveBeenCalledWith({ doc: '## Overview\nd', about: 'An About.' });
     });
 
+    // The meter used to read "612 / 10,000 characters" under prose deliberately written
+    // to land near 100 words — an invitation to keep writing that works against the
+    // length rule. 10,000 is a hard cap on the column, not a target.
+    it('meters words against the ~100-word target, not the 10,000-character hard cap', () => {
+        render(<AboutDraftCard doc="## Overview" about="One two three." onPublish={jest.fn()} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        expect(screen.getByText(/3 words/)).toBeInTheDocument();
+        expect(screen.getByText(/100/)).toBeInTheDocument();
+        expect(screen.queryByText(/10,000/)).not.toBeInTheDocument();
+    });
+
     it('clicking Edit reveals a textarea pre-filled with the generated About text', () => {
         render(<AboutDraftCard doc="## Overview" about="An About." onPublish={jest.fn()} disabled={false} />);
         fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
