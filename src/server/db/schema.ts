@@ -415,6 +415,11 @@ export const artistDocs = pgTable("artist_docs", {
 	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	artistId: uuid("artist_id").notNull(),
 	content: text().notNull(),
+	// The numbered citation source list synthesizeArtistDoc built for this content's
+	// [n] markers — DocSource[] (id/kind/label/url), see artistDocService.ts. Defaults
+	// to an empty array so pre-citation-era rows (and any row inserted without an
+	// explicit value) read back as [] rather than null.
+	sources: jsonb().default([]).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [

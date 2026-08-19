@@ -26,17 +26,50 @@ import {
     getInterviewAnswers,
     upsertInterviewAnswer,
     upsertArtistDoc,
+    upsertArtistDocSources,
 } from "@/server/utils/queries/onboardingQueries";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
-import { synthesizeArtistDoc, generateAboutFromDoc, ARTIST_DOC_MAX_CHARS, GEMINI_TIMEOUT_MS } from "@/server/utils/artistDocService";
+import {
+    synthesizeArtistDoc,
+    generateAboutFromDoc,
+    buildDocSources,
+    extractCitedIds,
+    stripCitationMarkers,
+    ARTIST_DOC_MAX_CHARS,
+    GEMINI_TIMEOUT_MS,
+    type DocSource,
+} from "@/server/utils/artistDocService";
 import { discoverArtistProfilesStream, titleMatchesArtist, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
 import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/utils/linkPresentation";
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
+
+const MAX_DOC_SOURCES = 200;
+
+/** `turn.sources` is client-echoed (the same stateless round-trip as doc/about)
+ *  but, unlike those two, lands directly in a stored jsonb column — validated
+ *  defensively rather than trusted, same caution as the route's array-length
+ *  guards on decisions/addedLinks/addedUrls. Anything malformed is dropped
+ *  rather than failing the whole publish; a missing/garbled manifest just
+ *  means the doc temporarily has no citation panel, not a lost publish. */
+function sanitizeDocSources(input: unknown): DocSource[] {
+    if (!Array.isArray(input)) return [];
+    const out: DocSource[] = [];
+    for (const item of input.slice(0, MAX_DOC_SOURCES)) {
+        if (!item || typeof item !== "object") continue;
+        const { id, kind, label, url } = item as Record<string, unknown>;
+        if (typeof id !== "number" || !Number.isFinite(id)) continue;
+        if (kind !== "vault" && kind !== "interview" && kind !== "social") continue;
+        if (typeof label !== "string") continue;
+        if (url !== null && typeof url !== "string") continue;
+        out.push({ id, kind, label, url: url ?? null });
+    }
+    return out;
+}
 
 /** Two ungrounded Gemini calls, each with one retry at up to `GEMINI_TIMEOUT_MS`,
  *  is a 4x-call worst case (~80s) against `maxDuration = 60` on the chat route.
@@ -68,7 +101,10 @@ export type TurnEvent =
     // reload/resume), so a client that ignores `candidate` entirely still
     // renders correctly, just without the live-discovery feel.
     | { kind: "candidate"; profile: DiscoveredProfile }
-    | { kind: "draft"; doc: string; about: string }
+    // `sources` is the numbered citation manifest ([n] markers in `doc`/`about`
+    // resolve into this list) narrowed to just the ids either text actually
+    // cites — see extractCitedIds. Empty when nothing was citable.
+    | { kind: "draft"; doc: string; about: string; sources: DocSource[] }
     | { kind: "complete" }
     | { kind: "error"; message: string };
 
@@ -81,7 +117,10 @@ export type ClientTurn =
     // resolveInterviewQuestionText below for why grounded questions need
     // this while static ones don't).
     | { type: "interview_answer"; questionKey: string; answer: string | null; question?: string }
-    | { type: "publish"; doc: string; about: string };
+    // `sources` round-trips the draft event's citation manifest (spec §6 stateless-turn
+    // pattern, same as doc/about) — optional/omittable so a stale client that doesn't
+    // know about citations yet still publishes successfully, just without a manifest.
+    | { type: "publish"; doc: string; about: string; sources?: DocSource[] };
 
 const NARRATION = {
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
@@ -582,6 +621,12 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             yield { kind: "chat", text: NARRATION.generating };
             yield { kind: "progress", label: "Reading your sources and answers", done: false };
             const publishStartedAt = Date.now();
+            // Built ONCE and handed to both calls below (never rebuilt) — a
+            // background social-ingest job landing mid-turn must not shift a
+            // source's id out from under one call but not the other, or a
+            // citation ends up pointing at the wrong source (see the doc
+            // comment on buildDocContext's presetSources param).
+            const sources = await buildDocSources(artistId);
             // Gemini failure policy: apologize in-stream, retry ONCE, else let the
             // throw reach the route (error event; checkpoint stays unmet — spec §9).
             // The retry is skipped once we're already past budget so the worst
@@ -589,27 +634,33 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             // PUBLISH_RETRY_BUDGET_MS above).
             let doc: string;
             try {
-                doc = await synthesizeArtistDoc(artistId);
+                doc = await synthesizeArtistDoc(artistId, sources);
             } catch (e) {
                 if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
                 yield { kind: "chat", text: "Hmm, that didn't come together — give me one more second." };
-                doc = await synthesizeArtistDoc(artistId);
+                doc = await synthesizeArtistDoc(artistId, sources);
             }
             yield { kind: "progress", label: "Reading your sources and answers", done: true };
             yield { kind: "progress", label: "Writing your About", done: false };
             const artist = await getArtistById(artistId);
             let about: string;
             try {
-                about = await generateAboutFromDoc(artist?.name ?? "this artist", doc);
+                about = await generateAboutFromDoc(artist?.name ?? "this artist", doc, sources);
             } catch (e) {
                 if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
                 yield { kind: "chat", text: "One more try on the wording…" };
-                about = await generateAboutFromDoc(artist?.name ?? "this artist", doc);
+                about = await generateAboutFromDoc(artist?.name ?? "this artist", doc, sources);
             }
             yield { kind: "progress", label: "Writing your About", done: true };
+            // Narrow the manifest to ids either text actually cites — a source built
+            // into the candidate list but never referenced (e.g. no Gemini call chose
+            // to cite it) shouldn't show up as a numbered reference with nothing
+            // pointing to it.
+            const citedIds = new Set([...extractCitedIds(doc), ...extractCitedIds(about)]);
+            const citedSources = sources.filter(s => citedIds.has(s.id));
             // Turns are stateless: the draft round-trips through the client and
             // comes back in the publish turn (spec §6, advisor FIX 1).
-            yield { kind: "draft", doc, about };
+            yield { kind: "draft", doc, about, sources: citedSources };
             yield { kind: "chat", text: NARRATION.draftReady };
             return;
         }
@@ -934,6 +985,17 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, "publish");
             return;
         }
+        // Client-echoed, so validated defensively (same caution as decisions/
+        // addedLinks/addedUrls in the route) rather than trusted as-is before
+        // it lands in a stored jsonb column.
+        const sources = sanitizeDocSources(turn.sources);
+        // The doc keeps its [n] markers — it's shown WITH citations as its own
+        // artifact. The published About does not: `artists.bio` and its version
+        // history must be plain prose with no marker litter (spec: "keep the
+        // public About clean"). The annotated About the artist reviewed lives
+        // only in this stateless turn; its audit trail is the doc + sources
+        // persisted below, which share the same citation ids.
+        const cleanAbout = stripCitationMarkers(about);
         // Snapshot a pre-existing REAL bio before it's overwritten. An artist who
         // hand-edited their About via updateArtistBio/saveBio has a live bio with
         // NO version row — publishing here must not destroy it irrecoverably. The
@@ -946,10 +1008,11 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             await saveBioVersion(artistId, existingBio as string);
         }
         await upsertArtistDoc(artistId, doc);
-        await saveBioVersion(artistId, about);
+        await upsertArtistDocSources(artistId, sources);
+        await saveBioVersion(artistId, cleanAbout);
         // The ONLY implicit artists.bio write in this feature — the explicit
         // publish moment (spec §6). Later doc regens never touch the bio.
-        await db.update(artists).set({ bio: about }).where(eq(artists.id, artistId));
+        await db.update(artists).set({ bio: cleanAbout }).where(eq(artists.id, artistId));
         await confirmOnboardingStep(artistId, "publish");
         yield { kind: "chat", text: NARRATION.published };
         yield { kind: "complete" };

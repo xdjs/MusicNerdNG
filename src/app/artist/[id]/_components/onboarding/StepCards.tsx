@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
 
 // ---------- Profiles: accepted-by-default. Leaving a card as-is IS confirmation. ----------
@@ -659,11 +659,155 @@ export function InterviewInput({ payload, onAnswer, disabled }: {
     );
 }
 
+// ---------- Citations: shared by the knowledge doc panel and the About ----------
+
+// Mirrors DocSource in src/server/utils/artistDocService.ts — kept as an
+// independently-declared client-side type (same shape) rather than importing
+// server code into a "use client" component. `url` is null for an interview
+// citation (the artist's own words have no external link to point to).
+export type DocSource = {
+    id: number;
+    kind: "vault" | "interview" | "social";
+    label: string;
+    url: string | null;
+};
+
+/** Turns any `[n]` marker in `text` into a small superscript citation —
+ *  a link when the source has a url, a plain labelled superscript (its title
+ *  attribute carries the source) when it doesn't (interview citations). A
+ *  marker with no matching source is dropped silently: the server already
+ *  strips anything that doesn't resolve to a real id before this ever runs
+ *  (see validateCitations in artistDocService.ts) — this is defense in depth,
+ *  never the primary guard against a hallucinated citation reaching the UI. */
+function renderWithCitations(text: string, sources: DocSource[]) {
+    if (sources.length === 0 || !/\[\d+\]/.test(text)) return text;
+    const byId = new Map(sources.map(s => [s.id, s]));
+    return text.split(/(\[\d+\])/g).map((part, i) => {
+        const m = part.match(/^\[(\d+)\]$/);
+        if (!m) return part || null;
+        const source = byId.get(Number(m[1]));
+        if (!source) return null;
+        const className = "text-[0.7em] align-super mx-px text-pink-500 dark:text-pink-400";
+        return source.url ? (
+            <sup key={i}>
+                <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={source.label}
+                    className={`${className} hover:underline`}
+                >
+                    [{m[1]}]
+                </a>
+            </sup>
+        ) : (
+            <sup key={i} title={source.label} className={className}>[{m[1]}]</sup>
+        );
+    });
+}
+
+// Matches both the doc's `##` section headers AND the worked example's `#`
+// title line ("# ARTIST NAME - Artist Knowledge Document") — Gemini imitates
+// the worked example closely enough that real output opens with one (see the
+// live Pete Rango run). Without this, an H1 line fell through to the plain
+// paragraph branch and rendered as unstyled body text.
+const HEADING_RE = /^(#{1,2})\s+(.*)$/;
+const BULLET_RE = /^[-*]\s+(.*)$/;
+
+/** Renders the limited markdown subset the doc synthesis prompt is instructed
+ *  to emit — `##` headers, `-`/`*` bullets, and plain paragraph lines — by
+ *  hand, with no markdown dependency (spec constraint: no new deps). Good
+ *  enough for exactly this doc's shape; not a general markdown renderer. */
+function renderDocBody(doc: string, sources: DocSource[]) {
+    const blocks: ReactNode[] = [];
+    let list: string[] = [];
+    let key = 0;
+    const flushList = () => {
+        if (list.length > 0) {
+            blocks.push(
+                <ul key={`ul${key++}`} className="list-disc pl-5 space-y-1">
+                    {list.map((item, i) => <li key={i}>{renderWithCitations(item, sources)}</li>)}
+                </ul>
+            );
+        }
+        list = [];
+    };
+    for (const rawLine of doc.split("\n")) {
+        const line = rawLine.trim();
+        if (!line) { flushList(); continue; }
+        const heading = line.match(HEADING_RE);
+        const bullet = line.match(BULLET_RE);
+        if (heading) {
+            flushList();
+            const isTitle = heading[1] === "#";
+            const HeadingTag = isTitle ? "h3" : "h4";
+            blocks.push(
+                <HeadingTag
+                    key={`h${key++}`}
+                    className={isTitle
+                        ? "font-bold text-black dark:text-white text-base mt-0"
+                        : "font-bold text-pink-500 text-sm mt-3 first:mt-0"}
+                >
+                    {heading[2]}
+                </HeadingTag>
+            );
+        } else if (bullet) {
+            list.push(bullet[1]);
+        } else {
+            flushList();
+            blocks.push(<p key={`p${key++}`} className="leading-relaxed">{renderWithCitations(line, sources)}</p>);
+        }
+    }
+    flushList();
+    return blocks;
+}
+
+/** The knowledge document, shown as its own artifact alongside the About —
+ *  secondary (muted styling, collapsible, positioned after the primary About
+ *  card) but genuinely present, with clickable citations resolving exactly
+ *  the claims the artist asked to be able to trace ("where did it get that I
+ *  said Lauryn Hill and Solange as influences?"). Renders nothing for an
+ *  empty doc rather than an empty shell. */
+export function KnowledgeDocCard({ doc, sources }: { doc: string; sources: DocSource[] }) {
+    if (!doc.trim()) return null;
+    return (
+        <details open className="glass-subtle rounded-xl p-4 w-full" data-testid="knowledge-doc-card">
+            <summary className="cursor-pointer select-none font-bold text-sm text-gray-700 dark:text-gray-300 hover:text-pink-500 dark:hover:text-pink-400 transition-colors">
+                Your knowledge document
+            </summary>
+            <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 mb-3">
+                This powers your page&apos;s Q&amp;A and fun facts. Every claim below traces back to a real source — click a citation number to see it.
+            </p>
+            <div className="text-sm text-black dark:text-white space-y-2">
+                {renderDocBody(doc, sources)}
+            </div>
+            {sources.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-black/10 dark:border-white/10 space-y-1">
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Sources</p>
+                    {sources.map(s => (
+                        <p key={s.id} className="text-xs text-gray-600 dark:text-gray-300 break-all">
+                            [{s.id}]{" "}
+                            {s.url ? (
+                                <a href={s.url} target="_blank" rel="noopener noreferrer" className="hover:text-pink-500 dark:hover:text-pink-400 hover:underline">
+                                    {s.label}
+                                </a>
+                            ) : (
+                                <span>{s.label}</span>
+                            )}
+                        </p>
+                    ))}
+                </div>
+            )}
+        </details>
+    );
+}
+
 // ---------- About draft: show finished work, ask one yes/no ----------
 
-export function AboutDraftCard({ doc, about, onPublish, disabled }: {
+export function AboutDraftCard({ doc, about, sources = [], onPublish, disabled }: {
     doc: string;
     about: string;
+    sources?: DocSource[];
     onPublish: (r: { doc: string; about: string }) => void;
     disabled: boolean;
 }) {
@@ -705,7 +849,7 @@ export function AboutDraftCard({ doc, about, onPublish, disabled }: {
                     </div>
                 </div>
             ) : (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-black dark:text-white">{aboutText}</p>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-black dark:text-white">{renderWithCitations(aboutText, sources)}</p>
             )}
             {/* Publish-blocking reason: rendered regardless of edit mode, so
                 emptying the text and then leaving edit mode (via Done) doesn't

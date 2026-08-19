@@ -1,0 +1,1 @@
+ALTER TABLE "artist_docs" ADD COLUMN "sources" jsonb DEFAULT '[]'::jsonb NOT NULL;

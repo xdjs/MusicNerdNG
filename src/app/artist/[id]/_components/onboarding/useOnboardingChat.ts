@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { ProfileCandidate } from "./StepCards";
+import type { ProfileCandidate, DocSource } from "./StepCards";
 
 export type ChatItem = {
     id: string;
@@ -11,6 +11,12 @@ export type ChatItem = {
     payload?: unknown;
     doc?: string;
     about?: string;
+    // The numbered citation manifest for this draft's [n] markers — undefined
+    // for a stale server that predates citations, empty when nothing was
+    // citable. Held here (not on AboutDraftCard's onPublish payload, which is
+    // locked to exactly {doc, about} by existing tests) and threaded into the
+    // actual publish turn by OnboardingChat.tsx.
+    sources?: DocSource[];
     done?: boolean;
     // Live-accumulated discovered profiles for a "candidates" item — grows as
     // `candidate` SSE events arrive, one at a time, ahead of the terminal
@@ -30,7 +36,7 @@ export type ClientTurnShape =
     // server-side to store a grounded (non-static) question's wording; see
     // resolveInterviewQuestionText in turnHandlers.ts.
     | { type: "interview_answer"; questionKey: string; answer: string | null; question?: string }
-    | { type: "publish"; doc: string; about: string };
+    | { type: "publish"; doc: string; about: string; sources?: DocSource[] };
 
 /** Text shown as the user's own bubble for a given turn (null = no user bubble). */
 function userEcho(turn: ClientTurnShape): string | null {
@@ -155,7 +161,7 @@ export function useOnboardingChat(artistId: string) {
                             // no-terminal-frame error path below.
                             case "candidate": push({ kind: "candidates", candidates: [event.profile] }); break;
                             case "step": push({ kind: "step", step: event.step, payload: event.payload }); receivedTerminalFrame = true; break;
-                            case "draft": push({ kind: "draft", doc: event.doc, about: event.about }); receivedTerminalFrame = true; break;
+                            case "draft": push({ kind: "draft", doc: event.doc, about: event.about, sources: event.sources }); receivedTerminalFrame = true; break;
                             case "complete": push({ kind: "complete" }); receivedTerminalFrame = true; break;
                             case "error": push({ kind: "error", text: event.message }); receivedTerminalFrame = true; break;
                         }

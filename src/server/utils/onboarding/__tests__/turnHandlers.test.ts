@@ -8,6 +8,7 @@ jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     getInterviewAnswers: jest.fn().mockResolvedValue([]),
     upsertInterviewAnswer: jest.fn().mockResolvedValue(undefined),
     upsertArtistDoc: jest.fn().mockResolvedValue(undefined),
+    upsertArtistDocSources: jest.fn().mockResolvedValue(undefined),
     getArtistDoc: jest.fn(),
 }));
 jest.mock('@/server/utils/queries/artistQueries', () => ({
@@ -52,6 +53,9 @@ jest.mock('@/server/utils/artistDocService', () => ({
     GEMINI_TIMEOUT_MS: 20000,
     synthesizeArtistDoc: jest.fn().mockResolvedValue('## Overview\ndoc'),
     generateAboutFromDoc: jest.fn().mockResolvedValue('An About.'),
+    buildDocSources: jest.fn().mockResolvedValue([]),
+    extractCitedIds: jest.fn().mockReturnValue(new Set()),
+    stripCitationMarkers: jest.fn(text => text),
 }));
 // Default: no grounded questions — every existing test exercises the static
 // fallback path unless it explicitly overrides this per-test. `_PREFIX` is a
@@ -964,8 +968,57 @@ describe('runOnboardingTurn', () => {
         expect(dq.saveBioVersion).toHaveBeenCalledWith('a1', 'About text');
         expect(db.update).toHaveBeenCalled();
         expect(set).toHaveBeenCalledWith({ bio: 'About text' });
+        expect(oq.upsertArtistDocSources).toHaveBeenCalledWith('a1', []);
         expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'publish');
         expect(events.some(e => e.kind === 'complete')).toBe(true);
+    });
+
+    it('publish persists the client-echoed citation manifest, and stores the doc WITH markers but the About/bio stripped of them (public About stays clean)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const docService = await import('@/server/utils/artistDocService');
+        docService.stripCitationMarkers.mockImplementation(text => text.replace(/\[\d+\]/g, ''));
+        const { db } = await import('@/server/db/drizzle');
+        const where = jest.fn().mockResolvedValue(undefined);
+        const set = jest.fn().mockReturnValue({ where });
+        db.update.mockReturnValue({ set });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const sources = [{ id: 1, kind: 'vault', label: 'SoundBetter profile', url: 'https://soundbetter.com/profiles/x' }];
+        await collect(runOnboardingTurn('a1', {
+            type: 'publish',
+            doc: '## Overview\nCited Lauryn Hill[1].',
+            about: 'Cited Lauryn Hill as an influence[1].',
+            sources,
+        }));
+        expect(oq.upsertArtistDoc).toHaveBeenCalledWith('a1', '## Overview\nCited Lauryn Hill[1].'); // doc keeps its markers
+        expect(dq.saveBioVersion).toHaveBeenCalledWith('a1', 'Cited Lauryn Hill as an influence.'); // About is stripped
+        expect(set).toHaveBeenCalledWith({ bio: 'Cited Lauryn Hill as an influence.' }); // artists.bio is stripped
+        expect(oq.upsertArtistDocSources).toHaveBeenCalledWith('a1', sources);
+    });
+
+    it('publish drops a malformed sources entry rather than persisting garbage', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
+        const { db } = await import('@/server/db/drizzle');
+        const where = jest.fn().mockResolvedValue(undefined);
+        const set = jest.fn().mockReturnValue({ where });
+        db.update.mockReturnValue({ set });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'publish',
+            doc: '## Overview\nd',
+            about: 'About text',
+            sources: [
+                { id: 1, kind: 'vault', label: 'Real one', url: 'https://x.com' },
+                { id: 'not-a-number', kind: 'vault', label: 'bad id', url: null },
+                { kind: 'nonsense', label: 'bad kind', url: null },
+                'not even an object',
+            ],
+        }));
+        expect(oq.upsertArtistDocSources).toHaveBeenCalledWith('a1', [
+            { id: 1, kind: 'vault', label: 'Real one', url: 'https://x.com' },
+        ]);
     });
 
     it('publish snapshots a pre-existing REAL bio via saveBioVersion BEFORE overwriting it (C2)', async () => {

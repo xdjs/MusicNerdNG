@@ -91,6 +91,18 @@ export async function upsertArtistDoc(artistId: string, content: string): Promis
         });
 }
 
+/** Separate call from `upsertArtistDoc` on purpose — that function's 2-arg
+ *  (artistId, content) call site is load-bearing for existing tests, so the
+ *  citation manifest is persisted as its own UPDATE instead of a third arg.
+ *  Always called immediately after `upsertArtistDoc` in the same publish
+ *  handler, so the row is guaranteed to already exist. */
+export async function upsertArtistDocSources(artistId: string, sources: unknown[]): Promise<void> {
+    await db
+        .update(artistDocs)
+        .set({ sources, updatedAt: sql`(now() AT TIME ZONE 'utc'::text)` })
+        .where(eq(artistDocs.artistId, artistId));
+}
+
 export async function getArtistDoc(artistId: string) {
     try {
         return await db.query.artistDocs.findFirst({
