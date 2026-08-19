@@ -68,8 +68,11 @@ describe('OnboardingChat', () => {
 
         expect(screen.getByText('Hey there')).toBeInTheDocument();
         expect(screen.getByText('Sup')).toBeInTheDocument();
-        expect(screen.getByText(/⚙ Searching the web/)).toBeInTheDocument();
-        expect(screen.getByText(/✓ Fetched profiles/)).toBeInTheDocument();
+        // In-flight work is marked by the Music Nerd mark breathing, not a gear glyph
+        expect(screen.getByRole('status', { name: 'Searching the web' })).toBeInTheDocument();
+        expect(screen.getByText('Searching the web')).toBeInTheDocument();
+        expect(screen.getByText('Fetched profiles')).toBeInTheDocument();
+        expect(screen.getByText('✓')).toBeInTheDocument();
         expect(screen.getByText('Something broke')).toBeInTheDocument();
     });
 

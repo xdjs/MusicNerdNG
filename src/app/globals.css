@@ -78,6 +78,30 @@
   }
 }
 
+/* The Music Nerd mark as a loading indicator. It's a face, so it breathes
+   rather than spins — see MusicNerdLoader.tsx. */
+@keyframes music-nerd-loader {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+.animate-music-nerd-loader {
+  animation: music-nerd-loader 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-music-nerd-loader {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
