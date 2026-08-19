@@ -26,8 +26,25 @@ import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP } from "@/
 
 export { ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP };
 /** Exported so callers (e.g. the publish-turn retry budget) can reason about
- *  worst-case Gemini call duration without re-declaring the constant. */
-export const GEMINI_TIMEOUT_MS = 20_000;
+ *  worst-case Gemini call duration without re-declaring the constant.
+ *  Measured p95 with thinking off is ~6.5s (n=8, artist 50f23458-...) — 15s
+ *  is ~2.3x headroom. See the knowledge-doc report for the full before/after
+ *  measurement; the ORIGINAL 20s budget was sized for a call that no longer
+ *  runs anywhere near that long, now that thinking is off (see
+ *  synthesizeArtistDoc) — the timeout didn't need raising, it needed
+ *  tightening once the real cost (default thinking) was found and cut. */
+export const GEMINI_TIMEOUT_MS = 15_000;
+/** About is a much lighter call (a plain paragraph from an already-built
+ *  doc) — measured p95 ~2.9s, so it gets its own tighter bound rather than
+ *  inheriting the doc's. This matters for the retry-budget math in
+ *  turnHandlers: a tighter per-call bound means an About failure is
+ *  detected (and becomes retry/fallback-eligible) well before it alone
+ *  could burn the whole publish-turn deadline. */
+export const GEMINI_ABOUT_TIMEOUT_MS = 12_000;
+/** Bound for `synthesizeFallbackAbout` — a lighter prompt than either call
+ *  above (no worked example, no citation manifest), so the same generous
+ *  ~4x-headroom-over-About logic applies. */
+export const FALLBACK_TIMEOUT_MS = 12_000;
 
 /** A single numbered citation. `url` is null for an interview source — the
  *  artist's own words have no external link, so the client renders those as
@@ -264,10 +281,10 @@ const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
 - Never fabricate anything not in the document.`;
 
-function withGeminiTimeout<T>(p: Promise<T>): Promise<T> {
+function withGeminiTimeout<T>(p: Promise<T>, ms: number = GEMINI_TIMEOUT_MS): Promise<T> {
     return Promise.race([
         p,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Gemini timeout")), GEMINI_TIMEOUT_MS)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Gemini timeout")), ms)),
     ]);
 }
 
@@ -341,6 +358,14 @@ export async function synthesizeArtistDoc(artistId: string, presetSources?: DocS
             config: {
                 systemInstruction: DOC_SYSTEM_INSTRUCTION(artistName),
                 temperature: 0.4,
+                // Flash runs extended thinking by default, which measured
+                // 16-21s+ on this call (against sources this size) and blew
+                // the publish turn's budget outright. Off cuts it to ~6s
+                // p95 with no observed drop in citation accuracy or "mine,
+                // don't summarize" specificity — see the knowledge-doc
+                // report for the measured A/B (thinking off vs bounded
+                // budgets vs default) and side-by-side doc quality.
+                thinkingConfig: { thinkingBudget: 0 },
             },
         })
     );
@@ -358,13 +383,57 @@ export async function generateAboutFromDoc(artistName: string, docContent: strin
             config: {
                 systemInstruction: ABOUT_SYSTEM_INSTRUCTION(artistName),
                 temperature: 0.5,
+                thinkingConfig: { thinkingBudget: 0 }, // see synthesizeArtistDoc
             },
-        })
+        }),
+        GEMINI_ABOUT_TIMEOUT_MS,
     );
     const raw = response.text?.trim();
     if (!raw) throw new Error("About generation returned empty text");
     const about = validateCitations(raw, sources);
     return about.slice(0, MAX_BIO_LENGTH);
+}
+
+const FALLBACK_ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from the material below (curated sources, the artist's own interview answers, and/or an existing knowledge document about them).
+- 2-4 short paragraphs, roughly 600-1,200 characters. Plain text only — no markdown, no headers, no citation markers or bracketed numbers.
+- Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
+- Where the material quotes the artist directly, keep the quote — their words beat your words.
+- No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
+- Never fabricate anything not in the material.`;
+
+/** Last-resort, non-cited fallback — the pre-citation-feature synthesis shape,
+ *  kept alive as the safety net for when the cited pipeline
+ *  (synthesizeArtistDoc / generateAboutFromDoc) fails on BOTH its normal
+ *  attempt and its retry (see turnHandlers' publish step). Deliberately
+ *  simple: no worked example, no citation manifest, no thinking — just the
+ *  material in, a plain About paragraph out. A degraded About beats none at
+ *  all (spec: "a degraded publish beats a broken one").
+ *
+ *  `docContent`, when given, is used AS-IS as the material (the doc already
+ *  synthesized fine — only About failed, so no need to re-read the vault).
+ *  Omitted (doc synthesis itself failed), this rebuilds the same raw context
+ *  synthesizeArtistDoc would have used — one extra DB read, but only on this
+ *  already-rare double-failure path. */
+export async function synthesizeFallbackAbout(artistId: string, artistName: string, docContent?: string, presetSources?: DocSource[]): Promise<string> {
+    const materialText = docContent ?? (await buildDocContext(artistId, presetSources)).context;
+    const response = await withGeminiTimeout(
+        getGemini().models.generateContent({
+            model: GEMINI_MODEL_FLASH,
+            contents: `ARTIST MATERIAL:\n${materialText}`,
+            config: {
+                systemInstruction: FALLBACK_ABOUT_SYSTEM_INSTRUCTION(artistName),
+                temperature: 0.5,
+                thinkingConfig: { thinkingBudget: 0 },
+            },
+        }),
+        FALLBACK_TIMEOUT_MS,
+    );
+    const raw = response.text?.trim();
+    if (!raw) throw new Error("Fallback About generation returned empty text");
+    // Defensive: materialText may itself be a cited doc carrying [n] markers
+    // the model could echo back — this fallback never has a manifest for
+    // them to resolve against, so strip unconditionally rather than validate.
+    return stripCitationMarkers(raw).slice(0, MAX_BIO_LENGTH);
 }
 
 /** Capped doc slice for prompt injection (askArtist / funFacts / bio). Null when no doc. */

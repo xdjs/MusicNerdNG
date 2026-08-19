@@ -34,6 +34,7 @@ import { musicPlatformData } from "@/server/utils/musicPlatform";
 import {
     synthesizeArtistDoc,
     generateAboutFromDoc,
+    synthesizeFallbackAbout,
     buildDocSources,
     extractCitedIds,
     stripCitationMarkers,
@@ -631,31 +632,62 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             // throw reach the route (error event; checkpoint stays unmet — spec §9).
             // The retry is skipped once we're already past budget so the worst
             // case fits `maxDuration` instead of stacking to ~80s (see
-            // PUBLISH_RETRY_BUDGET_MS above).
-            let doc: string;
+            // PUBLISH_RETRY_BUDGET_MS above). If the retry is attempted AND ALSO
+            // fails (both this call's chances burned, but still within budget —
+            // NOT the branch above), degrade to the non-cited fallback below
+            // instead of dead-ending the turn — this is the exact sequence the
+            // demo's bug report reproduced (retry message fired, then a hard
+            // error) — see the knowledge-doc report.
+            let doc: string | null = null;
             try {
                 doc = await synthesizeArtistDoc(artistId, sources);
             } catch (e) {
                 if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
                 yield { kind: "chat", text: "Hmm, that didn't come together — give me one more second." };
-                doc = await synthesizeArtistDoc(artistId, sources);
+                try {
+                    doc = await synthesizeArtistDoc(artistId, sources);
+                } catch (e2) {
+                    console.error("[onboarding/publish] doc retry also failed, falling back to a non-cited About:", e2);
+                }
             }
             yield { kind: "progress", label: "Reading your sources and answers", done: true };
             yield { kind: "progress", label: "Writing your About", done: false };
             const artist = await getArtistById(artistId);
-            let about: string;
-            try {
-                about = await generateAboutFromDoc(artist?.name ?? "this artist", doc, sources);
-            } catch (e) {
-                if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
-                yield { kind: "chat", text: "One more try on the wording…" };
-                about = await generateAboutFromDoc(artist?.name ?? "this artist", doc, sources);
+            const artistName = artist?.name ?? "this artist";
+            let about: string | null = null;
+            if (doc !== null) {
+                try {
+                    about = await generateAboutFromDoc(artistName, doc, sources);
+                } catch (e) {
+                    if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
+                    yield { kind: "chat", text: "One more try on the wording…" };
+                    try {
+                        about = await generateAboutFromDoc(artistName, doc, sources);
+                    } catch (e2) {
+                        console.error("[onboarding/publish] about retry also failed, falling back to a non-cited About:", e2);
+                    }
+                }
+            }
+            // Cited pipeline didn't produce a usable doc+About within its two
+            // chances (doc never came together, or About didn't) — one more
+            // attempt via the lightweight, non-cited fallback (no worked
+            // example, no citation manifest, so it's a lighter/faster prompt
+            // than either call above) rather than erroring out with nothing.
+            // A degraded publish beats a broken one. Reuses `doc` as-is when
+            // it's the one thing that DID synthesize fine (only About failed).
+            if (doc === null || about === null) {
+                yield { kind: "chat", text: "Let's go with a simpler version for now." };
+                const fallbackAbout = await synthesizeFallbackAbout(artistId, artistName, doc ?? undefined, sources);
+                about = fallbackAbout;
+                doc = doc ?? `## Overview\n${fallbackAbout}`;
             }
             yield { kind: "progress", label: "Writing your About", done: true };
             // Narrow the manifest to ids either text actually cites — a source built
             // into the candidate list but never referenced (e.g. no Gemini call chose
             // to cite it) shouldn't show up as a numbered reference with nothing
-            // pointing to it.
+            // pointing to it. (The fallback About never carries markers, and a
+            // fallback doc is plain-wrapped text with none either — both
+            // naturally cite nothing here.)
             const citedIds = new Set([...extractCitedIds(doc), ...extractCitedIds(about)]);
             const citedSources = sources.filter(s => citedIds.has(s.id));
             // Turns are stateless: the draft round-trips through the client and
