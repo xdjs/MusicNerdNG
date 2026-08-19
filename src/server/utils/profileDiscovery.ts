@@ -18,12 +18,23 @@
  *            handles (existing handle-shaped links, handles confirmed
  *            earlier in this run, and a few slugs derived from the artist's
  *            name), fetch each candidate URL directly via `fetchLinkPreview`,
- *            and treat a real og:image/og:title as proof — sub-second per
- *            probe, self-validating (a fake handle returns nothing), and
- *            replaces what used to be a per-platform Gemini search (measured
- *            live: that shape timed out on 4 of 7 platforms and found ZERO
- *            candidates for an artist who genuinely has profiles on all of
- *            them — see the discovery-rebuild report).
+ *            and require POSITIVE evidence of the artist's NAME — never the
+ *            handle itself, which is nearly always echoed inside a page's
+ *            og:title (e.g. a stranger's Instagram bio titled "Peter
+ *            Lyrøholm (@peterango)" contains the probed handle "peterango"
+ *            and would satisfy a naive "title contains handle" check). See
+ *            `stripHandleAndBoilerplate`/`runHandleProbe` for the exact
+ *            rule: strip the handle and platform boilerplate out of the
+ *            title first, cross-check whatever real name text remains, and
+ *            treat "nothing meaningful remains" as a MISS, not a hit. An
+ *            og:image with no usable title is trusted only for an already
+ *            CONFIRMED handle (an existing link, or one confirmed on another
+ *            platform this run) — never for a bare name-derived guess.
+ *            Sub-second per probe and replaces what used to be a
+ *            per-platform Gemini search (measured live: that shape timed out
+ *            on 4 of 7 platforms and found ZERO candidates for an artist who
+ *            genuinely has profiles on all of them — see the
+ *            discovery-rebuild report).
  *   Tier 4 — Gemini, kept ONLY as a last resort for whatever tier 3's
  *            probing couldn't confirm and only if the time budget allows:
  *            one small call per remaining platform, each restricted to a
@@ -358,12 +369,63 @@ export function titleMatchesArtist(title: string, artistName: string): boolean {
     return t.includes(a) || a.includes(t);
 }
 
+/** Platform-boilerplate fragments a real profile page's og:title commonly
+ *  appends AFTER the person's own name (e.g. `"Pete Rango (@peterango) •
+ *  Instagram photos and videos"`, `"peterango - Twitch"`). Stripped before
+ *  the name cross-check below so this boilerplate — which is identical on
+ *  EVERY profile on a platform, not just the real artist's — can never
+ *  itself count as "evidence of the artist's name". Anchored to the end of
+ *  the title (where platforms actually append it); order doesn't matter,
+ *  each fragment is removed independently. */
+const TITLE_BOILERPLATE_FRAGMENTS: RegExp[] = [
+    /[•·]\s*instagram photos and videos\s*$/i,
+    /-\s*twitch\s*$/i,
+    /\|\s*spotify\s*$/i,
+    /\bon soundcloud\s*$/i,
+    /-\s*youtube\s*$/i,
+    /\|\s*facebook\s*$/i,
+];
+
+/** Strips a probed HANDLE (bare `peterango`, `@peterango`, or `(@peterango)`)
+ *  and known platform boilerplate out of an og:title, leaving whatever
+ *  human-readable name text remains — the ONLY thing the name cross-check
+ *  below is allowed to treat as evidence.
+ *
+ *  This exists because the handle is nearly always echoed inside the title
+ *  ("Peter Lyrøholm (@peterango) • Instagram photos and videos" contains
+ *  "peterango"), so comparing the artist name against the RAW title lets a
+ *  probe "match" on the handle it already guessed rather than on any real
+ *  proof of whose page it is — nearly every profile page on the internet
+ *  satisfies that, including strangers'. Comparing against the residual
+ *  after stripping is what makes this a real name cross-check instead of a
+ *  tautology. */
+export function stripHandleAndBoilerplate(title: string, handle: string): string {
+    let s = title;
+    if (handle) {
+        const esc = handle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        s = s.replace(new RegExp(`\\(\\s*@${esc}\\s*\\)`, "gi"), " "); // "(@handle)"
+        s = s.replace(new RegExp(`@${esc}\\b`, "gi"), " "); // "@handle"
+        s = s.replace(new RegExp(`\\b${esc}\\b`, "gi"), " "); // bare "handle"
+    }
+    for (const fragment of TITLE_BOILERPLATE_FRAGMENTS) s = s.replace(fragment, " ");
+    return s.replace(/\s+/g, " ").trim();
+}
+
 /** A probe "hit" is an og:image OR an og:title — but a title that clearly
  *  names someone else overrides an image and is still a MISS; this is the
  *  main defense against grabbing a stranger's handle. No title at all means
  *  no cross-check is possible, so an image alone is trusted (matches the
  *  measured live behavior: a fabricated handle returns neither image nor
- *  title, never a mismatched title alone). */
+ *  title, never a mismatched title alone).
+ *
+ *  Callers that have a HANDLE to cross-check against (every real probe —
+ *  see `runHandleProbe`) must pass the STRIPPED residual (see
+ *  `stripHandleAndBoilerplate`) as `preview.title`, not the raw title —
+ *  otherwise the handle-echo problem above reappears. This function itself
+ *  stays a plain, generic "does this preview look like a hit for
+ *  `artistName`" predicate with no handle awareness, so its "image alone is
+ *  trusted" branch is only ever correct when there was genuinely no title
+ *  text to check in the first place. */
 export function isProbeHit(preview: LinkPreview, artistName: string): boolean {
     if (preview.title && !titleMatchesArtist(preview.title, artistName)) return false;
     return !!(preview.imageUrl || preview.title);
@@ -398,12 +460,31 @@ interface HandleProbe {
     platform: ProfileDisplayColumn;
     handle: string;
     source: string;
+    /** Is this handle already known-good — an existing link already on the
+     *  artist's row, or a handle CONFIRMED on another platform earlier this
+     *  run (the propagate pass below)? Or is it a plain name-derived GUESS?
+     *  Gates whether an og:image alone (no title text to cross-check) is
+     *  trusted as a hit — see `runHandleProbe`. Propagating a known-good
+     *  handle is much stronger evidence than probing a guessed slug, so the
+     *  two must not be trusted the same way. */
+    confirmed: boolean;
 }
 
 /** Probes one (platform, handle) URL via the existing `fetchLinkPreview`
  *  helper (already uses the right UA and handles Spotify oEmbed) and reports
  *  a confirmed hit, or `null` on a miss/failure — `fetchLinkPreview` itself
- *  never throws and already carries its own ~4s per-fetch timeout. */
+ *  never throws and already carries its own ~4s per-fetch timeout.
+ *
+ *  A hit requires POSITIVE evidence of the artist's name, independent of the
+ *  handle: strip the probed handle and platform boilerplate out of the
+ *  og:title (see `stripHandleAndBoilerplate`) and cross-check whatever real
+ *  name text remains. If nothing meaningful survives stripping — "peterango
+ *  - Twitch", a title-less page — that is a MISS, not a hit; absence of
+ *  evidence must never count as evidence. The one exception: an og:image
+ *  with no usable title text at all is still trusted, but ONLY for a
+ *  `confirmed` handle (see `HandleProbe.confirmed` above) — propagation of a
+ *  known-good handle is strong enough evidence on its own, a guessed slug is
+ *  not. */
 async function runHandleProbe(
     probe: HandleProbe,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
@@ -419,8 +500,19 @@ async function runHandleProbe(
         // module's "never throws" contract, so defend anyway — same pattern
         // every other tier in this file already follows.
         const preview = await fetchLinkPreview(url);
-        if (!isProbeHit(preview, artistName)) return null;
-        return { url, preview };
+        const residual = preview.title ? stripHandleAndBoilerplate(preview.title, probe.handle) : "";
+        if (residual) {
+            // Real name text survived stripping — cross-check IT against the
+            // artist name (never the raw title, which is nearly always
+            // "satisfied" by the handle we ourselves guessed).
+            if (!isProbeHit({ imageUrl: preview.imageUrl, title: residual }, artistName)) return null;
+            return { url, preview };
+        }
+        // No usable title text (none at all, or only the handle/boilerplate
+        // we just stripped out) — an image alone is evidence ONLY when the
+        // handle is already known-good.
+        if (probe.confirmed && preview.imageUrl) return { url, preview };
+        return null;
     } catch (e) {
         console.error(`[profileDiscovery] tier3 handle probe failed for ${url}:`, e);
         return null;
@@ -470,30 +562,34 @@ async function* tierThreeHandleProbeStream(
     });
 
     // --- Seed pass: existing handle-shaped links + name-derived slugs -----
+    // `confirmed: true` for an existing link already on the artist's row (a
+    // real anchor); `confirmed: false` for a name-derived GUESS — this is
+    // the distinction `runHandleProbe` uses to decide whether an og:image
+    // alone (no title) is trusted.
     const seenHandles = new Set<string>();
-    const seedHandles: { handle: string; source: string }[] = [];
+    const seedHandles: { handle: string; source: string; confirmed: boolean }[] = [];
     for (const col of handlePlatforms) {
         const raw = record[col];
         if (typeof raw !== "string" || !raw) continue;
         const handle = normalizeHandle(raw);
         if (!handle || seenHandles.has(handle)) continue;
         seenHandles.add(handle);
-        seedHandles.push({ handle, source: `existing ${col} handle` });
+        seedHandles.push({ handle, source: `existing ${col} handle`, confirmed: true });
     }
     for (const slug of deriveNameSlugs(artistName)) {
         if (seenHandles.has(slug)) continue;
         seenHandles.add(slug);
-        seedHandles.push({ handle: slug, source: "derived from artist name" });
+        seedHandles.push({ handle: slug, source: "derived from artist name", confirmed: false });
     }
 
     const seedJobs: HandleProbe[] = [];
-    for (const { handle, source } of seedHandles) {
+    for (const { handle, source, confirmed } of seedHandles) {
         for (const platform of targets) {
             const key = `${platform}|${handle}`;
             if (tried.has(key) || budget <= 0) continue;
             tried.add(key);
             budget--;
-            seedJobs.push({ platform, handle, source });
+            seedJobs.push({ platform, handle, source, confirmed });
         }
     }
 
@@ -507,6 +603,10 @@ async function* tierThreeHandleProbeStream(
     }
 
     // --- Propagate pass: handles confirmed above -> still-unresolved ------
+    // Every handle here already cleared a full probe (title-matched, or
+    // image-only on an already-confirmed handle) on ANOTHER platform this
+    // run, so it's `confirmed: true` here too — propagation of a known-good
+    // handle is strong evidence on its own.
     const stillMissing = targets.filter(p => !resolved.has(p));
     if (stillMissing.length > 0 && newlyConfirmedHandles.size > 0 && budget > 0) {
         const propagationJobs: HandleProbe[] = [];
@@ -516,7 +616,7 @@ async function* tierThreeHandleProbeStream(
                 if (tried.has(key) || budget <= 0) continue;
                 tried.add(key);
                 budget--;
-                propagationJobs.push({ platform, handle, source: "propagated" });
+                propagationJobs.push({ platform, handle, source: "propagated", confirmed: true });
             }
         }
         for await (const [probe, hit] of mapWithConcurrency(propagationJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {

@@ -64,10 +64,10 @@ async function setup() {
     const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
     const { musicPlatformData, spotifyProvider, deezerProvider } = await import('@/server/utils/musicPlatform');
     const { getArtistMappings } = await import('@/server/utils/idMappingService');
-    const { discoverArtistProfiles, deriveNameSlugs, titleMatchesArtist, isProbeHit } = await import('../profileDiscovery');
+    const { discoverArtistProfiles, deriveNameSlugs, titleMatchesArtist, isProbeHit, stripHandleAndBoilerplate } = await import('../profileDiscovery');
     return {
         artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, deezerProvider, getArtistMappings,
-        discoverArtistProfiles, deriveNameSlugs, titleMatchesArtist, isProbeHit,
+        discoverArtistProfiles, deriveNameSlugs, titleMatchesArtist, isProbeHit, stripHandleAndBoilerplate,
     };
 }
 
@@ -272,15 +272,25 @@ describe('discoverArtistProfiles', () => {
     });
 
     it('enriches a surviving candidate with urlmap presentation metadata (displayName/logoUrl/colorHex) exactly like buildProfilesPayload', async () => {
+        // NOTE: this candidate is now resolved by tier-3 handle PROBING, not
+        // Gemini (tier 4) — the name-derived slug "peterango" probes clean on
+        // instagram before Gemini is ever consulted, so `reasoning` below is
+        // probe-authored, not the (unused) Gemini "matches" string. Keyed to
+        // one exact URL so exactly one probe hits, deterministically (every
+        // other probed URL — other derived slugs, other platforms — misses).
         const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
         artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
         artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
         musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-        mockGenerate.mockResolvedValue({
-            text: '[{"url":"https://instagram.com/peterango","reasoning":"matches"}]',
-        });
-        extractArtistId.mockResolvedValue({ siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterango' });
-        fetchLinkPreview.mockResolvedValue({ imageUrl: 'https://cdn/preview.jpg', title: 'Pete Rango' });
+        mockGenerate.mockResolvedValue({ text: 'NONE' }); // tier 4 never needs to contribute anything here
+        extractArtistId.mockImplementation(async (url: string) =>
+            url === 'https://instagram.com/peterango' ? { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterango' } : null,
+        );
+        fetchLinkPreview.mockImplementation(async (url: string) =>
+            url === 'https://instagram.com/peterango'
+                ? { imageUrl: 'https://cdn/preview.jpg', title: 'Pete Rango' }
+                : { imageUrl: null, title: null },
+        );
 
         const result = await discoverArtistProfiles('a1');
         expect(result).toEqual([{
@@ -291,7 +301,7 @@ describe('discoverArtistProfiles', () => {
             logoUrl: 'https://cdn/instagram.png',
             colorHex: '#E1306C',
             previewImage: 'https://cdn/preview.jpg',
-            reasoning: 'matches',
+            reasoning: 'Handle probe: og:title matched "Pete Rango" for @peterango (derived from artist name)',
         }]);
     });
 
@@ -452,19 +462,30 @@ describe('discoverArtistProfiles', () => {
     // --- Tier 3 — per-platform grounded search, parallel, fault-tolerant --
 
     describe('tier 3 — per-platform grounded search', () => {
-        it('runs one call per remaining platform in parallel and tolerates individual failures', async () => {
+        // Probing now runs BEFORE Gemini and resolves most/all platforms for
+        // a well-behaved artist, so a call-count assertion against Gemini
+        // must not leave that outcome to chance. Force every tier-3 probe to
+        // miss (no title, no image at all — a miss under ANY handle-confirmed
+        // vs -derived nuance) so this test isolates tier-4 (Gemini) behavior
+        // specifically: Gemini's answer uses a handle ("petemusicofficial")
+        // no probe would ever try, so the two tiers can't collide.
+        it('runs one call per remaining platform in parallel and tolerates individual failures, once tier-3 probing has fully missed', async () => {
             const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST); // deezer only — every social platform missing
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
             musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
-            fetchLinkPreview.mockResolvedValue({ imageUrl: 'https://cdn/preview.jpg', title: null }); // instagram is OG-reliable (gate d)
+            fetchLinkPreview.mockImplementation(async (url: string) =>
+                url === 'https://instagram.com/petemusicofficial'
+                    ? { imageUrl: 'https://cdn/preview.jpg', title: null } // instagram is OG-reliable (gate e)
+                    : { imageUrl: null, title: null }, // every tier-3 probe URL — guaranteed miss
+            );
             extractArtistId.mockImplementation(async (url: string) => {
-                if (url.includes('instagram.com/peterango')) return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'peterango' };
+                if (url.includes('instagram.com/petemusicofficial')) return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'petemusicofficial' };
                 if (url.includes('youtube.com/@peterango')) return { siteName: 'youtube', cardPlatformName: 'YouTube', id: 'peterango' };
                 return null;
             });
             mockGenerate.mockImplementation(async (args: { contents: string }) => {
-                if (args.contents.includes('Instagram')) return { text: 'https://instagram.com/peterango' };
+                if (args.contents.includes('Instagram')) return { text: 'https://instagram.com/petemusicofficial' };
                 if (args.contents.includes('YouTube')) throw new Error('network blip');
                 if (args.contents.includes('X ')) return { text: 'not json, not a url, not NONE either' };
                 return { text: 'NONE' };
@@ -472,7 +493,7 @@ describe('discoverArtistProfiles', () => {
 
             const result = await discoverArtistProfiles('a1');
 
-            expect(mockGenerate).toHaveBeenCalledTimes(TIER3_PLATFORMS.length); // one call per platform, run in parallel
+            expect(mockGenerate).toHaveBeenCalledTimes(TIER3_PLATFORMS.length); // one call per platform, run in parallel — tier 3 probing confirmed nothing
             expect(result.map(r => r.siteName).sort()).toEqual(['instagram']);
             // The failing/malformed platforms degraded to "no candidate", not a thrown error.
         });
@@ -589,6 +610,121 @@ describe('discoverArtistProfiles', () => {
         it('is a miss when the probe returns neither an image nor a title', async () => {
             const { isProbeHit } = await setup();
             expect(isProbeHit({ imageUrl: null, title: null }, 'Pete Rango')).toBe(false);
+        });
+    });
+
+    // Regression coverage for the reported false-positive: a naive "does the
+    // title contain the handle" check passes on nearly every profile page,
+    // including a stranger's, because platforms echo the handle back into
+    // the title. `stripHandleAndBoilerplate` removes the handle-echo AND
+    // platform boilerplate so the name cross-check runs against real
+    // evidence only.
+    describe('stripHandleAndBoilerplate', () => {
+        it('strips a bare handle followed by platform boilerplate down to nothing', async () => {
+            const { stripHandleAndBoilerplate } = await setup();
+            expect(stripHandleAndBoilerplate('peterango - Twitch', 'peterango')).toBe('');
+        });
+
+        it('strips a parenthesised @handle and Instagram boilerplate, leaving the real (wrong) name', async () => {
+            const { stripHandleAndBoilerplate } = await setup();
+            expect(stripHandleAndBoilerplate(
+                'Peter Lyrøholm (@peterango) • Instagram photos and videos', 'peterango',
+            )).toBe('Peter Lyrøholm');
+        });
+
+        it('leaves a genuine name untouched when the handle is not literally echoed (space-separated)', async () => {
+            const { stripHandleAndBoilerplate } = await setup();
+            expect(stripHandleAndBoilerplate('Pete Rango', 'peterango')).toBe('Pete Rango');
+        });
+
+        it('strips "| Facebook" boilerplate', async () => {
+            const { stripHandleAndBoilerplate } = await setup();
+            expect(stripHandleAndBoilerplate('Pete Rango | Facebook', 'peterango')).toBe('Pete Rango');
+        });
+    });
+
+    // Live-verified acceptance cases (see the handle-probing report): the
+    // exact five real URLs hand-verified for artist "Pete Rango" / handle
+    // "peterango", each exercised end-to-end through `discoverArtistProfiles`
+    // against the platform it was actually reported on, so the ACTUAL
+    // decision `runHandleProbe` makes is what's under test. `URLMAP_ROWS`
+    // carries no bandcamp/soundcloud/twitch rows (see its definition above),
+    // so those three are added locally here — bandcamp's shape matches the
+    // real `urlmap.app_string_format` value verified live (`https://%@.bandcamp.com`,
+    // the correct subdomain form, not `bandcamp.com/<handle>`).
+    describe('tier 3 — handle probing, real-world false-positive fixture', () => {
+        const EXTRA_URLMAP_ROWS = [
+            ...URLMAP_ROWS,
+            { siteName: 'twitch', cardPlatformName: 'Twitch', siteImage: null, colorHex: '#6441A5', appStringFormat: 'https://www.twitch.tv/%@' },
+            { siteName: 'soundcloud', cardPlatformName: 'SoundCloud', siteImage: null, colorHex: '#FF5500', appStringFormat: 'https://www.soundcloud.com/%@' },
+            { siteName: 'bandcamp', cardPlatformName: 'Bandcamp', siteImage: null, colorHex: '#629AA9', appStringFormat: 'https://%@.bandcamp.com' },
+        ];
+
+        async function probeOneOf(scenario: { platform: string; url: string; title: string | null; image: string | null }) {
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST); // deezer only, name "Pete Rango" — every derived slug is UNCONFIRMED
+            artistQ.getAllLinks.mockResolvedValue(EXTRA_URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            fetchLinkPreview.mockImplementation(async (u: string) =>
+                u === scenario.url ? { imageUrl: scenario.image, title: scenario.title } : { imageUrl: null, title: null },
+            );
+            extractArtistId.mockImplementation(async (u: string) =>
+                u === scenario.url ? { siteName: scenario.platform, cardPlatformName: scenario.platform, id: 'peterango' } : null,
+            );
+            mockGenerate.mockResolvedValue({ text: 'NONE' });
+            return discoverArtistProfiles('a1');
+        }
+
+        it('instagram.com/peterango — title belongs to a different person ("Peter Lyrøholm") — MISS', async () => {
+            const result = await probeOneOf({
+                platform: 'instagram',
+                url: 'https://instagram.com/peterango',
+                title: 'Peter Lyrøholm (@peterango) • Instagram photos and videos',
+                image: null,
+            });
+            expect(result).toEqual([]);
+        });
+
+        it('twitch.tv/peterango — og:title is only the handle + boilerplate, even WITH an image present — MISS', async () => {
+            const result = await probeOneOf({
+                platform: 'twitch',
+                url: 'https://www.twitch.tv/peterango',
+                title: 'peterango - Twitch',
+                image: 'https://cdn/some-image.jpg', // image present must not rescue a derived slug with no name evidence
+            });
+            expect(result).toEqual([]);
+        });
+
+        it('peterango.bandcamp.com — no og:title at all, derived (unconfirmed) handle — MISS even with an image', async () => {
+            const result = await probeOneOf({
+                platform: 'bandcamp',
+                url: 'https://peterango.bandcamp.com', // real Bandcamp URL shape: <handle>.bandcamp.com
+                title: null,
+                image: 'https://cdn/some-image.jpg',
+            });
+            expect(result).toEqual([]);
+        });
+
+        it('soundcloud.com/peterango — og:title is exactly the artist name — HIT', async () => {
+            const result = await probeOneOf({
+                platform: 'soundcloud',
+                url: 'https://www.soundcloud.com/peterango',
+                title: 'Pete Rango',
+                image: null,
+            });
+            expect(result).toHaveLength(1);
+            expect(result[0].siteName).toBe('soundcloud');
+        });
+
+        it('youtube.com/@peterango — og:title is exactly the artist name — HIT', async () => {
+            const result = await probeOneOf({
+                platform: 'youtube',
+                url: 'https://youtube.com/@peterango',
+                title: 'Pete Rango',
+                image: null,
+            });
+            expect(result).toHaveLength(1);
+            expect(result[0].siteName).toBe('youtube');
         });
     });
 
