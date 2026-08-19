@@ -23,7 +23,9 @@ describe('artistDocService', () => {
         getGemini.mockReturnValue({ models: { generateContent } });
         getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes', spotify: 'spot123', instagram: 'novareyes' });
         getVaultSourcesByArtistId.mockResolvedValue([
-            { title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'bedroom auteur', extractedText: 'long text' },
+            // Long enough to be CITABLE: a source is only usable as evidence if we
+            // actually fetched and read the page, and stored body text is that record.
+            { title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'bedroom auteur', extractedText: 'the review text '.repeat(40) },
         ]);
         getInterviewAnswers.mockResolvedValue([
             { questionKey: 'sound_in_own_words', question: 'Sound?', answer: 'heartbreak you can dance to', source: 'onboarding' },
@@ -70,6 +72,25 @@ describe('artistDocService', () => {
     });
 
     describe('citations', () => {
+        it('excludes sources whose page was never read — a model-written snippet is not evidence', async () => {
+            const { svc } = await setup();
+            const { getVaultSourcesByArtistId } = await import('@/server/utils/queries/dashboardQueries');
+            getVaultSourcesByArtistId.mockResolvedValue([
+                { title: 'Real', url: 'https://real.example/x', snippet: 'from the page', extractedText: 'body text '.repeat(60) },
+                // Fetched nothing. Its snippet is Gemini's description of a search
+                // result, not text from the page — a published About once cited one
+                // of these for a claim the live page did not contain.
+                { title: 'Unread', url: 'https://unread.example/y', snippet: 'a model wrote this', extractedText: null },
+                // Grounding-redirect tokens expire and then 404, whatever text was
+                // captured when they were stored.
+                { title: 'Expired', url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/T', snippet: 's', extractedText: 'body text '.repeat(60) },
+            ]);
+            const sources = await svc.buildDocSources('a1');
+            expect(sources.filter(s => s.kind === 'vault')).toEqual([
+                { id: 1, kind: 'vault', label: 'Real', url: 'https://real.example/x' },
+            ]);
+        });
+
         it('buildDocSources numbers vault sources then interview answers, skipping skipped answers', async () => {
             const { svc } = await setup();
             const sources = await svc.buildDocSources('a1');

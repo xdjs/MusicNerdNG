@@ -18,8 +18,13 @@ jest.mock("@/server/utils/queries/dashboardQueries", () => ({
   updateVaultSourceContent: jest.fn().mockResolvedValue(undefined),
 }));
 
+// A page that verifies: 200, plenty of body text, and it names the artist.
+const GOOD_BODY = "Grimes gave a long interview about her new record. ".repeat(20);
+const goodPage = { title: "A", snippet: "s", extractedText: GOOD_BODY, fullText: GOOD_BODY, ogImage: null, status: 200 };
+
+const mockFetchPage = jest.fn().mockResolvedValue(goodPage);
 jest.mock("@/server/utils/fetchPageContent", () => ({
-  fetchPageContent: jest.fn().mockResolvedValue({ title: "A", snippet: "s", extractedText: "t", ogImage: null }),
+  fetchPageContent: (...a) => mockFetchPage(...a),
   isUnsafeUrl: jest.fn().mockReturnValue(false),
 }));
 
@@ -29,6 +34,8 @@ describe("searchAndPopulateVault — retry on empty/unparseable response", () =>
     mockGenerate.mockReset();
     mockInsert.mockClear();
     mockInsert.mockResolvedValue({ id: "src-1", url: "https://example.com/a", title: "A", status: "pending" });
+    mockFetchPage.mockReset();
+    mockFetchPage.mockResolvedValue(goodPage);
   });
 
   it("retries when Gemini returns empty responses, then succeeds (the Grimes bug)", async () => {
@@ -46,20 +53,98 @@ describe("searchAndPopulateVault — retry on empty/unparseable response", () =>
     expect(result).toHaveLength(1);
   }, 15000);
 
-  it("returns sources immediately and enriches page content in the background (not awaited)", async () => {
-    // Enrichment is fire-and-forget so it never adds latency to inline About generation;
-    // the snippet is enough for synthesis and the fuller text lands for later views.
+  // ---- Verification gate -------------------------------------------------
+  // Gemini is asked to TYPE urls and descriptions, so it produces plausible ones:
+  // a real run stored five Apple Music IDs of which one existed, two invented
+  // slugs for one real article, and a domain one letter off from the real site.
+  // Nothing may become a source until we have fetched it ourselves.
+
+  it("verifies a candidate BEFORE storing it, and keeps the page's own content", async () => {
     mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://example.com/a","title":"A","snippet":"snip","type":"article"}]',
+      text: '[{"url":"https://example.com/a","title":"Model Title","snippet":"model description","type":"article"}]',
     });
 
-    const { fetchPageContent } = await import("@/server/utils/fetchPageContent");
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+
+    // Awaited, not fire-and-forget: the fetch must happen before the row exists.
+    expect(mockFetchPage).toHaveBeenCalledWith("https://example.com/a", { timeoutMs: 5000 });
+    expect(result).toHaveLength(1);
+    const stored = mockInsert.mock.calls[0][0];
+    // The page is the authority on itself — not the model's guess about it.
+    expect(stored.title).toBe("A");
+    expect(stored.snippet).toBe("s");
+    expect(stored.extractedText).toBe(GOOD_BODY);
+  }, 15000);
+
+  it("drops a candidate whose URL does not exist (404)", async () => {
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://example.com/invented","title":"A","snippet":"s","type":"article"}]',
+    });
+    mockFetchPage.mockResolvedValue({ title: "t", extractedText: null, status: 404 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  }, 15000);
+
+  it("drops a candidate whose hostname does not resolve", async () => {
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://exampl.com/typo","title":"A","snippet":"s","type":"article"}]',
+    });
+    mockFetchPage.mockResolvedValue({ title: "t", extractedText: null, status: null, failure: "dns" });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    expect(await searchAndPopulateVault("a1")).toEqual([]);
+    expect(mockInsert).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("keeps a bot-blocked page as an UNCITABLE lead rather than deleting a real source", async () => {
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://example.com/walled","title":"Walled","snippet":"model description","type":"article"}]',
+    });
+    mockFetchPage.mockResolvedValue({ title: "t", extractedText: null, status: 403 });
+
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
     const result = await searchAndPopulateVault("a1");
 
     expect(result).toHaveLength(1);
-    // Background enrichment fetch was fired (not awaited) for the inserted source.
-    expect(fetchPageContent).toHaveBeenCalledWith("https://example.com/a");
+    const stored = mockInsert.mock.calls[0][0];
+    // Empty extractedText IS the "not verified" record that isCitableSource reads.
+    expect(stored.extractedText).toBeNull();
+    // The model's description survives only as something to recognize the link
+    // by while curating; it never reaches synthesis.
+    expect(stored.snippet).toBe("model description");
+  }, 15000);
+
+  it("keeps a page we fetched but that never mentions the artist as a lead, not a source", async () => {
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://example.com/parked","title":"Parked","snippet":"s","type":"article"}]',
+    });
+    const unrelated = "This domain is registered but may still be available. ".repeat(20);
+    mockFetchPage.mockResolvedValue({ title: "t", extractedText: unrelated, fullText: unrelated, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+
+    // A parked/soft-404 page is dead, not a lead — it is not a real page about anyone.
+    expect(result).toEqual([]);
+    expect(mockInsert).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("never stores a Google grounding-redirect URL when it cannot be resolved", async () => {
+    mockGenerate.mockResolvedValueOnce({
+      text: '[{"url":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/TOKEN","title":"A","snippet":"s","type":"article"}]',
+    });
+    // Resolution attempt fails — these tokens expire and then 404, so storing the
+    // redirect itself (the old fallback) put a guaranteed-broken link in the vault.
+    global.fetch = jest.fn().mockRejectedValue(new Error("expired"));
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    expect(await searchAndPopulateVault("a1")).toEqual([]);
+    expect(mockInsert).not.toHaveBeenCalled();
   }, 15000);
 
   it("returns [] after exhausting attempts if every response is empty", async () => {

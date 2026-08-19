@@ -675,15 +675,17 @@ describe('runOnboardingTurn', () => {
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
         const dq = await import('@/server/utils/queries/dashboardQueries');
         dq.getVaultSourcesByArtistId.mockResolvedValueOnce([
-            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: 'https://pitchfork.com/img.jpg' },
-            { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null },
+            // Read page → verified → citable, and the card says so.
+            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: 'https://pitchfork.com/img.jpg', extractedText: 'review body '.repeat(50) },
+            // Never read → shown as an unverified lead, never cited.
+            { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null, extractedText: null },
         ]);
         const { runOnboardingTurn } = await import('../turnHandlers');
         const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
         const step = events.find(e => e.kind === 'step' && e.step === 'vault');
         expect(step.payload.sources).toEqual([
-            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: 'https://pitchfork.com/img.jpg' },
-            { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null },
+            { id: 's1', title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'snip', ogImage: 'https://pitchfork.com/img.jpg', verified: true },
+            { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null, verified: false },
         ]);
     });
 

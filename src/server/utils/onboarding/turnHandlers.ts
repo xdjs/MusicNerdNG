@@ -17,6 +17,7 @@ import {
 } from "@/server/utils/queries/dashboardQueries";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { isUnsafeUrl, fetchPageContent } from "@/server/utils/fetchPageContent";
+import { isCitableSource } from "@/server/utils/sourceVerification";
 import { fetchLinkPreview } from "@/server/utils/linkPreview";
 import { inferTypeFromUrl } from "@/lib/sourceTypes";
 import {
@@ -575,7 +576,21 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             yield {
                 kind: "step",
                 step: "vault",
-                payload: { sources: pending.map(s => ({ id: s.id, title: s.title, url: s.url, snippet: s.snippet, ogImage: s.ogImage ?? null })) },
+                // `verified` travels with each source so the card can say plainly
+                // which ones we actually read. An unverified source is still shown
+                // and still clickable — the artist is the best judge of whether a
+                // link about them is real — it just carries no implication that its
+                // description was checked against the page.
+                payload: {
+                    sources: pending.map(s => ({
+                        id: s.id,
+                        title: s.title,
+                        url: s.url,
+                        snippet: s.snippet,
+                        ogImage: s.ogImage ?? null,
+                        verified: isCitableSource(s),
+                    })),
+                },
             };
             return;
         }

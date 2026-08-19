@@ -23,6 +23,7 @@ import { getInterviewAnswers, getArtistDoc } from "@/server/utils/queries/onboar
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP } from "@/lib/bioConstants";
+import { isCitableSource } from "@/server/utils/sourceVerification";
 
 export { ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP };
 /** Exported so callers (e.g. the publish-turn retry budget) can reason about
@@ -91,7 +92,25 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
     if (!artist) throw new Error(`Artist not found: ${artistId}`);
     const artistName = artist.name ?? "Unknown Artist";
 
-    const vaultSources = await getVaultSourcesByArtistId(artistId, "approved");
+    // CITABLE SOURCES ONLY — filtered here, at the single point where doc material
+    // is read, rather than downstream in `toSourceList`. Everything after this
+    // (the numbered manifest AND the prompt's material lines) is zipped against
+    // `vaultSources` by array position, so a filter applied to one and not the
+    // other would silently point citations at the wrong source. One filter, one
+    // array, no way for the two to disagree.
+    //
+    // What this excludes: sources whose page we never successfully read. Their
+    // stored snippet is a language model's description of a search result, not
+    // text from the page — citing one presents model output as a verified fact,
+    // which is worse than having no citation at all. They remain in the vault and
+    // remain visible to the artist as unverified leads; they just cannot be
+    // evidence for a published claim.
+    const approvedSources = await getVaultSourcesByArtistId(artistId, "approved");
+    const vaultSources = approvedSources.filter(isCitableSource);
+    const uncitable = approvedSources.length - vaultSources.length;
+    if (uncitable > 0) {
+        console.log(`[gatherDocMaterial] ${uncitable}/${approvedSources.length} approved source(s) excluded from citation for ${artistName} — page content never verified`);
+    }
     const answers = (await getInterviewAnswers(artistId)).filter(a => a.answer);
 
     // Social signals: confirmed mutual Instagram collaborations (co-authored /

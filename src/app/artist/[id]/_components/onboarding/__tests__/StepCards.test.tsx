@@ -324,7 +324,7 @@ describe('VaultCard — keep-by-default', () => {
         expect(screen.getByText('pitchfork.com')).toBeInTheDocument(); // domain, "www." stripped
     });
 
-    it('renders correctly with no thumbnail and no domain line when a source has no ogImage', () => {
+    it('renders no thumbnail but still shows the domain when a source has no ogImage', () => {
         const withoutImage = {
             sources: [
                 { id: 's2', title: 'Fan wiki', url: 'https://wiki.example/y', snippet: null, ogImage: null },
@@ -333,7 +333,38 @@ describe('VaultCard — keep-by-default', () => {
         const { container } = render(<VaultCard payload={withoutImage} onConfirm={jest.fn()} disabled={false} />);
         expect(container.querySelector('img')).toBeNull();
         expect(screen.getByText('Fan wiki')).toBeInTheDocument();
-        expect(screen.queryByText('wiki.example')).not.toBeInTheDocument();
+        // The domain shows whether or not there's a thumbnail: deciding to keep a
+        // source means knowing what site it is, and near-miss domains are exactly
+        // how invented sources hid (belltower.pictures vs belltowerpictures.com).
+        expect(screen.getByText('wiki.example')).toBeInTheDocument();
+    });
+
+    // Curating sources you cannot open is guesswork — every source links out.
+    it('links each source title to its URL so it can be checked', () => {
+        const payload = {
+            sources: [
+                { id: 's1', title: 'Real interview', url: 'https://rvamag.com/x', snippet: 'from the page', ogImage: null, verified: true },
+            ],
+        };
+        render(<VaultCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        const link = screen.getByRole('link', { name: 'Real interview' });
+        expect(link).toHaveAttribute('href', 'https://rvamag.com/x');
+        expect(link).toHaveAttribute('target', '_blank');
+        expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+    });
+
+    // A source whose page we never read carries a model-written description. It is
+    // still worth showing — the artist can recognize their own press — but it must
+    // never look like something we checked.
+    it('marks a source we could not read as unverified, and leaves a read one unmarked', () => {
+        const payload = {
+            sources: [
+                { id: 's1', title: 'Read it', url: 'https://a.example/x', snippet: 's', ogImage: null, verified: true },
+                { id: 's2', title: 'Could not read it', url: 'https://b.example/y', snippet: 's', ogImage: null, verified: false },
+            ],
+        };
+        render(<VaultCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getAllByText('unverified')).toHaveLength(1);
     });
 
     // Fix 3: an 11-source vault (the reported case) must not bury "Keep these,

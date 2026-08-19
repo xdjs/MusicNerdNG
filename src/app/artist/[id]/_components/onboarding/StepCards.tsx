@@ -451,7 +451,7 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
 // ---------- Vault: keep-by-default ----------
 
 type VaultPayload = {
-    sources: { id: string; title: string | null; url: string; snippet: string | null; ogImage?: string | null }[];
+    sources: { id: string; title: string | null; url: string; snippet: string | null; ogImage?: string | null; verified?: boolean }[];
 };
 
 /** The domain line of a real link unfurl (e.g. "pitchfork.com") — helps the
@@ -527,9 +527,31 @@ export function VaultCard({ payload, onConfirm, disabled }: {
                             {s.ogImage && <VaultThumbnail src={s.ogImage} />}
                             <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                    <p className="font-medium truncate text-black dark:text-white">{s.title ?? s.url}</p>
+                                    {/* The title is the link. Curating sources you cannot open
+                                        is guesswork — every source here goes straight to the page
+                                        it claims to be, so a wrong one can be caught by clicking. */}
+                                    <a
+                                        href={s.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-medium truncate block text-black dark:text-white hover:text-pink-600 dark:hover:text-pink-400 hover:underline"
+                                    >
+                                        {s.title ?? s.url}
+                                    </a>
                                     {s.snippet && <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{s.snippet}</p>}
-                                    {domain && <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{domain}</p>}
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        {(domain ?? sourceDomain(s.url)) && (
+                                            <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{domain ?? sourceDomain(s.url)}</p>
+                                        )}
+                                        {s.verified === false && (
+                                            <span
+                                                title="We couldn't read this page, so its description above is unconfirmed. Open it to check — nothing unverified is used to write your About."
+                                                className="shrink-0 text-[0.68rem] uppercase tracking-wide px-1.5 py-0.5 rounded border border-amber-500/50 text-amber-700 dark:text-amber-300"
+                                            >
+                                                unverified
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <button
                                     aria-label={`${skipped.has(s.id) ? "keep" : "skip"} ${s.title ?? s.url}`}
@@ -687,7 +709,12 @@ function renderWithCitations(text: string, sources: DocSource[]) {
         if (!m) return part || null;
         const source = byId.get(Number(m[1]));
         if (!source) return null;
-        const className = "text-[0.7em] align-super mx-px text-pink-500 dark:text-pink-400";
+        const className = "text-[0.7em] align-super mx-px";
+        // A citation with no URL is the artist's OWN words from the interview —
+        // there is no page to link to. Styling it identically to a link made it
+        // read as a broken one ("28 and 29 aren't clickable"), so it gets its own
+        // treatment: a different colour and a dotted underline, which says
+        // "annotation, hover me" rather than "link, and it's broken".
         return source.url ? (
             <sup key={i}>
                 <a
@@ -695,13 +722,19 @@ function renderWithCitations(text: string, sources: DocSource[]) {
                     target="_blank"
                     rel="noopener noreferrer"
                     title={source.label}
-                    className={`${className} hover:underline`}
+                    className={`${className} text-pink-500 dark:text-pink-400 hover:underline`}
                 >
                     [{m[1]}]
                 </a>
             </sup>
         ) : (
-            <sup key={i} title={source.label} className={className}>[{m[1]}]</sup>
+            <sup
+                key={i}
+                title={`${source.label} — your own words, from the interview`}
+                className={`${className} text-emerald-600 dark:text-emerald-400 cursor-help decoration-dotted underline underline-offset-2`}
+            >
+                [{m[1]}]
+            </sup>
         );
     });
 }
@@ -776,7 +809,8 @@ export function KnowledgeDocCard({ doc, sources }: { doc: string; sources: DocSo
                 Your knowledge document
             </summary>
             <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 mb-3">
-                This powers your page&apos;s Q&amp;A and fun facts. Every claim below traces back to a real source — click a citation number to see it.
+                This powers your page&apos;s Q&amp;A and fun facts. Please read it and tell me anything that&apos;s wrong.
+                Pink citations link to the page they came from — click them. Green ones are your own words from the interview.
             </p>
             <div className="text-sm text-black dark:text-white space-y-2">
                 {renderDocBody(doc, sources)}

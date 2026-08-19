@@ -3,6 +3,30 @@ export interface PageContent {
     snippet?: string;
     extractedText: string | null;
     ogImage?: string;
+    /** The HTTP status the page answered with, or `null` when the request never
+     *  completed at all (DNS failure, TLS error, timeout, unsafe URL).
+     *
+     *  This distinction is load-bearing, not diagnostic. Collapsing "this host
+     *  does not exist" and "this host refused a bot" into one empty result is
+     *  what let a hallucinated URL sit in the vault looking exactly like a real
+     *  source that merely blocks scrapers. Callers classify on it — see
+     *  `classifyFetchedSource`. */
+    status: number | null;
+    /** Why the request never completed, when `status` is null. The distinction is
+     *  the difference between deleting a real source and keeping a fake one:
+     *  `dns` means the hostname does not exist (a model invented the domain),
+     *  while `timeout`/`network` mean a real host was simply slow or unreachable
+     *  right now — which must not be read as proof the URL is fake. */
+    failure?: "dns" | "timeout" | "network";
+    /** The COMPLETE body text, untruncated — for verification only, never for
+     *  storage (`extractedText` is the capped, storable form).
+     *
+     *  Verification must not be defeated by our own storage cap. Two genuinely
+     *  relevant articles were misclassified as unverified because they mention
+     *  the artist for the first time past the 5,000-character slice: the text we
+     *  kept simply didn't contain his name, so a real source looked like a wrong
+     *  one. Checks that ask "is this page about X" read this field. */
+    fullText?: string;
 }
 
 /** Decode HTML entities (&#8217; → ', &amp; → &, etc.) */
@@ -95,18 +119,35 @@ export function isUnsafeUrl(url: string): boolean {
     }
 }
 
+/** Default read budget. Callers on a request-latency path (vault discovery,
+ *  which runs inside the onboarding publish/About budget) pass something
+ *  tighter — a slow-but-real site being marked unverified is a far better
+ *  failure than blowing the turn's deadline. */
+const DEFAULT_FETCH_TIMEOUT_MS = 10000;
+
+/** How much body text we keep. A storage cap, not a verification one — see
+ *  `PageContent.fullText`. */
+const EXTRACT_MAX_CHARS = 5000;
+
 /**
  * Fetch a URL and extract title, meta description, and body text.
- * Returns domain-based fallback title on failure.
+ * Returns a domain-based fallback title on failure, and always reports
+ * `status` so the caller can tell a dead URL from a bot-blocked one.
  */
-export async function fetchPageContent(url: string): Promise<PageContent> {
+export async function fetchPageContent(
+    url: string,
+    opts: { timeoutMs?: number } = {}
+): Promise<PageContent> {
     let title = "Untitled Source";
     let snippet: string | undefined;
     let extractedText: string | null = null;
     let ogImage: string | undefined;
+    let status: number | null = null;
+    let failure: PageContent["failure"];
+    let fullText: string | undefined;
 
     if (isUnsafeUrl(url)) {
-        return { title, extractedText: null };
+        return { title, extractedText: null, status: null, failure: "network" };
     }
 
     try {
@@ -115,8 +156,9 @@ export async function fetchPageContent(url: string): Promise<PageContent> {
 
         const res = await fetch(url, {
             headers: { "User-Agent": "MusicNerdBot/1.0" },
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS),
         });
+        status = res.status;
         if (res.ok) {
             const html = await res.text();
 
@@ -149,13 +191,22 @@ export async function fetchPageContent(url: string): Promise<PageContent> {
                     .replace(/\s+/g, " ")
                     .trim();
                 if (text.length > 50) {
-                    extractedText = text.slice(0, 5000);
+                    fullText = text;
+                    extractedText = text.slice(0, EXTRACT_MAX_CHARS);
                 }
             }
         }
-    } catch {
-        // Fetch failed — return what we have
+    } catch (e) {
+        // Request never completed. Record WHY: a nonexistent hostname is strong
+        // evidence the URL was invented, whereas a timeout says nothing about
+        // whether the page is real. Node surfaces the syscall error on `cause`.
+        const cause = (e as { cause?: { code?: string } })?.cause;
+        const code = cause?.code;
+        const name = (e as { name?: string })?.name;
+        if (code === "ENOTFOUND" || code === "EAI_AGAIN") failure = "dns";
+        else if (name === "TimeoutError" || name === "AbortError") failure = "timeout";
+        else failure = "network";
     }
 
-    return { title, snippet, extractedText, ogImage };
+    return { title, snippet, extractedText, ogImage, status, failure, fullText };
 }

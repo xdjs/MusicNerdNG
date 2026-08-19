@@ -334,6 +334,7 @@ export async function insertVaultSource(data: {
     filePath?: string;
     contentType?: string;
     extractedText?: string | null;
+    ogImage?: string | null;
 }) {
     try {
         const [source] = await db
@@ -350,6 +351,7 @@ export async function insertVaultSource(data: {
                 filePath: data.filePath,
                 contentType: data.contentType,
                 extractedText: data.extractedText,
+                ogImage: data.ogImage,
             })
             .returning();
         return source;
