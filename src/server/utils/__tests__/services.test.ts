@@ -54,6 +54,13 @@ jest.mock("../queries/queriesTS", () => ({
       siteName: "spotify",
       cardPlatformName: "Spotify",
     },
+    {
+      // Real urlmap SoundCloud regex — group 1 is the OPTIONAL literal
+      // "www." prefix, group 2 is the real username.
+      regex: /^https:\/\/(www\.)?soundcloud\.com\/([^/]+)(?:\/.*)?$/,
+      siteName: "soundcloud",
+      cardPlatformName: "SoundCloud",
+    },
   ]),
 }));
 
@@ -349,6 +356,31 @@ describe("utils/services", () => {
       it("never returns the literal string \"artist\" as the id (regression for Bug 1)", async () => {
         const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
         expect(res?.id).not.toBe("artist");
+      });
+    });
+
+    describe("SoundCloud links (www.-prefix regression)", () => {
+      it("extracts the real username from a www.soundcloud.com URL, not the literal \"www.\" prefix", async () => {
+        const res = await extractArtistId("https://www.soundcloud.com/peterango");
+        expect(res).toEqual({
+          siteName: "soundcloud",
+          cardPlatformName: "SoundCloud",
+          id: "peterango",
+        });
+      });
+
+      it("still extracts the username from a soundcloud.com URL with no www. prefix", async () => {
+        const res = await extractArtistId("https://soundcloud.com/peterango");
+        expect(res).toEqual({
+          siteName: "soundcloud",
+          cardPlatformName: "SoundCloud",
+          id: "peterango",
+        });
+      });
+
+      it("never returns the literal string \"www.\" as the id (regression)", async () => {
+        const res = await extractArtistId("https://www.soundcloud.com/peterango");
+        expect(res?.id).not.toBe("www.");
       });
     });
   });

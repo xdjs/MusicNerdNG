@@ -8,24 +8,38 @@
  * break the onboarding `profiles` turn (the step behaves exactly as it does
  * without discovery).
  *
- * FINDING candidates is a three-tier cascade, run in authority + speed
- * order, each tier skipping platforms an earlier tier already proposed:
+ * FINDING candidates is a four-tier cascade, run in authority + speed order,
+ * each tier skipping platforms an earlier tier already proposed:
  *
  *   Tier 1 — our own `artist_id_mappings` table (free, instant, DB read).
  *   Tier 2 — platform search APIs (Spotify/Deezer `searchArtists`, deterministic,
  *            sub-second) for whichever of spotify/deezer is missing.
- *   Tier 3 — one small Gemini call PER remaining platform, all in parallel,
- *            each restricted to a single platform's domain — never one big
- *            open-web call asking about every platform at once (that shape
- *            measured at 44s end-to-end with ZERO candidates for an obscure
- *            artist — see the discovery-rebuild report).
+ *   Tier 3 — deterministic HANDLE PROBING: build a small set of candidate
+ *            handles (existing handle-shaped links, handles confirmed
+ *            earlier in this run, and a few slugs derived from the artist's
+ *            name), fetch each candidate URL directly via `fetchLinkPreview`,
+ *            and treat a real og:image/og:title as proof — sub-second per
+ *            probe, self-validating (a fake handle returns nothing), and
+ *            replaces what used to be a per-platform Gemini search (measured
+ *            live: that shape timed out on 4 of 7 platforms and found ZERO
+ *            candidates for an artist who genuinely has profiles on all of
+ *            them — see the discovery-rebuild report).
+ *   Tier 4 — Gemini, kept ONLY as a last resort for whatever tier 3's
+ *            probing couldn't confirm and only if the time budget allows:
+ *            one small call per remaining platform, each restricted to a
+ *            single platform's domain — never one big open-web call asking
+ *            about every platform at once (that shape measured at 44s
+ *            end-to-end with ZERO candidates for an obscure artist).
  *
- * A grounded model will confidently invent URLs, so every candidate from
- * EVERY tier — DB-sourced and API-sourced included — is validated before
- * it's ever shown to an artist; see the numbered gates in `validateCandidate`
- * below. Nothing here writes to the database; discovery only PROPOSES, the
- * existing `confirm_profiles` → `extractArtistId` → `setArtistLink` path
- * (unchanged) is what actually saves an accepted link.
+ * A grounded model (tier 4) will confidently invent URLs, so every candidate
+ * it proposes is validated before it's ever shown to an artist; see the
+ * numbered gates in `validateCandidate` below. Tiers 1/2/3 are deterministic
+ * (DB read, search API, or a direct HTTP probe) and never hallucinate a URL,
+ * so the OG-existence gate only re-applies to tier 4 — tier 3's own probe
+ * fetch already IS that check, so it isn't repeated. Nothing here writes to
+ * the database; discovery only PROPOSES, the existing `confirm_profiles` →
+ * `extractArtistId` → `setArtistLink` path (unchanged) is what actually
+ * saves an accepted link.
  *
  * Results STREAM: `discoverArtistProfilesStream` is an async generator that
  * yields a `searching`/`checked` pair as each platform lookup starts/settles
@@ -36,7 +50,7 @@
  */
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
 import { extractArtistId } from "@/server/utils/services";
-import { fetchLinkPreview } from "@/server/utils/linkPreview";
+import { fetchLinkPreview, type LinkPreview } from "@/server/utils/linkPreview";
 import { musicPlatformData, spotifyProvider, deezerProvider } from "@/server/utils/musicPlatform";
 import type { MusicPlatformArtist } from "@/server/utils/musicPlatform";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
@@ -70,16 +84,19 @@ export interface DiscoveredProfile {
 // Unlike the retired single-combined-call design (one 24s-capped Gemini call
 // grounded across up to 6 platforms — measured at 44.3s end-to-end for one
 // real, obscure artist, returning ZERO candidates because the call blew its
-// own timeout), the tiered cascade below is fast BY CONSTRUCTION: tier 1 is a
-// DB read, tier 2 is one or two deterministic HTTP calls, and tier 3 is N
-// small single-platform grounded calls run in PARALLEL — the slowest of
-// those (not their sum) bounds the tier. Worst case is roughly
-// tier1(<1s) + tier2(~1-2s) + tier3(TIER3_CALL_TIMEOUT_MS) + a per-candidate
-// preview fetch (≤4s, 8s worst case chained for Spotify — see linkPreview.ts)
-// ≈ well under 15s. DISCOVERY_BUDGET_MS remains a hard backstop, checked
-// between tiers inside the generator itself, so a pathological run (e.g. a
-// hung DB connection) still can't blow the turn budget — it stops yielding
-// instead.
+// own timeout), the cascade below is fast BY CONSTRUCTION: tier 1 is a DB
+// read, tier 2 is one or two deterministic HTTP calls, tier 3 is a handful of
+// sub-second HTTP probes run with a bounded concurrency, and tier 4 (Gemini,
+// last resort only) is N small single-platform grounded calls run in
+// PARALLEL — the slowest of those (not their sum) bounds the tier. Worst
+// case is roughly tier1(<1s) + tier2(~1-2s) + tier3(a couple probe rounds,
+// each ≤PROBE_CONCURRENCY-wide and individually sub-second) +
+// tier4(TIER3_CALL_TIMEOUT_MS, only for whatever's still missing) + a
+// per-candidate preview fetch (≤4s, 8s worst case chained for Spotify — see
+// linkPreview.ts) ≈ well under 15s. DISCOVERY_BUDGET_MS remains a hard
+// backstop, checked between tiers inside the generator itself, so a
+// pathological run (e.g. a hung DB connection) still can't blow the turn
+// budget — it stops yielding instead.
 const DISCOVERY_BUDGET_MS = 20_000;
 const TIER3_CALL_TIMEOUT_MS = 8_000;
 
@@ -93,13 +110,32 @@ const OG_RELIABLE_SITENAMES = new Set(["spotify", "instagram", "youtube"]);
 /** A candidate proposed by one tier, tagged with which tier proposed it and
  *  which PROFILE_DISPLAY_COLUMN it's a proposal FOR (not yet validated —
  *  every candidate, regardless of tier, still runs the full gate pipeline
- *  in `validateCandidate`). */
+ *  in `validateCandidate`). Tier 3 (handle probe) candidates carry the
+ *  `LinkPreview` their own probe fetch already produced, so `validateCandidate`
+ *  can reuse it instead of re-fetching the same URL a second time. */
 interface TierCandidate {
-    tier: 1 | 2 | 3;
+    tier: 1 | 2 | 3 | 4;
     platform: ProfileDisplayColumn;
     url: string;
     reasoning: string | null;
+    preview?: LinkPreview;
 }
+
+/** The handle-based platforms with no dedicated search API (Spotify and
+ *  Deezer are always handled by tier 2, win or lose — they never reach tier
+ *  3 or 4). Shared by both tier 3 (handle probing, keyed off the domain to
+ *  build a probe URL via urlmap) and tier 4 (Gemini last resort, keyed off
+ *  the domain to scope the grounded search). */
+const HANDLE_BASED_PLATFORM_DOMAINS: Partial<Record<ProfileDisplayColumn, string>> = {
+    instagram: "instagram.com",
+    tiktok: "tiktok.com",
+    x: "x.com",
+    youtube: "youtube.com",
+    soundcloud: "soundcloud.com",
+    bandcamp: "bandcamp.com",
+    twitch: "twitch.tv",
+    facebook: "facebook.com",
+};
 
 function buildIdentityContext(record: Record<string, unknown>, enrichment: MusicPlatformArtist | null): string {
     const parts: string[] = [];
@@ -250,26 +286,261 @@ async function* tierTwoPlatformSearchStream(
     yield* settleAsCompleted(jobs);
 }
 
-// --- Tier 3: per-platform, domain-scoped grounded search -------------------
-// Everything left after tiers 1-2 has no dedicated search API (Spotify and
-// Deezer are always handled by tier 2, win or lose — they never fall
-// through to a grounded search here). One small Gemini call PER platform,
+// --- Tier 3: deterministic handle probing ----------------------------------
+// Everything left after tiers 1-2 has no dedicated search API. Instead of
+// asking a grounded model to go find the profile (slow, and a MISS there is
+// meaningless — see tier 4 below), build a small set of candidate HANDLES and
+// fetch each candidate URL directly. A real profile serves an og:image/
+// og:title to our bot UA; a fabricated handle serves neither (measured live
+// — see the module docblock). This is sub-second per probe and inherently
+// self-validating, so it needs no separate OG-existence gate afterward.
+
+/** Platforms known to block server-side OG scraping entirely (verified live:
+ *  a real x.com profile page returns no og:image/og:title to a bot UA — see
+ *  linkPreview.ts). A MISS there is NOT evidence the handle doesn't exist,
+ *  so these are never probed for confirmation; they're left in `missing` for
+ *  the tier-4 Gemini last-resort to attempt instead of a false negative. */
+const PROBE_UNVERIFIABLE_PLATFORMS = new Set<ProfileDisplayColumn>(["x"]);
+
+/** Cap on simultaneous in-flight probe fetches — a polite-client bound so a
+ *  large candidate set can't fire dozens of requests at third-party servers
+ *  at once. */
+const PROBE_CONCURRENCY = 8;
+
+/** Cap on how many slugs get DERIVED from the artist's name — never
+ *  combinatorially explode (a 5-word artist name still yields at most this
+ *  many slugs, not one per permutation). */
+const MAX_DERIVED_SLUGS = 4;
+
+function normalizeHandle(raw: string): string {
+    return raw.trim().replace(/^@/, "");
+}
+
+/** Derives up to `MAX_DERIVED_SLUGS` candidate handle slugs from an artist's
+ *  resolved display name, mirroring how artists commonly pick a handle: a
+ *  plain concatenation ("Pete Rango" -> "peterango"), a hyphenated form
+ *  ("pete-rango"), and — only for a clearly two-word name, where a dot/
+ *  underscore join is unambiguous — "pete.rango" / "pete_rango". */
+export function deriveNameSlugs(artistName: string): string[] {
+    const words = artistName
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "") // strip diacritics (e.g. "é" -> "e")
+        .replace(/[^a-z0-9\s-]/g, "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+    if (words.length === 0) return [];
+
+    const slugs: string[] = [];
+    const add = (s: string) => { if (s && !slugs.includes(s)) slugs.push(s); };
+    add(words.join(""));
+    if (words.length > 1) add(words.join("-"));
+    if (words.length === 2) {
+        add(words.join("."));
+        add(words.join("_"));
+    }
+    return slugs.slice(0, MAX_DERIVED_SLUGS);
+}
+
+function normalizeForCompare(s: string): string {
+    return s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+/** Loose containment check, either direction — an og:title is rarely an
+ *  exact match (platforms append taglines, e.g. `"Pete Rango (@p3t3rango) •
+ *  Instagram photos and videos"`), but a title belonging to a genuinely
+ *  different person won't contain the artist's (normalized) name at all. */
+export function titleMatchesArtist(title: string, artistName: string): boolean {
+    const t = normalizeForCompare(title);
+    const a = normalizeForCompare(artistName);
+    if (!t || !a) return false;
+    return t.includes(a) || a.includes(t);
+}
+
+/** A probe "hit" is an og:image OR an og:title — but a title that clearly
+ *  names someone else overrides an image and is still a MISS; this is the
+ *  main defense against grabbing a stranger's handle. No title at all means
+ *  no cross-check is possible, so an image alone is trusted (matches the
+ *  measured live behavior: a fabricated handle returns neither image nor
+ *  title, never a mismatched title alone). */
+export function isProbeHit(preview: LinkPreview, artistName: string): boolean {
+    if (preview.title && !titleMatchesArtist(preview.title, artistName)) return false;
+    return !!(preview.imageUrl || preview.title);
+}
+
+/** Bounded-concurrency streaming map — same "yield the instant each settles"
+ *  contract as `settleAsCompleted`, but caps in-flight work at `concurrency`
+ *  instead of starting everything at once (a large handle × platform
+ *  candidate set must not fire dozens of simultaneous requests). */
+async function* mapWithConcurrency<I, R>(
+    items: I[],
+    concurrency: number,
+    run: (item: I) => Promise<R>,
+): AsyncGenerator<[I, R]> {
+    if (items.length === 0) return;
+    let nextIndex = 0;
+    const inFlight = new Map<number, Promise<{ slot: number; item: I; result: R }>>();
+    const launch = (slot: number) => {
+        const item = items[nextIndex++];
+        inFlight.set(slot, run(item).then(result => ({ slot, item, result })));
+    };
+    for (let i = 0; i < Math.min(concurrency, items.length); i++) launch(i);
+    while (inFlight.size > 0) {
+        const { slot, item, result } = await Promise.race(inFlight.values());
+        inFlight.delete(slot);
+        yield [item, result];
+        if (nextIndex < items.length) launch(slot);
+    }
+}
+
+interface HandleProbe {
+    platform: ProfileDisplayColumn;
+    handle: string;
+    source: string;
+}
+
+/** Probes one (platform, handle) URL via the existing `fetchLinkPreview`
+ *  helper (already uses the right UA and handles Spotify oEmbed) and reports
+ *  a confirmed hit, or `null` on a miss/failure — `fetchLinkPreview` itself
+ *  never throws and already carries its own ~4s per-fetch timeout. */
+async function runHandleProbe(
+    probe: HandleProbe,
+    urlmapBySiteName: Map<string, UrlmapPresentationRow>,
+    artistName: string,
+): Promise<{ url: string; preview: LinkPreview } | null> {
+    const row = urlmapBySiteName.get(probe.platform);
+    if (!row?.appStringFormat) return null;
+    const url = row.appStringFormat.replace("%@", probe.handle);
+    try {
+        // `fetchLinkPreview` is documented as never-throwing, but this tier's
+        // whole promise-racing pipeline (`mapWithConcurrency`) would propagate
+        // a single rejection out through the generator and violate this
+        // module's "never throws" contract, so defend anyway — same pattern
+        // every other tier in this file already follows.
+        const preview = await fetchLinkPreview(url);
+        if (!isProbeHit(preview, artistName)) return null;
+        return { url, preview };
+    } catch (e) {
+        console.error(`[profileDiscovery] tier3 handle probe failed for ${url}:`, e);
+        return null;
+    }
+}
+
+/** Tier 3 — deterministic handle probing, two passes:
+ *
+ *  1. SEED — the candidate handle set (the artist's own existing
+ *     handle-shaped links across every handle-based platform, deduped, plus
+ *     up to `MAX_DERIVED_SLUGS` name-derived slugs) probed against every
+ *     still-missing target, budget- and concurrency-capped.
+ *  2. PROPAGATE — a mop-up pass: any handle CONFIRMED by the seed pass,
+ *     retried (skipping any pair already tried) against whatever target is
+ *     STILL unresolved. This is what turns a single confirmed handle into
+ *     hits on every other platform that artist reuses it on, and recovers
+ *     any (platform, handle) pair the seed pass had to skip once its budget
+ *     ran out — never a flat `Promise.all` over the full candidate matrix.
+ *
+ *  Yields `[platform, candidate | null]` for EVERY targeted platform exactly
+ *  once (a `null` for anything never confirmed, INCLUDING platforms in
+ *  `PROBE_UNVERIFIABLE_PLATFORMS` that are never actually probed) so the
+ *  caller can emit a "checked" signal and hand anything still unresolved to
+ *  the tier-4 Gemini last-resort. Never throws — an individual probe failure
+ *  degrades to "no hit" for that one (platform, handle) pair only. */
+async function* tierThreeHandleProbeStream(
+    artistName: string,
+    record: Record<string, unknown>,
+    missing: Set<ProfileDisplayColumn>,
+    urlmapBySiteName: Map<string, UrlmapPresentationRow>,
+): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
+    const handlePlatforms = Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[];
+    const targets = handlePlatforms.filter(p => missing.has(p) && !PROBE_UNVERIFIABLE_PLATFORMS.has(p));
+    if (targets.length === 0) return;
+
+    const resolved = new Map<ProfileDisplayColumn, TierCandidate>();
+    const tried = new Set<string>(); // `${platform}|${handle}` — never probe the same pair twice
+    let budget = MAX_DERIVED_SLUGS * targets.length; // roughly "4 slugs x platform count", per the polite-client cap
+
+    const toCandidate = (probe: HandleProbe, hit: { url: string; preview: LinkPreview }, propagated: boolean): TierCandidate => ({
+        tier: 3,
+        platform: probe.platform,
+        url: hit.url,
+        reasoning: `Handle probe: ${hit.preview.title ? `og:title matched "${artistName}"` : "og:image resolved"} for @${probe.handle}` +
+            (propagated ? " (propagated from a handle confirmed on another platform)" : ` (${probe.source})`),
+        preview: hit.preview,
+    });
+
+    // --- Seed pass: existing handle-shaped links + name-derived slugs -----
+    const seenHandles = new Set<string>();
+    const seedHandles: { handle: string; source: string }[] = [];
+    for (const col of handlePlatforms) {
+        const raw = record[col];
+        if (typeof raw !== "string" || !raw) continue;
+        const handle = normalizeHandle(raw);
+        if (!handle || seenHandles.has(handle)) continue;
+        seenHandles.add(handle);
+        seedHandles.push({ handle, source: `existing ${col} handle` });
+    }
+    for (const slug of deriveNameSlugs(artistName)) {
+        if (seenHandles.has(slug)) continue;
+        seenHandles.add(slug);
+        seedHandles.push({ handle: slug, source: "derived from artist name" });
+    }
+
+    const seedJobs: HandleProbe[] = [];
+    for (const { handle, source } of seedHandles) {
+        for (const platform of targets) {
+            const key = `${platform}|${handle}`;
+            if (tried.has(key) || budget <= 0) continue;
+            tried.add(key);
+            budget--;
+            seedJobs.push({ platform, handle, source });
+        }
+    }
+
+    const newlyConfirmedHandles = new Set<string>();
+    for await (const [probe, hit] of mapWithConcurrency(seedJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+        if (!hit || resolved.has(probe.platform)) continue; // first confirmed hit per platform wins
+        const candidate = toCandidate(probe, hit, false);
+        resolved.set(probe.platform, candidate);
+        newlyConfirmedHandles.add(probe.handle);
+        yield [probe.platform, candidate];
+    }
+
+    // --- Propagate pass: handles confirmed above -> still-unresolved ------
+    const stillMissing = targets.filter(p => !resolved.has(p));
+    if (stillMissing.length > 0 && newlyConfirmedHandles.size > 0 && budget > 0) {
+        const propagationJobs: HandleProbe[] = [];
+        for (const handle of newlyConfirmedHandles) {
+            for (const platform of stillMissing) {
+                const key = `${platform}|${handle}`;
+                if (tried.has(key) || budget <= 0) continue;
+                tried.add(key);
+                budget--;
+                propagationJobs.push({ platform, handle, source: "propagated" });
+            }
+        }
+        for await (const [probe, hit] of mapWithConcurrency(propagationJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+            if (!hit || resolved.has(probe.platform)) continue;
+            const candidate = toCandidate(probe, hit, true);
+            resolved.set(probe.platform, candidate);
+            yield [probe.platform, candidate];
+        }
+    }
+
+    for (const platform of targets) {
+        if (!resolved.has(platform)) yield [platform, null];
+    }
+}
+
+// --- Tier 4: Gemini, kept ONLY as a last resort -----------------------------
+// Whatever tier 3's deterministic handle probing couldn't confirm falls
+// through here — one small Gemini call PER platform,
 // each scoped to a single domain and asking for a single URL back — never
 // the retired shape (one call, every platform, JSON array, Google Search
 // grounding wide open). Run in parallel via Promise.all: concurrency is
 // inherently bounded by PROFILE_DISPLAY_COLUMNS' fixed, small size (at most
 // 8 candidates here), so the slowest single call (capped at
 // TIER3_CALL_TIMEOUT_MS) bounds the whole tier, not their sum.
-const TIER3_DOMAINS: Partial<Record<ProfileDisplayColumn, string>> = {
-    instagram: "instagram.com",
-    tiktok: "tiktok.com",
-    x: "x.com",
-    youtube: "youtube.com",
-    soundcloud: "soundcloud.com",
-    bandcamp: "bandcamp.com",
-    twitch: "twitch.tv",
-    facebook: "facebook.com",
-};
 
 function buildTierThreePrompt(artistName: string, identityContext: string, platformDisplayName: string, domain: string): string {
     return `You are researching the real-world music artist "${artistName}" to find their OFFICIAL profile on ${platformDisplayName} ONLY.${identityContext}
@@ -323,11 +594,11 @@ async function* tierThreeGroundedSearchStream(
     missing: Set<ProfileDisplayColumn>,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
 ): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
-    const platforms = (Object.keys(TIER3_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
+    const platforms = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
     if (platforms.length === 0) return;
 
     const jobs: [ProfileDisplayColumn, Promise<TierCandidate | null>][] = platforms.map(platform => [platform, (async (): Promise<TierCandidate | null> => {
-        const domain = TIER3_DOMAINS[platform]!;
+        const domain = HANDLE_BASED_PLATFORM_DOMAINS[platform]!;
         const displayName = urlmapBySiteName.get(platform)?.cardPlatformName || fallbackDisplayName(platform);
         const prompt = buildTierThreePrompt(artistName, identityContext, displayName, domain);
         try {
@@ -344,7 +615,7 @@ async function* tierThreeGroundedSearchStream(
             ]);
             const parsed = parseTierThreeResponse(response.text ?? "");
             if (!parsed) return null;
-            return { tier: 3, platform, url: parsed.url, reasoning: parsed.reasoning };
+            return { tier: 4, platform, url: parsed.url, reasoning: parsed.reasoning };
         } catch (e) {
             console.error(`[profileDiscovery] tier3 (${platform}) search failed:`, e);
             return null;
@@ -396,14 +667,16 @@ interface ValidationContext {
  *      writable-by-construction `PROFILE_DISPLAY_COLUMNS`),
  *  (c) the artist doesn't already have a value for that column,
  *  (d) dedupe by siteName (first validated hit wins),
- *  (e) a preview (og:image) resolves — but ONLY for tier 3. This gate exists
- *      to catch a GROUNDED MODEL hallucinating a plausible-but-dead URL;
- *      tiers 1 (our own DB) and 2 (deterministic platform search APIs) never
- *      hallucinate, so a real deterministic match is never discarded just
- *      because an unrelated oEmbed/scrape blipped. Only enforced for
- *      platforms known to reliably serve OG data in the first place
- *      (`OG_RELIABLE_SITENAMES`) — a miss anywhere else is normal, not a
- *      red flag. */
+ *  (e) a preview (og:image) resolves — but ONLY for tier 4 (Gemini). This
+ *      gate exists to catch a GROUNDED MODEL hallucinating a
+ *      plausible-but-dead URL; tiers 1 (our own DB), 2 (deterministic
+ *      platform search APIs), and 3 (a deterministic HTTP probe — the
+ *      og:existence check already IS how it confirms a candidate in the
+ *      first place) never hallucinate, so a real deterministic match is
+ *      never discarded just because an unrelated oEmbed/scrape blipped.
+ *      Only enforced for platforms known to reliably serve OG data in the
+ *      first place (`OG_RELIABLE_SITENAMES`) — a miss anywhere else is
+ *      normal, not a red flag. */
 async function validateCandidate(candidate: TierCandidate, ctx: ValidationContext): Promise<DiscoveredProfile | null> {
     let extracted;
     try {
@@ -443,9 +716,12 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
         }
     }
 
-    const preview = await fetchLinkPreview(profileUrl);
+    // Tier 3's own probe fetch already fetched this exact URL to confirm the
+    // candidate in the first place — reuse that result instead of fetching
+    // it again (the "don't double-fetch" contract in the module docblock).
+    const preview = candidate.preview ?? await fetchLinkPreview(profileUrl);
     const previewImage = preview.imageUrl ?? null;
-    if (!previewImage && candidate.tier === 3 && OG_RELIABLE_SITENAMES.has(siteName)) return null; // gate (e)
+    if (!previewImage && candidate.tier === 4 && OG_RELIABLE_SITENAMES.has(siteName)) return null; // gate (e)
 
     return {
         siteName,
@@ -463,7 +739,7 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
  *  from whatever identity anchors are already on file — streamed as an async
  *  generator so each finding renders the instant it's proven real instead of
  *  the whole cascade running silently and dumping one array at the end (see
- *  `DiscoveryEvent` above). Tiers still run in authority order (1 → 2 → 3,
+ *  `DiscoveryEvent` above). Tiers still run in authority order (1 → 2 → 3 → 4,
  *  each skipping platforms an earlier tier already proposed for), but WITHIN
  *  a tier, multiple platforms are checked in parallel and yielded as each one
  *  individually settles — a slow platform must never delay a fast one.
@@ -546,11 +822,27 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
         }
     }
 
-    // --- Tier 3 — per-platform, domain-scoped grounded search, parallel ----
+    // --- Tier 3 — deterministic handle probing ------------------------------
+    if (missing.size > 0 && !pastBudget()) {
+        const tier3Targets = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
+        for (const p of tier3Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+        for await (const [platform, candidate] of tierThreeHandleProbeStream(artistName, record, missing, urlmapBySiteName)) {
+            if (candidate) {
+                missing.delete(candidate.platform);
+                const profile = await validateCandidate(candidate, ctx);
+                if (profile) { foundCount++; yield { kind: "found", profile }; }
+            }
+            yield { kind: "checked", platform, displayName: platformDisplayName(platform, urlmapBySiteName) };
+        }
+    }
+
+    // --- Tier 4 — Gemini, kept ONLY as a last resort for whatever tier 3's
+    // deterministic probing couldn't confirm, and only if the time budget
+    // still allows it (per-platform, domain-scoped grounded search, parallel).
     if (missing.size > 0 && !pastBudget()) {
         const identityContext = buildIdentityContext(record, enrichment);
-        const tier3Targets = (Object.keys(TIER3_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
-        for (const p of tier3Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
+        const tier4Targets = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
+        for (const p of tier4Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
         for await (const [platform, candidate] of tierThreeGroundedSearchStream(artistName, identityContext, missing, urlmapBySiteName)) {
             if (candidate) {
                 missing.delete(candidate.platform);
