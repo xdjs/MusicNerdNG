@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
-import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, KnowledgeDocCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
+import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
@@ -218,22 +218,24 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                         />
                     );
                 }
-                // Stage "about": the About, over the document it was written from.
+                // Stage "about": the About on its own. The document it was written from
+                // was read and corrected one card earlier, and stays in the transcript
+                // there. It used to be reprinted under the publish button — a holdover
+                // from when both arrived in one turn — which repeated a step the artist
+                // had already taken, still asking them to flag anything wrong from a card
+                // that has no editor to fix it in.
                 // AboutDraftCard's onPublish stays locked to exactly {doc, about} (existing
                 // test contract) — `sources` is threaded into the actual server turn here,
                 // from the draft item's own `sources` field, not from AboutDraftCard itself.
                 return (
-                    <div className="w-full space-y-3">
-                        <AboutDraftCard
-                            doc={item.doc ?? ""}
-                            about={item.about ?? ""}
-                            sources={item.sources}
-                            startEditing={item.selfWrite}
-                            disabled={!interactive}
-                            onPublish={r => void sendTurn({ type: "publish", sources: item.sources, ...r })}
-                        />
-                        <KnowledgeDocCard doc={item.doc ?? ""} sources={item.sources ?? []} />
-                    </div>
+                    <AboutDraftCard
+                        doc={item.doc ?? ""}
+                        about={item.about ?? ""}
+                        sources={item.sources}
+                        startEditing={item.selfWrite}
+                        disabled={!interactive}
+                        onPublish={r => void sendTurn({ type: "publish", sources: item.sources, ...r })}
+                    />
                 );
             case "complete":
                 return (

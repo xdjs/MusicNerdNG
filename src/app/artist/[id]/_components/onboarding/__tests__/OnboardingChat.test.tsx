@@ -166,6 +166,20 @@ describe('OnboardingChat', () => {
         expect(sendTurn).toHaveBeenCalledWith({ type: 'publish', doc: '## Overview', about: 'An About.' });
     });
 
+    // The document is read and corrected one card earlier (stage "doc", DocReviewCard).
+    // Re-printing it under the publish button repeats a step the artist already took,
+    // with copy asking them to flag errors they now have no editor to fix.
+    it('does not re-show the knowledge document beneath the About', () => {
+        setChat({
+            items: [{ id: 'd1', kind: 'draft', doc: '## Overview\nBorn in Richmond.', about: 'An About.' }],
+        });
+        render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
+
+        expect(screen.getByText('An About.')).toBeInTheDocument();
+        expect(screen.queryByTestId('knowledge-doc-card')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Born in Richmond/)).not.toBeInTheDocument();
+    });
+
     // ---- Three-way scroll-anchoring rule (see the comment above the effect
     // in OnboardingChat.tsx): every items-change takes exactly one of
     // (1) force-scroll on action-requiring items, (2) auto-scroll when near

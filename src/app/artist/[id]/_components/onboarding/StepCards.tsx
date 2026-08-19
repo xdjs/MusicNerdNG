@@ -795,47 +795,6 @@ function renderDocBody(doc: string, sources: DocSource[]) {
     return blocks;
 }
 
-/** The knowledge document, shown as its own artifact alongside the About —
- *  secondary (muted styling, collapsible, positioned after the primary About
- *  card) but genuinely present, with clickable citations resolving exactly
- *  the claims the artist asked to be able to trace ("where did it get that I
- *  said Lauryn Hill and Solange as influences?"). Renders nothing for an
- *  empty doc rather than an empty shell. */
-export function KnowledgeDocCard({ doc, sources }: { doc: string; sources: DocSource[] }) {
-    if (!doc.trim()) return null;
-    return (
-        <details open className="glass-subtle rounded-xl p-4 w-full" data-testid="knowledge-doc-card">
-            <summary className="cursor-pointer select-none font-bold text-sm text-gray-700 dark:text-gray-300 hover:text-pink-500 dark:hover:text-pink-400 transition-colors">
-                Your knowledge document
-            </summary>
-            <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 mb-3">
-                This powers your page&apos;s Q&amp;A and fun facts. Please read it and tell me anything that&apos;s wrong.
-                Pink citations link to the page they came from — click them. Green ones are your own words from the interview.
-            </p>
-            <div className="text-sm text-black dark:text-white space-y-2">
-                {renderDocBody(doc, sources)}
-            </div>
-            {sources.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-black/10 dark:border-white/10 space-y-1">
-                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Sources</p>
-                    {sources.map(s => (
-                        <p key={s.id} className="text-xs text-gray-600 dark:text-gray-300 break-all">
-                            [{s.id}]{" "}
-                            {s.url ? (
-                                <a href={s.url} target="_blank" rel="noopener noreferrer" className="hover:text-pink-500 dark:hover:text-pink-400 hover:underline">
-                                    {s.label}
-                                </a>
-                            ) : (
-                                <span>{s.label}</span>
-                            )}
-                        </p>
-                    ))}
-                </div>
-            )}
-        </details>
-    );
-}
-
 // ---------- Knowledge document review: read it, fix it, then choose ----------
 
 /** The knowledge document, shown on its own BEFORE any About exists, with the
