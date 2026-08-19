@@ -18,6 +18,11 @@ export const ABOUT_TARGET_WORDS = 100;
 export const ABOUT_LENGTH_RULE =
   `Write ONE paragraph, up to ~${ABOUT_TARGET_WORDS} words. Shorter is better than padded: if verified facts are thin, write two or three honest sentences.`;
 
+/** How an About opens. Without it the model starts mid-catalogue ("X has released
+ *  several collaborative tracks...") and never says who the artist actually is. */
+export const ABOUT_OPENING_RULE =
+  'Open with the name and what they are: "[Name] is a [role/genre] from [place]." This is the one place a plain identity sentence is correct — lead with it.';
+
 /** Anti-padding companion to ABOUT_LENGTH_RULE. */
 export const ABOUT_STOP_RULE =
   'Stop when the facts run out. No closing "significance" flourish.';

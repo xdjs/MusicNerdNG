@@ -22,7 +22,7 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import { getInterviewAnswers, getArtistDoc } from "@/server/utils/queries/onboardingQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
-import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
 import { isCitableSource } from "@/server/utils/sourceVerification";
 
 export { ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP };
@@ -293,6 +293,7 @@ OTHER RULES:
 
 const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from their cited knowledge document.
 - ${ABOUT_LENGTH_RULE} ${ABOUT_STOP_RULE} Plain text only — no markdown, no headers.
+- ${ABOUT_OPENING_RULE}
 - Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
 - The document quotes the artist's own words. Use what they said as fact, in plain third person — no quotation marks in the About.
 - CITATIONS: the document's claims already carry [n] markers referencing its SOURCES manifest. When you carry a claim over into the About, keep its [n] marker immediately after it. Do not add a marker to a sentence you wrote yourself with no corresponding cited claim in the document, and never invent a marker number that isn't in the document.
@@ -415,6 +416,7 @@ export async function generateAboutFromDoc(artistName: string, docContent: strin
 
 const FALLBACK_ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from the material below (curated sources, the artist's own interview answers, and/or an existing knowledge document about them).
 - ${ABOUT_LENGTH_RULE} ${ABOUT_STOP_RULE} Plain text only — no markdown, no headers, no citation markers or bracketed numbers.
+- ${ABOUT_OPENING_RULE}
 - Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
 - Where the material quotes the artist directly, use what they said as fact, in plain third person — no quotation marks in the About.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").

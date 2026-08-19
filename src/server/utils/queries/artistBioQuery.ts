@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { sanitizeBioText } from "@/lib/bioText";
-import { ABOUT_EMPTY_STATE, isRealBio, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE } from "@/lib/bioConstants";
+import { ABOUT_EMPTY_STATE, isRealBio, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 import { resolveVerifiedGrounding } from "@/server/utils/verifiedGrounding";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
@@ -227,7 +227,7 @@ export async function generateArtistBio(artistId: string): Promise<NextResponse>
 ${ABOUT_LENGTH_RULE}
 
 Structure:
-- Open with the name and what they are: "[Name] is a [role/genre] from [place]." This is the one place a plain identity sentence is correct — lead with it.
+- ${ABOUT_OPENING_RULE}
 - Follow with the most significant verifiable facts: bands, notable releases, collaborators, milestones, dates, well-documented activity outside music.
 - ${ABOUT_STOP_RULE}
 

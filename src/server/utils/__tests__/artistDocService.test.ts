@@ -82,6 +82,21 @@ describe('artistDocService', () => {
         expect(fallback).not.toContain('2-4 short paragraphs');
     });
 
+    // Length was ported from production but structure wasn't, so the About opened
+    // mid-catalogue ("Pete Rango has released several collaborative tracks...") with
+    // no sentence saying who he is. Production leads with the identity line.
+    it('both About prompts carry production\'s opening rule', async () => {
+        const { svc, generateContent } = await setup({ geminiText: 'An About.' });
+
+        await svc.generateAboutFromDoc('Nova Reyes', '## Overview\ndoc');
+        expect(generateContent.mock.calls[0][0].config.systemInstruction)
+            .toContain('Open with the name and what they are');
+
+        await svc.synthesizeFallbackAbout('a1', 'Nova Reyes', '## Overview\ndoc');
+        expect(generateContent.mock.calls[1][0].config.systemInstruction)
+            .toContain('Open with the name and what they are');
+    });
+
     // A pull-quote inside a ~100-word encyclopedia-style bio reads wrong, and the
     // automatic generator never quoted anyone. The interview facts still reach the
     // About — only the quotation marks go.
