@@ -294,7 +294,7 @@ OTHER RULES:
 const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from their cited knowledge document.
 - ${ABOUT_LENGTH_RULE} ${ABOUT_STOP_RULE} Plain text only — no markdown, no headers.
 - Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
-- Where the document quotes the artist, keep the quote — their words beat your words.
+- The document quotes the artist's own words. Use what they said as fact, in plain third person — no quotation marks in the About.
 - CITATIONS: the document's claims already carry [n] markers referencing its SOURCES manifest. When you carry a claim over into the About, keep its [n] marker immediately after it. Do not add a marker to a sentence you wrote yourself with no corresponding cited claim in the document, and never invent a marker number that isn't in the document.
 - ANTI-INFLATION: preserve the document's time-scoping — if the document describes something as recent ("on his latest releases", "he's said recently"), keep that framing rather than smoothing it into a general career description.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
@@ -416,7 +416,7 @@ export async function generateAboutFromDoc(artistName: string, docContent: strin
 const FALLBACK_ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from the material below (curated sources, the artist's own interview answers, and/or an existing knowledge document about them).
 - ${ABOUT_LENGTH_RULE} ${ABOUT_STOP_RULE} Plain text only — no markdown, no headers, no citation markers or bracketed numbers.
 - Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
-- Where the material quotes the artist directly, keep the quote — their words beat your words.
+- Where the material quotes the artist directly, use what they said as fact, in plain third person — no quotation marks in the About.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
 - Never fabricate anything not in the material.`;
 

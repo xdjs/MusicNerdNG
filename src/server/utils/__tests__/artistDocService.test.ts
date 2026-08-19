@@ -82,6 +82,23 @@ describe('artistDocService', () => {
         expect(fallback).not.toContain('2-4 short paragraphs');
     });
 
+    // A pull-quote inside a ~100-word encyclopedia-style bio reads wrong, and the
+    // automatic generator never quoted anyone. The interview facts still reach the
+    // About — only the quotation marks go.
+    it('neither About prompt asks to carry the artist\'s words over verbatim', async () => {
+        const { svc, generateContent } = await setup({ geminiText: 'An About.' });
+
+        await svc.generateAboutFromDoc('Nova Reyes', '## Overview\ndoc');
+        const cited = generateContent.mock.calls[0][0].config.systemInstruction;
+        expect(cited).not.toMatch(/keep the quote/i);
+        expect(cited).toMatch(/no quotation marks/i);
+
+        await svc.synthesizeFallbackAbout('a1', 'Nova Reyes', '## Overview\ndoc');
+        const fallback = generateContent.mock.calls[1][0].config.systemInstruction;
+        expect(fallback).not.toMatch(/keep the quote/i);
+        expect(fallback).toMatch(/no quotation marks/i);
+    });
+
     it('getArtistDocContext caps the slice and returns null with no doc', async () => {
         const { svc, getArtistDoc } = await setup();
         getArtistDoc.mockResolvedValueOnce(undefined);
