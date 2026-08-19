@@ -21,7 +21,7 @@ import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals, type SocialSignals } from "@/server/utils/socialSignals";
 
-export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "burst" | "music";
+export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "music";
 
 /** Every GroundedQuestion `key` is built as `social_${kind}_...` (see
  *  buildCandidates below) — exported so callers (turnHandlers.ts) can tell a
@@ -42,7 +42,6 @@ const GENERATION_TIMEOUT_MS = 20_000;
 const TOP_COLLABORATORS = 3;
 const TOP_THEMES = 3;
 const TOP_STANDOUTS = 2;
-const TOP_BURSTS = 2;
 const TOP_MUSIC = 3;
 
 // Short-lived in-process cache for generateGroundedQuestions, keyed by
@@ -169,21 +168,6 @@ function buildCandidates(signals: SocialSignals, artistName: string): SignalCand
         });
     }
 
-    // Recent-first (not by postCount) — a burst from years ago is a far
-    // weaker candidate than a recent one even at the same size, and the
-    // anchor requirement in deriveBursts already guarantees every remaining
-    // burst has something concrete to name.
-    for (const b of [...signals.bursts].sort((a, b2) => b2.month.localeCompare(a.month)).slice(0, TOP_BURSTS)) {
-        candidates.push({
-            signalId: `burst_${b.month}`,
-            kind: "burst",
-            key: `social_burst_${b.month}`,
-            authoredBy: "artist",
-            material: `${artistName} posted much more than usual in ${b.month} (${b.postCount} of their own posts that month, vs. a typical ${b.baseline}), around ${b.anchor}.`,
-            sourceUrls: [b.topPostUrl],
-        });
-    }
-
     for (const m of [...signals.musicReferences].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length).slice(0, TOP_MUSIC)) {
         candidates.push({
             signalId: `music_${slug(m.title)}_${slug(m.artist)}`,
@@ -204,7 +188,7 @@ const QUESTION_SYSTEM_INSTRUCTION = (artistName: string) => `You are a warm, wel
 
 Each signal has:
 - signalId: an opaque id you MUST echo back EXACTLY as given. Never invent a signalId.
-- kind: collaborator | theme | standout | burst | music
+- kind: collaborator | theme | standout | music
 - authoredBy: "artist" if this is ${artistName}'s own post/words, or "@handle" if the material comes from SOMEONE ELSE's post (a collaborator's post that ${artistName} appears in or is connected to)
 - material: what you actually know about this signal
 
@@ -215,6 +199,7 @@ Rules:
 - If authoredBy is "artist", you may reference or lightly quote their own words/caption.
 - If authoredBy is "@handle" (NOT the artist), you must NEVER say or imply that ${artistName} wrote, said, or posted that caption/material — it belongs to the other account. Frame the question around the relationship or collaboration instead. Example: material from @dameatlas's post about a joint track → "You and @dameatlas put out that track together — what's the story behind it?" NOT "You said/posted...".
 - Never fabricate anything beyond what "material" states. If a signal doesn't give you enough for a real, specific question, skip it entirely — do not force one.
+- A question must be about the specific post(s) named in that signal's material — nothing else. Never generalize a single post into a pattern (e.g. turning one post that used a track into "you posted quite a bit about X" or "you post about X a lot") — say what the post actually was, not a habit you're inferring from it.
 - No engagement-metric language in the question text itself. Never say a number, "plays", "likes", or "views" in the question. Describe the feeling or moment instead — "that one clearly struck a nerve" is fine, "your post got 8,285 plays" is not.
 - Plain spoken language, one sentence, never clinical, never creepy, never over-familiar.
 - Use ONLY signalIds from the list you were given. Do not process the same signalId twice.

@@ -6,13 +6,25 @@
  * Correctness rule (see socialIngest.ts and the design doc): a scraped feed
  * includes posts authored by OTHER people where the artist is a collaborator
  * (tagged / co-authored). `isOwnPost` is the load-bearing field — caption and
- * "in their own words" analysis (themes, standouts, bursts) is scoped to the
+ * "in their own words" analysis (themes, standouts) is scoped to the
  * artist's OWN posts only. Collaboration is read from `coauthors` and from
  * the `ownerUsername` of posts NOT authored by the artist.
  *
  * Every returned item carries at least one source post URL (`evidenceUrls`,
- * or a single `url`/`topPostUrl`) so a downstream consumer can always trace
- * a claim back to a real post.
+ * or a single `url`) so a downstream consumer can always trace a claim back
+ * to a real post.
+ *
+ * EVIDENCE INVARIANT (product-owner-caught defect, see the design doc and
+ * `.superpowers/sdd/2026-08-17-post-claim-onboarding/signal-integrity-report.md`):
+ * a signal's `evidenceUrls` (or `url`) MUST be the URL(s) of the exact
+ * post(s) the signal's claim is actually about — never a different post
+ * that merely shares a time window, a topic, or a rank (e.g. "top post that
+ * month"). A downstream question built from a signal is only as honest as
+ * this mapping. Every derive* function below enforces this structurally: it
+ * only ever pushes `post.url` for the SAME post it just read the claim's
+ * content from — never a URL picked by a separate ranking/sort over a
+ * different set of posts. Do not add a signal that assembles its evidence
+ * from anything other than the post(s) it directly read the claim from.
  */
 
 /** Shape of a stored row, independent of the Drizzle table type — kept
@@ -64,20 +76,6 @@ export interface StandoutPost {
     caption: string | null;
 }
 
-export interface Burst {
-    month: string; // YYYY-MM
-    postCount: number;
-    baseline: number;
-    topPostUrl: string;
-    /** What ties this burst to something concrete from the same window — a
-     *  standout post, a real track credit, a collaborator, a mentioned
-     *  account, or a hashtag — so a downstream question can say "around X"
-     *  instead of a bare, unexplained month. A window with NO anchor never
-     *  becomes a Burst at all (see deriveBursts); this field is always
-     *  non-empty on anything actually returned. */
-    anchor: string;
-}
-
 export interface MusicReference {
     title: string;
     artist: string;
@@ -93,7 +91,6 @@ export interface SocialSignals {
     mentionedAccounts: MentionedAccount[];
     themes: Theme[];
     standoutPosts: StandoutPost[];
-    bursts: Burst[];
     musicReferences: MusicReference[];
 }
 
@@ -109,9 +106,6 @@ const MIN_THEME_COUNT = 2;
 const MIN_THEME_COUNT_GENERIC_WORD = 5;
 const MAX_THEME_TERM_LEN = 40;
 const MIN_PHRASE_WORD_LEN = 4;
-const BURST_MULTIPLE = 2;
-const BURST_FLOOR = 3;
-const MIN_MONTHS_FOR_BASELINE = 3;
 
 /** Deliberately broad: reflexives, auxiliaries/copulas, and vague fillers.
  *  These are exactly the words that survive naive frequency counting
@@ -338,69 +332,35 @@ function deriveStandoutPosts(posts: SocialPostRow[]): StandoutPost[] {
     return Array.from(byUrl.values()).sort((a, b) => b.multiple - a.multiple);
 }
 
-/** Looks for something concrete to tie a burst window to, in priority order:
- *  a post that's already a standout, a real track credit, a coauthor, a
- *  mentioned account, then a hashtag. Returns null (no anchor) if the window
- *  is just a pile of otherwise-unremarkable posts — a burst with nothing to
- *  point to is exactly the "vague and stale" failure mode this exists to
- *  prevent (a bare "you posted a lot in June 2018" is not an interesting
- *  question; "around the 'crying on the floor' release" is). */
-function findBurstAnchor(monthPosts: SocialPostRow[], standoutUrls: Set<string>): string | null {
-    const standout = monthPosts.find(p => standoutUrls.has(p.url));
-    if (standout) {
-        return standout.caption ? `a post that clearly struck a nerve ("${standout.caption}")` : "a post that clearly struck a nerve";
+/** True if `musicArtist`'s credit plausibly includes the artist themselves —
+ *  i.e. every word of the artist's own name appears somewhere in the
+ *  credit's tokens ("Dame Atlas, Pete Rango" / "Pete Rango, Elle Symone" for
+ *  artist "Pete Rango"). This is the bar for "the artist's OWN work" vs.
+ *  third-party/trending audio the artist merely used on a post (see the
+ *  design doc: a track credited to someone else — "Los Caracuchos", "Brian
+ *  Eno" — is NOT a music signal about the artist, no matter how it was
+ *  used). `artistNameTokens` empty (no name available to check against) is
+ *  treated as "cannot verify" and passes everything through unfiltered
+ *  rather than dropping everything — see deriveSocialSignals. */
+function creditIncludesArtist(musicArtist: string, artistNameTokens: Set<string>): boolean {
+    if (artistNameTokens.size === 0) return true;
+    const creditTokens = nameTokens(musicArtist);
+    for (const token of artistNameTokens) {
+        if (!creditTokens.has(token)) return false;
     }
-    const withMusic = monthPosts.find(p => p.musicTitle && p.musicArtist);
-    if (withMusic) return `the track "${withMusic.musicTitle}" by ${withMusic.musicArtist}`;
-    const withCoauthor = monthPosts.find(p => p.coauthors.length > 0);
-    if (withCoauthor) return `working with @${withCoauthor.coauthors[0]}`;
-    const withMention = monthPosts.find(p => p.mentions.length > 0);
-    if (withMention) return `a post that tagged @${withMention.mentions[0]}`;
-    const withHashtag = monthPosts.find(p => p.hashtags.length > 0);
-    if (withHashtag) return `the hashtag #${withHashtag.hashtags[0]}`;
-    return null;
+    return true;
 }
 
-/** Months where the artist posted (own posts) at an unusual multiple of
- *  their own baseline AND that window ties to something concrete (see
- *  findBurstAnchor) — an unanchored burst is dropped entirely rather than
- *  surfaced with nothing to say about it. Sorted recent-first: a burst from
- *  last month is far more useful to ask about live than one from years ago. */
-function deriveBursts(posts: SocialPostRow[], standoutUrls: Set<string>): Burst[] {
-    const own = posts.filter(p => p.isOwnPost);
-    const byMonth = new Map<string, SocialPostRow[]>();
-    for (const post of own) {
-        const month = post.postedAt.slice(0, 7); // YYYY-MM
-        if (!month || month.length !== 7) continue;
-        const arr = byMonth.get(month) ?? [];
-        arr.push(post);
-        byMonth.set(month, arr);
-    }
-
-    if (byMonth.size < MIN_MONTHS_FOR_BASELINE) return [];
-
-    const counts = Array.from(byMonth.values()).map(arr => arr.length);
-    const baseline = median(counts);
-    if (baseline <= 0) return [];
-
-    const bursts: Burst[] = [];
-    for (const [month, arr] of byMonth.entries()) {
-        if (arr.length < BURST_FLOOR || arr.length < baseline * BURST_MULTIPLE) continue;
-        const anchor = findBurstAnchor(arr, standoutUrls);
-        if (!anchor) continue; // no anchor, no burst — see findBurstAnchor
-        const top = [...arr].sort((a, b) => (b.likeCount ?? b.playCount ?? 0) - (a.likeCount ?? a.playCount ?? 0))[0];
-        bursts.push({ month, postCount: arr.length, baseline: round1(baseline), topPostUrl: top.url, anchor });
-    }
-
-    return bursts.sort((a, b) => b.month.localeCompare(a.month)); // recent first
-}
-
-/** Real track credits, own or collab posts alike — this is metadata about a
- *  song, not an attribution of anyone's caption, so both count. */
-function deriveMusicReferences(posts: SocialPostRow[]): MusicReference[] {
+/** Real track credits that are plausibly the artist's OWN work (see
+ *  creditIncludesArtist) — own or collab posts alike, since this is
+ *  metadata about a song, not an attribution of anyone's caption. Evidence
+ *  URLs are only ever the post(s) that actually carry that exact
+ *  title+artist credit (the EVIDENCE INVARIANT at the top of this file). */
+function deriveMusicReferences(posts: SocialPostRow[], artistNameTokens: Set<string>): MusicReference[] {
     const byKey = new Map<string, MusicReference>();
     for (const post of posts) {
         if (!post.musicTitle || !post.musicArtist) continue;
+        if (!creditIncludesArtist(post.musicArtist, artistNameTokens)) continue;
         const key = `${post.musicTitle.toLowerCase()}::${post.musicArtist.toLowerCase()}`;
         const entry = byKey.get(key) ?? { title: post.musicTitle, artist: post.musicArtist, evidenceUrls: [], postedByOwn: false, ownerUsername: post.ownerUsername };
         pushEvidence(entry.evidenceUrls, post.url);
@@ -411,16 +371,12 @@ function deriveMusicReferences(posts: SocialPostRow[]): MusicReference[] {
 }
 
 export function deriveSocialSignals(posts: SocialPostRow[], handle: string, artistName?: string): SocialSignals {
-    // Standout posts are computed first — bursts use their URLs as the
-    // strongest available anchor (see findBurstAnchor).
-    const standoutPosts = deriveStandoutPosts(posts);
-    const standoutUrls = new Set(standoutPosts.map(s => s.url));
+    const artistNameTokens = nameTokens(artistName ?? "");
     return {
         collaborators: deriveCollaborators(posts, handle),
         mentionedAccounts: deriveMentionedAccounts(posts, handle),
-        themes: deriveThemes(posts, nameTokens(artistName ?? "")),
-        standoutPosts,
-        bursts: deriveBursts(posts, standoutUrls),
-        musicReferences: deriveMusicReferences(posts),
+        themes: deriveThemes(posts, artistNameTokens),
+        standoutPosts: deriveStandoutPosts(posts),
+        musicReferences: deriveMusicReferences(posts, artistNameTokens),
     };
 }

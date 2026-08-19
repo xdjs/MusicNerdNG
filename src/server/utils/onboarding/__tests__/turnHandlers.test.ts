@@ -924,6 +924,32 @@ describe('runOnboardingTurn', () => {
         expect(new Set(acks).size).toBe(3);
     });
 
+    // Trust-breaking defect (product owner, live testing): when an artist
+    // disputed a question built from a mismatched citation, the ack replied
+    // "My apologies for the confusion, I must have misremembered" — claiming
+    // a memory it doesn't have and confessing to fabrication at the exact
+    // moment credibility matters. Even if a model response slips past the
+    // tightened prompt, the ack must never reach the artist carrying that
+    // language — assert against the same blocklist the fix uses.
+    const ACK_BLOCKLIST = ['misremembered', 'i remember', 'my apologies', 'i thought', 'sorry'];
+
+    it('a disputing answer never yields an ack that claims memory or apologizes for fabrication, even if Gemini returns exactly that', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        oq.getInterviewAnswers.mockResolvedValue([]);
+        mockGenerateContent.mockResolvedValueOnce({
+            text: 'My apologies for the confusion, I must have misremembered.',
+        });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'interview_answer',
+            questionKey: 'sound_in_own_words',
+            answer: "the link to the post has nothing to do with what you're asking me. I actually have no idea what you're talking about",
+        }));
+        const ack = events.find(e => e.kind === 'chat').text.toLowerCase();
+        for (const phrase of ACK_BLOCKLIST) expect(ack).not.toContain(phrase);
+    });
+
     it('publish validates caps, persists doc + bio version + artists.bio, confirms publish, completes', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });

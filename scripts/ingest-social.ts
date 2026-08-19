@@ -77,7 +77,6 @@ async function main() {
     printCapped("mentionedAccounts", signals.mentionedAccounts);
     printCapped("themes", signals.themes);
     printCapped("standoutPosts", signals.standoutPosts);
-    printCapped("bursts", signals.bursts);
     printCapped("musicReferences", signals.musicReferences);
 
     console.log(`\n=== Generated grounded questions (max=${max ?? 6}) ===`);

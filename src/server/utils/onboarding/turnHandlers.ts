@@ -173,24 +173,57 @@ const ACK_FALLBACKS = [
     "Noted — thanks for putting that so plainly.",
 ];
 
+/** Trust-breaking defect (product-owner-caught, see
+ *  `.superpowers/sdd/2026-08-17-post-claim-onboarding/signal-integrity-report.md`):
+ *  when an artist disputed a question built from a mismatched post citation,
+ *  the ack replied "I must have misremembered" — claiming a memory the model
+ *  doesn't have and effectively confessing to inventing the question, at the
+ *  exact moment credibility matters most. The system prompt below forbids
+ *  this class of language; this blocklist is the structural backstop — if a
+ *  model response slips past the prompt anyway, it is replaced with the
+ *  rotating fallback rather than ever reaching the artist. Case-insensitive,
+ *  matched as substrings so punctuation/casing variants still get caught. */
+const ACK_MEMORY_OR_APOLOGY_BLOCKLIST = [
+    "misremembered", "i remember", "my apologies", "i thought", "sorry",
+];
+
+function containsMemoryOrApologyLanguage(text: string): boolean {
+    const lower = text.toLowerCase();
+    return ACK_MEMORY_OR_APOLOGY_BLOCKLIST.some(phrase => lower.includes(phrase));
+}
+
 /** One warm Gemini sentence reacting to an interview answer. Bounded at 5s;
- *  any failure falls back to a rotating template — the ack is garnish, never
- *  a blocker. `questionIndex` (0-based position of this question within the
- *  interview) selects the fallback variant so a run of failures never repeats. */
+ *  any failure — timeout, error, or a response that reads as claiming memory
+ *  or apologizing/admitting fault (see ACK_MEMORY_OR_APOLOGY_BLOCKLIST) —
+ *  falls back to a rotating template. The ack is garnish, never a blocker,
+ *  and never a place for the model to claim it "remembered" or "misremembered"
+ *  anything: it has no memory, and a challenged question came from a real
+ *  linked post, not from thin air. `questionIndex` (0-based position of this
+ *  question within the interview) selects the fallback variant so a run of
+ *  failures never repeats. */
 async function generateInterviewAck(question: string, answer: string, questionIndex: number): Promise<string> {
     const fallback = ACK_FALLBACKS[questionIndex % ACK_FALLBACKS.length];
     try {
         const response = await Promise.race([
             getGemini().models.generateContent({
                 model: GEMINI_MODEL_FLASH,
-                contents: `The artist was asked: "${question}" and answered: "${answer}". Reply with ONE short, warm, specific sentence reacting to their answer. No questions, no emoji, no hype words.`,
+                contents: `The artist was asked: "${question}" and answered: "${answer}".
+
+Reply with ONE short, spoken sentence reacting to their answer. Rules:
+- If the answer disputes the question, says it doesn't match anything they posted, or reads as confused about where it came from: acknowledge briefly and plainly, make clear the question came from a specific linked post rather than being made up, and move on. One short sentence, no grovelling.
+- Otherwise, react warmly and specifically to the substance of what they said.
+- Never claim memory, recall, or a feeling about the question itself — no "I remember", "I thought", "I must have misremembered", or similar. You have no memory; every question is generated fresh from real data.
+- Never apologize for or admit to being wrong, mistaken, or making something up, and never speculate about why the question might have been off.
+- No questions, no emoji, no hype words.`,
                 // Thinking defaults ON for gemini-2.5-flash and burns ~1.5s+ on a
                 // one-line reply — enough to lose this 5s race. Off ONLY here.
                 config: { temperature: 0.7, thinkingConfig: { thinkingBudget: 0 } },
             }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ack timeout")), 5000)),
         ]);
-        return response.text?.trim() || fallback;
+        const text = response.text?.trim();
+        if (!text || containsMemoryOrApologyLanguage(text)) return fallback;
+        return text;
     } catch {
         return fallback;
     }

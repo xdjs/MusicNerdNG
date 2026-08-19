@@ -59,10 +59,9 @@ describe("deriveSocialSignals — real fixture (300-post Apify scrape, curated s
             expect(dearRod.evidenceUrls).toEqual(["https://www.instagram.com/p/DWMCYp9kpd_/"]);
         });
 
-        it("standoutPosts and bursts only ever cite the artist's own post URLs", () => {
+        it("standoutPosts only ever cite the artist's own post URLs", () => {
             const ownUrls = new Set(IG_FIXTURE_POSTS.filter(p => p.isOwnPost).map(p => p.url));
             for (const s of signals.standoutPosts) expect(ownUrls.has(s.url)).toBe(true);
-            for (const b of signals.bursts) expect(ownUrls.has(b.topPostUrl)).toBe(true);
         });
     });
 
@@ -89,15 +88,6 @@ describe("deriveSocialSignals — real fixture (300-post Apify scrape, curated s
         });
     });
 
-    describe("bursts", () => {
-        it("flags the real June 2018 posting cluster relative to the artist's own baseline", () => {
-            const june2018 = signals.bursts.find(b => b.month === "2018-06");
-            expect(june2018).toBeDefined();
-            expect(june2018.postCount).toBe(4);
-            expect(june2018.postCount).toBeGreaterThanOrEqual(june2018.baseline * 2);
-        });
-    });
-
     describe("musicReferences", () => {
         it("carries real title/artist credits with evidence, and never claims a collab track as the artist's own post", () => {
             const collabTrack = signals.musicReferences.find(m => m.title.toLowerCase().includes("crying on the floor"));
@@ -117,8 +107,38 @@ describe("deriveSocialSignals — real fixture (300-post Apify scrape, curated s
         for (const m of signals.mentionedAccounts) expect(m.evidenceUrls.length).toBeGreaterThan(0);
         for (const t of signals.themes) expect(t.evidenceUrls.length).toBeGreaterThan(0);
         for (const s of signals.standoutPosts) expect(s.url).toBeTruthy();
-        for (const b of signals.bursts) expect(b.topPostUrl).toBeTruthy();
         for (const r of signals.musicReferences) expect(r.evidenceUrls.length).toBeGreaterThan(0);
+    });
+});
+
+describe("musicReferences — third-party audio must never look like the artist's own work (regression, see signal-integrity-report.md)", () => {
+    // Real fixture data: the "Las Empanadas" / "Los Caracuchos" post is the
+    // exact defect the product owner caught live — a themed-food-recipe post
+    // that merely used a trending third-party track as background audio.
+    // With the artist's real name supplied, it must never surface as a music
+    // signal, and every kept reference must cite only the post(s) that
+    // actually carry that exact title+artist credit.
+    const signals = deriveSocialSignals(IG_FIXTURE_POSTS, HANDLE, "Pete Rango");
+
+    it("drops a track credited to someone else entirely (Las Empanadas / Los Caracuchos)", () => {
+        expect(signals.musicReferences.find(m => m.title === "Las Empanadas")).toBeUndefined();
+    });
+
+    it("drops a track credited to another artist by name (Signals / Brian Eno)", () => {
+        expect(signals.musicReferences.find(m => m.title === "Signals")).toBeUndefined();
+    });
+
+    it("keeps a track co-credited to the artist by name, citing only the post that carries it", () => {
+        const offTheLeash = signals.musicReferences.find(m => m.title === "OFF THE LEASH");
+        expect(offTheLeash).toBeDefined();
+        expect(offTheLeash.artist).toBe("LIL LIL, Pete Rango");
+        expect(offTheLeash.evidenceUrls).toEqual(["https://www.instagram.com/p/DBOZIlHRpcx/"]);
+    });
+
+    it("keeps a remix credited to the artist even when posted by a collaborator, not the artist themselves", () => {
+        const remix = signals.musicReferences.find(m => m.title === "crying on the floor (pete rango mix)");
+        expect(remix).toBeDefined();
+        expect(remix.artist).toBe("Dame Atlas, Pete Rango");
     });
 });
 
@@ -127,7 +147,7 @@ describe("deriveSocialSignals — synthetic edge cases", () => {
         const signals = deriveSocialSignals([], HANDLE);
         expect(signals).toEqual({
             collaborators: [], mentionedAccounts: [], themes: [],
-            standoutPosts: [], bursts: [], musicReferences: [],
+            standoutPosts: [], musicReferences: [],
         });
     });
 
@@ -160,17 +180,6 @@ describe("deriveSocialSignals — synthetic edge cases", () => {
         }));
         const signals = deriveSocialSignals(posts, HANDLE);
         expect(signals.standoutPosts).toEqual([]);
-    });
-
-    it("requires at least 3 distinct own-post months before computing a burst baseline", () => {
-        const posts = [1, 2, 3, 4].map(i => ({
-            platform: "instagram", platformPostId: String(i), ownerUsername: HANDLE, isOwnPost: true,
-            caption: "post", url: `https://www.instagram.com/p/samemonth${i}/`, postedAt: "2026-01-0" + i + "T00:00:00.000Z",
-            likeCount: 10, commentCount: 0, playCount: null, hashtags: [], mentions: [],
-            coauthors: [], musicTitle: null, musicArtist: null,
-        }));
-        const signals = deriveSocialSignals(posts, HANDLE);
-        expect(signals.bursts).toEqual([]); // only one distinct month present
     });
 
     it("a collaborator with a single real post still surfaces, ranked, with its evidence URL", () => {
@@ -244,47 +253,3 @@ describe("deriveThemes — distinctiveness (word-frequency artifacts vs. real si
     });
 });
 
-describe("deriveBursts — anchoring", () => {
-    function ownPost(i: number, month: string, day: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-        return {
-            platform: "instagram", platformPostId: `${month}-${day}-${i}`, ownerUsername: HANDLE, isOwnPost: true,
-            caption: null, url: `https://www.instagram.com/p/burst${month}${day}${i}/`, postedAt: `${month}-${day}T00:00:00.000Z`,
-            likeCount: 10, commentCount: 0, playCount: null, hashtags: [], mentions: [],
-            coauthors: [], musicTitle: null, musicArtist: null,
-            ...overrides,
-        };
-    }
-
-    it("drops a burst window with no standout, music credit, coauthor, mention, or hashtag to anchor it", () => {
-        const posts = [
-            ownPost(1, "2026-01", "01"),
-            ownPost(1, "2026-02", "01"),
-            ownPost(1, "2026-03", "01"),
-            // April: 3 posts, 3x the 1-post baseline — qualifies as a burst by
-            // volume alone, but nothing in the window is nameable.
-            ownPost(1, "2026-04", "01"),
-            ownPost(2, "2026-04", "10"),
-            ownPost(3, "2026-04", "20"),
-        ];
-        const signals = deriveSocialSignals(posts, HANDLE);
-        expect(signals.bursts).toEqual([]);
-    });
-
-    it("keeps a burst window that has a nameable anchor, and carries that context on the returned Burst", () => {
-        const posts = [
-            ownPost(1, "2026-01", "01"),
-            ownPost(1, "2026-02", "01"),
-            ownPost(1, "2026-03", "01"),
-            ownPost(1, "2026-04", "01", { hashtags: ["newalbum"] }),
-            ownPost(2, "2026-04", "10"),
-            ownPost(3, "2026-04", "20"),
-        ];
-        const signals = deriveSocialSignals(posts, HANDLE);
-        const burst = signals.bursts.find(b => b.month === "2026-04");
-        expect(burst).toBeDefined();
-        expect(burst.anchor).toBe("the hashtag #newalbum");
-        // The key downstream consumers rely on for resume-stability stays
-        // bare month — the anchor text must never leak into it.
-        expect(burst.month).toBe("2026-04");
-    });
-});
