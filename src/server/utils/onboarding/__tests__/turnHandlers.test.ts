@@ -1239,4 +1239,33 @@ describe('runOnboardingTurn', () => {
         expect(events.some(e => e.kind === 'draft')).toBe(true);
         dateSpy.mockRestore();
     });
+
+    // Every other step narrates first, then shows its card. The publish step did the
+    // reverse: the client anchors the artist to the top of a new card, then the trailing
+    // narration line arrived and pulled them straight past the (very tall) document to
+    // the bottom of it. Order is the fix — the card is the last thing in the turn.
+    it('narrates before the card in every draft stage, never after', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
+        const docService = await import('@/server/utils/artistDocService');
+        docService.synthesizeArtistDoc.mockResolvedValue('## Overview\nA doc.');
+        docService.generateAboutFromDoc.mockResolvedValue('An About.');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const expectNarrationBeforeCard = (events, label) => {
+            const draftIdx = events.findIndex(e => e.kind === 'draft');
+            expect(draftIdx).toBeGreaterThan(-1);
+            // something was said before the card appeared...
+            expect(events.slice(0, draftIdx).some(e => e.kind === 'chat')).toBe(true);
+            // ...and nothing is said after it, which is what yanked the scroll position
+            expect({ label, trailing: events.slice(draftIdx + 1).filter(e => e.kind === 'chat') })
+                .toEqual({ label, trailing: [] });
+        };
+
+        expectNarrationBeforeCard(await collect(runOnboardingTurn('a1', { type: 'open' })), 'doc');
+        expectNarrationBeforeCard(
+            await collect(runOnboardingTurn('a1', { type: 'about_choice', mode: 'generate', doc: '## Overview\nd' })), 'about');
+        expectNarrationBeforeCard(
+            await collect(runOnboardingTurn('a1', { type: 'about_choice', mode: 'self', doc: '## Overview\nd' })), 'self-write');
+    });
 });

@@ -709,8 +709,8 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             // Turns are stateless: the doc round-trips through the client and comes
             // back on the next turn (spec §6, advisor FIX 1) — carrying any
             // corrections the artist made to it.
-            yield { kind: "draft", stage: "doc", doc, about: null, sources: docSources };
             yield { kind: "chat", text: NARRATION.docReady };
+            yield { kind: "draft", stage: "doc", doc, about: null, sources: docSources };
             return;
         }
     }
@@ -1039,8 +1039,8 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         if (turn.mode === "self") {
             // No generation at all: an empty About for them to write into. Their
             // words are the point — we shouldn't put a draft in their mouth first.
-            yield { kind: "draft", stage: "about", doc, about: "", sources, selfWrite: true };
             yield { kind: "chat", text: NARRATION.selfWrite };
+            yield { kind: "draft", stage: "about", doc, about: "", sources, selfWrite: true };
             return;
         }
 
@@ -1069,8 +1069,8 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         yield { kind: "progress", label: "Writing your About", done: true };
         // Both texts are shown together from here, so the manifest covers both.
         const citedIds = new Set([...extractCitedIds(doc), ...extractCitedIds(about)]);
-        yield { kind: "draft", stage: "about", doc, about, sources: sources.filter(s => citedIds.has(s.id)) };
         yield { kind: "chat", text: NARRATION.draftReady };
+        yield { kind: "draft", stage: "about", doc, about, sources: sources.filter(s => citedIds.has(s.id)) };
         return;
     }
 
