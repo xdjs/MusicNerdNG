@@ -1240,6 +1240,33 @@ describe('runOnboardingTurn', () => {
         dateSpy.mockRestore();
     });
 
+    // Discovery is bounded (DISCOVERY_BUDGET_MS, checked between tiers), so a slow run
+    // silently drops its later tiers and the same artist sees six profiles one time and
+    // two the next. "Look for more" re-runs the search with a fresh budget.
+    it('find_more_profiles re-runs discovery and hands back a fresh profiles card', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles' }));
+
+        expect(discoverArtistProfilesStream).toHaveBeenCalledWith('a1');
+        expect(events.find(e => e.kind === 'step')?.step).toBe('profiles');
+    });
+
+    it('find_more_profiles refuses once the artist has moved past the profiles step', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles' }));
+
+        expect(discoverArtistProfilesStream).not.toHaveBeenCalled();
+        expect(events.some(e => e.kind === 'error')).toBe(true);
+    });
+
     // Every other step narrates first, then shows its card. The publish step did the
     // reverse: the client anchors the artist to the top of a new card, then the trailing
     // narration line arrived and pulled them straight past the (very tall) document to

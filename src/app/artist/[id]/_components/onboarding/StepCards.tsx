@@ -259,9 +259,12 @@ export function LiveDiscoveryFeed({ candidates }: { candidates: ProfileCandidate
     );
 }
 
-export function ProfilesCard({ payload, onConfirm, disabled }: {
+export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
     payload: ProfilesPayload;
     onConfirm: (r: { addedLinks: { url: string }[]; removedSiteNames: string[] }) => void;
+    /** Re-runs discovery. Optional so the card still renders in tests and any
+     *  caller that doesn't offer a re-search. */
+    onFindMore?: () => void;
     disabled: boolean;
 }) {
     const [removed, setRemoved] = useState<Set<string>>(new Set());
@@ -444,6 +447,19 @@ export function ProfilesCard({ payload, onConfirm, disabled }: {
             >
                 {isEmpty ? "Continue" : "Looks good, continue"}
             </button>
+            {/* Discovery works through tiers under a time budget, so a slow run returns
+                fewer profiles than a fast one for the same artist. This gives them a way
+                to ask for another pass instead of assuming what they see is everything.
+                Secondary by design — most artists should just continue. */}
+            {onFindMore && (
+                <button
+                    onClick={onFindMore}
+                    disabled={disabled}
+                    className="w-full text-sm py-2 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    Look for more
+                </button>
+            )}
         </div>
     );
 }

@@ -116,6 +116,11 @@ export type TurnEvent =
 export type ClientTurn =
     | { type: "open" }
     | { type: "confirm_profiles"; addedLinks: { url: string }[]; removedSiteNames: string[] }
+    // "Look for more" on the profiles card. Discovery is bounded and drops its later
+    // tiers on a slow run, so two runs for the same artist can return different numbers
+    // of profiles. Re-runs the search with a fresh budget rather than leaving the artist
+    // to wonder whether that was everything.
+    | { type: "find_more_profiles" }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
     // `question` is the stateless round-trip of the question TEXT the client
     // was actually shown (same pattern as `publish`'s doc/about — see
@@ -736,6 +741,24 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         // Discovery only runs on a fresh/resumed entry into the profiles step —
         // see the `discoverProfiles` doc comment on emitStep.
         yield* emitStep(artistId, state.currentStep, state.currentStep === "profiles");
+        return;
+    }
+
+    if (turn.type === "find_more_profiles") {
+        if (state.currentStep === null) {
+            yield { kind: "chat", text: NARRATION.alreadyDone };
+            yield { kind: "complete" };
+            return;
+        }
+        if (state.currentStep !== "profiles") {
+            yield { kind: "error", message: "We've already moved past your profiles — finish this step and you can edit links from your page any time." };
+            yield* emitStep(artistId, state.currentStep);
+            return;
+        }
+        // Re-emits the whole card. Both of its lists reset to their safe defaults —
+        // found links stay accepted (opt-out), candidates stay unaccepted (opt-in) —
+        // so a re-search can't quietly save something the artist had rejected.
+        yield* emitStep(artistId, "profiles", true);
         return;
     }
 

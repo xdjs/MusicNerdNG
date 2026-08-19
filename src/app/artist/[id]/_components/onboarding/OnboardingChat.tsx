@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
 import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
+import MusicNerdLoader from "@/app/_components/MusicNerdLoader";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
@@ -165,13 +166,14 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 // rather than a hard cut.
                 return (
                     <div
-                        className={`self-start text-xs px-3 py-1 rounded-full border transition-colors duration-500 text-gray-700 dark:text-gray-300 ${
+                        className={`self-start flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-colors duration-500 text-gray-700 dark:text-gray-300 ${
                             item.done
                                 ? "border-pink-400/50 dark:border-pink-400/40 bg-pink-500/5"
                                 : "border-gray-300/60 dark:border-gray-600/60 animate-onboarding-progress-breathe"
                         }`}
                     >
-                        {item.done ? "✓" : "⚙"} {item.text}
+                        {item.done ? <span aria-hidden="true">✓</span> : <MusicNerdLoader size={13} label={item.text} />}
+                        <span>{item.text}</span>
                     </div>
                 );
             case "candidates":
@@ -191,7 +193,8 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                     </div>
                 );
             case "step": {
-                if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
+                if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive}
+                        onFindMore={() => void sendTurn({ type: "find_more_profiles" })} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
                 if (item.step === "vault") return <VaultCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "vault_review", ...r })} />;
                 if (item.step === "interview") {
                     const payload = item.payload as InterviewPayload;

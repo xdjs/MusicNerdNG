@@ -132,7 +132,15 @@ export interface DiscoveredProfile {
 // backstop, checked between tiers inside the generator itself, so a
 // pathological run (e.g. a hung DB connection) still can't blow the turn
 // budget — it stops yielding instead.
-const DISCOVERY_BUDGET_MS = 20_000;
+//
+// Raised 20s → 35s: real runs were hitting the backstop often enough that the
+// same artist saw a different number of profiles from one run to the next,
+// because tier 4 (the web-search last resort, the tier most likely to find the
+// platforms tiers 1-3 missed) is also the tier most likely to be cut. Stopping
+// early is silent by design — it just stops yielding — so a truncated search is
+// indistinguishable from a thorough one that found less. 35s still leaves ~20s
+// of the route's 55s deadline for buildProfilesPayload and the SSE plumbing.
+const DISCOVERY_BUDGET_MS = 35_000;
 
 // Platforms whose og:image scrape reliably resolves for a real profile
 // (verified against the live sites — see linkPreview.ts). A miss here is a
