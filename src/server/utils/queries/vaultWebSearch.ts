@@ -9,9 +9,15 @@ import type { ArtistVaultSource } from "@/server/db/DbTypes";
 // External fetches (redirect resolution) fan out with plain Promise.all — the result set
 // is capped at 8 (see the discovery prompt), so bounded concurrency (p-limit) isn't needed.
 
-/** Per-URL read budget for the verification pass. Tight on purpose — see the
- *  comment at the pass itself. */
-const VERIFY_TIMEOUT_MS = 5000;
+/** Per-URL read budget for the verification pass.
+ *
+ *  The fetches run in parallel, so this is the pass's total cost, not a per-URL
+ *  one — which is what makes 8s affordable inside the vault step's 45s budget.
+ *  It was 5s, and that was measurably too tight: the artist's own website
+ *  (peterango.com) reads fine in ~6s and was being demoted to an unverified lead
+ *  purely on our own impatience. Demoting a real source is a cheaper mistake than
+ *  citing a fake one, but it is still a mistake. */
+const VERIFY_TIMEOUT_MS = 8000;
 
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",

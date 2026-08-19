@@ -132,6 +132,19 @@ export type ClientTurn =
     | { type: "about_choice"; mode: "generate" | "self"; doc: string; sources?: DocSource[] }
     | { type: "publish"; doc: string; about: string; sources?: DocSource[] };
 
+/** How long the vault step waits for web discovery.
+ *
+ *  Was 25s, which a measured run overran: a grounded Gemini search (~12-33s) plus
+ *  the verification fetches that now gate every candidate came to ~38s. The turn
+ *  returned an empty vault and told the artist we "didn't find much about you on
+ *  the web" — while the search was still running. It then inserted four sources
+ *  after they had already moved past the step, where nothing would ever show them.
+ *
+ *  45s fits inside the route's 55s turn deadline with room to spare, and the step
+ *  can afford it now that the two publish-step Gemini calls no longer share one
+ *  turn. The wait is narrated by a progress chip rather than being dead air. */
+const VAULT_DISCOVERY_BUDGET_MS = 45_000;
+
 const NARRATION = {
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
@@ -581,7 +594,7 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                     try {
                         await Promise.race([
                             searchAndPopulateVault(artistId),
-                            new Promise(resolve => setTimeout(resolve, 25_000)),
+                            new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
                         ]);
                         pending = await getVaultSourcesByArtistId(artistId, "pending");
                     } catch (e) {

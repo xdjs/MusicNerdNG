@@ -719,9 +719,10 @@ describe('runOnboardingTurn', () => {
 
     // Blocker 1 (pre-demo review): searchAndPopulateVault can hang for tens of
     // seconds with no timeout of its own. The vault step must not inherit that
-    // hang — it's raced against a 25s cap so the turn always reaches the
-    // empty-state degrade path (paste-a-link) instead of stalling the stream.
-    it('vault: an unresolved searchAndPopulateVault still proceeds to the empty-state narration after the 25s cap, not before', async () => {
+    // hang — it's raced against VAULT_DISCOVERY_BUDGET_MS so the turn always
+    // reaches the empty-state degrade path (paste-a-link) rather than stalling
+    // the stream. The cap must stay under the route's 55s turn deadline.
+    it('vault: an unresolved searchAndPopulateVault still proceeds to the empty-state narration after the discovery cap, not before', async () => {
         jest.useFakeTimers();
         try {
             const oq = await import('@/server/utils/queries/onboardingQueries');
@@ -731,7 +732,7 @@ describe('runOnboardingTurn', () => {
             const { runOnboardingTurn } = await import('../turnHandlers');
 
             const eventsPromise = collect(runOnboardingTurn('a1', { type: 'open' }));
-            await jest.advanceTimersByTimeAsync(25_000);
+            await jest.advanceTimersByTimeAsync(45_000);
             const events = await eventsPromise;
 
             expect(events.some(e =>

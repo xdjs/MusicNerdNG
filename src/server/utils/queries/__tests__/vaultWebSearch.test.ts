@@ -68,7 +68,7 @@ describe("searchAndPopulateVault — retry on empty/unparseable response", () =>
     const result = await searchAndPopulateVault("a1");
 
     // Awaited, not fire-and-forget: the fetch must happen before the row exists.
-    expect(mockFetchPage).toHaveBeenCalledWith("https://example.com/a", { timeoutMs: 5000 });
+    expect(mockFetchPage).toHaveBeenCalledWith("https://example.com/a", { timeoutMs: 8000 });
     expect(result).toHaveLength(1);
     const stored = mockInsert.mock.calls[0][0];
     // The page is the authority on itself — not the model's guess about it.

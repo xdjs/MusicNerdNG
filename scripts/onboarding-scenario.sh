@@ -92,6 +92,18 @@ if [ "$KEEP_PROGRESS" -eq 0 ]; then
                       UPDATE artist_vault_sources SET status='pending' WHERE artist_id='$ARTIST_ID' AND status='rejected';"
 fi
 
+# Pre-run vault discovery, mirroring production's approval-time discovery. The
+# chat's own fallback discovery is bounded by a turn deadline, but a grounded
+# search plus verification takes ~60s — longer than a turn can wait — so without
+# this the walkthrough reaches the vault step before any source exists.
+if [ "$KEEP_PROGRESS" -eq 0 ]; then
+  PENDING_NOW="$(q "SELECT count(*) FROM artist_vault_sources WHERE artist_id='$ARTIST_ID' AND status='pending';")"
+  if [ "$PENDING_NOW" -eq 0 ]; then
+    echo "  running vault discovery (~60s, mirrors approval-time discovery)…"
+    npx tsx scripts/discover-vault.ts "$ARTIST_ID" 2>&1 | tail -3
+  fi
+fi
+
 LINKS="$(q "SELECT coalesce(string_agg(key,', '),'(none)') FROM jsonb_each_text(to_jsonb((SELECT a FROM artists a WHERE a.id='$ARTIST_ID'))) WHERE key = ANY(string_to_array('${LINK_COLS// /,}', ',')) AND value IS NOT NULL AND value <> '';")"
 PENDING="$(q "SELECT count(*) FROM artist_vault_sources WHERE artist_id='$ARTIST_ID' AND status='pending';")"
 CLAIM="$(q "SELECT coalesce((SELECT u.email FROM artist_claims c JOIN users u ON u.id=c.user_id WHERE c.artist_id='$ARTIST_ID' AND c.status='approved' LIMIT 1),'NONE — chat will not open');")"
