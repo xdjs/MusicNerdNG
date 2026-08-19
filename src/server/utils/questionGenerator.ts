@@ -23,6 +23,12 @@ import { deriveSocialSignals, type SocialSignals } from "@/server/utils/socialSi
 
 export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "burst" | "music";
 
+/** Every GroundedQuestion `key` is built as `social_${kind}_...` (see
+ *  buildCandidates below) — exported so callers (turnHandlers.ts) can tell a
+ *  grounded key apart from a static ONBOARDING_QUESTIONS key without
+ *  re-deriving the full candidate list. */
+export const GROUNDED_QUESTION_KEY_PREFIX = "social_";
+
 export interface GroundedQuestion {
     key: string;
     question: string;
@@ -96,12 +102,13 @@ function buildCandidates(signals: SocialSignals, artistName: string): SignalCand
         }
     }
     for (const t of [...themesByTerm.values()].sort((a, b) => b.count - a.count).slice(0, TOP_THEMES)) {
+        const termNoun = t.kind === "hashtag" ? "hashtag" : t.kind === "caption_phrase" ? "phrase" : "word";
         candidates.push({
             signalId: `theme_${t.kind}_${slug(t.term)}`,
             kind: "theme",
             key: `social_theme_${t.kind}_${slug(t.term)}`,
             authoredBy: "artist",
-            material: `${artistName} recurringly uses the ${t.kind === "hashtag" ? "hashtag" : "word"} "${t.term}" in their own Instagram captions (appears in ${t.count} of their own posts).`,
+            material: `${artistName} recurringly uses the ${termNoun} "${t.term}" in their own Instagram captions (appears in ${t.count} of their own posts).`,
             sourceUrls: t.evidenceUrls,
         });
     }
@@ -117,13 +124,17 @@ function buildCandidates(signals: SocialSignals, artistName: string): SignalCand
         });
     }
 
-    for (const b of [...signals.bursts].sort((a, b2) => b2.postCount - a.postCount).slice(0, TOP_BURSTS)) {
+    // Recent-first (not by postCount) — a burst from years ago is a far
+    // weaker candidate than a recent one even at the same size, and the
+    // anchor requirement in deriveBursts already guarantees every remaining
+    // burst has something concrete to name.
+    for (const b of [...signals.bursts].sort((a, b2) => b2.month.localeCompare(a.month)).slice(0, TOP_BURSTS)) {
         candidates.push({
             signalId: `burst_${b.month}`,
             kind: "burst",
             key: `social_burst_${b.month}`,
             authoredBy: "artist",
-            material: `${artistName} posted much more than usual in ${b.month} (${b.postCount} of their own posts that month, vs. a typical ${b.baseline}).`,
+            material: `${artistName} posted much more than usual in ${b.month} (${b.postCount} of their own posts that month, vs. a typical ${b.baseline}), around ${b.anchor}.`,
             sourceUrls: [b.topPostUrl],
         });
     }
@@ -153,7 +164,9 @@ Each signal has:
 - material: what you actually know about this signal
 
 Rules:
-- Write ONE short, specific, curious interview question per signal you choose to use — the kind of question that shows you actually looked, not a generic one that could apply to anyone.
+- You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced. Keep only the ones a genuinely curious, well-prepared journalist would actually ask about.
+- It is strictly better to return 2-3 sharp, specific questions than 5-6 uneven ones. Do not pad the list to cover more signals — quality and hit rate matter more than count.
+- Write ONE short, specific, curious interview question per signal you choose to keep — the kind of question that shows you actually looked, not a generic one that could apply to anyone.
 - If authoredBy is "artist", you may reference or lightly quote their own words/caption.
 - If authoredBy is "@handle" (NOT the artist), you must NEVER say or imply that ${artistName} wrote, said, or posted that caption/material — it belongs to the other account. Frame the question around the relationship or collaboration instead. Example: material from @dameatlas's post about a joint track → "You and @dameatlas put out that track together — what's the story behind it?" NOT "You said/posted...".
 - Never fabricate anything beyond what "material" states. If a signal doesn't give you enough for a real, specific question, skip it entirely — do not force one.
@@ -225,10 +238,16 @@ export async function generateGroundedQuestions(
         const response = await withTimeout(
             getGemini().models.generateContent({
                 model: GEMINI_MODEL_FLASH,
-                contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${max} of the most interesting, distinct signals and write one question each.`,
+                contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${max} of the most interesting, distinct signals and write one question each. Fewer than ${max} is fine — even zero — if the rest don't clear the bar.`,
                 config: {
                     systemInstruction: QUESTION_SYSTEM_INSTRUCTION(artistName),
-                    temperature: 0.6,
+                    // Low, not zero: enough room for natural phrasing, but low
+                    // enough that WHICH signals get selected stays stable
+                    // across repeated calls in the same onboarding (the
+                    // interview step regenerates on every question — see
+                    // turnHandlers.ts — so signal-selection churn between
+                    // calls would read as the interviewer changing its mind).
+                    temperature: 0.2,
                     responseMimeType: "application/json",
                 },
             }),

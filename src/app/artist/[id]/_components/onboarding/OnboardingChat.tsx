@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
-import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, LiveDiscoveryFeed } from "./StepCards";
+import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
@@ -187,7 +187,15 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
             case "step": {
                 if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
                 if (item.step === "vault") return <VaultCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "vault_review", ...r })} />;
-                if (item.step === "interview") return <InterviewInput payload={item.payload as never} disabled={!interactive} onAnswer={r => void sendTurn({ type: "interview_answer", ...r })} />;
+                if (item.step === "interview") {
+                    const payload = item.payload as InterviewPayload;
+                    // The question TEXT round-trips to the server here (not
+                    // in InterviewInput's own onAnswer contract, which stays
+                    // exactly {questionKey, answer}) — the server needs it to
+                    // store a grounded (non-static) question's wording; see
+                    // resolveInterviewQuestionText in turnHandlers.ts.
+                    return <InterviewInput payload={payload} disabled={!interactive} onAnswer={r => void sendTurn({ type: "interview_answer", question: payload.question, ...r })} />;
+                }
                 return null;
             }
             case "draft":

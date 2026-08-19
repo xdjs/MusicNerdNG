@@ -188,3 +188,103 @@ describe("deriveSocialSignals — synthetic edge cases", () => {
         ]);
     });
 });
+
+describe("deriveThemes — distinctiveness (word-frequency artifacts vs. real signal)", () => {
+    function ownPost(i: number, caption: string, hashtags: string[] = []): Record<string, unknown> {
+        return {
+            platform: "instagram", platformPostId: String(i), ownerUsername: HANDLE, isOwnPost: true,
+            caption, url: `https://www.instagram.com/p/own${i}/`, postedAt: `2026-01-0${i}T00:00:00.000Z`,
+            likeCount: 10, commentCount: 1, playCount: null, hashtags, mentions: [],
+            coauthors: [], musicTitle: null, musicArtist: null,
+        };
+    }
+
+    it("excludes a generic reflexive/filler word even when it recurs — a word-frequency artifact is not a theme", () => {
+        // "myself" and "just" repeat across all 5 own posts — real, high
+        // frequency, zero content. Every other word is unique per post (count
+        // 1), so NOTHING should clear the bar: an empty themes list, not a
+        // weak one, is the correct output here (spec: fewer, sharper signals
+        // beats padding).
+        const posts = [
+            ownPost(1, "just doing this for myself alone"),
+            ownPost(2, "myself and just being honest today"),
+            ownPost(3, "only myself, just me and the music"),
+            ownPost(4, "myself again just testing"),
+            ownPost(5, "just myself, nothing else really"),
+        ];
+        const signals = deriveSocialSignals(posts, HANDLE);
+        expect(signals.themes).toEqual([]);
+    });
+
+    it("keeps a distinctive proper-noun-style term (capitalized mid-caption) at the normal low bar", () => {
+        const posts = [
+            ownPost(1, "Playing in Colombia tonight"),
+            ownPost(2, "Back in Colombia again"),
+        ];
+        const signals = deriveSocialSignals(posts, HANDLE);
+        const colombia = signals.themes.find(t => t.term === "colombia");
+        expect(colombia).toBeDefined();
+        expect(colombia.kind).toBe("caption_term");
+        expect(colombia.count).toBe(2);
+    });
+
+    it("keeps a repeated multi-word phrase at the normal low bar, even though neither word alone clears the generic-word bar", () => {
+        const posts = [
+            ownPost(1, "house is a black church on a tuesday night"),
+            ownPost(2, "nothing like a black church energy on a good set"),
+        ];
+        const signals = deriveSocialSignals(posts, HANDLE);
+        const phrase = signals.themes.find(t => t.term === "black church");
+        expect(phrase).toBeDefined();
+        expect(phrase.kind).toBe("caption_phrase");
+        expect(phrase.count).toBe(2);
+        // Neither "black" nor "church" alone clears the generic-word bar (2 < 5).
+        expect(signals.themes.some(t => t.term === "black" && t.kind === "caption_term")).toBe(false);
+        expect(signals.themes.some(t => t.term === "church" && t.kind === "caption_term")).toBe(false);
+    });
+});
+
+describe("deriveBursts — anchoring", () => {
+    function ownPost(i: number, month: string, day: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+        return {
+            platform: "instagram", platformPostId: `${month}-${day}-${i}`, ownerUsername: HANDLE, isOwnPost: true,
+            caption: null, url: `https://www.instagram.com/p/burst${month}${day}${i}/`, postedAt: `${month}-${day}T00:00:00.000Z`,
+            likeCount: 10, commentCount: 0, playCount: null, hashtags: [], mentions: [],
+            coauthors: [], musicTitle: null, musicArtist: null,
+            ...overrides,
+        };
+    }
+
+    it("drops a burst window with no standout, music credit, coauthor, mention, or hashtag to anchor it", () => {
+        const posts = [
+            ownPost(1, "2026-01", "01"),
+            ownPost(1, "2026-02", "01"),
+            ownPost(1, "2026-03", "01"),
+            // April: 3 posts, 3x the 1-post baseline — qualifies as a burst by
+            // volume alone, but nothing in the window is nameable.
+            ownPost(1, "2026-04", "01"),
+            ownPost(2, "2026-04", "10"),
+            ownPost(3, "2026-04", "20"),
+        ];
+        const signals = deriveSocialSignals(posts, HANDLE);
+        expect(signals.bursts).toEqual([]);
+    });
+
+    it("keeps a burst window that has a nameable anchor, and carries that context on the returned Burst", () => {
+        const posts = [
+            ownPost(1, "2026-01", "01"),
+            ownPost(1, "2026-02", "01"),
+            ownPost(1, "2026-03", "01"),
+            ownPost(1, "2026-04", "01", { hashtags: ["newalbum"] }),
+            ownPost(2, "2026-04", "10"),
+            ownPost(3, "2026-04", "20"),
+        ];
+        const signals = deriveSocialSignals(posts, HANDLE);
+        const burst = signals.bursts.find(b => b.month === "2026-04");
+        expect(burst).toBeDefined();
+        expect(burst.anchor).toBe("the hashtag #newalbum");
+        // The key downstream consumers rely on for resume-stability stays
+        // bare month — the anchor text must never leak into it.
+        expect(burst.month).toBe("2026-04");
+    });
+});

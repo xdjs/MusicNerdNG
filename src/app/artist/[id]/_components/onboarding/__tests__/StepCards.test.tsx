@@ -379,6 +379,38 @@ describe('InterviewInput', () => {
         fireEvent.click(screen.getByRole('button', { name: /skip/i }));
         expect(onAnswer).toHaveBeenCalledWith({ questionKey: 'offline_fact', answer: null });
     });
+
+    it('renders nothing under "what prompted this" when sourceUrls is absent (static fallback question)', () => {
+        render(<InterviewInput payload={payload} onAnswer={jest.fn()} disabled={false} />);
+        expect(screen.queryByText(/what prompted this/i)).not.toBeInTheDocument();
+    });
+
+    it('renders nothing under "what prompted this" when sourceUrls is an empty array', () => {
+        render(<InterviewInput payload={{ ...payload, sourceUrls: [] }} onAnswer={jest.fn()} disabled={false} />);
+        expect(screen.queryByText(/what prompted this/i)).not.toBeInTheDocument();
+    });
+
+    it('renders a small "what prompted this" link when sourceUrls is present (grounded question)', () => {
+        const grounded = { ...payload, sourceUrls: ['https://www.instagram.com/p/ABC123/'] };
+        render(<InterviewInput payload={grounded} onAnswer={jest.fn()} disabled={false} />);
+        expect(screen.getByText(/what prompted this/i)).toBeInTheDocument();
+        const link = screen.getByRole('link', { name: /instagram\.com/i });
+        expect(link).toHaveAttribute('href', 'https://www.instagram.com/p/ABC123/');
+        expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('caps the visible source links at two even when more are supplied', () => {
+        const grounded = {
+            ...payload,
+            sourceUrls: [
+                'https://www.instagram.com/p/ONE/',
+                'https://www.instagram.com/p/TWO/',
+                'https://www.instagram.com/p/THREE/',
+            ],
+        };
+        render(<InterviewInput payload={grounded} onAnswer={jest.fn()} disabled={false} />);
+        expect(screen.getAllByRole('link')).toHaveLength(2);
+    });
 });
 
 describe('AboutDraftCard', () => {

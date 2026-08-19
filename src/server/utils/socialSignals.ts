@@ -50,7 +50,7 @@ export interface MentionedAccount {
 
 export interface Theme {
     term: string;
-    kind: "hashtag" | "caption_term";
+    kind: "hashtag" | "caption_term" | "caption_phrase";
     count: number;
     evidenceUrls: string[];
 }
@@ -69,6 +69,13 @@ export interface Burst {
     postCount: number;
     baseline: number;
     topPostUrl: string;
+    /** What ties this burst to something concrete from the same window — a
+     *  standout post, a real track credit, a collaborator, a mentioned
+     *  account, or a hashtag — so a downstream question can say "around X"
+     *  instead of a bare, unexplained month. A window with NO anchor never
+     *  becomes a Burst at all (see deriveBursts); this field is always
+     *  non-empty on anything actually returned. */
+    anchor: string;
 }
 
 export interface MusicReference {
@@ -93,22 +100,47 @@ export interface SocialSignals {
 const MAX_EVIDENCE_URLS = 5;
 const MIN_SAMPLES_FOR_MEDIAN = 5;
 const STANDOUT_MULTIPLE = 3;
+// Hashtags and multi-word phrases are deliberate/specific enough that a low
+// bar is fine. A single plain caption word with no other corroborating
+// evidence (see CAPITALIZED_EVIDENCE below) needs a much higher bar before
+// it's trusted as a real theme rather than incidental word frequency — see
+// MIN_THEME_COUNT_GENERIC_WORD.
 const MIN_THEME_COUNT = 2;
+const MIN_THEME_COUNT_GENERIC_WORD = 5;
 const MAX_THEME_TERM_LEN = 40;
+const MIN_PHRASE_WORD_LEN = 4;
 const BURST_MULTIPLE = 2;
 const BURST_FLOOR = 3;
 const MIN_MONTHS_FOR_BASELINE = 3;
 
+/** Deliberately broad: reflexives, auxiliaries/copulas, and vague fillers.
+ *  These are exactly the words that survive naive frequency counting
+ *  ("myself", "just", "thing") without ever being a real interest or theme —
+ *  the failure mode this list exists to kill (see the design doc's live-run
+ *  notes: "myself" surfaced as a theme purely from token frequency). */
 const CAPTION_STOPWORDS = new Set([
+    // original core list
     "this", "that", "with", "from", "have", "just", "your", "about", "when",
     "what", "really", "there", "their", "been", "will", "were", "they",
     "them", "then", "than", "also", "some", "more", "much", "very", "like",
     "only", "even", "into", "over", "after", "before", "because", "while",
     "where", "which", "would", "could", "should", "being", "doing", "going",
-    "gonna", "wanna", "dont", "cant", "didnt", "youre", "were", "here",
+    "gonna", "wanna", "dont", "cant", "didnt", "youre", "here",
     "come", "came", "make", "made", "know", "knew", "want", "need", "getting",
-    "back", "still", "much", "many", "these", "those", "always", "never",
+    "back", "still", "many", "these", "those", "always", "never",
     "such", "everyone", "everybody", "something", "someone", "thank", "thanks",
+    // reflexives — the specific defect this task exists to fix
+    "myself", "yourself", "himself", "herself", "itself",
+    "ourselves", "yourselves", "themselves",
+    // auxiliaries / copulas
+    "was", "are", "am", "does", "did", "doing", "done", "shall", "must",
+    "might", "wont", "isnt", "arent", "wasnt", "werent", "hasnt", "hadnt",
+    "doesnt", "havent", "couldnt", "wouldnt", "shouldnt",
+    // vague fillers / hedges — content-free even when repeated
+    "thing", "things", "stuff", "lot", "lots", "bit", "way", "ways",
+    "gotta", "yeah", "okay", "alright", "totally", "honestly", "definitely",
+    "probably", "maybe", "pretty", "actually", "basically", "literally",
+    "kind", "sort", "little", "big", "good", "great", "nice", "cool",
 ]);
 
 function norm(handle: string): string {
@@ -194,10 +226,29 @@ function nameTokens(name: string): Set<string> {
     return new Set((name.toLowerCase().match(/[a-z']{2,}/g) ?? []));
 }
 
-/** Recurring hashtags and salient caption words — own posts only. */
+/** True (not Title/ALL-CAPS) proper-noun-style capitalization: first letter
+ *  upper, rest lower — "Colombia" counts, "HOUSE" (shouting) doesn't. */
+function isProperNounStyle(token: string): boolean {
+    return /^[A-Z][a-z']*$/.test(token);
+}
+
+/** Recurring hashtags, salient caption words, and repeated multi-word
+ *  phrases — own posts only. A single plain caption word is trusted as a
+ *  theme in one of two ways: it clears a HIGH frequency bar on its own
+ *  (MIN_THEME_COUNT_GENERIC_WORD), or it clears the normal low bar AND has
+ *  "content-bearing" evidence — seen capitalized mid-caption (a name, a
+ *  place, a proper noun) at least once. Hashtags and repeated two-word
+ *  phrases are inherently more deliberate/specific, so they keep the low
+ *  bar unconditionally. This is what keeps a real signal (a place name, a
+ *  recurring hashtag, "black church") over a word-frequency artifact like
+ *  "myself" or "just". */
 function deriveThemes(posts: SocialPostRow[], artistNameTokens: Set<string>): Theme[] {
     const own = posts.filter(p => p.isOwnPost);
     const byTerm = new Map<string, { kind: Theme["kind"]; count: number; evidenceUrls: string[] }>();
+    // Words seen capitalized (Title-case) somewhere other than the very
+    // first token of a caption — sentence-initial capitalization is not
+    // evidence of a proper noun, mid-caption capitalization usually is.
+    const capitalizedEvidence = new Set<string>();
 
     const bump = (term: string, kind: Theme["kind"], url: string) => {
         const key = `${kind}:${term}`;
@@ -212,21 +263,50 @@ function deriveThemes(posts: SocialPostRow[], artistNameTokens: Set<string>): Th
             const term = tag.trim().toLowerCase();
             if (term && !artistNameTokens.has(term)) bump(term, "hashtag", post.url);
         }
-        if (post.caption) {
-            const words = post.caption.toLowerCase().match(/[a-z']{4,}/g) ?? [];
-            const seenInThisPost = new Set<string>();
-            for (const word of words) {
-                if (word.length > MAX_THEME_TERM_LEN || CAPTION_STOPWORDS.has(word) || seenInThisPost.has(word)) continue;
-                if (artistNameTokens.has(word)) continue; // e.g. "rango" from "Pete Rango"
-                seenInThisPost.add(word);
-                bump(word, "caption_term", post.url);
-            }
+        if (!post.caption) continue;
+
+        const rawTokens = post.caption.match(/[A-Za-z']{4,}/g) ?? [];
+        rawTokens.forEach((token, i) => {
+            if (i > 0 && isProperNounStyle(token)) capitalizedEvidence.add(token.toLowerCase());
+        });
+        const words = rawTokens.map(t => t.toLowerCase());
+
+        // Single content words, deduped within this post.
+        const seenInThisPost = new Set<string>();
+        for (const word of words) {
+            if (word.length > MAX_THEME_TERM_LEN || CAPTION_STOPWORDS.has(word) || seenInThisPost.has(word)) continue;
+            if (artistNameTokens.has(word)) continue; // e.g. "rango" from "Pete Rango"
+            seenInThisPost.add(word);
+            bump(word, "caption_term", post.url);
+        }
+
+        // Repeated two-word phrases — true adjacency in the original caption
+        // (short filler words like "a"/"is"/"on" are already excluded by the
+        // 4-char token regex above, so "black church on a tuesday" yields the
+        // adjacent pair "black church"). Prefer these over single common
+        // words: a phrase repeating verbatim across posts is much stronger
+        // evidence of a real, specific theme than any one word in it.
+        const seenPhrasesInThisPost = new Set<string>();
+        for (let i = 0; i < words.length - 1; i++) {
+            const w1 = words[i];
+            const w2 = words[i + 1];
+            if (w1.length < MIN_PHRASE_WORD_LEN || w2.length < MIN_PHRASE_WORD_LEN) continue;
+            if (CAPTION_STOPWORDS.has(w1) || CAPTION_STOPWORDS.has(w2)) continue;
+            if (artistNameTokens.has(w1) || artistNameTokens.has(w2)) continue;
+            const phrase = `${w1} ${w2}`;
+            if (phrase.length > MAX_THEME_TERM_LEN || seenPhrasesInThisPost.has(phrase)) continue;
+            seenPhrasesInThisPost.add(phrase);
+            bump(phrase, "caption_phrase", post.url);
         }
     }
 
     return Array.from(byTerm.entries())
         .map(([key, v]) => ({ term: key.slice(v.kind.length + 1), ...v }))
-        .filter(t => t.count >= MIN_THEME_COUNT)
+        .filter(t => {
+            if (t.kind !== "caption_term") return t.count >= MIN_THEME_COUNT; // hashtag, caption_phrase
+            if (t.count >= MIN_THEME_COUNT_GENERIC_WORD) return true; // frequent enough to trust alone
+            return t.count >= MIN_THEME_COUNT && capitalizedEvidence.has(t.term); // proper-noun-like
+        })
         .sort((a, b) => b.count - a.count || a.term.localeCompare(b.term));
 }
 
@@ -258,8 +338,35 @@ function deriveStandoutPosts(posts: SocialPostRow[]): StandoutPost[] {
     return Array.from(byUrl.values()).sort((a, b) => b.multiple - a.multiple);
 }
 
-/** Months where the artist posted (own posts) at an unusual multiple of their own baseline. */
-function deriveBursts(posts: SocialPostRow[]): Burst[] {
+/** Looks for something concrete to tie a burst window to, in priority order:
+ *  a post that's already a standout, a real track credit, a coauthor, a
+ *  mentioned account, then a hashtag. Returns null (no anchor) if the window
+ *  is just a pile of otherwise-unremarkable posts — a burst with nothing to
+ *  point to is exactly the "vague and stale" failure mode this exists to
+ *  prevent (a bare "you posted a lot in June 2018" is not an interesting
+ *  question; "around the 'crying on the floor' release" is). */
+function findBurstAnchor(monthPosts: SocialPostRow[], standoutUrls: Set<string>): string | null {
+    const standout = monthPosts.find(p => standoutUrls.has(p.url));
+    if (standout) {
+        return standout.caption ? `a post that clearly struck a nerve ("${standout.caption}")` : "a post that clearly struck a nerve";
+    }
+    const withMusic = monthPosts.find(p => p.musicTitle && p.musicArtist);
+    if (withMusic) return `the track "${withMusic.musicTitle}" by ${withMusic.musicArtist}`;
+    const withCoauthor = monthPosts.find(p => p.coauthors.length > 0);
+    if (withCoauthor) return `working with @${withCoauthor.coauthors[0]}`;
+    const withMention = monthPosts.find(p => p.mentions.length > 0);
+    if (withMention) return `a post that tagged @${withMention.mentions[0]}`;
+    const withHashtag = monthPosts.find(p => p.hashtags.length > 0);
+    if (withHashtag) return `the hashtag #${withHashtag.hashtags[0]}`;
+    return null;
+}
+
+/** Months where the artist posted (own posts) at an unusual multiple of
+ *  their own baseline AND that window ties to something concrete (see
+ *  findBurstAnchor) — an unanchored burst is dropped entirely rather than
+ *  surfaced with nothing to say about it. Sorted recent-first: a burst from
+ *  last month is far more useful to ask about live than one from years ago. */
+function deriveBursts(posts: SocialPostRow[], standoutUrls: Set<string>): Burst[] {
     const own = posts.filter(p => p.isOwnPost);
     const byMonth = new Map<string, SocialPostRow[]>();
     for (const post of own) {
@@ -279,11 +386,13 @@ function deriveBursts(posts: SocialPostRow[]): Burst[] {
     const bursts: Burst[] = [];
     for (const [month, arr] of byMonth.entries()) {
         if (arr.length < BURST_FLOOR || arr.length < baseline * BURST_MULTIPLE) continue;
+        const anchor = findBurstAnchor(arr, standoutUrls);
+        if (!anchor) continue; // no anchor, no burst — see findBurstAnchor
         const top = [...arr].sort((a, b) => (b.likeCount ?? b.playCount ?? 0) - (a.likeCount ?? a.playCount ?? 0))[0];
-        bursts.push({ month, postCount: arr.length, baseline: round1(baseline), topPostUrl: top.url });
+        bursts.push({ month, postCount: arr.length, baseline: round1(baseline), topPostUrl: top.url, anchor });
     }
 
-    return bursts.sort((a, b) => b.postCount - a.postCount);
+    return bursts.sort((a, b) => b.month.localeCompare(a.month)); // recent first
 }
 
 /** Real track credits, own or collab posts alike — this is metadata about a
@@ -302,12 +411,16 @@ function deriveMusicReferences(posts: SocialPostRow[]): MusicReference[] {
 }
 
 export function deriveSocialSignals(posts: SocialPostRow[], handle: string, artistName?: string): SocialSignals {
+    // Standout posts are computed first — bursts use their URLs as the
+    // strongest available anchor (see findBurstAnchor).
+    const standoutPosts = deriveStandoutPosts(posts);
+    const standoutUrls = new Set(standoutPosts.map(s => s.url));
     return {
         collaborators: deriveCollaborators(posts, handle),
         mentionedAccounts: deriveMentionedAccounts(posts, handle),
         themes: deriveThemes(posts, nameTokens(artistName ?? "")),
-        standoutPosts: deriveStandoutPosts(posts),
-        bursts: deriveBursts(posts),
+        standoutPosts,
+        bursts: deriveBursts(posts, standoutUrls),
         musicReferences: deriveMusicReferences(posts),
     };
 }

@@ -22,7 +22,10 @@ export type ClientTurnShape =
     | { type: "open" }
     | { type: "confirm_profiles"; addedLinks: { url: string }[]; removedSiteNames: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
-    | { type: "interview_answer"; questionKey: string; answer: string | null }
+    // `question` round-trips the question TEXT the client was shown — needed
+    // server-side to store a grounded (non-static) question's wording; see
+    // resolveInterviewQuestionText in turnHandlers.ts.
+    | { type: "interview_answer"; questionKey: string; answer: string | null; question?: string }
     | { type: "publish"; doc: string; about: string };
 
 /** Text shown as the user's own bubble for a given turn (null = no user bubble). */

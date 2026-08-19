@@ -556,7 +556,43 @@ export function VaultCard({ payload, onConfirm, disabled }: {
 
 // ---------- Interview ----------
 
-type InterviewPayload = { questionKey: string; question: string; number: number; total: number };
+// A grounded question carries the real Instagram post URL(s) it was drawn
+// from — exported so OnboardingChat.tsx can read `payload.question` when
+// round-tripping the interview_answer turn (see turnHandlers.ts's
+// resolveInterviewQuestionText for why that round-trip is needed).
+export type InterviewPayload = { questionKey: string; question: string; number: number; total: number; sourceUrls?: string[] };
+
+// "One or two links, not a wall" — supporting evidence, not the headline.
+const MAX_VISIBLE_SOURCE_URLS = 2;
+
+function sourceUrlLabel(url: string): string {
+    try {
+        return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+        return url;
+    }
+}
+
+/** Small, subtle "what prompted this" affordance under a grounded question —
+ *  renders nothing when there's no source to point to (a static fallback
+ *  question, or a grounded one that somehow lost its evidence). */
+function QuestionSources({ sourceUrls }: { sourceUrls?: string[] }) {
+    if (!sourceUrls || sourceUrls.length === 0) return null;
+    const visible = sourceUrls.slice(0, MAX_VISIBLE_SOURCE_URLS);
+    return (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+            What prompted this:{" "}
+            {visible.map((url, i) => (
+                <span key={url}>
+                    {i > 0 && ", "}
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline hover:text-pink-500 dark:hover:text-pink-400">
+                        {sourceUrlLabel(url)}
+                    </a>
+                </span>
+            ))}
+        </p>
+    );
+}
 
 export function InterviewInput({ payload, onAnswer, disabled }: {
     payload: InterviewPayload;
@@ -567,6 +603,7 @@ export function InterviewInput({ payload, onAnswer, disabled }: {
     return (
         <div className="w-full space-y-2">
             <p className="text-xs text-gray-700 dark:text-gray-300">Question {payload.number} of {payload.total} — all optional</p>
+            <QuestionSources sourceUrls={payload.sourceUrls} />
             <div className="flex gap-2">
                 <input
                     value={draft}

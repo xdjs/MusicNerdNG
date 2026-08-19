@@ -46,6 +46,14 @@ jest.mock('@/server/utils/artistDocService', () => ({
     synthesizeArtistDoc: jest.fn().mockResolvedValue('## Overview\ndoc'),
     generateAboutFromDoc: jest.fn().mockResolvedValue('An About.'),
 }));
+// Default: no grounded questions — every existing test exercises the static
+// fallback path unless it explicitly overrides this per-test. `_PREFIX` is a
+// real constant (not a mock function) since turnHandlers.ts uses its string
+// value directly to classify a questionKey.
+jest.mock('@/server/utils/questionGenerator', () => ({
+    generateGroundedQuestions: jest.fn().mockResolvedValue([]),
+    GROUNDED_QUESTION_KEY_PREFIX: 'social_',
+}));
 
 async function collect(gen) {
     const events = [];
@@ -438,6 +446,121 @@ describe('runOnboardingTurn', () => {
         }));
         expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'interview');
         expect(events.some(e => e.kind === 'draft' && e.doc && e.about)).toBe(true);
+    });
+
+    it('interview step prefers a grounded question over the static bank when generation returns one, and carries its sourceUrls into the step payload', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        oq.getInterviewAnswers.mockResolvedValue([]); // nothing asked yet
+        const { generateGroundedQuestions } = await import('@/server/utils/questionGenerator');
+        generateGroundedQuestions.mockResolvedValueOnce([
+            {
+                key: 'social_collaborator_dameatlas',
+                question: "You and @dameatlas put out a track together — what's the story?",
+                rationale: 'real collab',
+                sourceUrls: ['https://www.instagram.com/p/ABC123/'],
+                kind: 'collaborator',
+            },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step' && e.step === 'interview');
+        expect(step.payload).toEqual({
+            questionKey: 'social_collaborator_dameatlas',
+            question: "You and @dameatlas put out a track together — what's the story?",
+            number: 1,
+            total: 3,
+            sourceUrls: ['https://www.instagram.com/p/ABC123/'],
+        });
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3 });
+    });
+
+    it('interview step falls back to the static bank when generation returns []', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        oq.getInterviewAnswers.mockResolvedValue([]);
+        const { generateGroundedQuestions } = await import('@/server/utils/questionGenerator');
+        generateGroundedQuestions.mockResolvedValueOnce([]); // e.g. no ingested posts, or Apify/Gemini had a bad day
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step' && e.step === 'interview');
+        expect(step.payload).toEqual({
+            questionKey: 'sound_in_own_words',
+            question: 'How would you describe your sound, in your own words?',
+            number: 1,
+            total: 3,
+            sourceUrls: [],
+        });
+    });
+
+    it('a skipped grounded question is not re-asked on resume, even when regeneration returns it again', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        // Already on file: the artist skipped this grounded question earlier
+        // (a row exists with answer: null) — resume must never re-offer it.
+        oq.getInterviewAnswers.mockResolvedValue([
+            { questionKey: 'social_theme_hashtag_housemusic', answer: null },
+        ]);
+        const { generateGroundedQuestions } = await import('@/server/utils/questionGenerator');
+        // Regeneration on resume yields stable keys — it returns the SAME
+        // already-skipped signal again, plus a new one that hasn't been asked.
+        generateGroundedQuestions.mockResolvedValueOnce([
+            { key: 'social_theme_hashtag_housemusic', question: 'Housemusic keeps coming up — why?', rationale: 'x', sourceUrls: ['https://www.instagram.com/p/OLD/'], kind: 'theme' },
+            { key: 'social_standout_XYZ', question: 'That post really struck a nerve — what inspired it?', rationale: 'x', sourceUrls: ['https://www.instagram.com/p/XYZ/'], kind: 'standout' },
+        ]);
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const step = events.find(e => e.kind === 'step' && e.step === 'interview');
+        expect(step.payload.questionKey).toBe('social_standout_XYZ');
+        expect(step.payload.number).toBe(2); // one question already asked (skipped counts)
+    });
+
+    it('interview step skips regeneration entirely once INTERVIEW_QUESTION_CAP distinct questions have already been asked', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        oq.getInterviewAnswers.mockResolvedValue([
+            { questionKey: 'social_collaborator_dameatlas', answer: 'a' },
+            { questionKey: 'sound_in_own_words', answer: null },
+            { questionKey: 'offline_fact', answer: 'b' },
+        ]); // 3 distinct keys already asked — nothing left, regardless of what regeneration might return
+        const { generateGroundedQuestions } = await import('@/server/utils/questionGenerator');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+        expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'interview');
+        expect(events.some(e => e.kind === 'draft')).toBe(true); // advanced straight to publish
+    });
+
+    it('interview_answer stores a grounded question\'s client-echoed text (no fixed bank to look it up in)', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        oq.getInterviewAnswers.mockResolvedValue([]); // re-emission after storing still resolves fine via the default [] mock
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'interview_answer',
+            questionKey: 'social_collaborator_dameatlas',
+            question: "You and @dameatlas put out a track together — what's the story?",
+            answer: 'It just clicked in the studio.',
+        }));
+        expect(oq.upsertInterviewAnswer).toHaveBeenCalledWith(expect.objectContaining({
+            artistId: 'a1',
+            questionKey: 'social_collaborator_dameatlas',
+            question: "You and @dameatlas put out a track together — what's the story?",
+            answer: 'It just clicked in the studio.',
+            source: 'onboarding',
+        }));
+        expect(events.some(e => e.kind === 'error')).toBe(false);
+    });
+
+    it('interview_answer rejects a garbage questionKey that is neither a static key nor grounded-prefixed', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'interview' });
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'interview_answer', questionKey: 'totally_made_up', answer: 'x',
+        }));
+        expect(oq.upsertInterviewAnswer).not.toHaveBeenCalled();
+        expect(events.some(e => e.kind === 'error')).toBe(true);
     });
 
     it('publish validates caps, persists doc + bio version + artists.bio, confirms publish, completes', async () => {

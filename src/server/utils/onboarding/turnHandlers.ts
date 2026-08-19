@@ -36,6 +36,7 @@ import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/uti
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
+import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
 
 /** Two ungrounded Gemini calls, each with one retry at up to `GEMINI_TIMEOUT_MS`,
  *  is a 4x-call worst case (~80s) against `maxDuration = 60` on the chat route.
@@ -63,7 +64,11 @@ export type ClientTurn =
     | { type: "open" }
     | { type: "confirm_profiles"; addedLinks: { url: string }[]; removedSiteNames: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
-    | { type: "interview_answer"; questionKey: string; answer: string | null }
+    // `question` is the stateless round-trip of the question TEXT the client
+    // was actually shown (same pattern as `publish`'s doc/about — see
+    // resolveInterviewQuestionText below for why grounded questions need
+    // this while static ones don't).
+    | { type: "interview_answer"; questionKey: string; answer: string | null; question?: string }
     | { type: "publish"; doc: string; about: string };
 
 const NARRATION = {
@@ -83,6 +88,69 @@ const NARRATION = {
     draftReady: "Your About is ready. Publish it as-is, or edit it first — your call.",
     published: "You're live! Your About is published, and everything you shared is saved as your artist doc — it now powers your page's Q&A and fun facts too.",
 } as const;
+
+// --- interview: grounded questions first, static bank as fallback/filler --
+
+/** Interview budget: at most 3 questions total per onboarding, combining
+ *  grounded (social-signal-backed) questions with the static fallback bank.
+ *  Everything beyond this belongs to the future follow-up email cadence, not
+ *  the claim-time interview. */
+const INTERVIEW_QUESTION_CAP = 3;
+
+/** Defensive cap on a client-echoed grounded question's text (see
+ *  resolveInterviewQuestionText) — these are always one short spoken
+ *  sentence in practice. */
+const MAX_CLIENT_QUESTION_CHARS = 500;
+
+interface InterviewQuestionCandidate {
+    key: string;
+    question: string;
+    sourceUrls: string[];
+}
+
+/** Builds the interview's up-to-3-question list: grounded (social-signal-
+ *  backed) questions first, static ONBOARDING_QUESTIONS filling any
+ *  remaining slots up to INTERVIEW_QUESTION_CAP. `generateGroundedQuestions`
+ *  already never throws on its own (it degrades to `[]` on any failure —
+ *  missing posts, Gemini down, malformed output), but this is wrapped again
+ *  defensively: the interview must never break because Apify/Gemini had a
+ *  bad day. */
+async function buildInterviewQuestions(artistId: string): Promise<InterviewQuestionCandidate[]> {
+    let grounded: GroundedQuestion[] = [];
+    try {
+        grounded = await generateGroundedQuestions(artistId, { max: INTERVIEW_QUESTION_CAP });
+    } catch (e) {
+        console.error("[onboarding] generateGroundedQuestions failed:", e);
+    }
+    const groundedCandidates: InterviewQuestionCandidate[] = grounded.map(g => ({ key: g.key, question: g.question, sourceUrls: g.sourceUrls }));
+    const groundedKeys = new Set(groundedCandidates.map(g => g.key));
+    const staticCandidates: InterviewQuestionCandidate[] = ONBOARDING_QUESTIONS
+        .filter(q => !groundedKeys.has(q.key)) // defensive: the two key spaces never actually collide
+        .map(q => ({ key: q.key, question: q.question, sourceUrls: [] }));
+    return [...groundedCandidates, ...staticCandidates].slice(0, INTERVIEW_QUESTION_CAP);
+}
+
+/** Resolves the human-readable question text to store for an
+ *  `interview_answer` turn. A static key is looked up against the fixed
+ *  ONBOARDING_QUESTIONS bank server-side — the client-sent `question` is
+ *  ignored for these, exactly as before this feature existed. A grounded key
+ *  (the GROUNDED_QUESTION_KEY_PREFIX from questionGenerator.ts) has no fixed
+ *  bank to validate against — regenerating just to look up its text would
+ *  cost another ~12s Gemini call on every "Send" click, so its text is
+ *  trusted from the client instead, the same stateless round-trip `publish`
+ *  already uses for doc/about. This route is gated by `canEditArtist`, so at
+ *  most an artist can affect their OWN artist_interview_answers row this way
+ *  — nothing they can't already do via the vault/paste inputs. Returns null
+ *  when the key matches neither shape (a stale/garbage key). */
+function resolveInterviewQuestionText(questionKey: string, clientQuestion: string | undefined): string | null {
+    const staticQuestion = ONBOARDING_QUESTIONS.find(q => q.key === questionKey);
+    if (staticQuestion) return staticQuestion.question;
+    if (questionKey.startsWith(GROUNDED_QUESTION_KEY_PREFIX)) {
+        const text = typeof clientQuestion === "string" ? clientQuestion.trim().slice(0, MAX_CLIENT_QUESTION_CHARS) : "";
+        return text || null;
+    }
+    return null;
+}
 
 /** One warm Gemini sentence reacting to an interview answer. Bounded at 5s;
  *  any failure falls back to a template — the ack is garnish, never a blocker. */
@@ -323,18 +391,40 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
         }
         case "interview": {
             const asked = new Set((await getInterviewAnswers(artistId)).map(a => a.questionKey));
-            const nextIndex = ONBOARDING_QUESTIONS.findIndex(q => !asked.has(q.key));
-            if (nextIndex === -1) {
+            // Once INTERVIEW_QUESTION_CAP distinct questions have been asked
+            // (answered or skipped — both count), there is nothing left to
+            // offer regardless of what a regeneration might return, so skip
+            // straight past it rather than paying another ~12s Gemini call
+            // just to find that out.
+            let questions: InterviewQuestionCandidate[] = [];
+            if (asked.size < INTERVIEW_QUESTION_CAP) {
+                // Grounded generation reads the artist's ingested Instagram
+                // posts and, when there are any, makes a real Gemini call —
+                // the ~12s this can take is real work, not a stall, so it's
+                // narrated plainly rather than left as dead air.
+                yield { kind: "progress", label: "Reading your posts", done: false };
+                questions = await buildInterviewQuestions(artistId);
+                yield { kind: "progress", label: "Reading your posts", done: true };
+            }
+            // "number" is derived from how many questions have already been
+            // asked, NOT from array position — a regeneration can legitimately
+            // reorder/replace not-yet-asked candidates turn to turn, and the
+            // progress indicator must stay monotonic regardless.
+            const next = questions.find(q => !asked.has(q.key));
+            if (!next) {
                 await confirmOnboardingStep(artistId, "interview");
                 yield* emitStep(artistId, "publish");
                 return;
             }
-            const next = ONBOARDING_QUESTIONS[nextIndex];
             yield { kind: "chat", text: next.question };
             yield {
                 kind: "step",
                 step: "interview",
-                payload: { questionKey: next.key, question: next.question, number: nextIndex + 1, total: ONBOARDING_QUESTIONS.length },
+                payload: {
+                    questionKey: next.key, question: next.question,
+                    number: asked.size + 1, total: INTERVIEW_QUESTION_CAP,
+                    sourceUrls: next.sourceUrls,
+                },
             };
             return;
         }
@@ -542,8 +632,8 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, state.currentStep);
             return;
         }
-        const question = ONBOARDING_QUESTIONS.find(q => q.key === turn.questionKey);
-        if (!question) {
+        const questionText = resolveInterviewQuestionText(turn.questionKey, turn.question);
+        if (questionText === null) {
             yield { kind: "error", message: "Unknown question — let's continue from where we were." };
             yield* emitStep(artistId, "interview"); // step guard above already pinned currentStep === "interview"
             return;
@@ -551,13 +641,13 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         const answer = turn.answer?.trim() || null;
         await upsertInterviewAnswer({
             artistId,
-            questionKey: question.key,
-            question: question.question,
+            questionKey: turn.questionKey,
+            question: questionText,
             answer,
             source: "onboarding",
         });
         if (answer) {
-            yield { kind: "chat", text: await generateInterviewAck(question.question, answer) };
+            yield { kind: "chat", text: await generateInterviewAck(questionText, answer) };
         }
         // On resume, ask the first question lacking a row — answered or skipped
         // questions are never re-asked (spec §6). emitStep handles completion.
