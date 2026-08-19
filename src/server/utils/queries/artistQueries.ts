@@ -2,13 +2,12 @@ import { db } from "@/server/db/drizzle";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
 import { deezerProvider, spotifyProvider } from "@/server/utils/musicPlatform";
 import type { MusicPlatform } from "@/server/utils/musicPlatform";
-import { eq, sql, inArray, and, arrayContains } from "drizzle-orm";
-import { artists, ugcresearch } from "@/server/db/schema";
+import { eq, sql, inArray, and, arrayContains, asc } from "drizzle-orm";
+import { artists, artistIdMappings, ugcresearch } from "@/server/db/schema";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
 import { isObjKey, extractArtistId } from "@/server/utils/services";
 import { getServerAuthSession } from "@/server/auth";
 import { PgColumn } from "drizzle-orm/pg-core";
-import { headers } from "next/headers";
 
 import { getUserById, getUserDisplayName } from "@/server/utils/queries/userQueries";
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
@@ -18,6 +17,10 @@ import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService
 import { regenerateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { isAboutEmptyState } from "@/lib/bioConstants";
 import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
+import {
+    acquireArtistNameLock,
+    acquirePlatformIdentityLock,
+} from "@/server/utils/artistIdentityLocks";
 
 // ----------------------------------
 // Types
@@ -34,12 +37,42 @@ export type ArtistLink = UrlMap & {
     artistUrl: string;
 };
 
-export type AddArtistResp = {
-    status: "success" | "error" | "exists";
+export type AddArtistCandidate = {
+    id: string;
+    name: string | null;
+    spotify: string | null;
+    deezer: string | null;
+};
+
+export type AddArtistOptions = {
+    forceCreate?: boolean;
+};
+
+type AddArtistRespCommon = {
     artistId?: string;
     message?: string;
     artistName?: string;
 };
+
+export type AddArtistResp =
+    | (AddArtistRespCommon & {
+        status: "success" | "error" | "exists";
+        candidates?: AddArtistCandidate[];
+        platform?: MusicPlatform;
+        platformId?: string;
+    })
+    | (AddArtistRespCommon & {
+        status: "possible_duplicate";
+        candidates: AddArtistCandidate[];
+        platform: MusicPlatform;
+        platformId: string;
+    })
+    | (AddArtistRespCommon & {
+        status: "conflict";
+        candidates: AddArtistCandidate[];
+        platform: MusicPlatform;
+        platformId: string;
+    });
 
 export type AddArtistDataResp = {
     status: "success" | "error";
@@ -306,18 +339,91 @@ export async function getArtistLinks(artist: Artist): Promise<ArtistLink[]> {
 // Artist creation & mutation
 // ----------------------------------
 
-export async function addArtist(platformId: string, platform: MusicPlatform = 'spotify'): Promise<AddArtistResp> {
+type PlatformIdOwnerResolution =
+    | { status: "none" }
+    | { status: "owner"; owner: AddArtistCandidate }
+    | { status: "conflict"; candidates: AddArtistCandidate[] };
+
+type ArtistCreationExecutor = Pick<typeof db, "query" | "execute" | "insert">;
+
+const ADD_ARTIST_CANDIDATE_LIMIT = 10;
+
+function toAddArtistCandidate(artist: Pick<Artist, "id" | "name" | "spotify" | "deezer">): AddArtistCandidate {
+    return {
+        id: artist.id,
+        name: artist.name,
+        spotify: artist.spotify,
+        deezer: artist.deezer,
+    };
+}
+
+async function resolvePlatformIdOwner(
+    database: Pick<ArtistCreationExecutor, "query">,
+    platform: MusicPlatform,
+    platformId: string,
+): Promise<PlatformIdOwnerResolution> {
+    const directColumn = platform === "deezer" ? artists.deezer : artists.spotify;
+    const [directOwner, mapping] = await Promise.all([
+        database.query.artists.findFirst({
+            where: eq(directColumn, platformId),
+            columns: { id: true, name: true, spotify: true, deezer: true },
+        }),
+        database.query.artistIdMappings.findFirst({
+            where: and(
+                eq(artistIdMappings.platform, platform),
+                eq(artistIdMappings.platformId, platformId),
+            ),
+            columns: { artistId: true },
+        }),
+    ]);
+
+    if (!mapping) {
+        return directOwner
+            ? { status: "owner", owner: toAddArtistCandidate(directOwner) }
+            : { status: "none" };
+    }
+
+    if (directOwner?.id === mapping.artistId) {
+        return { status: "owner", owner: toAddArtistCandidate(directOwner) };
+    }
+
+    const mappedOwner = await database.query.artists.findFirst({
+        where: eq(artists.id, mapping.artistId),
+        columns: { id: true, name: true, spotify: true, deezer: true },
+    });
+    const mappedCandidate = mappedOwner
+        ? toAddArtistCandidate(mappedOwner)
+        : { id: mapping.artistId, name: null, spotify: null, deezer: null };
+
+    const mappedOwnerPlatformId = platform === "deezer"
+        ? mappedCandidate.deezer
+        : mappedCandidate.spotify;
+    const mappedOwnerContradictsMapping = Boolean(
+        mappedOwnerPlatformId?.trim() && mappedOwnerPlatformId !== platformId,
+    );
+
+    if (directOwner || mappedOwnerContradictsMapping) {
+        return {
+            status: "conflict",
+            candidates: directOwner
+                ? [toAddArtistCandidate(directOwner), mappedCandidate]
+                : [mappedCandidate],
+        };
+    }
+
+    return { status: "owner", owner: mappedCandidate };
+}
+
+export async function addArtist(
+    platformId: string,
+    platform: MusicPlatform = 'spotify',
+    options?: AddArtistOptions,
+): Promise<AddArtistResp> {
     if (platform !== 'deezer' && platform !== 'spotify') {
         return { status: "error", message: "Invalid platform" };
     }
     try {
         console.debug(`[Server] Starting addArtist for ${platform}Id:`, platformId);
-
-        const headersList = await headers();
-        console.debug("[Server] Request headers:", {
-            cookie: headersList.get("cookie"),
-            authorization: headersList.get("authorization"),
-        });
 
         const session = await getServerAuthSession();
         console.debug("[Server] Session state:", {
@@ -340,46 +446,118 @@ export async function addArtist(platformId: string, platform: MusicPlatform = 's
             return { status: "error", message: `Could not find artist on ${platform}` };
         }
 
-        // Dedup check on the appropriate column
-        const column = platform === 'deezer' ? artists.deezer : artists.spotify;
-        console.debug("[Server] Checking if artist exists in database...");
-        const artist = await db.query.artists.findFirst({ where: eq(column, platformId) });
-        if (artist) {
-            console.debug("[Server] Artist already exists:", artist);
-            return {
-                status: "exists",
-                artistId: artist.id,
-                artistName: artist.name ?? "",
-                message: "That artist is already in our database",
+        const normalisedName = normaliseText(platformArtist.name);
+        let notificationCreatedAt: string | null | undefined;
+        const result = await db.transaction(async (transaction): Promise<AddArtistResp> => {
+            const database = transaction as ArtistCreationExecutor;
+            await acquirePlatformIdentityLock(database, platform, platformId);
+            if (!options?.forceCreate) {
+                await acquireArtistNameLock(database, normalisedName);
+            }
+
+            console.debug("[Server] Checking platform ID ownership...");
+            const ownership = await resolvePlatformIdOwner(database, platform, platformId);
+            if (ownership.status === "conflict") {
+                console.error("[Server] Conflicting platform ID owners:", ownership.candidates);
+                return {
+                    status: "conflict",
+                    candidates: ownership.candidates,
+                    platform,
+                    platformId,
+                    message: "That platform profile is assigned to conflicting artist records",
+                };
+            }
+            if (ownership.status === "owner") {
+                console.debug("[Server] Artist already exists:", ownership.owner);
+                return {
+                    status: "exists",
+                    artistId: ownership.owner.id,
+                    artistName: ownership.owner.name ?? "",
+                    message: "That artist is already in our database",
+                };
+            }
+
+            if (!options?.forceCreate) {
+                const possibleDuplicates = await database.query.artists.findMany({
+                    where: eq(artists.lcname, normalisedName),
+                    orderBy: [asc(artists.createdAt), asc(artists.id)],
+                    limit: ADD_ARTIST_CANDIDATE_LIMIT,
+                    columns: { id: true, name: true, spotify: true, deezer: true },
+                });
+                if (possibleDuplicates.length > 0) {
+                    return {
+                        status: "possible_duplicate",
+                        candidates: possibleDuplicates.map(toAddArtistCandidate),
+                        platform,
+                        platformId,
+                        message: "We found an artist with the same name. Choose the existing artist or confirm this is a different artist.",
+                    };
+                }
+            }
+
+            console.debug("[Server] Inserting new artist into database...");
+            const artistData = {
+                [platform]: platformId,
+                lcname: normalisedName,
+                name: platformArtist.name,
+                addedBy: session.user?.id || undefined,
             };
-        }
 
-        console.debug("[Server] Inserting new artist into database...");
-        const artistData = {
-            [platform]: platformId,
-            lcname: normaliseText(platformArtist.name),
-            name: platformArtist.name,
-            addedBy: session?.user?.id || undefined,
-        };
+            const [newArtist] = await database
+                .insert(artists)
+                .values(artistData)
+                .onConflictDoNothing()
+                .returning();
 
-        const [newArtist] = await db.insert(artists).values(artistData).returning();
-        console.debug("[Server] New artist created:", newArtist);
+            if (!newArtist) {
+                const raceWinner = await resolvePlatformIdOwner(database, platform, platformId);
+                if (raceWinner.status === "conflict") {
+                    return {
+                        status: "conflict",
+                        candidates: raceWinner.candidates,
+                        platform,
+                        platformId,
+                        message: "That platform profile is assigned to conflicting artist records",
+                    };
+                }
+                if (raceWinner.status === "owner") {
+                    return {
+                        status: "exists",
+                        artistId: raceWinner.owner.id,
+                        artistName: raceWinner.owner.name ?? "",
+                        message: "That artist is already in our database",
+                    };
+                }
+                return {
+                    status: "error",
+                    message: "The artist could not be created because another record changed at the same time. Please try again.",
+                };
+            }
+            console.debug("[Server] New artist created:", newArtist);
+            notificationCreatedAt = newArtist.createdAt;
 
-        if (session?.user?.id) {
-            const user = await getUserById(session.user.id);
-            if (user) {
-                await sendDiscordMessage(
-                    `${getUserDisplayName(user)} added new artist named: ${newArtist.name} (Submitted ${platform}Id: ${platformId}) ${newArtist.createdAt}`
-                );
+            return {
+                status: "success",
+                artistId: newArtist.id,
+                artistName: newArtist.name ?? "",
+                message: "Success! You can now find this artist in our directory",
+            };
+        });
+
+        if (result.status === "success" && session.user?.id) {
+            try {
+                const user = await getUserById(session.user.id);
+                if (user) {
+                    await sendDiscordMessage(
+                        `${getUserDisplayName(user)} added new artist named: ${result.artistName ?? ""} (Submitted ${platform}Id: ${platformId}) ${notificationCreatedAt ?? ""}`
+                    );
+                }
+            } catch (notificationError) {
+                console.error("[Server] Failed to send artist-added notification:", notificationError);
             }
         }
 
-        return {
-            status: "success",
-            artistId: newArtist.id,
-            artistName: newArtist.name ?? "",
-            message: "Success! You can now find this artist in our directory",
-        };
+        return result;
     } catch (e) {
         console.error("[Server] Error in addArtist:", e);
         if (e instanceof Error) {

@@ -215,6 +215,127 @@ describe('SearchBar Add Artist Flow', () => {
         });
     });
 
+    it('uses the action identity to build a canonical existing-artist handoff URL', async () => {
+        (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
+        const trackedExternalResult = {
+            ...externalResult,
+            platformId: '123',
+            profileUrl: 'https://deezer.com/en/artist/123?utm_source=search#tracks',
+        };
+        mockAddArtist.mockResolvedValue({
+            status: 'possible_duplicate',
+            platform: 'deezer',
+            platformId: '123',
+            candidates: [{
+                id: 'existing-id',
+                name: 'New Artist',
+                spotify: 'spotify-id',
+                deezer: null,
+            }],
+        });
+
+        await renderAndSearch([trackedExternalResult]);
+        fireEvent.click(screen.getByText('New Artist'));
+
+        const link = await screen.findByRole('link', { name: /Add link to existing artist: New Artist/ });
+        expect(link).toHaveAttribute(
+            'href',
+            `/artist/existing-id?addLink=${encodeURIComponent('https://www.deezer.com/artist/123')}`,
+        );
+        expect(screen.getByRole('button', { name: 'Create separate artist' })).toBeInTheDocument();
+        expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('force-creates a separate artist after duplicate confirmation', async () => {
+        (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
+        mockAddArtist
+            .mockResolvedValueOnce({
+                status: 'possible_duplicate',
+                platform: 'deezer',
+                platformId: 'dz123',
+                candidates: [{
+                    id: 'existing-id',
+                    name: 'New Artist',
+                    spotify: 'spotify-id',
+                    deezer: null,
+                }],
+            })
+            .mockResolvedValueOnce({
+                status: 'success',
+                artistId: 'separate-id',
+                artistName: 'New Artist',
+            });
+
+        await renderAndSearch([externalResult]);
+        fireEvent.click(screen.getByText('New Artist'));
+        fireEvent.click(await screen.findByRole('button', { name: 'Create separate artist' }));
+
+        await waitFor(() => {
+            expect(mockAddArtist).toHaveBeenNthCalledWith(
+                2,
+                'dz123',
+                'deezer',
+                { forceCreate: true },
+            );
+            expect(mockPush).toHaveBeenCalledWith('/artist/separate-id');
+        });
+    });
+
+    it('blocks candidate navigation and search edits while force creation is pending', async () => {
+        (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
+        let resolveCreate!: (value: unknown) => void;
+        mockAddArtist
+            .mockResolvedValueOnce({
+                status: 'possible_duplicate',
+                platform: 'deezer',
+                platformId: '123',
+                candidates: [{
+                    id: 'existing-id',
+                    name: 'New Artist',
+                    spotify: 'spotify-id',
+                    deezer: null,
+                }],
+            })
+            .mockReturnValueOnce(new Promise(resolve => { resolveCreate = resolve; }));
+
+        await renderAndSearch([{ ...externalResult, platformId: '123' }]);
+        fireEvent.click(screen.getByText('New Artist'));
+        const candidateLink = await screen.findByRole('link', { name: /Add link to existing artist: New Artist/ });
+        fireEvent.click(screen.getByRole('button', { name: 'Create separate artist' }));
+
+        expect(await screen.findByRole('status')).toHaveTextContent('Creating separate artist');
+        expect(candidateLink).not.toBeInTheDocument();
+        const searchInput = screen.getByPlaceholderText('Search for an artist...');
+        expect(searchInput).toBeDisabled();
+        fireEvent.change(searchInput, { target: { value: 'different artist' } });
+        expect(searchInput).toHaveValue('test');
+
+        await act(async () => {
+            resolveCreate({ status: 'success', artistId: 'separate-id', artistName: 'New Artist' });
+        });
+
+        expect(mockPush).toHaveBeenCalledWith('/artist/separate-id');
+    });
+
+    it('shows a blocking conflict without offering force creation', async () => {
+        (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
+        mockAddArtist.mockResolvedValue({
+            status: 'conflict',
+            message: 'This platform profile is already owned by another artist.',
+        });
+
+        await renderAndSearch([externalResult]);
+        fireEvent.click(screen.getByText('New Artist'));
+
+        await waitFor(() => {
+            expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({
+                variant: 'destructive',
+                description: 'This platform profile is already owned by another artist.',
+            }));
+        });
+        expect(screen.queryByRole('button', { name: 'Create separate artist' })).not.toBeInTheDocument();
+    });
+
     it('shows error toast when addArtist fails and keeps dropdown open', async () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
         mockAddArtist.mockResolvedValue({ status: 'error', message: 'Platform API down' });
@@ -257,7 +378,7 @@ describe('SearchBar Add Artist Flow', () => {
         expect(mockAddArtist).not.toHaveBeenCalled();
     });
 
-    it('only disables the specific result being added, not others', async () => {
+    it('disables every search result while an artist add is in flight', async () => {
         (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
         let resolveAdd!: (val: unknown) => void;
         mockAddArtist.mockReturnValue(new Promise(r => { resolveAdd = r; }));
@@ -272,13 +393,43 @@ describe('SearchBar Add Artist Flow', () => {
             expect(addingButton).toBeDisabled();
 
             const otherButton = screen.getByText('Other Artist').closest('button');
-            expect(otherButton).not.toBeDisabled();
+            expect(otherButton).toBeDisabled();
 
             const dbButton = screen.getByText('Existing Artist').closest('button');
-            expect(dbButton).not.toBeDisabled();
+            expect(dbButton).toBeDisabled();
         });
 
-        resolveAdd({ status: 'success', artistId: '99' });
+        fireEvent.click(screen.getByText('Other Artist'));
+        expect(mockAddArtist).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            resolveAdd({ status: 'success', artistId: '99' });
+        });
+    });
+
+    it('ignores an add response after the user changes the search', async () => {
+        (useSession as jest.Mock).mockReturnValue({ data: { user: { id: '1' } } });
+        let resolveAdd!: (val: unknown) => void;
+        mockAddArtist.mockReturnValue(new Promise(r => { resolveAdd = r; }));
+
+        await renderAndSearch([externalResult]);
+        fireEvent.click(screen.getByText('New Artist'));
+        await waitFor(() => expect(screen.getByText('Adding...')).toBeInTheDocument());
+
+        fireEvent.change(screen.getByPlaceholderText('Search for an artist...'), {
+            target: { value: 'different search' },
+        });
+        const staleResult = await screen.findByText('New Artist');
+        expect(staleResult.closest('button')).toBeDisabled();
+        fireEvent.click(staleResult);
+        expect(mockAddArtist).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            resolveAdd({ status: 'success', artistId: 'stale-id', artistName: 'Stale Artist' });
+        });
+
+        expect(mockPush).not.toHaveBeenCalledWith('/artist/stale-id');
+        expect(screen.queryByRole('button', { name: 'Create separate artist' })).not.toBeInTheDocument();
     });
 
     it('closes dropdown only on success, not during add', async () => {

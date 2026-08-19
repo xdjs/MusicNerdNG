@@ -3,8 +3,9 @@
  * Used by MCP tools and artistQueries.ts (approveUGC, removeArtistData).
  */
 import { db } from "@/server/db/drizzle";
-import { eq, sql } from "drizzle-orm";
-import { artists } from "@/server/db/schema";
+import { and, eq, sql } from "drizzle-orm";
+import { artists, artistIdMappings } from "@/server/db/schema";
+import { acquireArtistPlatformWriteLocks } from "./artistIdentityLocks";
 
 // Whitelist of platform columns that can be written via link helpers.
 // Derived from the artists table schema — only platform/social columns.
@@ -47,6 +48,59 @@ function getArtistLinkValue(artist: object, columnName: string): string | null {
   return ((artist as Record<string, unknown>)[propertyName] as string | null | undefined) ?? null;
 }
 
+type ArtistLinkExecutor = Pick<typeof db, "query" | "execute">;
+
+async function setArtistLinkWithExecutor(
+  database: ArtistLinkExecutor,
+  artistId: string,
+  columnName: string,
+  value: string,
+): Promise<{ oldValue: string | null; artistName: string | null }> {
+  // Fetch full row to capture oldValue for audit trail (MCP callers use the return value)
+  const artist = await database.query.artists.findFirst({
+    where: eq(artists.id, artistId),
+  });
+  if (!artist) {
+    throw new Error(`Artist not found: ${artistId}`);
+  }
+
+  const oldValue = getArtistLinkValue(artist, columnName);
+  if (columnName === "spotify" || columnName === "deezer") {
+    const [mappingOwner, artistMapping] = await Promise.all([
+      database.query.artistIdMappings.findFirst({
+        where: and(
+          eq(artistIdMappings.platform, columnName),
+          eq(artistIdMappings.platformId, value),
+        ),
+        columns: { artistId: true },
+      }),
+      database.query.artistIdMappings.findFirst({
+        where: and(
+          eq(artistIdMappings.artistId, artistId),
+          eq(artistIdMappings.platform, columnName),
+        ),
+        columns: { platformId: true },
+      }),
+    ]);
+    if (
+      (mappingOwner && mappingOwner.artistId !== artistId) ||
+      (artistMapping && artistMapping.platformId !== value)
+    ) {
+      throw new Error(
+        `That ${columnName} artist ID conflicts with an existing artist mapping`,
+      );
+    }
+  }
+
+  // Update the link column only. We intentionally do NOT null or regenerate the
+  // bio on link changes — that overwrote artist edits and re-ran generation on
+  // every UGC/agent submission. The About refreshes on explicit regenerate, or
+  // lazily when it's absent (see the artistBio route).
+  await database.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
+
+  return { oldValue, artistName: artist.name ?? null };
+}
+
 export async function setArtistLink(
   artistId: string,
   siteName: string,
@@ -55,28 +109,23 @@ export async function setArtistLink(
   const columnName = sanitizeColumnName(siteName);
   assertWritable(columnName);
 
-  // Fetch full row to capture oldValue for audit trail (MCP callers use the return value)
-  const artist = await db.query.artists.findFirst({
-    where: eq(artists.id, artistId),
-  });
-  if (!artist) {
-    throw new Error(`Artist not found: ${artistId}`);
-  }
-
   if (!value) {
     throw new Error("Value must not be empty");
   }
 
-  // Safe: assertWritable() above guarantees columnName is a known text column from the whitelist
-  const oldValue = getArtistLinkValue(artist, columnName);
+  if (columnName === "spotify" || columnName === "deezer") {
+    return db.transaction(async (transaction) => {
+      await acquireArtistPlatformWriteLocks(
+        transaction,
+        artistId,
+        columnName,
+        value,
+      );
+      return setArtistLinkWithExecutor(transaction, artistId, columnName, value);
+    });
+  }
 
-  // Update the link column only. We intentionally do NOT null or regenerate the
-  // bio on link changes — that overwrote artist edits and re-ran generation on
-  // every UGC/agent submission. The About refreshes on explicit regenerate, or
-  // lazily when it's absent (see the artistBio route).
-  await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = ${value} WHERE id = ${artistId}`);
-
-  return { oldValue, artistName: artist.name ?? null };
+  return setArtistLinkWithExecutor(db, artistId, columnName, value);
 }
 
 export async function clearArtistLink(

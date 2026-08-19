@@ -34,7 +34,20 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { LINK_NOT_SUPPORTED, LINK_TWITTER_INVALID, TIPS_BUTTON_LABEL } from "@/lib/linkSubmissionMessages";
 
-export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, label, directEdit = false, autoApprove = false }: { artist: Artist, spotifyImg: string, availableLinks: UrlMap[], isOpenOnLoad: boolean, label?: string, directEdit?: boolean, autoApprove?: boolean }) {
+type AddArtistDataProps = {
+    artist: Artist;
+    spotifyImg: string;
+    availableLinks: UrlMap[];
+    isOpenOnLoad: boolean;
+    prefillUrl?: string;
+    label?: string;
+    directEdit?: boolean;
+    autoApprove?: boolean;
+};
+
+type PlatformRegexStatus = "loading" | "ready" | "error";
+
+export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, prefillUrl, label, directEdit = false, autoApprove = false }: AddArtistDataProps) {
     const { data: session, status } = useSession();
     const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
     const [isLoading, setIsLoading] = useState(false);
@@ -44,13 +57,31 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
     // State to hold platform regexes from the backend
     const [platformRegexes, setPlatformRegexes] = useState<{ siteName: string, regex: string }[]>([]);
+    const [platformRegexStatus, setPlatformRegexStatus] = useState<PlatformRegexStatus>("loading");
 
     // Fetch regexes from the backend on mount
     useEffect(() => {
+        let isMounted = true;
+
         fetch('/api/platformRegexes')
-            .then(res => res.json())
-            .then(data => setPlatformRegexes(data))
-            .catch(e => console.error('Failed to fetch platform regexes:', e));
+            .then(res => {
+                if (!res.ok) throw new Error(`Platform regex request failed with ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                if (!Array.isArray(data)) throw new Error('Platform regex response was not an array');
+                if (!isMounted) return;
+                setPlatformRegexes(data);
+                setPlatformRegexStatus("ready");
+            })
+            .catch(e => {
+                console.error('Failed to fetch platform regexes:', e);
+                if (isMounted) setPlatformRegexStatus("error");
+            });
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     const formSchema = useMemo(() => z.object({
@@ -61,9 +92,31 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         resolver: zodResolver(formSchema),
         mode: "onSubmit",
         defaultValues: {
-            artistDataUrl: "",
+            artistDataUrl: prefillUrl ?? "",
         },
     })
+
+    const { reset } = form;
+
+    // addLink is a one-shot handoff from search. Remove it without navigating so
+    // refreshing the artist page cannot reopen the dialog, while keeping any
+    // unrelated query parameters and the hash intact.
+    useEffect(() => {
+        if (!isOpenOnLoad || !prefillUrl) return;
+
+        setIsModalOpen(true);
+        reset({ artistDataUrl: prefillUrl });
+
+        const currentUrl = new URL(window.location.href);
+        if (!currentUrl.searchParams.has("addLink")) return;
+
+        currentUrl.searchParams.delete("addLink");
+        window.history.replaceState(
+            null,
+            "",
+            `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`,
+        );
+    }, [isOpenOnLoad, prefillUrl, reset]);
 
     // Filter out ENS and wallets from display, but keep them in availableLinks for add options
     const displayLinks = availableLinks.filter(link => link.siteName !== 'ens' && link.siteName !== 'wallets');
@@ -84,6 +137,14 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
     // Add a function to call the backend validator
     async function validatePlatformLinkBackend(url: string): Promise<boolean> {
+        // The page only supplies prefillUrl after validating an exact Spotify or
+        // Deezer artist URL on the server. If the optional client regex lookup
+        // fails, let that untouched value reach the authoritative server write
+        // path rather than stranding the handoff.
+        if (platformRegexStatus === "error" && prefillUrl && url === prefillUrl) {
+            return true;
+        }
+
         // Determine which platform regex matches this URL
         let matchedPlatform: string | null = null;
         for (const { siteName, regex } of platformRegexes) {
@@ -137,6 +198,8 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
     }
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
+        if (platformRegexStatus === "loading") return;
+
         setAddArtistResp(null);
         setIsLoading(true);
         let formattedUrl = values.artistDataUrl.trim();
@@ -192,14 +255,14 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         }
         if (!isOpen) {
             setAddArtistResp(null);
+            reset({ artistDataUrl: "" });
         }
         setIsModalOpen(isOpen);
-        form.reset();
     }
 
     function checkInput() {
         if (addArtistResp?.status === "success") {
-            form.reset();
+            reset({ artistDataUrl: "" });
             setAddArtistResp(null);
         }
     }
@@ -225,8 +288,10 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                     ? "text-white bg-pastypink flex items-center justify-center px-4 min-w-[60px]"
                     : "text-white bg-pastypink rounded-lg hover:bg-pastypink/90 w-8 h-8 p-0 flex items-center justify-center"}
                 onClick={handleClick}
+                aria-label={label ?? `Add a link for ${artist.name ?? "this artist"}`}
+                title={label ?? `Add a link for ${artist.name ?? "this artist"}`}
             >
-                {label ? <span className="whitespace-nowrap">{label}</span> : <Plus color="white" size={24} />}
+                {label ? <span className="whitespace-nowrap">{label}</span> : <Plus color="white" size={24} aria-hidden="true" />}
             </Button>
             <Dialog open={isModalOpen} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[425px] max-h-screen overflow-auto scrollbar-hide">
@@ -241,13 +306,13 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                 ? `Add a link for ${artist.name}`
                                 : `Suggest a link for ${artist.name}`}
                         </DialogTitle>
-                        {!directEdit && (
-                            <DialogDescription className="text-xs text-muted-foreground">
-                                {autoApprove
+                        <DialogDescription className="text-xs text-muted-foreground">
+                            {directEdit
+                                ? "This link will be saved directly to the artist profile."
+                                : autoApprove
                                     ? "This link will be added immediately and recorded as your contribution."
                                     : "An admin will review it before it’s added."}
-                            </DialogDescription>
-                        )}
+                        </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
@@ -289,8 +354,16 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
                                         {addArtistResp.message}
                                     </Label>
                                 ) : null}
-                                <Button type="submit" className="bg-pastypink hover:bg-pastypink/90 text-white">
-                                    {isLoading ? (
+                                <Button
+                                    type="submit"
+                                    disabled={isLoading || platformRegexStatus === "loading"}
+                                    aria-busy={isLoading || platformRegexStatus === "loading"}
+                                    aria-label={directEdit ? "Save Link" : autoApprove ? "Add Link" : "Submit"}
+                                    className="bg-pastypink hover:bg-pastypink/90 text-white"
+                                >
+                                    {platformRegexStatus === "loading" ? (
+                                        <span>Loading supported links…</span>
+                                    ) : isLoading ? (
                                         <img className="max-h-6" src="/spinner.svg" alt="submitting" />
                                     ) : (
                                         <span>{directEdit ? "Save Link" : autoApprove ? "Add Link" : "Submit"}</span>

@@ -1,5 +1,8 @@
 // @ts-nocheck
 import { jest } from "@jest/globals";
+import { PgDialect } from "drizzle-orm/pg-core";
+
+const dialect = new PgDialect();
 
 // Mock regenerateArtistBio before any dynamic imports
 jest.mock("@/server/utils/queries/artistBioQuery", () => ({
@@ -14,8 +17,13 @@ describe("artistLinkService", () => {
   async function setup() {
     const { db } = await import("@/server/db/drizzle");
     db.execute = jest.fn().mockResolvedValue([]);
+    db.transaction = jest.fn(async (callback) => callback(db));
     // Mock artist existence check - return a found artist by default
     (db as any).query.artists.findFirst = jest.fn().mockResolvedValue({ id: "artist-123", name: "Test Artist" });
+    (db as any).query.artistIdMappings = {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn(),
+    };
     const { regenerateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
     const { setArtistLink, clearArtistLink, sanitizeColumnName } = await import("../artistLinkService");
     return { db, setArtistLink, clearArtistLink, sanitizeColumnName, regenerateArtistBio };
@@ -150,6 +158,48 @@ describe("artistLinkService", () => {
     (db as any).query.artists.findFirst.mockResolvedValue({ id: "artist-123", name: "Test Artist", instagram: "old-user" });
     const result = await setArtistLink("artist-123", "instagram", "new-user");
     expect(result).toEqual({ oldValue: "old-user", artistName: "Test Artist" });
+  });
+
+  it("serializes a first-class ID write inside a transaction", async () => {
+    const { db, setArtistLink } = await setup();
+
+    await setArtistLink("artist-123", "spotify", "spotify-123");
+
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    // Stable artist/platform lock + external ID lock + artist update.
+    expect(db.execute).toHaveBeenCalledTimes(3);
+    expect(
+      db.execute.mock.calls.slice(0, 2).map(([query]) =>
+        dialect.sqlToQuery(query).params[0]
+      ),
+    ).toEqual([
+      "musicnerd:artist-platform-slot:artist-123:spotify",
+      "musicnerd:artist-platform:spotify:spotify-123",
+    ]);
+  });
+
+  it("rejects a first-class ID mapped to another artist", async () => {
+    const { db, setArtistLink } = await setup();
+    (db as any).query.artistIdMappings.findFirst
+      .mockResolvedValueOnce({ artistId: "other-artist" })
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      setArtistLink("artist-123", "spotify", "spotify-123"),
+    ).rejects.toThrow("conflicts with an existing artist mapping");
+    expect(db.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a direct ID that diverges from the artist's existing mapping", async () => {
+    const { db, setArtistLink } = await setup();
+    (db as any).query.artistIdMappings.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ platformId: "mapped-spotify-id" });
+
+    await expect(
+      setArtistLink("artist-123", "spotify", "different-spotify-id"),
+    ).rejects.toThrow("conflicts with an existing artist mapping");
+    expect(db.execute).toHaveBeenCalledTimes(2);
   });
 
   // 19. setArtistLink reads the aliased facebookID property
