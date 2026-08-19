@@ -775,7 +775,9 @@ describe('runOnboardingTurn', () => {
             artistId: 'a1', questionKey: 'working_on_now', answer: 'new album', source: 'onboarding',
         }));
         expect(oq.confirmOnboardingStep).toHaveBeenCalledWith('a1', 'interview');
-        expect(events.some(e => e.kind === 'draft' && e.doc && e.about)).toBe(true);
+        // The publish step now opens with the knowledge document ALONE — the About
+        // is written only after the artist has read and approved the document.
+        expect(events.some(e => e.kind === 'draft' && e.stage === 'doc' && e.doc && e.about === null)).toBe(true);
     });
 
     it('interview step prefers a grounded question over the static bank when generation returns one, and carries its sourceUrls into the step payload', async () => {
@@ -1164,21 +1166,60 @@ describe('runOnboardingTurn', () => {
         dateSpy.mockRestore();
     });
 
-    it('publish skips the About-side retry once past budget too (I2 — the branch that matters for the real worst case)', async () => {
+    it('the About turn skips its retry once past budget too (I2 — the branch that matters for the real worst case)', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
         const docService = await import('@/server/utils/artistDocService');
-        // Doc succeeds on the first try (the realistic worst case is the doc
-        // retry eating the budget, THEN the About call fails) — only the About
-        // catch's Date.now() check needs to fire here.
         docService.generateAboutFromDoc.mockRejectedValueOnce(new Error('about boom'));
         const dateSpy = jest.spyOn(Date, 'now')
-            .mockReturnValueOnce(0)      // publishStartedAt
+            .mockReturnValueOnce(0)      // startedAt
             .mockReturnValueOnce(45_000); // elapsed check in the About catch — past budget
         const { runOnboardingTurn } = await import('../turnHandlers');
-        await expect(collect(runOnboardingTurn('a1', { type: 'open' }))).rejects.toThrow('about boom');
+        // The About is written on its own turn now, after the artist approves the doc.
+        await expect(collect(runOnboardingTurn('a1', { type: 'about_choice', mode: 'generate', doc: '## Overview\ndoc' })))
+            .rejects.toThrow('about boom');
         expect(docService.generateAboutFromDoc).toHaveBeenCalledTimes(1); // no retry attempted
         dateSpy.mockRestore();
+    });
+
+    // The reorder itself: read and correct the record, THEN decide about the About.
+    it('about_choice mode "generate" writes the About from the doc the artist echoed back, corrections included', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
+        const docService = await import('@/server/utils/artistDocService');
+        docService.generateAboutFromDoc.mockResolvedValueOnce('An About.');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const corrected = '## Overview\nThe artist corrected this line themselves.';
+        const events = await collect(runOnboardingTurn('a1', { type: 'about_choice', mode: 'generate', doc: corrected }));
+        expect(docService.generateAboutFromDoc).toHaveBeenCalledWith(expect.any(String), corrected, expect.anything());
+        const draft = events.find(e => e.kind === 'draft');
+        expect(draft.stage).toBe('about');
+        expect(draft.doc).toBe(corrected);
+        expect(draft.about).toBe('An About.');
+    });
+
+    it('about_choice mode "self" generates nothing and hands back an empty About to write into', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'publish' });
+        const docService = await import('@/server/utils/artistDocService');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'about_choice', mode: 'self', doc: '## Overview\ndoc' }));
+        // Their words are the point — we must not put a draft in their mouth first.
+        expect(docService.generateAboutFromDoc).not.toHaveBeenCalled();
+        const draft = events.find(e => e.kind === 'draft');
+        expect(draft.stage).toBe('about');
+        expect(draft.about).toBe('');
+        expect(draft.selfWrite).toBe(true);
+    });
+
+    it('about_choice refuses to run before the earlier steps are done', async () => {
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        const docService = await import('@/server/utils/artistDocService');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'about_choice', mode: 'generate', doc: '## Overview\ndoc' }));
+        expect(docService.generateAboutFromDoc).not.toHaveBeenCalled();
+        expect(events.some(e => e.kind === 'error')).toBe(true);
     });
 
     it('publish retries the Gemini call once when still within the retry budget (I2 regression)', async () => {

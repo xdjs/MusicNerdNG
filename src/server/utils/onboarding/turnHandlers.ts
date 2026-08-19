@@ -106,7 +106,10 @@ export type TurnEvent =
     // `sources` is the numbered citation manifest ([n] markers in `doc`/`about`
     // resolve into this list) narrowed to just the ids either text actually
     // cites — see extractCitedIds. Empty when nothing was citable.
-    | { kind: "draft"; doc: string; about: string; sources: DocSource[] }
+    // `stage` splits what used to be one step into the order the artist actually
+    // needs it in: read and correct the knowledge document FIRST, decide about the
+    // About second. At `stage: "doc"` there is no About yet and `about` is null.
+    | { kind: "draft"; stage: "doc" | "about"; doc: string; about: string | null; sources: DocSource[]; selfWrite?: boolean }
     | { kind: "complete" }
     | { kind: "error"; message: string };
 
@@ -122,6 +125,11 @@ export type ClientTurn =
     // `sources` round-trips the draft event's citation manifest (spec §6 stateless-turn
     // pattern, same as doc/about) — optional/omittable so a stale client that doesn't
     // know about citations yet still publishes successfully, just without a manifest.
+    // The artist has read (and possibly corrected) the knowledge document and is
+    // choosing how their About gets written. `doc` round-trips their corrections
+    // back — everything downstream is generated from the version they approved,
+    // not the version we generated.
+    | { type: "about_choice"; mode: "generate" | "self"; doc: string; sources?: DocSource[] }
     | { type: "publish"; doc: string; about: string; sources?: DocSource[] };
 
 const NARRATION = {
@@ -137,7 +145,10 @@ const NARRATION = {
         `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.`,
     vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue.",
     vaultDone: "Sources sorted. Now the fun part — three quick questions. Skip any of them.",
-    generating: "Okay, I have everything I need — writing your About page now from your links, your sources, and your own answers.",
+    generating: "Okay, I have everything I need — building your knowledge document now from your links, your sources, and your own answers.",
+    docReady: "Here's your knowledge document. It's the record everything else is built from — your About, your page's Q&A, your fun facts — so it's worth reading closely. Check the claims against the sources and fix anything I got wrong.",
+    writingAbout: "Writing your About from the document.",
+    selfWrite: "All yours — write it however you want. The document stays as your knowledge base either way.",
     draftReady: "Your About is ready. Publish it as-is, or edit it first — your call.",
     published: "You're live! Your About is published, and everything you shared is saved as your artist doc — it now powers your page's Q&A and fun facts too.",
 } as const;
@@ -634,25 +645,24 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             return;
         }
         case "publish": {
+            // STAGE 1 of the publish step: build the knowledge document and hand it
+            // over to be read. The About is NOT written yet.
+            //
+            // It used to be written here, in the same turn, and shown alongside the
+            // document — which put the artist in the position of approving prose
+            // generated from a record they hadn't checked. The document is the thing
+            // claims can actually be verified against, so it comes first and on its
+            // own; the About is generated afterwards, from whatever version of the
+            // document the artist approved. (It also means neither Gemini call has
+            // to share one turn's deadline with the other.)
             yield { kind: "chat", text: NARRATION.generating };
             yield { kind: "progress", label: "Reading your sources and answers", done: false };
             const publishStartedAt = Date.now();
-            // Built ONCE and handed to both calls below (never rebuilt) — a
-            // background social-ingest job landing mid-turn must not shift a
-            // source's id out from under one call but not the other, or a
-            // citation ends up pointing at the wrong source (see the doc
-            // comment on buildDocContext's presetSources param).
             const sources = await buildDocSources(artistId);
-            // Gemini failure policy: apologize in-stream, retry ONCE, else let the
-            // throw reach the route (error event; checkpoint stays unmet — spec §9).
-            // The retry is skipped once we're already past budget so the worst
-            // case fits `maxDuration` instead of stacking to ~80s (see
-            // PUBLISH_RETRY_BUDGET_MS above). If the retry is attempted AND ALSO
-            // fails (both this call's chances burned, but still within budget —
-            // NOT the branch above), degrade to the non-cited fallback below
-            // instead of dead-ending the turn — this is the exact sequence the
-            // demo's bug report reproduced (retry message fired, then a hard
-            // error) — see the knowledge-doc report.
+            // Gemini failure policy: apologize in-stream, retry ONCE, else fall back
+            // to the lighter non-cited synthesis rather than dead-ending the turn.
+            // The retry is skipped once we're already past budget so the worst case
+            // fits `maxDuration` (see PUBLISH_RETRY_BUDGET_MS above).
             let doc: string | null = null;
             try {
                 doc = await synthesizeArtistDoc(artistId, sources);
@@ -662,53 +672,25 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                 try {
                     doc = await synthesizeArtistDoc(artistId, sources);
                 } catch (e2) {
-                    console.error("[onboarding/publish] doc retry also failed, falling back to a non-cited About:", e2);
+                    console.error("[onboarding/publish] doc retry also failed, falling back:", e2);
                 }
+            }
+            if (doc === null) {
+                yield { kind: "chat", text: "Let's go with a simpler version for now." };
+                const artist = await getArtistById(artistId);
+                const fallback = await synthesizeFallbackAbout(artistId, artist?.name ?? "this artist", undefined, sources);
+                doc = `## Overview\n${fallback}`;
             }
             yield { kind: "progress", label: "Reading your sources and answers", done: true };
-            yield { kind: "progress", label: "Writing your About", done: false };
-            const artist = await getArtistById(artistId);
-            const artistName = artist?.name ?? "this artist";
-            let about: string | null = null;
-            if (doc !== null) {
-                try {
-                    about = await generateAboutFromDoc(artistName, doc, sources);
-                } catch (e) {
-                    if (Date.now() - publishStartedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
-                    yield { kind: "chat", text: "One more try on the wording…" };
-                    try {
-                        about = await generateAboutFromDoc(artistName, doc, sources);
-                    } catch (e2) {
-                        console.error("[onboarding/publish] about retry also failed, falling back to a non-cited About:", e2);
-                    }
-                }
-            }
-            // Cited pipeline didn't produce a usable doc+About within its two
-            // chances (doc never came together, or About didn't) — one more
-            // attempt via the lightweight, non-cited fallback (no worked
-            // example, no citation manifest, so it's a lighter/faster prompt
-            // than either call above) rather than erroring out with nothing.
-            // A degraded publish beats a broken one. Reuses `doc` as-is when
-            // it's the one thing that DID synthesize fine (only About failed).
-            if (doc === null || about === null) {
-                yield { kind: "chat", text: "Let's go with a simpler version for now." };
-                const fallbackAbout = await synthesizeFallbackAbout(artistId, artistName, doc ?? undefined, sources);
-                about = fallbackAbout;
-                doc = doc ?? `## Overview\n${fallbackAbout}`;
-            }
-            yield { kind: "progress", label: "Writing your About", done: true };
-            // Narrow the manifest to ids either text actually cites — a source built
-            // into the candidate list but never referenced (e.g. no Gemini call chose
-            // to cite it) shouldn't show up as a numbered reference with nothing
-            // pointing to it. (The fallback About never carries markers, and a
-            // fallback doc is plain-wrapped text with none either — both
-            // naturally cite nothing here.)
-            const citedIds = new Set([...extractCitedIds(doc), ...extractCitedIds(about)]);
-            const citedSources = sources.filter(s => citedIds.has(s.id));
-            // Turns are stateless: the draft round-trips through the client and
-            // comes back in the publish turn (spec §6, advisor FIX 1).
-            yield { kind: "draft", doc, about, sources: citedSources };
-            yield { kind: "chat", text: NARRATION.draftReady };
+            // Narrow the manifest to ids the doc actually cites — a source built into
+            // the candidate list but never referenced shouldn't show up as a numbered
+            // reference with nothing pointing to it.
+            const docSources = sources.filter(s => extractCitedIds(doc as string).has(s.id));
+            // Turns are stateless: the doc round-trips through the client and comes
+            // back on the next turn (spec §6, advisor FIX 1) — carrying any
+            // corrections the artist made to it.
+            yield { kind: "draft", stage: "doc", doc, about: null, sources: docSources };
+            yield { kind: "chat", text: NARRATION.docReady };
             return;
         }
     }
@@ -1006,6 +988,69 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         // On resume, ask the first question lacking a row — answered or skipped
         // questions are never re-asked (spec §6). emitStep handles completion.
         yield* emitStep(artistId, "interview");
+        return;
+    }
+
+    // STAGE 2 of the publish step: the artist has read the knowledge document and
+    // is choosing how the About gets written. Reached only from a `draft` event at
+    // stage "doc"; the step itself is still confirmed only by the publish turn.
+    if (turn.type === "about_choice") {
+        if (state.currentStep === null) {
+            yield { kind: "chat", text: NARRATION.alreadyDone };
+            yield { kind: "complete" };
+            return;
+        }
+        if (state.currentStep !== "publish") {
+            yield { kind: "error", message: "We're not quite there yet — let's finish the earlier steps first." };
+            yield* emitStep(artistId, state.currentStep);
+            return;
+        }
+        // The doc echoed back may carry the artist's own corrections, so it is the
+        // version everything downstream is built from — but it is client-supplied,
+        // so it's bounds-checked like every other echoed field.
+        const doc = turn.doc?.trim();
+        if (!doc || doc.length > ARTIST_DOC_MAX_CHARS) {
+            yield { kind: "error", message: "That doc looks off — let me regenerate it." };
+            yield* emitStep(artistId, "publish");
+            return;
+        }
+        const sources = sanitizeDocSources(turn.sources);
+
+        if (turn.mode === "self") {
+            // No generation at all: an empty About for them to write into. Their
+            // words are the point — we shouldn't put a draft in their mouth first.
+            yield { kind: "draft", stage: "about", doc, about: "", sources, selfWrite: true };
+            yield { kind: "chat", text: NARRATION.selfWrite };
+            return;
+        }
+
+        yield { kind: "chat", text: NARRATION.writingAbout };
+        yield { kind: "progress", label: "Writing your About", done: false };
+        const startedAt = Date.now();
+        const artist = await getArtistById(artistId);
+        const artistName = artist?.name ?? "this artist";
+        let about: string | null = null;
+        try {
+            about = await generateAboutFromDoc(artistName, doc, sources);
+        } catch (e) {
+            if (Date.now() - startedAt > PUBLISH_RETRY_BUDGET_MS) throw e;
+            yield { kind: "chat", text: "One more try on the wording…" };
+            try {
+                about = await generateAboutFromDoc(artistName, doc, sources);
+            } catch (e2) {
+                console.error("[onboarding/about_choice] about retry also failed, falling back:", e2);
+            }
+        }
+        if (about === null) {
+            // A degraded About beats a broken one — the lighter, non-cited prompt.
+            yield { kind: "chat", text: "Let's go with a simpler version for now." };
+            about = await synthesizeFallbackAbout(artistId, artistName, doc, sources);
+        }
+        yield { kind: "progress", label: "Writing your About", done: true };
+        // Both texts are shown together from here, so the manifest covers both.
+        const citedIds = new Set([...extractCitedIds(doc), ...extractCitedIds(about)]);
+        yield { kind: "draft", stage: "about", doc, about, sources: sources.filter(s => citedIds.has(s.id)) };
+        yield { kind: "chat", text: NARRATION.draftReady };
         return;
     }
 

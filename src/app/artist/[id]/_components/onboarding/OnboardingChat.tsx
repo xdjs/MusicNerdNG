@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
-import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, KnowledgeDocCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
+import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, KnowledgeDocCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
 
@@ -205,6 +205,20 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 return null;
             }
             case "draft":
+                // Stage "doc": the knowledge document alone, to be read and corrected.
+                // No About exists yet — approving prose built from an unchecked record
+                // is exactly the order this split exists to avoid.
+                if (item.stage === "doc") {
+                    return (
+                        <DocReviewCard
+                            doc={item.doc ?? ""}
+                            sources={item.sources}
+                            disabled={!interactive}
+                            onChoose={r => void sendTurn({ type: "about_choice", sources: item.sources, ...r })}
+                        />
+                    );
+                }
+                // Stage "about": the About, over the document it was written from.
                 // AboutDraftCard's onPublish stays locked to exactly {doc, about} (existing
                 // test contract) — `sources` is threaded into the actual server turn here,
                 // from the draft item's own `sources` field, not from AboutDraftCard itself.
@@ -214,6 +228,7 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                             doc={item.doc ?? ""}
                             about={item.about ?? ""}
                             sources={item.sources}
+                            startEditing={item.selfWrite}
                             disabled={!interactive}
                             onPublish={r => void sendTurn({ type: "publish", sources: item.sources, ...r })}
                         />

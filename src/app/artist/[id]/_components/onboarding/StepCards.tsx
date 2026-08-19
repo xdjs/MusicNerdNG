@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { MAX_BIO_LENGTH } from "@/lib/bioConstants";
+import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS } from "@/lib/bioConstants";
 
 // ---------- Profiles: accepted-by-default. Leaving a card as-is IS confirmation. ----------
 
@@ -836,16 +836,140 @@ export function KnowledgeDocCard({ doc, sources }: { doc: string; sources: DocSo
     );
 }
 
-// ---------- About draft: show finished work, ask one yes/no ----------
+// ---------- Knowledge document review: read it, fix it, then choose ----------
 
-export function AboutDraftCard({ doc, about, sources = [], onPublish, disabled }: {
+/** The knowledge document, shown on its own BEFORE any About exists, with the
+ *  two things reading it is for: correcting what's wrong, and deciding who
+ *  writes the About.
+ *
+ *  This ordering is the product owner's: "it should have shown me my knowledge
+ *  document and encouraged me to fact check — once that's done THEN we get asked
+ *  if we want to fill in an About section or if we'd like to write it based off
+ *  of the knowledge base." Previously the About was generated in the same breath
+ *  as the document and shown above it, which asked the artist to approve prose
+ *  drawn from a record they had not checked.
+ *
+ *  Corrections are made to the document text itself and round-trip back to the
+ *  server, so the About is generated from the approved version — not the one we
+ *  produced. */
+export function DocReviewCard({ doc, sources = [], onChoose, disabled }: {
     doc: string;
-    about: string;
     sources?: DocSource[];
-    onPublish: (r: { doc: string; about: string }) => void;
+    onChoose: (r: { mode: "generate" | "self"; doc: string }) => void;
     disabled: boolean;
 }) {
     const [isEditing, setIsEditing] = useState(false);
+    const [docText, setDocText] = useState(doc);
+
+    const isEmpty = docText.trim().length === 0;
+    const overCap = docText.length > ARTIST_DOC_MAX_CHARS;
+    const blocked = disabled || isEmpty || overCap;
+
+    return (
+        <div className="glass-subtle rounded-xl p-4 space-y-3 w-full" data-testid="doc-review-card">
+            <div className="flex items-baseline justify-between gap-2">
+                <h3 className="font-bold text-pink-500">Your knowledge document</h3>
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(prev => !prev)}
+                    disabled={disabled}
+                    className="flex-none text-sm px-3 py-1.5 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    {isEditing ? "Done" : "Fix something"}
+                </button>
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+                Please read this before we go further — everything else gets built from it.
+                Pink citations link to the page a claim came from, so you can check it. Green ones are your own words
+                from the interview. Anything that&apos;s wrong, fix it here.
+            </p>
+            {isEditing ? (
+                <div className="space-y-1.5">
+                    <textarea
+                        value={docText}
+                        onChange={e => setDocText(e.target.value)}
+                        disabled={disabled}
+                        rows={20}
+                        aria-label="Edit your knowledge document"
+                        className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm leading-relaxed text-black dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y min-h-[280px] font-mono"
+                    />
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className={overCap || isEmpty ? "text-red-500 dark:text-red-400" : "text-gray-600 dark:text-gray-300"}>
+                            {docText.length.toLocaleString()} / {ARTIST_DOC_MAX_CHARS.toLocaleString()} characters
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setDocText(doc)}
+                            disabled={disabled}
+                            className="text-gray-600 dark:text-gray-300 hover:text-pink-500 dark:hover:text-pink-400 underline underline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                        >
+                            Reset to generated
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <div className="text-sm text-black dark:text-white space-y-2 max-h-[45vh] overflow-y-auto overscroll-contain scrollbar-glass pr-1">
+                    {renderDocBody(docText, sources)}
+                </div>
+            )}
+            {sources.length > 0 && !isEditing && (
+                <div className="pt-3 border-t border-black/10 dark:border-white/10 space-y-1">
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Sources</p>
+                    {sources.map(s => (
+                        <p key={s.id} className="text-xs text-gray-600 dark:text-gray-300 break-all">
+                            [{s.id}]{" "}
+                            {s.url ? (
+                                <a href={s.url} target="_blank" rel="noopener noreferrer" className="hover:text-pink-500 dark:hover:text-pink-400 hover:underline">
+                                    {s.label}
+                                </a>
+                            ) : (
+                                <span>{s.label}</span>
+                            )}
+                        </p>
+                    ))}
+                </div>
+            )}
+            {(isEmpty || overCap) && (
+                <p className="text-xs text-red-500 dark:text-red-400">
+                    {isEmpty
+                        ? "Your document can't be empty — add some text before continuing."
+                        : `That's over the ${ARTIST_DOC_MAX_CHARS.toLocaleString()}-character limit — trim it down before continuing.`}
+                </p>
+            )}
+            <div className="space-y-2 pt-1">
+                <button
+                    onClick={() => onChoose({ mode: "generate", doc: docText })}
+                    disabled={blocked}
+                    className="w-full bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    This is right — write my About from it
+                </button>
+                <button
+                    onClick={() => onChoose({ mode: "self", doc: docText })}
+                    disabled={blocked}
+                    className="w-full text-sm py-2 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    I&apos;ll write my About myself
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ---------- About draft: show finished work, ask one yes/no ----------
+
+export function AboutDraftCard({ doc, about, sources = [], startEditing = false, onPublish, disabled }: {
+    doc: string;
+    about: string;
+    sources?: DocSource[];
+    /** Open straight into the editor — set when the artist chose to write their
+     *  own About, where the card would otherwise present an empty paragraph and
+     *  a disabled Publish button with no obvious way in. */
+    startEditing?: boolean;
+    onPublish: (r: { doc: string; about: string }) => void;
+    disabled: boolean;
+}) {
+    const [isEditing, setIsEditing] = useState(startEditing);
     // Edits live here independent of `isEditing` so toggling the textarea off
     // (without publishing) keeps whatever the artist typed instead of quietly
     // reverting to the generated `about` prop.

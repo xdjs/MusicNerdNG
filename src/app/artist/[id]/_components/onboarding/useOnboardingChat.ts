@@ -10,7 +10,13 @@ export type ChatItem = {
     step?: string;
     payload?: unknown;
     doc?: string;
-    about?: string;
+    about?: string | null;
+    // Which half of the publish step this draft is: "doc" = the knowledge document
+    // to read and correct, before any About exists; "about" = the About draft.
+    stage?: "doc" | "about";
+    // At stage "about", true when the artist chose to write it themselves — the
+    // card opens straight into an empty editor rather than showing generated prose.
+    selfWrite?: boolean;
     // The numbered citation manifest for this draft's [n] markers — undefined
     // for a stale server that predates citations, empty when nothing was
     // citable. Held here (not on AboutDraftCard's onPublish payload, which is
@@ -36,6 +42,9 @@ export type ClientTurnShape =
     // server-side to store a grounded (non-static) question's wording; see
     // resolveInterviewQuestionText in turnHandlers.ts.
     | { type: "interview_answer"; questionKey: string; answer: string | null; question?: string }
+    // `doc` carries back any corrections the artist made while fact-checking, so
+    // the About is written from the version they approved.
+    | { type: "about_choice"; mode: "generate" | "self"; doc: string; sources?: DocSource[] }
     | { type: "publish"; doc: string; about: string; sources?: DocSource[] };
 
 /** Text shown as the user's own bubble for a given turn (null = no user bubble). */
@@ -44,6 +53,8 @@ function userEcho(turn: ClientTurnShape): string | null {
         case "confirm_profiles": return "Looks good — that's me.";
         case "vault_review": return "Done sorting those.";
         case "interview_answer": return turn.answer ?? "Skip that one.";
+        case "about_choice":
+            return turn.mode === "self" ? "I'll write my About myself." : "Looks right — write my About from this.";
         case "publish": return "Publish it 🚀";
         default: return null;
     }
@@ -161,7 +172,7 @@ export function useOnboardingChat(artistId: string) {
                             // no-terminal-frame error path below.
                             case "candidate": push({ kind: "candidates", candidates: [event.profile] }); break;
                             case "step": push({ kind: "step", step: event.step, payload: event.payload }); receivedTerminalFrame = true; break;
-                            case "draft": push({ kind: "draft", doc: event.doc, about: event.about, sources: event.sources }); receivedTerminalFrame = true; break;
+                            case "draft": push({ kind: "draft", stage: event.stage ?? "about", doc: event.doc, about: event.about, sources: event.sources, selfWrite: event.selfWrite }); receivedTerminalFrame = true; break;
                             case "complete": push({ kind: "complete" }); receivedTerminalFrame = true; break;
                             case "error": push({ kind: "error", text: event.message }); receivedTerminalFrame = true; break;
                         }
