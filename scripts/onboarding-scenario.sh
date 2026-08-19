@@ -76,7 +76,15 @@ done
 
 mkdir -p "$BACKUP_DIR"
 SEL=""; for c in $LINK_COLS; do SEL="$SEL$c,"; done
-q "SELECT row_to_json(t) FROM (SELECT ${SEL%,} FROM artists WHERE id='$ARTIST_ID') t;" > "$BACKUP"
+# Back up ONCE. Re-running a scenario would otherwise snapshot the already-cleared
+# state over the original, so `restore` would put back the cleared links instead of
+# the real ones — silently destroying the only copy of them. Delete the backup file
+# by hand if the artist's real links have genuinely changed since.
+if [ -f "$BACKUP" ]; then
+  echo "  keeping existing link backup ($BACKUP)"
+else
+  q "SELECT row_to_json(t) FROM (SELECT ${SEL%,} FROM artists WHERE id='$ARTIST_ID') t;" > "$BACKUP"
+fi
 
 if [ "$SCENARIO" != "full" ]; then
   SET=""
