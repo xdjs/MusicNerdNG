@@ -568,7 +568,14 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                 // for" — see the website-to-vault fix's Notes on profiles→vault.
                 // Capped at 25s; on timeout `pending` stays as-is and the
                 // vaultEmpty degrade path runs if it's still empty.
-                const approved = await getVaultSourcesByArtistId(artistId, "approved");
+                // Only WEB-DISCOVERED sources count as evidence the web has already
+                // been searched. An uploaded file (or the artist's own site) is a
+                // gift from the artist, not the internet's take on them — the same
+                // reasoning the forceVaultDiscovery comment above makes. Counting an
+                // upload here silently suppressed discovery entirely for any artist
+                // who had one, which is how a re-run surfaced an empty vault.
+                const approved = (await getVaultSourcesByArtistId(artistId, "approved"))
+                    .filter(s => !s.filePath);
                 if (forceVaultDiscovery || approved.length === 0) {
                     yield { kind: "progress", label: "Searching the web for sources about you", done: false };
                     try {
