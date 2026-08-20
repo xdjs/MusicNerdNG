@@ -30,6 +30,7 @@ jest.mock("@/server/utils/services", () => ({
   extractArtistId: jest.fn(),
 }));
 jest.mock("@/server/utils/artistLinkService", () => ({
+  ArtistLinkConflictError: class ArtistLinkConflictError extends Error {},
   setArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
   clearArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
 }));

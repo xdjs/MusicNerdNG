@@ -5,13 +5,53 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addArtist } from "../../actions/addArtist";
 import { useSession } from "next-auth/react";
-import type { MusicPlatformArtist } from "@/server/utils/musicPlatform";
+import type { MusicPlatform, MusicPlatformArtist } from "@/server/utils/musicPlatform";
+import DuplicateArtistChoice, { type DuplicateArtistCandidate } from "@/app/_components/DuplicateArtistChoice";
+
+type PossibleDuplicateResponse = {
+    status: "possible_duplicate";
+    candidates: DuplicateArtistCandidate[];
+    platform: MusicPlatform;
+    platformId: string;
+    message?: string;
+};
 
 export default function AddArtistContent({ initialArtist }: { initialArtist: MusicPlatformArtist }) {
     const router = useRouter();
     const [adding, setAdding] = useState(false);
+    const [isCreatingSeparate, setIsCreatingSeparate] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [duplicateChoice, setDuplicateChoice] = useState<PossibleDuplicateResponse | null>(null);
     const { data: session, status } = useSession();
+
+    function promptLogin() {
+        const loginBtn = document.getElementById("login-btn");
+        if (!loginBtn) return false;
+
+        loginBtn.click();
+        return true;
+    }
+
+    function handleResult(result: Awaited<ReturnType<typeof addArtist>>) {
+        if (result.status === "error" && result.code === "UNAUTHENTICATED") {
+            setDuplicateChoice(null);
+            setError(promptLogin()
+                ? null
+                : result.message ?? "Please log in to add artists");
+            return;
+        }
+
+        if ((result.status === "success" || result.status === "exists") && result.artistId) {
+            setDuplicateChoice(null);
+            router.push(`/artist/${result.artistId}`);
+        } else if (result.status === "possible_duplicate") {
+            setDuplicateChoice(result);
+            setError(null);
+        } else {
+            setDuplicateChoice(null);
+            setError(result.message || "Failed to add artist");
+        }
+    }
 
     async function handleAddArtist() {
         if (status === "loading") {
@@ -19,10 +59,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
         }
 
         if (!session) {
-            const loginBtn = document.getElementById("login-btn");
-            if (loginBtn) {
-                loginBtn.click();
-            }
+            promptLogin();
             return;
         }
 
@@ -31,32 +68,41 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
 
         try {
             const result = await addArtist(initialArtist.platformId, initialArtist.platform);
-
-            if (result.status === "success" && result.artistId) {
-                router.push(`/artist/${result.artistId}`);
-            } else if (result.status === "exists" && result.artistId) {
-                router.push(`/artist/${result.artistId}`);
-            } else {
-                setError(result.message || "Failed to add artist");
-            }
+            handleResult(result);
         } catch (err) {
             console.error("Error in handleAddArtist:", err);
-            if (err instanceof Error && err.message.includes('Not authenticated')) {
-                const loginBtn = document.getElementById("login-btn");
-                if (loginBtn) {
-                    loginBtn.click();
-                }
-            } else {
-                setError("Failed to add artist - please try again");
-            }
+            setError("Failed to add artist - please try again");
         } finally {
             setAdding(false);
         }
     }
 
+    async function handleCreateSeparate() {
+        if (!duplicateChoice || isCreatingSeparate) return;
+
+        setIsCreatingSeparate(true);
+        setError(null);
+        try {
+            const result = await addArtist(
+                duplicateChoice.platformId,
+                duplicateChoice.platform,
+                { forceCreate: true },
+            );
+            handleResult(result);
+        } catch (err) {
+            console.error("Error creating separate artist:", err);
+            setError("Failed to add artist - please try again");
+        } finally {
+            setIsCreatingSeparate(false);
+        }
+    }
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full mx-4">
+            <div
+                aria-busy={isCreatingSeparate}
+                className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full mx-4"
+            >
                 {status === "loading" ? (
                     <div className="mb-4 p-4 bg-blue-100 text-blue-800 rounded-lg">
                         Loading authentication status...
@@ -67,7 +113,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
                     </div>
                 ) : null}
                 {error && (
-                    <div className="mb-4 p-4 bg-red-100 text-red-800 rounded-lg">
+                    <div role="alert" className="mb-4 p-4 bg-red-100 text-red-800 rounded-lg">
                         {error}
                     </div>
                 )}
@@ -103,7 +149,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
                         <div className="flex gap-4">
                             <Button
                                 onClick={handleAddArtist}
-                                disabled={adding || status === "loading"}
+                                disabled={adding || status === "loading" || Boolean(duplicateChoice)}
                                 className="bg-green-500 hover:bg-green-600 text-white"
                             >
                                 {adding ? "Adding..." : "Add Artist"}
@@ -111,12 +157,23 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
                             <Button
                                 onClick={() => router.back()}
                                 variant="outline"
+                                disabled={isCreatingSeparate}
                             >
                                 Cancel
                             </Button>
                         </div>
                     </div>
                 </div>
+                {duplicateChoice && (
+                    <DuplicateArtistChoice
+                        candidates={duplicateChoice.candidates}
+                        platform={duplicateChoice.platform}
+                        platformId={duplicateChoice.platformId}
+                        message={duplicateChoice.message}
+                        isCreatingSeparate={isCreatingSeparate}
+                        onCreateSeparate={handleCreateSeparate}
+                    />
+                )}
             </div>
         </div>
     );

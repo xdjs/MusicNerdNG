@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 // Mock dependencies
 jest.mock('@/server/utils/artistLinkService', () => ({
+  ArtistLinkConflictError: class ArtistLinkConflictError extends Error {},
   setArtistLink: jest.fn().mockResolvedValue(undefined),
   clearArtistLink: jest.fn().mockResolvedValue(undefined),
 }));

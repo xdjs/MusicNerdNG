@@ -14,10 +14,20 @@ jest.mock("@/server/utils/queries/discord", () => ({
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
     getApprovedClaimForArtistByUserId: jest.fn(),
 }));
-jest.mock("@/server/utils/artistLinkService", () => ({
-    setArtistLink: jest.fn(),
-    clearArtistLink: jest.fn(),
-}));
+jest.mock("@/server/utils/artistLinkService", () => {
+    class ArtistLinkConflictError extends Error {
+        constructor(message) {
+            super(message);
+            this.name = "ArtistLinkConflictError";
+        }
+    }
+
+    return {
+        ArtistLinkConflictError,
+        setArtistLink: jest.fn(),
+        clearArtistLink: jest.fn(),
+    };
+});
 jest.mock("@/server/utils/services", () => ({
     extractArtistId: jest.fn(),
 }));
@@ -40,11 +50,12 @@ describe("POST /api/directEditLink", () => {
         const { getUserById } = await import("@/server/utils/queries/userQueries");
         const { sendDiscordMessage } = await import("@/server/utils/queries/discord");
         const { getApprovedClaimForArtistByUserId } = await import("@/server/utils/queries/dashboardQueries");
-        const { setArtistLink, clearArtistLink } = await import("@/server/utils/artistLinkService");
+        const { ArtistLinkConflictError, setArtistLink, clearArtistLink } = await import("@/server/utils/artistLinkService");
         const { extractArtistId } = await import("@/server/utils/services");
         const { POST } = await import("../route");
         return {
             POST,
+            ArtistLinkConflictError,
             requireAuth: requireAuth as jest.Mock,
             getUserById: getUserById as jest.Mock,
             sendDiscordMessage: sendDiscordMessage as jest.Mock,
@@ -169,6 +180,40 @@ describe("POST /api/directEditLink", () => {
         const res = await POST(makeRequest({ artistId: "a1", action: "set", url: "https://x.com/testuser" }));
 
         expect(res.status).toBe(500);
+        expect(sendDiscordMessage).not.toHaveBeenCalled();
+    });
+
+    it("returns 409 with a conflict message when the platform identity belongs elsewhere", async () => {
+        const {
+            POST,
+            ArtistLinkConflictError,
+            requireAuth,
+            getUserById,
+            sendDiscordMessage,
+            extractArtistId,
+            setArtistLink,
+        } = await setup();
+        requireAuth.mockResolvedValue({ authenticated: true, session: {}, userId: "u1" });
+        getUserById.mockResolvedValue({ id: "u1", username: "admin-user", isAdmin: true });
+        extractArtistId.mockResolvedValue({ siteName: "spotify", id: "spotify-123", cardPlatformName: "Spotify" });
+        setArtistLink.mockRejectedValue(
+            new ArtistLinkConflictError(
+                "That spotify artist ID is already linked to a different artist",
+            ),
+        );
+
+        const res = await POST(makeRequest({
+            artistId: "a1",
+            action: "set",
+            url: "https://open.spotify.com/artist/spotify-123",
+        }));
+        const data = await res.json();
+
+        expect(res.status).toBe(409);
+        expect(data).toEqual({
+            error: "That spotify artist ID is already linked to a different artist",
+            code: "CONFLICT",
+        });
         expect(sendDiscordMessage).not.toHaveBeenCalled();
     });
 

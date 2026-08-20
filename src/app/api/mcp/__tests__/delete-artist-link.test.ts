@@ -2,6 +2,7 @@
 import { jest } from "@jest/globals";
 
 jest.mock("@/server/utils/artistLinkService", () => ({
+  ArtistLinkConflictError: class ArtistLinkConflictError extends Error {},
   setArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
   clearArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
 }));

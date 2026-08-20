@@ -5,6 +5,7 @@
 import { db } from "@/server/db/drizzle";
 import { eq, and, sql, asc } from "drizzle-orm";
 import { artists, artistIdMappings, artistMappingExclusions } from "@/server/db/schema";
+import { acquireArtistPlatformWriteLocks } from "./artistIdentityLocks";
 
 export class MappingNotFoundError extends Error {
   constructor(message: string) { super(message); this.name = "MappingNotFoundError"; }
@@ -145,68 +146,98 @@ export async function resolveArtistMapping(params: {
     throw new MappingValidationError("platformId cannot be empty");
   }
 
-  // Verify artist exists
-  const artist = await db.query.artists.findFirst({
-    where: eq(artists.id, artistId),
-    columns: { id: true },
-  });
-  if (!artist) {
-    throw new MappingNotFoundError(`Artist not found: ${artistId}`);
-  }
+  return db.transaction(async (transaction) => {
+    await acquireArtistPlatformWriteLocks(
+      transaction,
+      artistId,
+      platform,
+      platformId,
+    );
 
-  // Check for existing mapping on this artist+platform
-  const existing = await db.query.artistIdMappings.findFirst({
-    where: and(eq(artistIdMappings.artistId, artistId), eq(artistIdMappings.platform, platform)),
-  });
+    // Verify artist exists. First-class IDs are selected so a mapping cannot
+    // silently disagree with the canonical Spotify/Deezer column.
+    const artist = await transaction.query.artists.findFirst({
+      where: eq(artists.id, artistId),
+      columns: { id: true, spotify: true, deezer: true },
+    });
+    if (!artist) {
+      throw new MappingNotFoundError(`Artist not found: ${artistId}`);
+    }
 
-  if (existing) {
-    const existingPriority = CONFIDENCE_PRIORITY[existing.confidence] ?? 0;
-    const newPriority = CONFIDENCE_PRIORITY[confidence] ?? 0;
+    if (platform === "spotify" || platform === "deezer") {
+      const directColumn = platform === "spotify" ? artists.spotify : artists.deezer;
+      const directOwner = await transaction.query.artists.findFirst({
+        where: eq(directColumn, platformId),
+        columns: { id: true },
+      });
+      if (directOwner && directOwner.id !== artistId) {
+        throw new MappingConflictError(
+          `platformId ${platformId} on ${platform} is already owned by a different artist`,
+        );
+      }
 
-    // Equal confidence overwrites intentionally — latest submission wins at the same tier
-    if (newPriority < existingPriority) {
+      const firstClassValue = platform === "spotify" ? artist.spotify : artist.deezer;
+      if (firstClassValue?.trim() && firstClassValue !== platformId) {
+        throw new MappingConflictError(
+          `The artist's ${platform} field already contains a different platform ID`,
+        );
+      }
+    }
+
+    // Check for existing mapping on this artist+platform
+    const existing = await transaction.query.artistIdMappings.findFirst({
+      where: and(eq(artistIdMappings.artistId, artistId), eq(artistIdMappings.platform, platform)),
+    });
+
+    if (existing) {
+      const existingPriority = CONFIDENCE_PRIORITY[existing.confidence] ?? 0;
+      const newPriority = CONFIDENCE_PRIORITY[confidence] ?? 0;
+
+      // Equal confidence overwrites intentionally — latest submission wins at the same tier
+      if (newPriority < existingPriority) {
+        return {
+          created: false,
+          updated: false,
+          skipped: true,
+          previousMapping: { platformId: existing.platformId, confidence: existing.confidence },
+        };
+      }
+
+      try {
+        await transaction.execute(sql`
+          UPDATE artist_id_mappings
+          SET platform_id = ${platformId},
+              confidence = ${confidence}::confidence_level,
+              source = ${source},
+              reasoning = ${reasoning ?? null},
+              api_key_hash = ${apiKeyHash ?? null},
+              resolved_at = now(),
+              updated_at = now()
+          WHERE artist_id = ${artistId} AND platform = ${platform}
+        `);
+      } catch (err: unknown) {
+        handleUniqueViolation(err, platform, platformId);
+      }
+
       return {
         created: false,
-        updated: false,
-        skipped: true,
+        updated: true,
+        skipped: false,
         previousMapping: { platformId: existing.platformId, confidence: existing.confidence },
       };
     }
 
     try {
-      await db.execute(sql`
-        UPDATE artist_id_mappings
-        SET platform_id = ${platformId},
-            confidence = ${confidence}::confidence_level,
-            source = ${source},
-            reasoning = ${reasoning ?? null},
-            api_key_hash = ${apiKeyHash ?? null},
-            resolved_at = now(),
-            updated_at = now()
-        WHERE artist_id = ${artistId} AND platform = ${platform}
+      await transaction.execute(sql`
+        INSERT INTO artist_id_mappings (artist_id, platform, platform_id, confidence, source, reasoning, api_key_hash)
+        VALUES (${artistId}, ${platform}, ${platformId}, ${confidence}::confidence_level, ${source}, ${reasoning ?? null}, ${apiKeyHash ?? null})
       `);
     } catch (err: unknown) {
       handleUniqueViolation(err, platform, platformId);
     }
 
-    return {
-      created: false,
-      updated: true,
-      skipped: false,
-      previousMapping: { platformId: existing.platformId, confidence: existing.confidence },
-    };
-  }
-
-  try {
-    await db.execute(sql`
-      INSERT INTO artist_id_mappings (artist_id, platform, platform_id, confidence, source, reasoning, api_key_hash)
-      VALUES (${artistId}, ${platform}, ${platformId}, ${confidence}::confidence_level, ${source}, ${reasoning ?? null}, ${apiKeyHash ?? null})
-    `);
-  } catch (err: unknown) {
-    handleUniqueViolation(err, platform, platformId);
-  }
-
-  return { created: true, updated: false, skipped: false };
+    return { created: true, updated: false, skipped: false };
+  });
 }
 
 export async function getMappingStats(): Promise<{

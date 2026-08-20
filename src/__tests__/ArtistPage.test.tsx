@@ -39,8 +39,16 @@ jest.mock('@/app/_components/EditModeContext', () => ({
 jest.mock('@/app/_components/EditModeToggle', () => function EditModeToggle() { return <button data-testid="edit-mode-toggle">Edit</button>; });
 jest.mock('@/app/_components/AutoRefresh', () => function AutoRefresh() { return null; });
 jest.mock('@/app/artist/[id]/_components/BlurbSection', () => function BlurbSection() { return <div data-testid="blurb-section" />; });
-jest.mock('@/app/artist/[id]/_components/AddArtistData', () => function AddArtistData({ directEdit = false, autoApprove = false }: { directEdit?: boolean, autoApprove?: boolean }) {
-    return <div data-testid="add-artist-data" data-direct-edit={String(directEdit)} data-auto-approve={String(autoApprove)} />;
+jest.mock('@/app/artist/[id]/_components/AddArtistData', () => function AddArtistData({ directEdit = false, autoApprove = false, isOpenOnLoad = false, prefillUrl }: { directEdit?: boolean, autoApprove?: boolean, isOpenOnLoad?: boolean, prefillUrl?: string }) {
+    return (
+        <div
+            data-testid="add-artist-data"
+            data-direct-edit={String(directEdit)}
+            data-auto-approve={String(autoApprove)}
+            data-open-on-load={String(isOpenOnLoad)}
+            data-prefill-url={prefillUrl ?? ''}
+        />
+    );
 });
 jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSection({ artistName }: { artistName: string }) { return <div data-testid="hero-section"><img alt={artistName} src="test.jpg" /></div>; });
 jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return <div data-testid="fun-facts" />; });
@@ -95,8 +103,14 @@ function setupMocks({ session = null, artist = mockArtist } = {}) {
     (getAllLinks as jest.Mock).mockResolvedValue([]);
 }
 
-async function renderArtistPage(id = 'artist-uuid') {
-    const jsx = await ArtistProfile({ params: Promise.resolve({ id }) });
+async function renderArtistPage(
+    id = 'artist-uuid',
+    searchParams?: { addLink?: string | string[] },
+) {
+    const jsx = await ArtistProfile({
+        params: Promise.resolve({ id }),
+        ...(searchParams ? { searchParams: Promise.resolve(searchParams) } : {}),
+    });
     return render(jsx as React.ReactElement);
 }
 
@@ -140,6 +154,45 @@ describe('ArtistProfile page', () => {
         it('does not render edit mode toggle when not authenticated', async () => {
             await renderArtistPage();
             expect(screen.queryByTestId('edit-mode-toggle')).not.toBeInTheDocument();
+        });
+
+        it('opens only the Social Links dialog with a canonical Spotify URL prefilled', async () => {
+            const spotifyUrl = 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW?si=test';
+            const canonicalSpotifyUrl = 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW';
+
+            await renderArtistPage('artist-uuid', { addLink: spotifyUrl });
+
+            const dialogs = screen.getAllByTestId('add-artist-data');
+            expect(dialogs[0]).toHaveAttribute('data-open-on-load', 'true');
+            expect(dialogs[0]).toHaveAttribute('data-prefill-url', canonicalSpotifyUrl);
+            expect(dialogs[1]).toHaveAttribute('data-open-on-load', 'false');
+            expect(dialogs[1]).toHaveAttribute('data-prefill-url', '');
+        });
+
+        it('accepts a regional Deezer artist URL for the Social Links handoff', async () => {
+            const deezerUrl = 'http://deezer.com/us/artist/12345?utm_source=test#tracks';
+
+            await renderArtistPage('artist-uuid', { addLink: deezerUrl });
+
+            const dialogs = screen.getAllByTestId('add-artist-data');
+            expect(dialogs[0]).toHaveAttribute('data-open-on-load', 'true');
+            expect(dialogs[0]).toHaveAttribute('data-prefill-url', 'https://www.deezer.com/artist/12345');
+            expect(dialogs[1]).toHaveAttribute('data-open-on-load', 'false');
+        });
+
+        it.each([
+            ['an unsupported URL', 'https://example.com/artist/123'],
+            ['a deceptive Spotify subdomain', 'https://open.spotify.com.evil.example/artist/abc'],
+            ['a non-artist Spotify URL', 'https://open.spotify.com/track/123'],
+            ['a Deezer URL with an extra path segment', 'https://www.deezer.com/artist/123/tracks'],
+            ['multiple addLink values', ['https://open.spotify.com/artist/abc', 'https://www.deezer.com/artist/123']],
+        ])('ignores %s instead of opening either dialog', async (_label, addLink) => {
+            await renderArtistPage('artist-uuid', { addLink });
+
+            screen.getAllByTestId('add-artist-data').forEach((dialog) => {
+                expect(dialog).toHaveAttribute('data-open-on-load', 'false');
+                expect(dialog).toHaveAttribute('data-prefill-url', '');
+            });
         });
     });
 
