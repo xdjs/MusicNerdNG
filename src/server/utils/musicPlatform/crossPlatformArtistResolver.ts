@@ -76,6 +76,14 @@ async function findWikidataCounterpart(
 SELECT ?item ?targetId WHERE {
   ?item wdt:${sourceProperty} "${sourcePlatformId}" .
   ?item wdt:${targetProperty} ?targetId .
+  FILTER NOT EXISTS {
+    ?otherSource wdt:${sourceProperty} "${sourcePlatformId}" .
+    FILTER (?otherSource != ?item)
+  }
+  FILTER NOT EXISTS {
+    ?otherTarget wdt:${targetProperty} ?targetId .
+    FILTER (?otherTarget != ?item)
+  }
 }
 LIMIT 10`;
     const response = await fetch(WIKIDATA_ENDPOINT, {
@@ -144,8 +152,11 @@ export async function findReciprocalArtistIdentity(
             PROVIDER_VERIFICATION_TIMEOUT_MS,
             `${targetPlatform} artist verification`,
         );
+        const verifiedPlatformId = verifiedArtist?.platformId?.trim();
         if (
             !verifiedArtist
+            || !verifiedPlatformId
+            || !isValidPlatformId(targetPlatform, verifiedPlatformId)
             || normalizeArtistName(verifiedArtist.name) !== normalizedName
         ) {
             return null;
@@ -153,7 +164,7 @@ export async function findReciprocalArtistIdentity(
 
         return {
             platform: targetPlatform,
-            platformId: counterpart.platformId,
+            platformId: verifiedPlatformId,
             source: 'wikidata',
             wikidataId: counterpart.wikidataId,
         };
