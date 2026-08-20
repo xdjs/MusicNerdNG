@@ -20,9 +20,18 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 
 type ArtistProfileProps = {
     params: Promise<{ id: string }>;
+    searchParams?: Promise<{ addLink?: string | string[] }>;
+}
+
+function getAddLinkPrefill(addLink: string | string[] | undefined): string | undefined {
+    if (typeof addLink !== "string") return undefined;
+
+    const parsed = parseSupportedArtistUrl(addLink);
+    return parsed ? buildCanonicalArtistUrl(parsed.platform, parsed.id) ?? undefined : undefined;
 }
 
 export async function generateMetadata({ params }: ArtistProfileProps): Promise<Metadata> {
@@ -68,8 +77,10 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
     };
 }
 
-export default async function ArtistProfile({ params }: ArtistProfileProps) {
+export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
     const { id } = await params;
+    const resolvedSearchParams = searchParams ? await searchParams : undefined;
+    const addLinkPrefill = getAddLinkPrefill(resolvedSearchParams?.addLink);
     const session = await getServerAuthSession() ?? await getDevSession();
     const dbUser = session ? await getUserById(session.user.id) : null;
     const isAdmin = !!dbUser?.isAdmin;
@@ -165,7 +176,8 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                             artist={artist}
                             spotifyImg={platformImage ?? ""}
                             availableLinks={urlMapList}
-                            isOpenOnLoad={false}
+                            isOpenOnLoad={!!addLinkPrefill}
+                            prefillUrl={addLinkPrefill}
                             directEdit={directEditLinks}
                             autoApprove={autoApproveLinkSubmissions}
                         />

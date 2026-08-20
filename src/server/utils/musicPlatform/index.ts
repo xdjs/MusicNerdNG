@@ -2,6 +2,8 @@ export type { MusicPlatform, MusicPlatformArtist, MusicPlatformProvider } from '
 export { SpotifyProvider, spotifyProvider } from './spotifyProvider';
 export { DeezerProvider, deezerProvider } from './deezerProvider';
 export { ArtistMusicPlatformDataProvider } from './artistMusicPlatformDataProvider';
+export { findReciprocalArtistIdentity } from './crossPlatformArtistResolver';
+export type { ReciprocalArtistIdentity } from './crossPlatformArtistResolver';
 
 import { deezerProvider } from './deezerProvider';
 import { spotifyProvider } from './spotifyProvider';

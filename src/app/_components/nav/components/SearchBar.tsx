@@ -11,6 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useSession } from "next-auth/react";
 import { addArtist } from "@/app/actions/addArtist";
 import { isDevMode } from "@/lib/dev-mode";
+import DuplicateArtistChoice, { type DuplicateArtistCandidate } from "@/app/_components/DuplicateArtistChoice";
+import type { MusicPlatform } from "@/server/utils/musicPlatform";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -39,6 +41,15 @@ const PENDING_ADD_PLATFORM_KEY = 'pendingAddArtistPlatform';
 const PENDING_ADD_TS_KEY = 'pendingAddArtistTimestamp';
 const PENDING_ADD_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+type PossibleDuplicateResponse = {
+    status: 'possible_duplicate';
+    candidates: DuplicateArtistCandidate[];
+    platform: MusicPlatform;
+    platformId: string;
+    message?: string;
+    canCreateSeparate?: boolean;
+};
+
 function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     const router = useRouter();
     const { toast } = useToast();
@@ -51,34 +62,109 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     const blurTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
     const { data: session } = useSession();
     const [addingPlatformId, setAddingPlatformId] = useState<string | null>(null);
+    const [isCreatingSeparate, setIsCreatingSeparate] = useState(false);
+    const [duplicateChoice, setDuplicateChoice] = useState<PossibleDuplicateResponse | null>(null);
+    const addRequestGenerationRef = useRef(0);
+    const addRequestInFlightRef = useRef(false);
 
-    const handleAddArtist = useCallback(async (platformId: string, platform: string = 'deezer') => {
+    const invalidateAddRequest = useCallback(() => {
+        addRequestGenerationRef.current += 1;
+    }, []);
+
+    const handleAddArtist = useCallback(async (
+        platformId: string,
+        platform: string = 'deezer',
+    ) => {
+        if (addRequestInFlightRef.current) return;
+
+        const requestGeneration = ++addRequestGenerationRef.current;
+        addRequestInFlightRef.current = true;
         try {
             setAddingPlatformId(platformId);
             const addResult = await addArtist(platformId, platform as 'deezer' | 'spotify');
 
+            if (addRequestGenerationRef.current !== requestGeneration) return;
+
             if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                setDuplicateChoice(null);
                 setShowResults(false);
                 setQuery('');
                 router.push(`/artist/${addResult.artistId}`);
+            } else if (addResult.status === "possible_duplicate") {
+                setDuplicateChoice(addResult);
+                setShowResults(false);
             } else {
                 toast({
                     variant: "destructive",
-                    title: "Error",
+                    title: addResult.status === "conflict" ? "Artist conflict" : "Error",
                     description: addResult.message || "Failed to add artist"
                 });
             }
         } catch (error) {
             console.error("[SearchBar] Error adding artist:", error);
-            toast({
-                variant: "destructive",
-                title: "Error",
-                description: "Failed to add artist - please try again"
-            });
+            if (addRequestGenerationRef.current === requestGeneration) {
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to add artist - please try again"
+                });
+            }
         } finally {
+            addRequestInFlightRef.current = false;
             setAddingPlatformId(null);
         }
     }, [router, toast]);
+
+    const handleCreateSeparate = useCallback(async () => {
+        if (
+            !duplicateChoice
+            || duplicateChoice.canCreateSeparate === false
+            || addRequestInFlightRef.current
+        ) return;
+
+        const response = duplicateChoice;
+        const requestGeneration = ++addRequestGenerationRef.current;
+        addRequestInFlightRef.current = true;
+        setIsCreatingSeparate(true);
+        try {
+            const addResult = await addArtist(
+                response.platformId,
+                response.platform,
+                { forceCreate: true },
+            );
+
+            if (addRequestGenerationRef.current !== requestGeneration) return;
+
+            if ((addResult.status === "success" || addResult.status === "exists") && addResult.artistId) {
+                setDuplicateChoice(null);
+                setQuery('');
+                router.push(`/artist/${addResult.artistId}`);
+            } else if (addResult.status === "possible_duplicate") {
+                setDuplicateChoice(addResult);
+            } else {
+                if (addResult.status === "conflict") {
+                    setDuplicateChoice(null);
+                }
+                toast({
+                    variant: "destructive",
+                    title: addResult.status === "conflict" ? "Artist conflict" : "Error",
+                    description: addResult.message || "Failed to add artist",
+                });
+            }
+        } catch (error) {
+            console.error("[SearchBar] Error creating separate artist:", error);
+            if (addRequestGenerationRef.current === requestGeneration) {
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Failed to add artist - please try again",
+                });
+            }
+        } finally {
+            addRequestInFlightRef.current = false;
+            setIsCreatingSeparate(false);
+        }
+    }, [duplicateChoice, router, toast]);
 
     // After login + page reload, complete the pending add-artist flow
     useEffect(() => {
@@ -130,8 +216,12 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     }, [debouncedQuery, results]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (isCreatingSeparate) return;
+
         const value = e.target.value;
+        invalidateAddRequest();
         setQuery(value);
+        setDuplicateChoice(null);
 
         if (value.trim() === '') {
             setShowResults(false);
@@ -155,6 +245,8 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
 
     useEffect(() => {
         return () => {
+            addRequestGenerationRef.current += 1;
+            addRequestInFlightRef.current = false;
             if (blurTimeoutRef.current) {
                 clearTimeout(blurTimeoutRef.current);
             }
@@ -162,6 +254,8 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     }, []);
 
     const handleResultClick = async (result: SearchResult) => {
+        if (addRequestInFlightRef.current) return;
+
         if (result.isExternalOnly) {
             if (!result.platformId) return;
 
@@ -178,12 +272,16 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                 return;
             }
 
-            await handleAddArtist(result.platformId, result.platform || 'deezer');
+            await handleAddArtist(
+                result.platformId,
+                result.platform || 'deezer',
+            );
             return;
         }
 
         setShowResults(false);
         setQuery('');
+        addRequestGenerationRef.current += 1;
 
         if (result.id) {
             router.push(`/artist/${result.id}`);
@@ -195,8 +293,10 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
         return platform.charAt(0).toUpperCase() + platform.slice(1);
     };
 
+    const isAddInFlight = addingPlatformId !== null || isCreatingSeparate;
+
     return (
-        <div className="relative w-full max-w-[400px]">
+        <div aria-busy={isCreatingSeparate} className="relative w-full max-w-[400px]">
             <div className="relative">
                 {/* The Input primitive ships with no border, height or focus ring (a documented
                     deviation from stock shadcn), so the search pill's chrome is added here at the
@@ -208,6 +308,7 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                     type="text"
                     placeholder="Search for an artist..."
                     value={query}
+                    disabled={isCreatingSeparate}
                     onChange={handleInputChange}
                     onBlur={handleBlur}
                     onFocus={handleFocus}
@@ -219,7 +320,27 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             </div>
 
-            {showResults && results.length > 0 && (
+            {duplicateChoice && (
+                <div className="absolute z-50 mt-2 max-h-[min(28rem,calc(100vh-6rem))] w-full overflow-y-auto rounded-lg bg-white p-3 shadow-lg dark:bg-gray-800">
+                    <DuplicateArtistChoice
+                        candidates={duplicateChoice.candidates}
+                        platform={duplicateChoice.platform}
+                        platformId={duplicateChoice.platformId}
+                        message={duplicateChoice.message}
+                        isCreatingSeparate={isCreatingSeparate}
+                        canCreateSeparate={duplicateChoice.canCreateSeparate}
+                        onCreateSeparate={handleCreateSeparate}
+                        onChooseExisting={() => {
+                            invalidateAddRequest();
+                            setDuplicateChoice(null);
+                            setShowResults(false);
+                            setQuery('');
+                        }}
+                    />
+                </div>
+            )}
+
+            {!duplicateChoice && showResults && results.length > 0 && (
                 <div
                     ref={resultsContainer}
                     className="absolute w-full mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50"
@@ -232,7 +353,7 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                         return (
                             <button
                                 key={result.isExternalOnly ? `ext-${result.platformId}` : result.id}
-                                disabled={isThisAdding}
+                                disabled={isAddInFlight}
                                 onClick={() => handleResultClick(result)}
                                 className={`w-full p-3 flex items-center gap-3 text-left disabled:opacity-50 ${
                                     result.isExternalOnly
@@ -304,7 +425,7 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                 </div>
             )}
 
-            {isLoading && (
+            {!duplicateChoice && isLoading && (
                 <div className="absolute w-full mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 text-center z-50">
                     <div className="text-gray-600 dark:text-gray-400">Searching...</div>
                 </div>
