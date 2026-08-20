@@ -5,7 +5,10 @@
 import { db } from "@/server/db/drizzle";
 import { and, eq, sql } from "drizzle-orm";
 import { artists, artistIdMappings } from "@/server/db/schema";
-import { acquireArtistPlatformWriteLocks } from "./artistIdentityLocks";
+import {
+  acquireArtistPlatformLock,
+  acquireArtistPlatformWriteLocks,
+} from "./artistIdentityLocks";
 
 export class ArtistLinkConflictError extends Error {
   constructor(message: string) {
@@ -152,8 +155,23 @@ export async function clearArtistLink(
   const columnName = sanitizeColumnName(siteName);
   assertWritable(columnName);
 
+  if (columnName === "spotify" || columnName === "deezer") {
+    return db.transaction(async (transaction) => {
+      await acquireArtistPlatformLock(transaction, artistId, columnName);
+      return clearArtistLinkWithExecutor(transaction, artistId, columnName);
+    });
+  }
+
+  return clearArtistLinkWithExecutor(db, artistId, columnName);
+}
+
+async function clearArtistLinkWithExecutor(
+  database: ArtistLinkExecutor,
+  artistId: string,
+  columnName: string,
+): Promise<{ oldValue: string | null }> {
   // Fetch full row to capture oldValue for audit trail (MCP callers use the return value)
-  const artist = await db.query.artists.findFirst({
+  const artist = await database.query.artists.findFirst({
     where: eq(artists.id, artistId),
   });
   if (!artist) {
@@ -164,7 +182,7 @@ export async function clearArtistLink(
   const oldValue = getArtistLinkValue(artist, columnName);
 
   // See setArtistLink: link changes no longer null/regenerate the bio.
-  await db.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
+  await database.execute(sql`UPDATE artists SET ${sql.identifier(columnName)} = NULL WHERE id = ${artistId}`);
 
   return { oldValue };
 }

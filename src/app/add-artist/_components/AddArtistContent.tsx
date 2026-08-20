@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addArtist } from "../../actions/addArtist";
@@ -24,6 +24,13 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
     const [error, setError] = useState<string | null>(null);
     const [duplicateChoice, setDuplicateChoice] = useState<PossibleDuplicateResponse | null>(null);
     const { data: session, status } = useSession();
+    const requestGenerationRef = useRef(0);
+    const requestInFlightRef = useRef(false);
+
+    useEffect(() => () => {
+        requestGenerationRef.current += 1;
+        requestInFlightRef.current = false;
+    }, []);
 
     function promptLogin() {
         const loginBtn = document.getElementById("login-btn");
@@ -55,7 +62,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
     }
 
     async function handleAddArtist() {
-        if (status === "loading") {
+        if (status === "loading" || requestInFlightRef.current) {
             return;
         }
 
@@ -64,17 +71,26 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
             return;
         }
 
+        const requestGeneration = ++requestGenerationRef.current;
+        requestInFlightRef.current = true;
         setAdding(true);
         setError(null);
 
         try {
             const result = await addArtist(initialArtist.platformId, initialArtist.platform);
-            handleResult(result);
+            if (requestGenerationRef.current === requestGeneration) {
+                handleResult(result);
+            }
         } catch (err) {
             console.error("Error in handleAddArtist:", err);
-            setError("Failed to add artist - please try again");
+            if (requestGenerationRef.current === requestGeneration) {
+                setError("Failed to add artist - please try again");
+            }
         } finally {
-            setAdding(false);
+            if (requestGenerationRef.current === requestGeneration) {
+                requestInFlightRef.current = false;
+                setAdding(false);
+            }
         }
     }
 
@@ -82,30 +98,48 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
         if (
             !duplicateChoice
             || duplicateChoice.canCreateSeparate === false
-            || isCreatingSeparate
+            || requestInFlightRef.current
         ) return;
 
+        const response = duplicateChoice;
+        const requestGeneration = ++requestGenerationRef.current;
+        requestInFlightRef.current = true;
         setIsCreatingSeparate(true);
         setError(null);
         try {
             const result = await addArtist(
-                duplicateChoice.platformId,
-                duplicateChoice.platform,
+                response.platformId,
+                response.platform,
                 { forceCreate: true },
             );
-            handleResult(result);
+            if (requestGenerationRef.current === requestGeneration) {
+                handleResult(result);
+            }
         } catch (err) {
             console.error("Error creating separate artist:", err);
-            setError("Failed to add artist - please try again");
+            if (requestGenerationRef.current === requestGeneration) {
+                setError("Failed to add artist - please try again");
+            }
         } finally {
-            setIsCreatingSeparate(false);
+            if (requestGenerationRef.current === requestGeneration) {
+                requestInFlightRef.current = false;
+                setIsCreatingSeparate(false);
+            }
         }
     }
+
+    function handleCancel() {
+        requestGenerationRef.current += 1;
+        requestInFlightRef.current = false;
+        router.back();
+    }
+
+    const isRequestInFlight = adding || isCreatingSeparate;
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div
-                aria-busy={isCreatingSeparate}
+                aria-busy={isRequestInFlight}
                 className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full mx-4"
             >
                 {status === "loading" ? (
@@ -160,9 +194,9 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
                                 {adding ? "Adding..." : "Add Artist"}
                             </Button>
                             <Button
-                                onClick={() => router.back()}
+                                onClick={handleCancel}
                                 variant="outline"
-                                disabled={isCreatingSeparate}
+                                disabled={isRequestInFlight}
                             >
                                 Cancel
                             </Button>

@@ -565,18 +565,22 @@ export async function addArtist(
         const provider = platform === 'deezer' ? deezerProvider : spotifyProvider;
         console.debug(`[Server] Validating ${platform} artist...`);
         const platformArtist = await provider.getArtist(platformId);
+        const canonicalPlatformId = platformArtist?.platformId?.trim();
 
-        if (!platformArtist?.name) {
+        if (!platformArtist?.name || !canonicalPlatformId) {
             console.error(`[Server] Invalid artist data from ${platform}`);
             return { status: "error", message: `Could not find artist on ${platform}` };
         }
 
         const reciprocalIdentity = await findReciprocalArtistIdentity({
             platform,
-            platformId,
+            platformId: canonicalPlatformId,
             name: platformArtist.name,
         });
-        const submittedIdentity = { platform, platformId } satisfies ArtistPlatformIdentity;
+        const submittedIdentity = {
+            platform,
+            platformId: canonicalPlatformId,
+        } satisfies ArtistPlatformIdentity;
         const identities = sortArtistPlatformIdentities([
             submittedIdentity,
             ...(reciprocalIdentity ? [reciprocalIdentity] : []),
@@ -638,8 +642,8 @@ export async function addArtist(
                     return {
                         status: "possible_duplicate",
                         candidates: possibleDuplicates.map(toAddArtistCandidate),
-                        platform,
-                        platformId,
+                        platform: submittedIdentity.platform,
+                        platformId: submittedIdentity.platformId,
                         message: "We found an artist with the same name. Choose the existing artist or confirm this is a different artist.",
                     };
                 }
@@ -682,6 +686,8 @@ export async function addArtist(
                 };
             }
 
+            // Mappings are Spotify-anchored, so provenance always records the
+            // Deezer side of a verified pair, even when Deezer was submitted.
             const mappedDeezerId = platformIds.deezer;
             if (reciprocalIdentity && mappedDeezerId) {
                 const reasoning = `Wikidata ${reciprocalIdentity.wikidataId} links Spotify and Deezer for ${platformArtist.name}`;
@@ -719,7 +725,7 @@ export async function addArtist(
                 const user = await getUserById(session.user.id);
                 if (user) {
                     await sendDiscordMessage(
-                        `${getUserDisplayName(user)} added new artist named: ${result.artistName ?? ""} (Submitted ${platform}Id: ${platformId}) ${notificationCreatedAt ?? ""}`
+                        `${getUserDisplayName(user)} added new artist named: ${result.artistName ?? ""} (Submitted ${platform}Id: ${canonicalPlatformId}) ${notificationCreatedAt ?? ""}`
                     );
                 }
             } catch (notificationError) {

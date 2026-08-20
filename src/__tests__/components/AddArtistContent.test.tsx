@@ -128,6 +128,85 @@ describe('AddArtistContent duplicate choice', () => {
         });
     });
 
+    it('submits the initial add only once when activated twice before state settles', async () => {
+        let resolveAdd!: (value: unknown) => void;
+        mockAddArtist.mockReturnValueOnce(new Promise(resolve => { resolveAdd = resolve; }));
+        const { container } = render(<AddArtistContent initialArtist={initialArtist} />);
+        const addButton = screen.getByRole('button', { name: 'Add Artist' });
+
+        act(() => {
+            addButton.click();
+            addButton.click();
+        });
+
+        expect(mockAddArtist).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+        expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+
+        await act(async () => {
+            resolveAdd({ status: 'error', message: 'Try again.' });
+        });
+    });
+
+    it('submits force creation only once when activated twice before state settles', async () => {
+        await submitWithDuplicate();
+        let resolveCreate!: (value: unknown) => void;
+        mockAddArtist.mockReturnValueOnce(new Promise(resolve => { resolveCreate = resolve; }));
+        const createButton = screen.getByRole('button', { name: 'Create separate artist' });
+
+        act(() => {
+            createButton.click();
+            createButton.click();
+        });
+
+        expect(mockAddArtist).toHaveBeenCalledTimes(2);
+
+        await act(async () => {
+            resolveCreate({ status: 'success', artistId: 'new-id', artistName: 'Same Name' });
+        });
+
+        expect(mockPush).toHaveBeenCalledTimes(1);
+        expect(mockPush).toHaveBeenCalledWith('/artist/new-id');
+    });
+
+    it('ignores a pending response when cancellation wins the same render turn', async () => {
+        let resolveAdd!: (value: unknown) => void;
+        mockAddArtist.mockReturnValueOnce(new Promise(resolve => { resolveAdd = resolve; }));
+        render(<AddArtistContent initialArtist={initialArtist} />);
+        const addButton = screen.getByRole('button', { name: 'Add Artist' });
+        const cancelButton = screen.getByRole('button', { name: 'Cancel' });
+
+        act(() => {
+            addButton.click();
+            cancelButton.click();
+        });
+
+        expect(mockBack).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            resolveAdd({ status: 'success', artistId: 'late-id', artistName: 'Same Name' });
+        });
+
+        expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('ignores a pending add response after navigation unmounts the page', async () => {
+        let resolveAdd!: (value: unknown) => void;
+        mockAddArtist.mockReturnValueOnce(new Promise(resolve => { resolveAdd = resolve; }));
+        const { unmount } = render(<AddArtistContent initialArtist={initialArtist} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add Artist' }));
+
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+        unmount();
+
+        await act(async () => {
+            resolveAdd({ status: 'success', artistId: 'late-id', artistName: 'Same Name' });
+        });
+
+        expect(mockPush).not.toHaveBeenCalled();
+    });
+
     it('blocks candidate navigation and cancellation while force creation is pending', async () => {
         const candidateLink = await submitWithDuplicate();
         let resolveCreate!: (value: unknown) => void;

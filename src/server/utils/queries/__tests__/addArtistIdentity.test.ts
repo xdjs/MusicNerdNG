@@ -94,8 +94,16 @@ describe("addArtist identity resolution", () => {
         mockGetUserById.mockResolvedValue(null);
         mockGetUserDisplayName.mockReturnValue("tester");
         mockSendDiscordMessage.mockResolvedValue(undefined);
-        mockSpotifyGetArtist.mockResolvedValue({ name: "Jonathan Pape" });
-        mockDeezerGetArtist.mockResolvedValue({ name: "Jonathan Pape" });
+        mockSpotifyGetArtist.mockResolvedValue({
+            platform: "spotify",
+            platformId: "spotify-123",
+            name: "Jonathan Pape",
+        });
+        mockDeezerGetArtist.mockResolvedValue({
+            platform: "deezer",
+            platformId: "815939",
+            name: "Jonathan Pape",
+        });
         mockFindReciprocalArtistIdentity.mockResolvedValue(null);
         mockAcquirePlatformIdentityLock.mockResolvedValue(undefined);
         mockAcquireArtistNameLock.mockResolvedValue(undefined);
@@ -304,6 +312,59 @@ describe("addArtist identity resolution", () => {
             deezer: expect.anything(),
         }));
         expect(mockAcquirePlatformIdentityLock).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the provider's canonical Deezer ID for resolution, locking, and insertion", async () => {
+        const { addArtist, mockDb } = await setup();
+        mockDeezerGetArtist.mockResolvedValue({
+            platform: "deezer",
+            platformId: "6251",
+            name: "Jonathan Pape",
+        });
+        const insert = mockInsertReturning(mockDb, [
+            artist({ id: "new-artist", deezer: "6251" }),
+        ]);
+
+        const result = await addArtist("0006251", "deezer", { forceCreate: true });
+
+        expect(result.status).toBe("success");
+        expect(mockFindReciprocalArtistIdentity).toHaveBeenCalledWith({
+            platform: "deezer",
+            platformId: "6251",
+            name: "Jonathan Pape",
+        });
+        expect(mockAcquirePlatformIdentityLock).toHaveBeenCalledWith(
+            mockDb,
+            "deezer",
+            "6251",
+        );
+        expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({
+            deezer: "6251",
+        }));
+    });
+
+    it("finds a canonical Deezer owner when the submitted URL uses a zero-padded alias", async () => {
+        const { addArtist, mockDb } = await setup();
+        const existing = artist({ id: "deezer-owner", deezer: "6251" });
+        mockDeezerGetArtist.mockResolvedValue({
+            platform: "deezer",
+            platformId: "6251",
+            name: "Jonathan Pape",
+        });
+        mockDb.query.artists.findFirst.mockResolvedValueOnce(existing);
+
+        const result = await addArtist("0006251", "deezer");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "exists",
+            artistId: "deezer-owner",
+        }));
+        expect(mockAcquirePlatformIdentityLock).toHaveBeenCalledWith(
+            mockDb,
+            "deezer",
+            "6251",
+        );
+        expect(mockDb.insert).not.toHaveBeenCalled();
     });
 
     it("offers the owner of a discovered reciprocal ID instead of creating a duplicate", async () => {

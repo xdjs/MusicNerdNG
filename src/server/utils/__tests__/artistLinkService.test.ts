@@ -113,6 +113,7 @@ describe("artistLinkService", () => {
     const { db, clearArtistLink } = await setup();
     const result = await clearArtistLink("artist-123", "instagram");
     expect(db.execute).toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
     expect(result).toEqual({ oldValue: null });
   });
 
@@ -258,6 +259,35 @@ describe("artistLinkService", () => {
         setArtistLink("artist-123", platform, `${platform}-123`),
       ).resolves.toEqual({ oldValue: null, artistName: "Test Artist" });
       expect(db.execute).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it.each(["spotify", "deezer"])(
+    "serializes a %s clear under the artist/platform slot lock",
+    async (platform) => {
+      const { db, clearArtistLink } = await setup();
+      (db as any).query.artists.findFirst.mockResolvedValue({
+        id: "artist-123",
+        name: "Test Artist",
+        [platform]: `${platform}-123`,
+      });
+
+      await expect(
+        clearArtistLink("artist-123", platform),
+      ).resolves.toEqual({ oldValue: `${platform}-123` });
+
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      // Stable artist/platform slot lock, followed by the artist update.
+      expect(db.execute).toHaveBeenCalledTimes(2);
+      expect(dialect.sqlToQuery(db.execute.mock.calls[0][0]).params[0]).toBe(
+        `musicnerd:artist-platform-slot:artist-123:${platform}`,
+      );
+      expect(db.execute.mock.invocationCallOrder[0]).toBeLessThan(
+        (db as any).query.artists.findFirst.mock.invocationCallOrder[0],
+      );
+      expect(
+        (db as any).query.artistIdMappings.findFirst,
+      ).not.toHaveBeenCalled();
     },
   );
 

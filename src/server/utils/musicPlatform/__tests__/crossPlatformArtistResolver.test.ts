@@ -103,6 +103,79 @@ describe('findReciprocalArtistIdentity', () => {
         expect(decodeURIComponent(requestBody)).toContain('wdt:P2722 ?targetId');
     });
 
+    it.each([
+        {
+            sourcePlatform: 'spotify' as const,
+            sourcePlatformId: 'spotify123',
+            sourceProperty: 'P1902',
+            targetProperty: 'P2722',
+        },
+        {
+            sourcePlatform: 'deezer' as const,
+            sourcePlatformId: '145',
+            sourceProperty: 'P2722',
+            targetProperty: 'P1902',
+        },
+    ])(
+        'requires unique Wikidata ownership in both directions for $sourcePlatform',
+        async ({ sourcePlatform, sourcePlatformId, sourceProperty, targetProperty }) => {
+            mockFetch.mockResolvedValue(wikidataResponse([]));
+
+            await findReciprocalArtistIdentity({
+                platform: sourcePlatform,
+                platformId: sourcePlatformId,
+                name: 'Artist',
+            });
+
+            const requestBody = mockFetch.mock.calls[0][1].body as string;
+            const query = decodeURIComponent(requestBody);
+            expect(query).toContain(
+                `?otherSource wdt:${sourceProperty} "${sourcePlatformId}"`,
+            );
+            expect(query).toContain(
+                `?otherTarget wdt:${targetProperty} ?targetId`,
+            );
+            expect(query).toContain('FILTER (?otherSource != ?item)');
+            expect(query).toContain('FILTER (?otherTarget != ?item)');
+        },
+    );
+
+    it('returns null without provider verification when uniqueness filtering leaves no match', async () => {
+        mockFetch.mockResolvedValue(wikidataResponse([]));
+
+        await expect(findReciprocalArtistIdentity({
+            platform: 'spotify',
+            platformId: 'spotify123',
+            name: 'Artist',
+        })).resolves.toBeNull();
+        expect(mockDeezerGetArtist).not.toHaveBeenCalled();
+        expect(mockSpotifyGetArtist).not.toHaveBeenCalled();
+    });
+
+    it('returns the target provider canonical ID after verification', async () => {
+        mockFetch.mockResolvedValue(wikidataResponse([{
+            entity: 'Q36153',
+            targetId: '000145',
+        }]));
+        mockDeezerGetArtist.mockResolvedValue({
+            platform: 'deezer',
+            platformId: '145',
+            name: 'Beyonce',
+        });
+
+        await expect(findReciprocalArtistIdentity({
+            platform: 'spotify',
+            platformId: 'spotify123',
+            name: 'Beyonce',
+        })).resolves.toEqual({
+            platform: 'deezer',
+            platformId: '145',
+            source: 'wikidata',
+            wikidataId: 'Q36153',
+        });
+        expect(mockDeezerGetArtist).toHaveBeenCalledWith('000145');
+    });
+
     it('rejects malformed source IDs before querying Wikidata', async () => {
         await expect(findReciprocalArtistIdentity({
             platform: 'spotify',
