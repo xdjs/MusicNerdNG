@@ -20,6 +20,7 @@ type DuplicateArtistChoiceProps = {
     platformId: string;
     message?: string;
     isCreatingSeparate: boolean;
+    canCreateSeparate?: boolean;
     onCreateSeparate: () => void | Promise<void>;
     onChooseExisting?: () => void;
 };
@@ -36,6 +37,7 @@ export default function DuplicateArtistChoice({
     platformId,
     message,
     isCreatingSeparate,
+    canCreateSeparate = true,
     onCreateSeparate,
     onChooseExisting,
 }: DuplicateArtistChoiceProps) {
@@ -103,19 +105,21 @@ export default function DuplicateArtistChoice({
                 })}
             </ul>
 
-            <div className="mt-4 border-t border-amber-200 pt-4">
-                <p className="mb-2 text-xs text-amber-900">
-                    Only create a separate artist if this is a different person or group with the same name.
-                </p>
-                <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isCreatingSeparate}
-                    onClick={onCreateSeparate}
-                >
-                    {isCreatingSeparate ? "Creating..." : "Create separate artist"}
-                </Button>
-            </div>
+            {canCreateSeparate && (
+                <div className="mt-4 border-t border-amber-200 pt-4">
+                    <p className="mb-2 text-xs text-amber-900">
+                        Only create a separate artist if this is a different person or group with the same name.
+                    </p>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isCreatingSeparate}
+                        onClick={onCreateSeparate}
+                    >
+                        {isCreatingSeparate ? "Creating..." : "Create separate artist"}
+                    </Button>
+                </div>
+            )}
         </section>
     );
 }

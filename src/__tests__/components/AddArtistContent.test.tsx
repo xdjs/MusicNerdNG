@@ -93,6 +93,20 @@ describe('AddArtistContent duplicate choice', () => {
         expect(second).not.toHaveAccessibleName(/another-candidate-id/);
     });
 
+    it('does not offer force creation when the platform IDs are verified as the same artist', async () => {
+        mockAddArtist.mockResolvedValueOnce({
+            ...possibleDuplicate,
+            canCreateSeparate: false,
+            message: 'Wikidata links these profiles to the same artist.',
+        });
+        render(<AddArtistContent initialArtist={initialArtist} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Add Artist' }));
+
+        expect(await screen.findByText('Wikidata links these profiles to the same artist.')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /Add link to existing artist: Same Name/ })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Create separate artist' })).not.toBeInTheDocument();
+    });
+
     it('force-creates only after the user confirms this is a separate artist', async () => {
         await submitWithDuplicate();
         mockAddArtist.mockResolvedValueOnce({
