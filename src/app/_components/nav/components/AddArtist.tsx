@@ -91,7 +91,11 @@ export default function AddArtist() {
     }
 
     async function handleCreateSeparate() {
-        if (addArtistStatus?.status !== "possible_duplicate" || requestInFlightRef.current) return;
+        if (
+            addArtistStatus?.status !== "possible_duplicate"
+            || addArtistStatus.canCreateSeparate === false
+            || requestInFlightRef.current
+        ) return;
 
         const requestGeneration = ++requestGenerationRef.current;
         requestInFlightRef.current = true;
@@ -248,6 +252,7 @@ export default function AddArtist() {
                                                 platformId={addArtistStatus.platformId}
                                                 message={addArtistStatus.message}
                                                 isCreatingSeparate={isCreatingSeparate}
+                                                canCreateSeparate={addArtistStatus.canCreateSeparate}
                                                 onCreateSeparate={handleCreateSeparate}
                                                 onChooseExisting={() => closeModal(false)}
                                             />

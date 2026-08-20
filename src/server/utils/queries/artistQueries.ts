@@ -1,6 +1,10 @@
 import { db } from "@/server/db/drizzle";
 import { getSpotifyHeaders, getSpotifyArtist } from "@/server/utils/queries/externalApiQueries";
-import { deezerProvider, spotifyProvider } from "@/server/utils/musicPlatform";
+import {
+    deezerProvider,
+    findReciprocalArtistIdentity,
+    spotifyProvider,
+} from "@/server/utils/musicPlatform";
 import type { MusicPlatform } from "@/server/utils/musicPlatform";
 import { eq, sql, inArray, and, arrayContains, asc } from "drizzle-orm";
 import { artists, artistIdMappings, ugcresearch } from "@/server/db/schema";
@@ -79,6 +83,7 @@ export type AddArtistResp =
         candidates: AddArtistCandidate[];
         platform: MusicPlatform;
         platformId: string;
+        canCreateSeparate?: boolean;
     })
     | (AddArtistRespCommon & {
         status: "conflict";
@@ -361,6 +366,11 @@ type ArtistCreationExecutor = Pick<typeof db, "query" | "execute" | "insert">;
 
 const ADD_ARTIST_CANDIDATE_LIMIT = 10;
 
+type ArtistPlatformIdentity = {
+    platform: MusicPlatform;
+    platformId: string;
+};
+
 function toAddArtistCandidate(artist: Pick<Artist, "id" | "name" | "spotify" | "deezer">): AddArtistCandidate {
     return {
         id: artist.id,
@@ -427,6 +437,104 @@ async function resolvePlatformIdOwner(
     return { status: "owner", owner: mappedCandidate };
 }
 
+function sortArtistPlatformIdentities(
+    identities: ArtistPlatformIdentity[],
+): ArtistPlatformIdentity[] {
+    return [...identities].sort((left, right) => {
+        const platformOrder = left.platform.localeCompare(right.platform);
+        return platformOrder !== 0
+            ? platformOrder
+            : left.platformId.localeCompare(right.platformId);
+    });
+}
+
+function dedupeAddArtistCandidates(
+    candidates: AddArtistCandidate[],
+): AddArtistCandidate[] {
+    return [...new Map(candidates.map((candidate) => [candidate.id, candidate])).values()];
+}
+
+function getIdentityOwnershipResponse(params: {
+    submittedIdentity: ArtistPlatformIdentity;
+    submittedOwnership: PlatformIdOwnerResolution;
+    reciprocalIdentity: ArtistPlatformIdentity | null;
+    reciprocalOwnership: PlatformIdOwnerResolution;
+    forceCreate: boolean;
+}): AddArtistResp | null {
+    const {
+        submittedIdentity,
+        submittedOwnership,
+        reciprocalIdentity,
+        reciprocalOwnership,
+        forceCreate,
+    } = params;
+    const ownershipConflicts = [submittedOwnership, reciprocalOwnership]
+        .filter((ownership): ownership is Extract<PlatformIdOwnerResolution, { status: "conflict" }> => (
+            ownership.status === "conflict"
+        ));
+
+    if (ownershipConflicts.length > 0) {
+        return {
+            status: "conflict",
+            candidates: dedupeAddArtistCandidates(
+                ownershipConflicts.flatMap((ownership) => ownership.candidates),
+            ),
+            platform: submittedIdentity.platform,
+            platformId: submittedIdentity.platformId,
+            message: "Those platform profiles are assigned to conflicting artist records",
+        };
+    }
+
+    const submittedOwner = submittedOwnership.status === "owner"
+        ? submittedOwnership.owner
+        : null;
+    const reciprocalOwner = reciprocalOwnership.status === "owner"
+        ? reciprocalOwnership.owner
+        : null;
+
+    if (submittedOwner && reciprocalOwner && submittedOwner.id !== reciprocalOwner.id) {
+        return {
+            status: "conflict",
+            candidates: dedupeAddArtistCandidates([submittedOwner, reciprocalOwner]),
+            platform: submittedIdentity.platform,
+            platformId: submittedIdentity.platformId,
+            message: "The matching Spotify and Deezer profiles belong to different artist records",
+        };
+    }
+
+    if (submittedOwner) {
+        return {
+            status: "exists",
+            artistId: submittedOwner.id,
+            artistName: submittedOwner.name ?? "",
+            message: "That artist is already in our database",
+        };
+    }
+
+    if (reciprocalOwner && reciprocalIdentity) {
+        if (forceCreate) {
+            return {
+                status: "conflict",
+                candidates: [reciprocalOwner],
+                platform: submittedIdentity.platform,
+                platformId: submittedIdentity.platformId,
+                message: `The matching ${reciprocalIdentity.platform} profile already belongs to another artist`,
+            };
+        }
+
+        return {
+            status: "possible_duplicate",
+            candidates: [reciprocalOwner],
+            platform: submittedIdentity.platform,
+            platformId: submittedIdentity.platformId,
+            canCreateSeparate: false,
+            message: `Wikidata links this profile to an existing artist's ${reciprocalIdentity.platform} profile. Add the submitted link to that artist.`,
+        };
+    }
+
+    return null;
+}
+
 export async function addArtist(
     platformId: string,
     platform: MusicPlatform = 'spotify',
@@ -463,35 +571,60 @@ export async function addArtist(
             return { status: "error", message: `Could not find artist on ${platform}` };
         }
 
+        const reciprocalIdentity = await findReciprocalArtistIdentity({
+            platform,
+            platformId,
+            name: platformArtist.name,
+        });
+        const submittedIdentity = { platform, platformId } satisfies ArtistPlatformIdentity;
+        const identities = sortArtistPlatformIdentities([
+            submittedIdentity,
+            ...(reciprocalIdentity ? [reciprocalIdentity] : []),
+        ]);
         const normalisedName = normaliseText(platformArtist.name);
         let notificationCreatedAt: string | null | undefined;
         const result = await db.transaction(async (transaction): Promise<AddArtistResp> => {
             const database = transaction as ArtistCreationExecutor;
-            await acquirePlatformIdentityLock(database, platform, platformId);
+            for (const identity of identities) {
+                await acquirePlatformIdentityLock(
+                    database,
+                    identity.platform,
+                    identity.platformId,
+                );
+            }
             if (!options?.forceCreate) {
                 await acquireArtistNameLock(database, normalisedName);
             }
 
+            const readIdentityOwnership = async () => {
+                const [submittedOwnership, reciprocalOwnership] = await Promise.all([
+                    resolvePlatformIdOwner(
+                        database,
+                        submittedIdentity.platform,
+                        submittedIdentity.platformId,
+                    ),
+                    reciprocalIdentity
+                        ? resolvePlatformIdOwner(
+                            database,
+                            reciprocalIdentity.platform,
+                            reciprocalIdentity.platformId,
+                        )
+                        : Promise.resolve<PlatformIdOwnerResolution>({ status: "none" }),
+                ]);
+
+                return { submittedOwnership, reciprocalOwnership };
+            };
+
             console.debug("[Server] Checking platform ID ownership...");
-            const ownership = await resolvePlatformIdOwner(database, platform, platformId);
-            if (ownership.status === "conflict") {
-                console.error("[Server] Conflicting platform ID owners:", ownership.candidates);
-                return {
-                    status: "conflict",
-                    candidates: ownership.candidates,
-                    platform,
-                    platformId,
-                    message: "That platform profile is assigned to conflicting artist records",
-                };
-            }
-            if (ownership.status === "owner") {
-                console.debug("[Server] Artist already exists:", ownership.owner);
-                return {
-                    status: "exists",
-                    artistId: ownership.owner.id,
-                    artistName: ownership.owner.name ?? "",
-                    message: "That artist is already in our database",
-                };
+            const initialOwnership = await readIdentityOwnership();
+            const ownershipResponse = getIdentityOwnershipResponse({
+                submittedIdentity,
+                ...initialOwnership,
+                reciprocalIdentity,
+                forceCreate: options?.forceCreate === true,
+            });
+            if (ownershipResponse) {
+                return ownershipResponse;
             }
 
             if (!options?.forceCreate) {
@@ -513,8 +646,14 @@ export async function addArtist(
             }
 
             console.debug("[Server] Inserting new artist into database...");
+            const platformIds: Partial<Record<MusicPlatform, string>> = {
+                [submittedIdentity.platform]: submittedIdentity.platformId,
+            };
+            if (reciprocalIdentity) {
+                platformIds[reciprocalIdentity.platform] = reciprocalIdentity.platformId;
+            }
             const artistData = {
-                [platform]: platformId,
+                ...platformIds,
                 lcname: normalisedName,
                 name: platformArtist.name,
                 addedBy: session.user?.id || undefined,
@@ -527,28 +666,42 @@ export async function addArtist(
                 .returning();
 
             if (!newArtist) {
-                const raceWinner = await resolvePlatformIdOwner(database, platform, platformId);
-                if (raceWinner.status === "conflict") {
-                    return {
-                        status: "conflict",
-                        candidates: raceWinner.candidates,
-                        platform,
-                        platformId,
-                        message: "That platform profile is assigned to conflicting artist records",
-                    };
-                }
-                if (raceWinner.status === "owner") {
-                    return {
-                        status: "exists",
-                        artistId: raceWinner.owner.id,
-                        artistName: raceWinner.owner.name ?? "",
-                        message: "That artist is already in our database",
-                    };
+                const raceOwnership = await readIdentityOwnership();
+                const raceResponse = getIdentityOwnershipResponse({
+                    submittedIdentity,
+                    ...raceOwnership,
+                    reciprocalIdentity,
+                    forceCreate: options?.forceCreate === true,
+                });
+                if (raceResponse) {
+                    return raceResponse;
                 }
                 return {
                     status: "error",
                     message: "The artist could not be created because another record changed at the same time. Please try again.",
                 };
+            }
+
+            const mappedDeezerId = platformIds.deezer;
+            if (reciprocalIdentity && mappedDeezerId) {
+                const reasoning = `Wikidata ${reciprocalIdentity.wikidataId} links Spotify and Deezer for ${platformArtist.name}`;
+                await database.execute(sql`
+                    INSERT INTO artist_id_mappings (
+                        artist_id,
+                        platform,
+                        platform_id,
+                        confidence,
+                        source,
+                        reasoning
+                    ) VALUES (
+                        ${newArtist.id},
+                        'deezer',
+                        ${mappedDeezerId},
+                        'high'::confidence_level,
+                        ${reciprocalIdentity.source},
+                        ${reasoning}
+                    )
+                `);
             }
             console.debug("[Server] New artist created:", newArtist);
             notificationCreatedAt = newArtist.createdAt;

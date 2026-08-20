@@ -14,6 +14,7 @@ type PossibleDuplicateResponse = {
     platform: MusicPlatform;
     platformId: string;
     message?: string;
+    canCreateSeparate?: boolean;
 };
 
 export default function AddArtistContent({ initialArtist }: { initialArtist: MusicPlatformArtist }) {
@@ -78,7 +79,11 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
     }
 
     async function handleCreateSeparate() {
-        if (!duplicateChoice || isCreatingSeparate) return;
+        if (
+            !duplicateChoice
+            || duplicateChoice.canCreateSeparate === false
+            || isCreatingSeparate
+        ) return;
 
         setIsCreatingSeparate(true);
         setError(null);
@@ -171,6 +176,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
                         platformId={duplicateChoice.platformId}
                         message={duplicateChoice.message}
                         isCreatingSeparate={isCreatingSeparate}
+                        canCreateSeparate={duplicateChoice.canCreateSeparate}
                         onCreateSeparate={handleCreateSeparate}
                     />
                 )}

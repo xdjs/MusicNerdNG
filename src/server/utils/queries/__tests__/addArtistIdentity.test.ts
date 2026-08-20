@@ -3,11 +3,23 @@ import { jest } from "@jest/globals";
 
 const mockSpotifyGetArtist = jest.fn();
 const mockDeezerGetArtist = jest.fn();
+const mockFindReciprocalArtistIdentity = jest.fn();
+const mockAcquirePlatformIdentityLock = jest.fn();
+const mockAcquireArtistNameLock = jest.fn();
 
 jest.mock("@/server/auth", () => ({ getServerAuthSession: jest.fn() }));
 jest.mock("@/server/utils/musicPlatform", () => ({
-    spotifyProvider: { getArtist: mockSpotifyGetArtist },
-    deezerProvider: { getArtist: mockDeezerGetArtist },
+    spotifyProvider: {
+        getArtist: mockSpotifyGetArtist,
+    },
+    deezerProvider: {
+        getArtist: mockDeezerGetArtist,
+    },
+    findReciprocalArtistIdentity: mockFindReciprocalArtistIdentity,
+}));
+jest.mock("@/server/utils/artistIdentityLocks", () => ({
+    acquirePlatformIdentityLock: mockAcquirePlatformIdentityLock,
+    acquireArtistNameLock: mockAcquireArtistNameLock,
 }));
 jest.mock("@/server/utils/queries/userQueries", () => ({
     getUserById: jest.fn(),
@@ -33,6 +45,15 @@ function artist(overrides: Record<string, unknown> = {}) {
         spotify: null,
         deezer: null,
         ...overrides,
+    };
+}
+
+function reciprocalIdentity(platform: "spotify" | "deezer", platformId: string) {
+    return {
+        platform,
+        platformId,
+        source: "wikidata",
+        wikidataId: "Q123",
     };
 }
 
@@ -75,6 +96,9 @@ describe("addArtist identity resolution", () => {
         mockSendDiscordMessage.mockResolvedValue(undefined);
         mockSpotifyGetArtist.mockResolvedValue({ name: "Jonathan Pape" });
         mockDeezerGetArtist.mockResolvedValue({ name: "Jonathan Pape" });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(null);
+        mockAcquirePlatformIdentityLock.mockResolvedValue(undefined);
+        mockAcquireArtistNameLock.mockResolvedValue(undefined);
         mockDb.query.artists.findFirst.mockResolvedValue(null);
         mockDb.query.artists.findMany.mockResolvedValue([]);
         mockDb.query.artistIdMappings.findFirst.mockResolvedValue(null);
@@ -208,6 +232,195 @@ describe("addArtist identity resolution", () => {
         expect(insert.onConflictDoNothing).toHaveBeenCalledWith();
     });
 
+    it.each([
+        {
+            submittedPlatform: "spotify",
+            submittedId: "spotify-123",
+            reciprocalPlatform: "deezer",
+            reciprocalId: "815939",
+        },
+        {
+            submittedPlatform: "deezer",
+            submittedId: "815939",
+            reciprocalPlatform: "spotify",
+            reciprocalId: "spotify-123",
+        },
+    ])(
+        "adds the $reciprocalPlatform ID when creating an artist from $submittedPlatform",
+        async ({ submittedPlatform, submittedId, reciprocalPlatform, reciprocalId }) => {
+            const { addArtist, mockDb } = await setup();
+            mockFindReciprocalArtistIdentity.mockResolvedValue(
+                reciprocalIdentity(reciprocalPlatform, reciprocalId),
+            );
+            const inserted = artist({
+                id: "new-artist",
+                spotify: "spotify-123",
+                deezer: "815939",
+            });
+            const insert = mockInsertReturning(mockDb, [inserted]);
+
+            const result = await addArtist(
+                submittedId,
+                submittedPlatform,
+                { forceCreate: true },
+            );
+
+            expect(result).toEqual(expect.objectContaining({
+                status: "success",
+                artistId: "new-artist",
+            }));
+            expect(mockFindReciprocalArtistIdentity).toHaveBeenCalledWith({
+                platform: submittedPlatform,
+                platformId: submittedId,
+                name: "Jonathan Pape",
+            });
+            expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({
+                spotify: "spotify-123",
+                deezer: "815939",
+            }));
+            expect(mockDb.execute).toHaveBeenCalledTimes(1);
+            expect(mockAcquirePlatformIdentityLock.mock.calls.map(([, lockedPlatform, lockedId]) => (
+                [lockedPlatform, lockedId]
+            ))).toEqual([
+                ["deezer", "815939"],
+                ["spotify", "spotify-123"],
+            ]);
+        },
+    );
+
+    it("creates with only the submitted ID when no reciprocal identity is resolved", async () => {
+        const { addArtist, mockDb } = await setup();
+        const insert = mockInsertReturning(mockDb, [
+            artist({ id: "new-artist", spotify: "spotify-123" }),
+        ]);
+
+        const result = await addArtist("spotify-123", "spotify", { forceCreate: true });
+
+        expect(result.status).toBe("success");
+        expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({
+            spotify: "spotify-123",
+        }));
+        expect(insert.values).not.toHaveBeenCalledWith(expect.objectContaining({
+            deezer: expect.anything(),
+        }));
+        expect(mockAcquirePlatformIdentityLock).toHaveBeenCalledTimes(1);
+    });
+
+    it("offers the owner of a discovered reciprocal ID instead of creating a duplicate", async () => {
+        const { addArtist, mockDb } = await setup();
+        const reciprocalOwner = artist({
+            id: "deezer-owner",
+            spotify: null,
+            deezer: "815939",
+        });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            reciprocalIdentity("deezer", "815939"),
+        );
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(reciprocalOwner);
+
+        const result = await addArtist("spotify-123", "spotify");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "possible_duplicate",
+            candidates: [reciprocalOwner],
+            platform: "spotify",
+            platformId: "spotify-123",
+            canCreateSeparate: false,
+        }));
+        expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("recognizes a reciprocal ID owner recorded only in the mapping table", async () => {
+        const { addArtist, mockDb } = await setup();
+        const reciprocalOwner = artist({
+            id: "mapped-owner",
+            spotify: null,
+            deezer: null,
+        });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            reciprocalIdentity("deezer", "815939"),
+        );
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(reciprocalOwner);
+        mockDb.query.artistIdMappings.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ artistId: "mapped-owner" });
+
+        const result = await addArtist("spotify-123", "spotify");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "possible_duplicate",
+            candidates: [reciprocalOwner],
+        }));
+        expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("returns a conflict when submitted and reciprocal IDs have different owners", async () => {
+        const { addArtist, mockDb } = await setup();
+        const spotifyOwner = artist({ id: "spotify-owner", spotify: "spotify-123" });
+        const deezerOwner = artist({ id: "deezer-owner", deezer: "815939" });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            reciprocalIdentity("deezer", "815939"),
+        );
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(spotifyOwner)
+            .mockResolvedValueOnce(deezerOwner);
+
+        const result = await addArtist("spotify-123", "spotify");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "conflict",
+            candidates: [spotifyOwner, deezerOwner],
+        }));
+        expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("returns the existing artist when both platform IDs have the same owner", async () => {
+        const { addArtist, mockDb } = await setup();
+        const existing = artist({
+            id: "existing-owner",
+            spotify: "spotify-123",
+            deezer: "815939",
+        });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            reciprocalIdentity("deezer", "815939"),
+        );
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(existing)
+            .mockResolvedValueOnce(existing);
+
+        const result = await addArtist("spotify-123", "spotify");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "exists",
+            artistId: "existing-owner",
+        }));
+        expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("does not let forceCreate bypass reciprocal platform ownership", async () => {
+        const { addArtist, mockDb } = await setup();
+        const reciprocalOwner = artist({ id: "deezer-owner", deezer: "815939" });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            reciprocalIdentity("deezer", "815939"),
+        );
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(reciprocalOwner);
+
+        const result = await addArtist("spotify-123", "spotify", { forceCreate: true });
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "conflict",
+            candidates: [reciprocalOwner],
+        }));
+        expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
     it("returns the race winner when a conflict-safe insert creates no row", async () => {
         const { addArtist, mockDb } = await setup();
         const raceWinner = artist({ id: "race-winner", spotify: "spotify-123" });
@@ -225,6 +438,35 @@ describe("addArtist identity resolution", () => {
             status: "exists",
             artistId: "race-winner",
             artistName: "Jonathan Pape",
+        }));
+    });
+
+    it("re-resolves the reciprocal ID when a dual-ID insert loses a race", async () => {
+        const { addArtist, mockDb } = await setup();
+        const reciprocalRaceWinner = artist({
+            id: "reciprocal-race-winner",
+            deezer: "815939",
+        });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            reciprocalIdentity("deezer", "815939"),
+        );
+        mockInsertReturning(mockDb, []);
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(reciprocalRaceWinner);
+        mockDb.query.artistIdMappings.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null);
+
+        const result = await addArtist("spotify-123", "spotify");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "possible_duplicate",
+            candidates: [reciprocalRaceWinner],
         }));
     });
 

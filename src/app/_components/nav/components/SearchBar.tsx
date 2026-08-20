@@ -47,6 +47,7 @@ type PossibleDuplicateResponse = {
     platform: MusicPlatform;
     platformId: string;
     message?: string;
+    canCreateSeparate?: boolean;
 };
 
 function SearchBarInner({ isTopSide = false }: SearchBarProps) {
@@ -115,7 +116,11 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
     }, [router, toast]);
 
     const handleCreateSeparate = useCallback(async () => {
-        if (!duplicateChoice || addRequestInFlightRef.current) return;
+        if (
+            !duplicateChoice
+            || duplicateChoice.canCreateSeparate === false
+            || addRequestInFlightRef.current
+        ) return;
 
         const response = duplicateChoice;
         const requestGeneration = ++addRequestGenerationRef.current;
@@ -323,6 +328,7 @@ function SearchBarInner({ isTopSide = false }: SearchBarProps) {
                         platformId={duplicateChoice.platformId}
                         message={duplicateChoice.message}
                         isCreatingSeparate={isCreatingSeparate}
+                        canCreateSeparate={duplicateChoice.canCreateSeparate}
                         onCreateSeparate={handleCreateSeparate}
                         onChooseExisting={() => {
                             invalidateAddRequest();
