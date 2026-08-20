@@ -25,8 +25,20 @@ describe("artistLinkService", () => {
       findMany: jest.fn(),
     };
     const { regenerateArtistBio } = await import("@/server/utils/queries/artistBioQuery");
-    const { setArtistLink, clearArtistLink, sanitizeColumnName } = await import("../artistLinkService");
-    return { db, setArtistLink, clearArtistLink, sanitizeColumnName, regenerateArtistBio };
+    const {
+      ArtistLinkConflictError,
+      setArtistLink,
+      clearArtistLink,
+      sanitizeColumnName,
+    } = await import("../artistLinkService");
+    return {
+      db,
+      ArtistLinkConflictError,
+      setArtistLink,
+      clearArtistLink,
+      sanitizeColumnName,
+      regenerateArtistBio,
+    };
   }
 
   // 1. sanitizeColumnName strips non-alphanumeric/underscore
@@ -176,31 +188,78 @@ describe("artistLinkService", () => {
       "musicnerd:artist-platform-slot:artist-123:spotify",
       "musicnerd:artist-platform:spotify:spotify-123",
     ]);
+    expect(db.execute.mock.invocationCallOrder[1]).toBeLessThan(
+      (db as any).query.artists.findFirst.mock.invocationCallOrder[0],
+    );
   });
 
+  it.each(["spotify", "deezer"])(
+    "rejects a %s ID directly owned by another artist",
+    async (platform) => {
+      const { db, ArtistLinkConflictError, setArtistLink } = await setup();
+      (db as any).query.artists.findFirst
+        .mockResolvedValueOnce({ id: "artist-123", name: "Test Artist" })
+        .mockResolvedValueOnce({ id: "other-artist" });
+
+      const result = setArtistLink(
+        "artist-123",
+        platform,
+        `${platform}-123`,
+      );
+      await expect(result).rejects.toBeInstanceOf(ArtistLinkConflictError);
+      await expect(result).rejects.toThrow(
+        `That ${platform} artist ID is already linked to a different artist`,
+      );
+      expect(db.execute).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it("rejects a first-class ID mapped to another artist", async () => {
-    const { db, setArtistLink } = await setup();
+    const { db, ArtistLinkConflictError, setArtistLink } = await setup();
     (db as any).query.artistIdMappings.findFirst
       .mockResolvedValueOnce({ artistId: "other-artist" })
       .mockResolvedValueOnce(null);
 
-    await expect(
-      setArtistLink("artist-123", "spotify", "spotify-123"),
-    ).rejects.toThrow("conflicts with an existing artist mapping");
+    const result = setArtistLink("artist-123", "spotify", "spotify-123");
+    await expect(result).rejects.toBeInstanceOf(ArtistLinkConflictError);
+    await expect(result).rejects.toThrow(
+      "That spotify artist ID conflicts with an existing artist mapping",
+    );
     expect(db.execute).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a direct ID that diverges from the artist's existing mapping", async () => {
-    const { db, setArtistLink } = await setup();
+    const { db, ArtistLinkConflictError, setArtistLink } = await setup();
     (db as any).query.artistIdMappings.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ platformId: "mapped-spotify-id" });
 
-    await expect(
-      setArtistLink("artist-123", "spotify", "different-spotify-id"),
-    ).rejects.toThrow("conflicts with an existing artist mapping");
+    const result = setArtistLink(
+      "artist-123",
+      "spotify",
+      "different-spotify-id",
+    );
+    await expect(result).rejects.toBeInstanceOf(ArtistLinkConflictError);
+    await expect(result).rejects.toThrow(
+      "That spotify artist ID conflicts with an existing artist mapping",
+    );
     expect(db.execute).toHaveBeenCalledTimes(2);
   });
+
+  it.each(["spotify", "deezer"])(
+    "allows a %s ID directly owned by the same artist",
+    async (platform) => {
+      const { db, setArtistLink } = await setup();
+      (db as any).query.artists.findFirst
+        .mockResolvedValueOnce({ id: "artist-123", name: "Test Artist" })
+        .mockResolvedValueOnce({ id: "artist-123" });
+
+      await expect(
+        setArtistLink("artist-123", platform, `${platform}-123`),
+      ).resolves.toEqual({ oldValue: null, artistName: "Test Artist" });
+      expect(db.execute).toHaveBeenCalledTimes(3);
+    },
+  );
 
   // 19. setArtistLink reads the aliased facebookID property
   it("setArtistLink returns the old value for facebookID", async () => {

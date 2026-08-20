@@ -13,7 +13,11 @@ import { getUserById, getUserDisplayName } from "@/server/utils/queries/userQuer
 import { sendDiscordMessage } from "@/server/utils/queries/discord";
 import { maybePingDiscordForPendingUGC } from "@/server/utils/ugcDiscordNotifier";
 import { notifyDiscordOfArtistLinkAdded } from "@/server/utils/artistLinkDiscordNotifier";
-import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
+import {
+    ArtistLinkConflictError,
+    setArtistLink,
+    clearArtistLink,
+} from "@/server/utils/artistLinkService";
 import { regenerateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { isAboutEmptyState } from "@/lib/bioConstants";
 import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
@@ -601,11 +605,30 @@ export async function approveUgcAdmin(ugcIds: string[]) {
 
     try {
         const ugcData = await db.query.ugcresearch.findMany({ where: inArray(ugcresearch.id, ugcIds) });
-        await Promise.all(
+        const approvalResults = await Promise.allSettled(
             ugcData.map(async (ugc) => {
                 await approveUGC(ugc.id, ugc.artistId ?? "", ugc.siteName ?? "", ugc.siteUsername ?? "");
             })
         );
+
+        const failures = approvalResults.flatMap((result, index) => {
+            if (result.status === "fulfilled") return [];
+
+            const reason = result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason);
+            return [{ ugcId: ugcData[index]?.id ?? "unknown", reason }];
+        });
+
+        if (failures.length > 0) {
+            const approvedCount = approvalResults.length - failures.length;
+            return {
+                status: "error",
+                message: `Approved ${approvedCount} of ${approvalResults.length} UGC items. Failed: ${failures
+                    .map(({ ugcId, reason }) => `${ugcId} (${reason})`)
+                    .join("; ")}`,
+            };
+        }
     } catch (e) {
         console.error("error approving ugc:", e);
         return { status: "error", message: "Error approving UGC" };
@@ -670,6 +693,9 @@ export async function approveUGC(
         await db.update(ugcresearch).set({ accepted: true, dateProcessed: new Date().toISOString() }).where(eq(ugcresearch.id, ugcId));
     } catch (e) {
         console.error(`Error approving ugc`, e);
+        if (e instanceof ArtistLinkConflictError) {
+            throw e;
+        }
         throw new Error(e instanceof Error ? `Error approving UGC: ${e.message}` : "Error approving UGC");
     }
 }
@@ -753,6 +779,9 @@ export async function addArtistData(artistUrl: string, artist: Artist): Promise<
         };
     } catch (e) {
         console.error("error adding artist data", e);
+        if (e instanceof ArtistLinkConflictError) {
+            return { status: "error", message: e.message };
+        }
         return { status: "error", message: "Error adding artist data, please try again" };
     }
 }

@@ -5,7 +5,11 @@ import { searchForArtistByName, getArtistById } from "@/server/utils/queries/art
 import { toArtistSummary } from "./transformers/artist-summary";
 import { toArtistDetail } from "./transformers/artist-detail";
 import { extractArtistId } from "@/server/utils/services";
-import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
+import {
+  ArtistLinkConflictError,
+  setArtistLink,
+  clearArtistLink,
+} from "@/server/utils/artistLinkService";
 import { getUnmappedArtists, resolveArtistMapping, resolveArtistMappingBatch, getMappingStats, getArtistMappings, excludeArtistMapping, excludeArtistMappingBatch, getMappingExclusions, VALID_MAPPING_PLATFORMS, EXCLUSION_REASON_VALUES, MappingNotFoundError, MappingConflictError, MappingConcurrentWriteError, MappingValidationError } from "@/server/utils/idMappingService";
 
 import { requireMcpAuth, McpAuthError } from "./auth";
@@ -232,6 +236,12 @@ server.registerTool(
       if (error instanceof Error && error.message.startsWith("Artist not found")) {
         return {
           content: [{ type: "text" as const, text: JSON.stringify({ error: "Artist not found", code: "NOT_FOUND" }) }],
+          isError: true,
+        };
+      }
+      if (error instanceof ArtistLinkConflictError) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: "CONFLICT" }) }],
           isError: true,
         };
       }

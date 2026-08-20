@@ -7,6 +7,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { artists, artistIdMappings } from "@/server/db/schema";
 import { acquireArtistPlatformWriteLocks } from "./artistIdentityLocks";
 
+export class ArtistLinkConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArtistLinkConflictError";
+  }
+}
+
 // Whitelist of platform columns that can be written via link helpers.
 // Derived from the artists table schema — only platform/social columns.
 // System columns (id, name, bio, etc.) are excluded by omission.
@@ -66,7 +73,12 @@ async function setArtistLinkWithExecutor(
 
   const oldValue = getArtistLinkValue(artist, columnName);
   if (columnName === "spotify" || columnName === "deezer") {
-    const [mappingOwner, artistMapping] = await Promise.all([
+    const directColumn = columnName === "spotify" ? artists.spotify : artists.deezer;
+    const [directOwner, mappingOwner, artistMapping] = await Promise.all([
+      database.query.artists.findFirst({
+        where: eq(directColumn, value),
+        columns: { id: true },
+      }),
       database.query.artistIdMappings.findFirst({
         where: and(
           eq(artistIdMappings.platform, columnName),
@@ -82,11 +94,16 @@ async function setArtistLinkWithExecutor(
         columns: { platformId: true },
       }),
     ]);
+    if (directOwner && directOwner.id !== artistId) {
+      throw new ArtistLinkConflictError(
+        `That ${columnName} artist ID is already linked to a different artist`,
+      );
+    }
     if (
       (mappingOwner && mappingOwner.artistId !== artistId) ||
       (artistMapping && artistMapping.platformId !== value)
     ) {
-      throw new Error(
+      throw new ArtistLinkConflictError(
         `That ${columnName} artist ID conflicts with an existing artist mapping`,
       );
     }

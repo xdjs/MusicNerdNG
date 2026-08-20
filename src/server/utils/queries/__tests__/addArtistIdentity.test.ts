@@ -15,6 +15,7 @@ jest.mock("@/server/utils/queries/userQueries", () => ({
 }));
 jest.mock("@/server/utils/queries/discord", () => ({ sendDiscordMessage: jest.fn() }));
 jest.mock("@/server/utils/artistLinkService", () => ({
+    ArtistLinkConflictError: class ArtistLinkConflictError extends Error {},
     setArtistLink: jest.fn(),
     clearArtistLink: jest.fn(),
 }));
