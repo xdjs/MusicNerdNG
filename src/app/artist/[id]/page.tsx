@@ -20,43 +20,18 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 
 type ArtistProfileProps = {
     params: Promise<{ id: string }>;
     searchParams?: Promise<{ addLink?: string | string[] }>;
 }
 
-const MAX_ADD_LINK_LENGTH = 2048;
-
 function getAddLinkPrefill(addLink: string | string[] | undefined): string | undefined {
     if (typeof addLink !== "string") return undefined;
 
-    const candidate = addLink.trim();
-    if (!candidate || candidate.length > MAX_ADD_LINK_LENGTH) return undefined;
-
-    try {
-        const url = new URL(candidate);
-        const hostname = url.hostname.toLowerCase();
-        const hasUnexpectedAuthority = !!url.username || !!url.password || !!url.port;
-        if (hasUnexpectedAuthority) return undefined;
-
-        if (url.protocol === "https:" && hostname === "open.spotify.com") {
-            return /^\/artist\/[a-zA-Z0-9]+\/?$/.test(url.pathname) ? candidate : undefined;
-        }
-
-        if (
-            (url.protocol === "https:" || url.protocol === "http:") &&
-            (hostname === "deezer.com" || hostname === "www.deezer.com")
-        ) {
-            return /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?artist\/\d+\/?$/i.test(url.pathname)
-                ? candidate
-                : undefined;
-        }
-    } catch {
-        return undefined;
-    }
-
-    return undefined;
+    const parsed = parseSupportedArtistUrl(addLink);
+    return parsed ? buildCanonicalArtistUrl(parsed.platform, parsed.id) ?? undefined : undefined;
 }
 
 export async function generateMetadata({ params }: ArtistProfileProps): Promise<Metadata> {

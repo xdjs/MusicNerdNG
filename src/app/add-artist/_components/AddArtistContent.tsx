@@ -16,8 +16,6 @@ type PossibleDuplicateResponse = {
     message?: string;
 };
 
-const LOGIN_REQUIRED_MESSAGE = "Please log in to add artists";
-
 export default function AddArtistContent({ initialArtist }: { initialArtist: MusicPlatformArtist }) {
     const router = useRouter();
     const [adding, setAdding] = useState(false);
@@ -35,9 +33,11 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
     }
 
     function handleResult(result: Awaited<ReturnType<typeof addArtist>>) {
-        if (result.status === "error" && result.message === LOGIN_REQUIRED_MESSAGE) {
+        if (result.status === "error" && result.code === "UNAUTHENTICATED") {
             setDuplicateChoice(null);
-            setError(promptLogin() ? null : result.message);
+            setError(promptLogin()
+                ? null
+                : result.message ?? "Please log in to add artists");
             return;
         }
 
@@ -71,11 +71,7 @@ export default function AddArtistContent({ initialArtist }: { initialArtist: Mus
             handleResult(result);
         } catch (err) {
             console.error("Error in handleAddArtist:", err);
-            if (err instanceof Error && err.message.includes('Not authenticated')) {
-                promptLogin();
-            } else {
-                setError("Failed to add artist - please try again");
-            }
+            setError("Failed to add artist - please try again");
         } finally {
             setAdding(false);
         }

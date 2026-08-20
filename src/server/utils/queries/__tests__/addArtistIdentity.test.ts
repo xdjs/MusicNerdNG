@@ -78,8 +78,27 @@ describe("addArtist identity resolution", () => {
         mockDb.query.artists.findMany.mockResolvedValue([]);
         mockDb.query.artistIdMappings.findFirst.mockResolvedValue(null);
 
-        return { addArtist, mockDb, mockGetUserById, mockSendDiscordMessage };
+        return {
+            addArtist,
+            mockDb,
+            mockGetServerAuthSession,
+            mockGetUserById,
+            mockSendDiscordMessage,
+        };
     }
+
+    it("returns a typed unauthenticated response before provider or database work", async () => {
+        const { addArtist, mockDb, mockGetServerAuthSession } = await setup();
+        mockGetServerAuthSession.mockResolvedValue(null);
+
+        await expect(addArtist("spotify-123", "spotify")).resolves.toEqual({
+            status: "error",
+            code: "UNAUTHENTICATED",
+            message: "Please log in to add artists",
+        });
+        expect(mockSpotifyGetArtist).not.toHaveBeenCalled();
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
 
     it("offers a Deezer-only exact-name record before creating a Spotify duplicate", async () => {
         const { addArtist, mockDb } = await setup();

@@ -27,6 +27,7 @@ describe('addArtist Server Action', () => {
 
     await expect(addArtist('test-id')).resolves.toEqual({
       status: 'error',
+      code: 'UNAUTHENTICATED',
       message: 'Please log in to add artists',
     });
     expect(mockDbAddArtist).not.toHaveBeenCalled();

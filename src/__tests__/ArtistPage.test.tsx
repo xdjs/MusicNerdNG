@@ -156,32 +156,35 @@ describe('ArtistProfile page', () => {
             expect(screen.queryByTestId('edit-mode-toggle')).not.toBeInTheDocument();
         });
 
-        it('opens only the Social Links dialog with a validated Spotify URL prefilled', async () => {
+        it('opens only the Social Links dialog with a canonical Spotify URL prefilled', async () => {
             const spotifyUrl = 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW?si=test';
+            const canonicalSpotifyUrl = 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW';
 
             await renderArtistPage('artist-uuid', { addLink: spotifyUrl });
 
             const dialogs = screen.getAllByTestId('add-artist-data');
             expect(dialogs[0]).toHaveAttribute('data-open-on-load', 'true');
-            expect(dialogs[0]).toHaveAttribute('data-prefill-url', spotifyUrl);
+            expect(dialogs[0]).toHaveAttribute('data-prefill-url', canonicalSpotifyUrl);
             expect(dialogs[1]).toHaveAttribute('data-open-on-load', 'false');
             expect(dialogs[1]).toHaveAttribute('data-prefill-url', '');
         });
 
         it('accepts a regional Deezer artist URL for the Social Links handoff', async () => {
-            const deezerUrl = 'https://www.deezer.com/us/artist/12345';
+            const deezerUrl = 'http://deezer.com/us/artist/12345?utm_source=test#tracks';
 
             await renderArtistPage('artist-uuid', { addLink: deezerUrl });
 
             const dialogs = screen.getAllByTestId('add-artist-data');
             expect(dialogs[0]).toHaveAttribute('data-open-on-load', 'true');
-            expect(dialogs[0]).toHaveAttribute('data-prefill-url', deezerUrl);
+            expect(dialogs[0]).toHaveAttribute('data-prefill-url', 'https://www.deezer.com/artist/12345');
             expect(dialogs[1]).toHaveAttribute('data-open-on-load', 'false');
         });
 
         it.each([
             ['an unsupported URL', 'https://example.com/artist/123'],
+            ['a deceptive Spotify subdomain', 'https://open.spotify.com.evil.example/artist/abc'],
             ['a non-artist Spotify URL', 'https://open.spotify.com/track/123'],
+            ['a Deezer URL with an extra path segment', 'https://www.deezer.com/artist/123/tracks'],
             ['multiple addLink values', ['https://open.spotify.com/artist/abc', 'https://www.deezer.com/artist/123']],
         ])('ignores %s instead of opening either dialog', async (_label, addLink) => {
             await renderArtistPage('artist-uuid', { addLink });

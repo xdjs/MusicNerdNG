@@ -25,13 +25,13 @@ import AddArtistContent from '@/app/add-artist/_components/AddArtistContent';
 
 const initialArtist = {
     platform: 'spotify',
-    platformId: 'spotify-id',
+    platformId: '2TNJWBi73MnkSRkZRPBqSW',
     name: 'Same Name',
     imageUrl: 'https://example.com/artist.jpg',
     followerCount: 123,
     albumCount: 2,
     genres: ['indie'],
-    profileUrl: 'https://open.spotify.com/artist/spotify-id',
+    profileUrl: 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW',
     topTrackName: 'A Song',
 };
 
@@ -39,7 +39,7 @@ const possibleDuplicate = {
     status: 'possible_duplicate',
     message: 'We found a possible match.',
     platform: 'spotify',
-    platformId: 'spotify-id',
+    platformId: '2TNJWBi73MnkSRkZRPBqSW',
     candidates: [{
         id: 'candidate-id',
         name: 'Same Name',
@@ -63,12 +63,34 @@ describe('AddArtistContent duplicate choice', () => {
     it('links the submitted profile to a selected existing artist', async () => {
         const link = await submitWithDuplicate();
 
-        expect(mockAddArtist).toHaveBeenCalledWith('spotify-id', 'spotify');
+        expect(mockAddArtist).toHaveBeenCalledWith(initialArtist.platformId, 'spotify');
         expect(link).toHaveAttribute(
             'href',
             `/artist/candidate-id?addLink=${encodeURIComponent(initialArtist.profileUrl)}`,
         );
         expect(screen.getByRole('button', { name: 'Create separate artist' })).toBeInTheDocument();
+    });
+
+    it('disambiguates duplicate accessible names by position without exposing UUIDs', async () => {
+        mockAddArtist.mockResolvedValueOnce({
+            ...possibleDuplicate,
+            candidates: [
+                possibleDuplicate.candidates[0],
+                { ...possibleDuplicate.candidates[0], id: 'another-candidate-id' },
+            ],
+        });
+        render(<AddArtistContent initialArtist={initialArtist} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Add Artist' }));
+
+        const first = await screen.findByRole('link', {
+            name: 'Add link to existing artist: Same Name (candidate 1 of 2)',
+        });
+        const second = screen.getByRole('link', {
+            name: 'Add link to existing artist: Same Name (candidate 2 of 2)',
+        });
+
+        expect(first).not.toHaveAccessibleName(/candidate-id/);
+        expect(second).not.toHaveAccessibleName(/another-candidate-id/);
     });
 
     it('force-creates only after the user confirms this is a separate artist', async () => {
@@ -84,7 +106,7 @@ describe('AddArtistContent duplicate choice', () => {
         await waitFor(() => {
             expect(mockAddArtist).toHaveBeenNthCalledWith(
                 2,
-                'spotify-id',
+                initialArtist.platformId,
                 'spotify',
                 { forceCreate: true },
             );
@@ -120,7 +142,8 @@ describe('AddArtistContent duplicate choice', () => {
         document.body.appendChild(loginButton);
         mockAddArtist.mockResolvedValue({
             status: 'error',
-            message: 'Please log in to add artists',
+            code: 'UNAUTHENTICATED',
+            message: 'Your session has expired. Please sign in again.',
         });
 
         try {

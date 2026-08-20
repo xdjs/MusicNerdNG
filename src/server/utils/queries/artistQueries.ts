@@ -54,9 +54,18 @@ type AddArtistRespCommon = {
     artistName?: string;
 };
 
+export type AddArtistErrorCode = "UNAUTHENTICATED";
+
 export type AddArtistResp =
     | (AddArtistRespCommon & {
-        status: "success" | "error" | "exists";
+        status: "success" | "exists";
+        candidates?: AddArtistCandidate[];
+        platform?: MusicPlatform;
+        platformId?: string;
+    })
+    | (AddArtistRespCommon & {
+        status: "error";
+        code?: AddArtistErrorCode;
         candidates?: AddArtistCandidate[];
         platform?: MusicPlatform;
         platformId?: string;
@@ -433,7 +442,11 @@ export async function addArtist(
 
         if (!session) {
             console.debug("[Server] No session found - authentication failed");
-            throw new Error("Not authenticated");
+            return {
+                status: "error",
+                code: "UNAUTHENTICATED",
+                message: "Please log in to add artists",
+            };
         }
 
         // Validate via platform provider
@@ -562,7 +575,11 @@ export async function addArtist(
         console.error("[Server] Error in addArtist:", e);
         if (e instanceof Error) {
             if (e.message.includes("auth")) {
-                return { status: "error", message: "Please log in to add artists" };
+                return {
+                    status: "error",
+                    code: "UNAUTHENTICATED",
+                    message: "Please log in to add artists",
+                };
             }
             if (e.message.includes("duplicate")) {
                 return { status: "error", message: "This artist is already in our database" };

@@ -52,6 +52,101 @@ describe('AddArtistData "+" trigger', () => {
     getByIdSpy.mockRestore();
   });
 
+  it('auth-gates a handed-off URL, then resumes and consumes it after login', async () => {
+    const spotifyUrl = 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW?si=test';
+    let authState = { data: null, status: 'loading' } as {
+      data: { user: { id: string } } | null;
+      status: 'authenticated' | 'loading' | 'unauthenticated';
+    };
+    (useSession as jest.Mock).mockImplementation(() => authState);
+
+    const loginButton = document.createElement('button');
+    loginButton.id = 'login-btn';
+    const loginClick = jest.fn();
+    loginButton.addEventListener('click', loginClick);
+    document.body.appendChild(loginButton);
+    window.history.replaceState(
+      {},
+      '',
+      `/artist/a1?view=links&addLink=${encodeURIComponent(spotifyUrl)}#social-links`,
+    );
+
+    try {
+      const { rerender } = render(
+        <AddArtistData {...baseProps} isOpenOnLoad prefillUrl={spotifyUrl} />,
+      );
+
+      expect(loginClick).not.toHaveBeenCalled();
+      expect(screen.queryByRole('heading', { name: /Suggest a link for Test Artist/i })).not.toBeInTheDocument();
+
+      authState = { data: null, status: 'unauthenticated' };
+      rerender(<AddArtistData {...baseProps} isOpenOnLoad prefillUrl={spotifyUrl} />);
+
+      expect(loginClick).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('heading', { name: /Suggest a link for Test Artist/i })).not.toBeInTheDocument();
+      expect(window.location.search).toContain('addLink=');
+      expect(addArtistDataAction).not.toHaveBeenCalled();
+
+      // The real Privy flow reloads after login. A session update on the same
+      // mount is enough to verify the pending handoff resumes as well.
+      authState = {
+        data: { user: { id: 'u1' } },
+        status: 'authenticated',
+      };
+      rerender(<AddArtistData {...baseProps} isOpenOnLoad prefillUrl={spotifyUrl} />);
+
+      expect(screen.getByRole('heading', { name: /Suggest a link for Test Artist/i })).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Paste a profile link/i)).toHaveValue(spotifyUrl);
+      expect(addArtistDataAction).not.toHaveBeenCalled();
+      await waitFor(() => expect(window.location.search).toBe('?view=links'));
+      expect(window.location.hash).toBe('#social-links');
+    } finally {
+      loginButton.remove();
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
+  it('handles a new handed-off URL when client navigation reuses the component', async () => {
+    (useSession as jest.Mock).mockReturnValue({
+      data: { user: { id: 'u1' } },
+      status: 'authenticated',
+    });
+    const firstUrl = 'https://open.spotify.com/artist/2TNJWBi73MnkSRkZRPBqSW';
+    const secondUrl = 'https://www.deezer.com/artist/815939';
+    window.history.replaceState(
+      {},
+      '',
+      `/artist/a1?addLink=${encodeURIComponent(firstUrl)}`,
+    );
+
+    try {
+      const { rerender } = render(
+        <AddArtistData {...baseProps} isOpenOnLoad prefillUrl={firstUrl} />,
+      );
+      expect(screen.getByPlaceholderText(/Paste a profile link/i)).toHaveValue(firstUrl);
+      await waitFor(() => expect(window.location.search).toBe(''));
+
+      window.history.replaceState(
+        {},
+        '',
+        `/artist/a2?addLink=${encodeURIComponent(secondUrl)}`,
+      );
+      rerender(
+        <AddArtistData
+          {...baseProps}
+          artist={{ ...baseProps.artist, id: 'a2', name: 'Second Artist' }}
+          isOpenOnLoad
+          prefillUrl={secondUrl}
+        />,
+      );
+
+      expect(screen.getByPlaceholderText(/Paste a profile link/i)).toHaveValue(secondUrl);
+      await waitFor(() => expect(window.location.search).toBe(''));
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
   it('warns in dev and does not open the modal when login button is absent', () => {
     (useSession as jest.Mock).mockReturnValue({ data: null, status: 'unauthenticated' });
     const getByIdSpy = jest.spyOn(document, 'getElementById').mockReturnValue(null);

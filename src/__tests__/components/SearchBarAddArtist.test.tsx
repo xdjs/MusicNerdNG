@@ -252,7 +252,7 @@ describe('SearchBar Add Artist Flow', () => {
             .mockResolvedValueOnce({
                 status: 'possible_duplicate',
                 platform: 'deezer',
-                platformId: 'dz123',
+                platformId: '123',
                 candidates: [{
                     id: 'existing-id',
                     name: 'New Artist',
@@ -273,7 +273,7 @@ describe('SearchBar Add Artist Flow', () => {
         await waitFor(() => {
             expect(mockAddArtist).toHaveBeenNthCalledWith(
                 2,
-                'dz123',
+                '123',
                 'deezer',
                 { forceCreate: true },
             );

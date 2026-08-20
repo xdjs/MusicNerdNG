@@ -9,7 +9,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input"
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Artist } from "@/server/db/DbTypes";
 import { AspectRatio } from "@radix-ui/react-aspect-ratio";
 import { Label } from "@radix-ui/react-label";
@@ -47,11 +47,26 @@ type AddArtistDataProps = {
 
 type PlatformRegexStatus = "loading" | "ready" | "error";
 
+function promptLogin() {
+    const loginBtn = document.getElementById("login-btn");
+    if (loginBtn) {
+        loginBtn.click();
+        return true;
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+        console.warn("[AddArtistData] #login-btn not found — cannot prompt login");
+    }
+    return false;
+}
+
 export default function AddArtistData({ artist, spotifyImg, availableLinks, isOpenOnLoad = false, prefillUrl, label, directEdit = false, autoApprove = false }: AddArtistDataProps) {
     const { data: session, status } = useSession();
-    const [isModalOpen, setIsModalOpen] = useState(isOpenOnLoad);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [addArtistResp, setAddArtistResp] = useState<AddArtistDataResp | null>(null);
+    const handledAddLinkRef = useRef<string | null>(null);
+    const loginPromptedForAddLinkRef = useRef<string | null>(null);
     const router = useRouter();
     const { toast } = useToast();
 
@@ -98,12 +113,33 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
 
     const { reset } = form;
 
-    // addLink is a one-shot handoff from search. Remove it without navigating so
-    // refreshing the artist page cannot reopen the dialog, while keeping any
-    // unrelated query parameters and the hash intact.
+    // addLink is a one-shot handoff from search. It uses the same authentication
+    // gate as a manual open. Keep the URL intact while login is pending because
+    // Privy reloads the page after creating the NextAuth session; the authenticated
+    // mount can then open the dialog and consume the handoff without submitting it.
     useEffect(() => {
-        if (!isOpenOnLoad || !prefillUrl) return;
+        if (!isOpenOnLoad || !prefillUrl) {
+            handledAddLinkRef.current = null;
+            loginPromptedForAddLinkRef.current = null;
+            return;
+        }
 
+        const addLinkKey = `${artist.id}:${prefillUrl}`;
+        if (handledAddLinkRef.current === addLinkKey) return;
+        if (status === "loading") return;
+
+        if (!session) {
+            setIsModalOpen(false);
+            if (
+                loginPromptedForAddLinkRef.current !== addLinkKey
+                && promptLogin()
+            ) {
+                loginPromptedForAddLinkRef.current = addLinkKey;
+            }
+            return;
+        }
+
+        handledAddLinkRef.current = addLinkKey;
         setIsModalOpen(true);
         reset({ artistDataUrl: prefillUrl });
 
@@ -116,7 +152,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
             "",
             `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`,
         );
-    }, [isOpenOnLoad, prefillUrl, reset]);
+    }, [artist.id, isOpenOnLoad, prefillUrl, reset, session, status]);
 
     // Filter out ENS and wallets from display, but keep them in availableLinks for add options
     const displayLinks = availableLinks.filter(link => link.siteName !== 'ens' && link.siteName !== 'wallets');
@@ -271,10 +307,7 @@ export default function AddArtistData({ artist, spotifyImg, availableLinks, isOp
         // Session still resolving — don't flash a spurious login prompt at an authed user
         if (status === "loading") return;
         if (!session) {
-            // prompt login via nav button — same approach as ClaimButton
-            const loginBtn = document.getElementById("login-btn");
-            if (loginBtn) loginBtn.click();
-            else if (process.env.NODE_ENV !== "production") console.warn("[AddArtistData] #login-btn not found — cannot prompt login");
+            promptLogin();
             return;
         }
         setIsModalOpen(true);

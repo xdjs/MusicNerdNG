@@ -17,7 +17,11 @@ export async function addArtist(
     const session = await getServerAuthSession() ?? await getDevSession();
 
     if (!session) {
-        return { status: "error", message: "Please log in to add artists" };
+        return {
+            status: "error",
+            code: "UNAUTHENTICATED",
+            message: "Please log in to add artists",
+        };
     }
 
     try {
@@ -27,7 +31,11 @@ export async function addArtist(
         console.error("[addArtist] Error:", e);
         if (e instanceof Error) {
             if (e.message.includes('auth')) {
-                return { status: "error", message: "Please log in to add artists" };
+                return {
+                    status: "error",
+                    code: "UNAUTHENTICATED",
+                    message: "Please log in to add artists",
+                };
             }
             if (e.message.includes('duplicate')) {
                 return { status: "error", message: "This artist is already in our database" };

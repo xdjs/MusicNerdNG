@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import type { MusicPlatform } from "@/server/utils/musicPlatform";
+import {
+    buildCanonicalArtistUrl,
+    type SupportedArtistPlatform,
+} from "@/lib/artistProfileUrl";
 
 export type DuplicateArtistCandidate = {
     id: string;
@@ -13,7 +16,7 @@ export type DuplicateArtistCandidate = {
 
 type DuplicateArtistChoiceProps = {
     candidates: DuplicateArtistCandidate[];
-    platform: MusicPlatform;
+    platform: SupportedArtistPlatform;
     platformId: string;
     message?: string;
     isCreatingSeparate: boolean;
@@ -25,13 +28,6 @@ function linkedPlatforms(candidate: DuplicateArtistCandidate) {
     return [candidate.spotify ? "Spotify" : null, candidate.deezer ? "Deezer" : null]
         .filter(Boolean)
         .join(" and ");
-}
-
-function canonicalArtistUrl(platform: MusicPlatform, platformId: string) {
-    const encodedId = encodeURIComponent(platformId);
-    return platform === "spotify"
-        ? `https://open.spotify.com/artist/${encodedId}`
-        : `https://www.deezer.com/artist/${encodedId}`;
 }
 
 export default function DuplicateArtistChoice({
@@ -59,7 +55,18 @@ export default function DuplicateArtistChoice({
         );
     }
 
-    const submittedUrl = canonicalArtistUrl(platform, platformId);
+    const submittedUrl = buildCanonicalArtistUrl(platform, platformId);
+
+    if (!submittedUrl) {
+        return (
+            <section
+                aria-label="Possible existing artists"
+                className="mt-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-950"
+            >
+                <p role="alert">We couldn&apos;t prepare this artist link. Please submit the URL again.</p>
+            </section>
+        );
+    }
 
     return (
         <section
@@ -73,7 +80,7 @@ export default function DuplicateArtistChoice({
             </p>
 
             <ul className="mt-3 space-y-3">
-                {candidates.map((candidate) => {
+                {candidates.map((candidate, index) => {
                     const platforms = linkedPlatforms(candidate);
                     const href = `/artist/${candidate.id}?addLink=${encodeURIComponent(submittedUrl)}`;
 
@@ -86,7 +93,7 @@ export default function DuplicateArtistChoice({
                             <Link
                                 href={href}
                                 onClick={onChooseExisting}
-                                aria-label={`Add link to existing artist: ${candidate.name || "Unnamed artist"} (${candidate.id})`}
+                                aria-label={`Add link to existing artist: ${candidate.name || "Unnamed artist"} (candidate ${index + 1} of ${candidates.length})`}
                                 className="inline-flex min-h-9 items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-gray-950 shadow-sm hover:bg-accent hover:text-accent-foreground"
                             >
                                 Add link to existing artist

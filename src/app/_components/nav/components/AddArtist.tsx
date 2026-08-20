@@ -29,40 +29,11 @@ import { cn } from "@/lib/utils";
 import { Plus } from 'lucide-react';
 import { useSession } from "next-auth/react";
 import DuplicateArtistChoice from "@/app/_components/DuplicateArtistChoice";
-
-const MAX_ARTIST_URL_LENGTH = 2048;
-
-function parseArtistUrl(value: string): { id: string; platform: 'deezer' | 'spotify' } | null {
-    const candidate = value.trim();
-    if (!candidate || candidate.length > MAX_ARTIST_URL_LENGTH) return null;
-
-    try {
-        const url = new URL(candidate);
-        const hostname = url.hostname.toLowerCase();
-        if (url.username || url.password || url.port) return null;
-
-        if (url.protocol === 'https:' && hostname === 'open.spotify.com') {
-            const match = url.pathname.match(/^\/artist\/([a-zA-Z0-9]+)\/?$/);
-            return match ? { id: match[1], platform: 'spotify' } : null;
-        }
-
-        if (
-            (url.protocol === 'https:' || url.protocol === 'http:')
-            && (hostname === 'deezer.com' || hostname === 'www.deezer.com')
-        ) {
-            const match = url.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?artist\/(\d+)\/?$/i);
-            return match ? { id: match[1], platform: 'deezer' } : null;
-        }
-    } catch {
-        return null;
-    }
-
-    return null;
-}
+import { parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 
 const formSchema = z.object({
     artistUrl: z.string().refine(
-        (val) => parseArtistUrl(val) !== null,
+        (val) => parseSupportedArtistUrl(val) !== null,
         { message: "Enter a Spotify or Deezer artist URL (e.g. https://open.spotify.com/artist/... or https://www.deezer.com/artist/...)" },
     ),
 })
@@ -95,7 +66,7 @@ export default function AddArtist() {
     }
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
-        const parsed = parseArtistUrl(values.artistUrl);
+        const parsed = parseSupportedArtistUrl(values.artistUrl);
         if (!parsed || requestInFlightRef.current) return null;
 
         const requestGeneration = ++requestGenerationRef.current;
