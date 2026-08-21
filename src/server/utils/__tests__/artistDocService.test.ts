@@ -88,13 +88,17 @@ describe('artistDocService', () => {
     it('both About prompts carry production\'s opening rule', async () => {
         const { svc, generateContent } = await setup({ geminiText: 'An About.' });
 
+        // Assert against the CONSTANT, not its current wording — this test is
+        // about both prompts sharing one rule, not about how it is phrased.
+        const { ABOUT_OPENING_RULE } = await import('@/lib/bioConstants');
+
         await svc.generateAboutFromDoc('Nova Reyes', '## Overview\ndoc');
         expect(generateContent.mock.calls[0][0].config.systemInstruction)
-            .toContain('Open with the name and what they are');
+            .toContain(ABOUT_OPENING_RULE);
 
         await svc.synthesizeFallbackAbout('a1', 'Nova Reyes', '## Overview\ndoc');
         expect(generateContent.mock.calls[1][0].config.systemInstruction)
-            .toContain('Open with the name and what they are');
+            .toContain(ABOUT_OPENING_RULE);
     });
 
     // A pull-quote inside a ~100-word encyclopedia-style bio reads wrong, and the
@@ -209,5 +213,31 @@ describe('artistDocService', () => {
                 .toBe('Cited Lauryn Hill as an influence and Solange.');
             expect(svc.stripCitationMarkers('No markers here.')).toBe('No markers here.');
         });
+    });
+});
+
+
+describe("stripCitationMarkers — punctuation left behind", () => {
+    it("does not leave a space before the period when the model spaces its marker", async () => {
+        // Real output from a live run: "...now based in Miami, FL [1]." The
+        // prompt asks for no space before the marker and the model does not
+        // always comply — and the auto-build stores this exact string as the
+        // artist's published bio, so the artefact is visible on their page.
+        const { stripCitationMarkers } = await import("@/server/utils/artistDocService");
+        expect(stripCitationMarkers("Pete Rango is a producer based in Miami, FL [1]."))
+            .toBe("Pete Rango is a producer based in Miami, FL.");
+    });
+
+    it("still handles the well-formed case, and mid-sentence markers", async () => {
+        const { stripCitationMarkers } = await import("@/server/utils/artistDocService");
+        expect(stripCitationMarkers("He founded XUE RECORDS[2]. His work aired on HBO[3]."))
+            .toBe("He founded XUE RECORDS. His work aired on HBO.");
+        expect(stripCitationMarkers("a hardcore band [4], then electronic music [5]."))
+            .toBe("a hardcore band, then electronic music.");
+    });
+
+    it("never pulls a paragraph break out with a marker at the start of a line", async () => {
+        const { stripCitationMarkers } = await import("@/server/utils/artistDocService");
+        expect(stripCitationMarkers("First line.\n[1] Second line.")).toBe("First line.\nSecond line.");
     });
 });

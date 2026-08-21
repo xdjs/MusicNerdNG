@@ -187,10 +187,20 @@ function validateCitations(text: string, sources: DocSource[]): string {
  *  itself keeps its markers (it's shown with citations as its own artifact);
  *  only the About's clean, published form goes through this. */
 export function stripCitationMarkers(text: string): string {
-    // Markers are written with no space before them ("...influences[3]."), so a
-    // straight removal never leaves a double space behind — no whitespace
-    // collapsing needed beyond the final trim.
-    return text.replace(/\[\d+\]/g, "").trim();
+    // The prompt asks for markers with no space before them ("...influences[3]."),
+    // and the model does not always comply — real output included "based in
+    // Miami, FL [1]." A straight removal then leaves " ." in the PUBLISHED About,
+    // since the auto-build stores exactly this string as the artist's bio.
+    //
+    // Only spaces and tabs are eaten before a marker, never newlines: a marker at
+    // the start of a line must not pull the paragraph break out with it.
+    return text
+        .replace(/[ \t]*\[\d+\]/g, "")
+        .replace(/[ \t]+([.,;:!?)\]])/g, "$1")
+        // A marker that opened a line leaves its trailing space behind.
+        .replace(/(^|\n)[ \t]+/g, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
 }
 
 function sourceManifestBlock(sources: DocSource[]): string {
@@ -291,11 +301,16 @@ OTHER RULES:
 - Never fabricate. No hype words ("rising star", "eclectic", "undeniable").
 - Target under 900 words total.`;
 
-const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from their cited knowledge document.
+const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You are a music writer. Write the public "About" for "${artistName}" from their cited knowledge document.
+
+WHAT THIS IS: a short editorial paragraph a music publication would run. Not a summary, not a changelog, not a list of true facts with verbs attached. A reader should finish it knowing who this artist IS — not merely what they have done.
 - ${ABOUT_LENGTH_RULE} ${ABOUT_STOP_RULE} Plain text only — no markdown, no headers.
 - ${ABOUT_OPENING_RULE}
-- Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
-- The document quotes the artist's own words. Use what they said as fact, in plain third person — no quotation marks in the About.
+- SELECT — do not inventory. The document holds far more than belongs here. Choose the two or three things that actually say something about this person and leave the rest out. A detail earns its place by revealing something, not by being true. Dates, version numbers and product names are usually the first things to cut.
+- FIND THE THROUGH-LINE. These facts belong to one person; say what connects them. If the material shows someone doing several apparently unrelated things, that IS the story — write it as one, not as a list.
+- VARY THE SENTENCES. A paragraph of identically shaped declaratives reads as a database dump. That is the most common failure here — reread what you wrote and fix it before answering.
+- Concrete over abstract: names, places, songs, scenes. But a specific with no reason to be there is still filler.
+- The document quotes the artist's own words. Use what they said as fact, in plain third person — no quotation marks in the About. Their own framing of their work is usually the best line in the document; prefer it to your own.
 - CITATIONS: the document's claims already carry [n] markers referencing its SOURCES manifest. When you carry a claim over into the About, keep its [n] marker immediately after it. Do not add a marker to a sentence you wrote yourself with no corresponding cited claim in the document, and never invent a marker number that isn't in the document.
 - ANTI-INFLATION: preserve the document's time-scoping — if the document describes something as recent ("on his latest releases", "he's said recently"), keep that framing rather than smoothing it into a general career description.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").

@@ -21,7 +21,7 @@ export const ABOUT_LENGTH_RULE =
 /** How an About opens. Without it the model starts mid-catalogue ("X has released
  *  several collaborative tracks...") and never says who the artist actually is. */
 export const ABOUT_OPENING_RULE =
-  'Open with the name and what they are: "[Name] is a [role/genre] from [place]." This is the one place a plain identity sentence is correct — lead with it.';
+  'Establish who they are in the first sentence — name, what they make, where they are from. Do not bury it. "[Name] is a [role] from [place]" is a correct shape, not a required one: if the material gives you a better way in that still answers who this is, take it.';
 
 /** Anti-padding companion to ABOUT_LENGTH_RULE. */
 export const ABOUT_STOP_RULE =
