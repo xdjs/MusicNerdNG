@@ -32,7 +32,6 @@ import {
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
-import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import {
     synthesizeArtistDoc,
     generateAboutFromDoc,
@@ -90,6 +89,10 @@ const PUBLISH_RETRY_BUDGET_MS = GEMINI_TIMEOUT_MS + 10_000;
  *  propagate) — collapsing them under one group id lets the client render
  *  ONE live line instead of a chip per platform per attempt. */
 const PROFILE_SEARCH_GROUP = "platform-search";
+/** Progress groups for the auto-build's three stages, so each collapses to one
+ *  line that flips to done rather than a stream of separate entries. */
+const VAULT_SEARCH_GROUP = "source-search";
+const DOC_GROUP = "about-write";
 
 export type TurnEvent =
     | { kind: "chat"; text: string }
@@ -126,10 +129,6 @@ export type ClientTurn =
     // Carries the SAME decisions as confirm_profiles. Re-searching must not cost
     // the artist the confirmations and removals they have already made — see
     // applyProfileLinkDecisions. Optional so an older client still works.
-    // The hybrid flow's single opening question. `isMe: false` is not a
-    // failure — it routes to the full profiles card, which is the right tool
-    // for a genuinely ambiguous identity and exists for exactly that case.
-    | { type: "confirm_identity"; isMe: boolean }
     | { type: "find_more_profiles"; addedLinks?: { url: string }[]; removedSiteNames?: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
     // `question` is the stateless round-trip of the question TEXT the client
@@ -191,9 +190,9 @@ function runAfterResponse(label: string, work: () => Promise<unknown>): void {
 }
 
 const NARRATION = {
-    identity: "One thing before we build your page — I want to be sure I've got the right artist.",
-    identityConfirmed: "Great. Building your page now — finding your profiles, then everything written about you.",
-    identityRejected: "No problem, let's do this the careful way. Here's everything I have — tell me what's actually yours.",
+    building: "Your profile's yours — building your page now. This takes a moment.",
+    built: "Done. Your page is live below — everything on it is editable, and anything that isn't you can be removed.",
+    builtThin: "Done — though I couldn't find much about you online yet. Your page is live below; add a link or two and I'll have more to work with.",
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",
@@ -509,53 +508,6 @@ async function gatherProfilePreviews(entries: [siteName: string, profileUrl: str
     return settled;
 }
 
-/**
- * The single card the hybrid flow opens with: enough for the artist to say
- * "yes, that's me" by LOOKING — a photo, their name, a track they made,
- * follower count.
- *
- * Identity is the only decision in onboarding that contaminates everything
- * downstream: the database holds three Black Daves, and the web holds a fourth
- * plus a Chord DAVE audio DAC. No amount of search quality resolves that; one
- * human answer resolves it permanently. So it is asked first, alone, and
- * answerable in a second.
- *
- * Deliberately cheap — platform metadata plus a catalog lookup, both already
- * used elsewhere, both keyed on a VERIFIED platform ID rather than a name.
- * Nothing here searches or generates, so the card renders while the expensive
- * work waits for the answer.
- */
-async function buildIdentityPayload(artistId: string) {
-    const artist = await getArtistById(artistId);
-    if (!artist) throw new Error(`Artist not found: ${artistId}`);
-
-    const spotifyId = typeof artist.spotify === "string" ? artist.spotify : "";
-    const [enrichment, catalog] = await Promise.all([
-        musicPlatformData.getArtist(artist).catch(() => null),
-        spotifyId
-            ? (async () => {
-                try {
-                    const headers = await getSpotifyHeaders();
-                    return await getSpotifyCatalogNames(spotifyId, headers);
-                } catch {
-                    return { releases: [] as string[], topTracks: [] as string[] };
-                }
-            })()
-            : Promise.resolve({ releases: [] as string[], topTracks: [] as string[] }),
-    ]);
-
-    return {
-        artistName: artist.name ?? "this artist",
-        imageUrl: enrichment?.imageUrl ?? null,
-        followerCount: enrichment?.followerCount ?? null,
-        platform: enrichment?.platform ?? null,
-        // A track name is far more identifying than genres or follower counts —
-        // an artist recognises their own song instantly.
-        topTrack: catalog.topTracks[0] ?? catalog.releases[0] ?? null,
-        releaseCount: catalog.releases.length,
-    };
-}
-
 async function buildProfilesPayload(artistId: string) {
     const artist = await getArtistById(artistId);
     if (!artist) throw new Error(`Artist not found: ${artistId}`);
@@ -616,12 +568,6 @@ async function buildProfilesPayload(artistId: string) {
  *  turn, for no benefit (the artist already saw the candidates once). */
 async function* emitStep(artistId: string, step: OnboardingStep, discoverProfiles = false, forceVaultDiscovery = false): AsyncGenerator<TurnEvent> {
     switch (step) {
-        case "identity": {
-            const payload = await buildIdentityPayload(artistId);
-            yield { kind: "chat", text: NARRATION.identity };
-            yield { kind: "step", step: "identity", payload };
-            return;
-        }
         case "profiles": {
             yield { kind: "progress", label: "Gathering your profiles", done: false };
             const payload = await buildProfilesPayload(artistId);
@@ -1016,83 +962,133 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         return;
     }
 
+/**
+ * Builds the whole page without asking the artist anything.
+ *
+ * The claim already established who they are — an admin approved this user on
+ * this artist record — so re-asking "is this you?" proves nothing (anyone
+ * claiming falsely clicks yes too) and costs a step. Carl, 2026-08-20:
+ * "ideally we should create the perfect profile for them without them having to
+ * do anything. That's the ideal to strive for."
+ *
+ * Every correction is recoverable on the profile afterwards, and the two things
+ * that could genuinely go wrong are already handled upstream rather than by
+ * asking:
+ *   - a fabricated source can't get in (retrieval is a search API, verified)
+ *   - a namesake can't be cited (requireFullName gates citability)
+ *
+ * Sources are auto-APPROVED, which is safe for a reason worth stating: approval
+ * has never been what makes a source citable. `isCitableSource` reads
+ * extractedText, which is only ever populated by machine verification. So an
+ * un-curated namesake sits in the vault as a lead the artist can remove, and
+ * never reaches their About.
+ *
+ * Failure is partial, not fatal: each stage confirms its own step, so a crash
+ * mid-build leaves the artist resuming at exactly the stage that failed, using
+ * the original step-by-step cards.
+ */
+async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
+    yield { kind: "chat", text: NARRATION.building };
+
+    // 1 — profiles
+    yield { kind: "progress", label: "Finding your profiles", done: false, group: PROFILE_SEARCH_GROUP };
+    const discovered: string[] = [];
+    try {
+        for await (const event of discoverArtistProfilesStream(artistId)) {
+            if (event.kind === "found") {
+                discovered.push(event.profile.profileUrl);
+                yield { kind: "candidate", profile: event.profile };
+            }
+        }
+    } catch (e) {
+        console.error("[onboarding] auto-build discovery failed:", e);
+    }
+    if (discovered.length > 0) {
+        await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
+    }
+    yield {
+        kind: "progress",
+        label: discovered.length > 0 ? `Found ${discovered.length} profile${discovered.length === 1 ? "" : "s"}` : "Checked for your profiles",
+        done: true,
+        group: PROFILE_SEARCH_GROUP,
+    };
+    await confirmOnboardingStep(artistId, "profiles");
+
+    // 2 — sources
+    yield { kind: "progress", label: "Reading what's written about you", done: false, group: VAULT_SEARCH_GROUP };
+    try {
+        // Same budgeted race the vault step uses — a slow search must not hold
+        // the whole build open past the route's turn deadline.
+        await Promise.race([
+            searchAndPopulateVault(artistId),
+            new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
+        ]);
+    } catch (e) {
+        console.error("[onboarding] auto-build source discovery failed:", e);
+    }
+    const pending = await getVaultSourcesByArtistId(artistId, "pending");
+    for (const source of pending) {
+        try {
+            await updateVaultSourceStatus(source.id, "approved");
+        } catch (e) {
+            console.error("[onboarding] auto-approve failed:", source.id, e);
+        }
+    }
+    const citable = pending.filter(isCitableSource).length;
+    yield {
+        kind: "progress",
+        label: pending.length > 0 ? `Read ${pending.length} source${pending.length === 1 ? "" : "s"}` : "Looked for sources about you",
+        done: true,
+        group: VAULT_SEARCH_GROUP,
+    };
+    await confirmOnboardingStep(artistId, "vault");
+
+    // 3 — the About. Interview answers are no longer collected here; questions
+    // move to the follow-up email cadence, where they can actually be timely.
+    yield { kind: "progress", label: "Writing your About", done: false, group: DOC_GROUP };
+    const artist = await getArtistById(artistId);
+    const artistName = artist?.name ?? "this artist";
+    let wrote = false;
+    try {
+        const sources = await buildDocSources(artistId);
+        const doc = await synthesizeArtistDoc(artistId, sources);
+        const about = await generateAboutFromDoc(artistName, doc, sources);
+        const cleanAbout = stripCitationMarkers(about).trim();
+        if (cleanAbout) {
+            const existingBio = artist?.bio;
+            if (isRealBio(existingBio)) await saveBioVersion(artistId, existingBio as string);
+            await upsertArtistDoc(artistId, doc);
+            await upsertArtistDocSources(artistId, sources);
+            await saveBioVersion(artistId, cleanAbout);
+            await db.update(artists).set({ bio: cleanAbout }).where(eq(artists.id, artistId));
+            wrote = true;
+        }
+    } catch (e) {
+        console.error("[onboarding] auto-build About generation failed:", e);
+    }
+    yield { kind: "progress", label: wrote ? "Wrote your About" : "Couldn't write an About yet", done: true, group: DOC_GROUP };
+
+    await confirmOnboardingStep(artistId, "interview");
+    await confirmOnboardingStep(artistId, "publish");
+    yield { kind: "chat", text: citable > 0 && wrote ? NARRATION.built : NARRATION.builtThin };
+    yield { kind: "complete" };
+}
+
     if (turn.type === "open") {
         if (state.complete || state.currentStep === null) {
             yield { kind: "chat", text: NARRATION.alreadyDone };
             yield { kind: "complete" };
             return;
         }
-        yield { kind: "chat", text: state.currentStep === "profiles" ? NARRATION.welcome : NARRATION.welcomeBack };
-        // Discovery only runs on a fresh/resumed entry into the profiles step —
-        // see the `discoverProfiles` doc comment on emitStep.
-        yield* emitStep(artistId, state.currentStep, state.currentStep === "profiles");
-        return;
-    }
-
-    if (turn.type === "confirm_identity") {
-        if (state.currentStep === null) {
-            yield { kind: "chat", text: NARRATION.alreadyDone };
-            yield { kind: "complete" };
+        // A fresh claim builds the page outright. A RESUME does not: the artist
+        // is mid-flow because something failed or they stepped away, and the
+        // step-by-step cards are the right way back in.
+        if (state.currentStep === "profiles") {
+            yield* runAutoBuild(artistId);
             return;
         }
-        if (state.currentStep !== "identity") {
-            // Already past it — resync rather than re-asserting identity over
-            // work that was done on the strength of the first answer.
-            yield* emitStep(artistId, state.currentStep);
-            return;
-        }
-
-        await confirmOnboardingStep(artistId, "identity");
-
-        if (!turn.isMe) {
-            // The careful path. Nothing is auto-saved; the artist tells us what
-            // is actually theirs on the full card.
-            yield { kind: "chat", text: NARRATION.identityRejected };
-            yield* emitStep(artistId, "profiles", true);
-            return;
-        }
-
-        // One assertion, then we build. Everything below runs WITHOUT asking
-        // again, which is the whole point of the hybrid: the artist has already
-        // told us the only thing we genuinely could not determine ourselves.
-        yield { kind: "chat", text: NARRATION.identityConfirmed };
-        yield { kind: "progress", label: "Finding your profiles", done: false, group: PROFILE_SEARCH_GROUP };
-
-        const discovered: string[] = [];
-        try {
-            for await (const event of discoverArtistProfilesStream(artistId)) {
-                if (event.kind === "found") {
-                    discovered.push(event.profile.profileUrl);
-                    yield { kind: "candidate", profile: event.profile };
-                }
-            }
-        } catch (e) {
-            console.error("[onboarding] identity-path discovery failed:", e);
-        }
-        yield {
-            kind: "progress",
-            label: discovered.length > 0
-                ? `Found ${discovered.length} profile${discovered.length === 1 ? "" : "s"}`
-                : "No new profiles found",
-            done: true,
-            group: PROFILE_SEARCH_GROUP,
-        };
-
-        // Saved through the SAME path as the profiles card, so a discovered
-        // website still routes to the vault and a duplicate is still a no-op.
-        const outcome = await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
-        if (outcome.routedToVaultApproved.length > 0) {
-            yield { kind: "chat", text: buildRoutedToVaultOwnedMessage(outcome.routedToVaultApproved) };
-        }
-        if (outcome.routedToVaultPending.length > 0) {
-            yield { kind: "chat", text: buildRoutedToVaultPendingMessage(outcome.routedToVaultPending) };
-        }
-
-        // Confirming profiles too: the artist asserted identity, and every link
-        // saved above was found FROM that verified identity. Asking them to
-        // confirm the same thing twice is the ceremony the hybrid removes.
-        await confirmOnboardingStep(artistId, "profiles");
-        yield* emitStep(artistId, "vault", false, true);
+        yield { kind: "chat", text: NARRATION.welcomeBack };
+        yield* emitStep(artistId, state.currentStep);
         return;
     }
 

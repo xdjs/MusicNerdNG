@@ -7,18 +7,13 @@ import { artistDocs, artistInterviewAnswers, artistOnboardingSteps } from "@/ser
  * There is NO stored cursor: the current step is always the first step
  * lacking an explicit confirmation row (see the design spec §5).
  */
-export const ONBOARDING_STEPS = ["identity", "profiles", "vault", "interview", "publish"] as const;
+export const ONBOARDING_STEPS = ["profiles", "vault", "interview", "publish"] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 export type OnboardingState = { complete: boolean; currentStep: OnboardingStep | null };
 
 /** Pure derivation — unit-test this, it is where the resume logic lives. */
 export function firstUnconfirmedStep(confirmed: ReadonlySet<string>): OnboardingStep | null {
     for (const step of ONBOARDING_STEPS) {
-        // `identity` was added after artists had already onboarded. Anyone who
-        // confirmed their profiles necessarily asserted their identity — asking
-        // again would drag a finished artist back to step one. Treat profiles as
-        // implying identity rather than backfilling rows for it.
-        if (step === "identity" && confirmed.has("profiles")) continue;
         if (!confirmed.has(step)) return step;
     }
     return null;

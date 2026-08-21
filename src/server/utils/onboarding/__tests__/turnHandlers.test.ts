@@ -85,6 +85,13 @@ async function collect(gen) {
     return events;
 }
 
+// NOTE: the profiles-step tests below drive the step via `find_more_profiles`
+// rather than `open`. A fresh `open` now runs the auto-build (claim approved ->
+// build the page, no questions), so it no longer emits the profiles card. The
+// card itself is unchanged and still reached on resume and via re-search, and
+// `find_more_profiles` runs the identical emitStep(profiles, discover) path —
+// so this keeps the payload/enrichment/discovery coverage intact rather than
+// deleting it.
 describe('runOnboardingTurn', () => {
     beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
@@ -92,8 +99,51 @@ describe('runOnboardingTurn', () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(events.find(e => e.kind === 'step')?.step).toBe('vault');
+    });
+
+    it('a fresh claim builds the whole page without asking anything, and asks no question first', async () => {
+        // The claim already established who this is — an admin approved this
+        // user on this artist record. Re-asking "is this you?" proves nothing
+        // (anyone claiming falsely clicks yes too) and costs a step. Carl,
+        // 2026-08-20: "ideally we should create the perfect profile for them
+        // without them having to do anything."
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        oq.confirmOnboardingStep.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        // No card is put in front of the artist at all.
+        expect(events.some(e => e.kind === 'step')).toBe(false);
+        expect(events.some(e => e.kind === 'complete')).toBe(true);
+        expect(events.some(e => e.kind === 'error')).toBe(false);
+
+        // Every stage confirms its own step, so a crash mid-build leaves the
+        // artist resuming at exactly the stage that failed.
+        const confirmed = oq.confirmOnboardingStep.mock.calls.map(c => c[1]);
+        expect(confirmed).toEqual(['profiles', 'vault', 'interview', 'publish']);
+
+        // And it narrates what it's doing rather than sitting silent for a minute.
+        const labels = events.filter(e => e.kind === 'progress').map(e => e.label);
+        expect(labels.some(l => /profiles/i.test(l))).toBe(true);
+        expect(labels.some(l => /written about you|sources/i.test(l))).toBe(true);
+        expect(labels.some(l => /About/i.test(l))).toBe(true);
+    });
+
+    it('a RESUME does not auto-build — it hands back the step the artist stopped on', async () => {
+        // Mid-flow means something failed or they stepped away; the
+        // step-by-step cards are the right way back in, not a silent rebuild.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        oq.confirmOnboardingStep.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(events.some(e => e.kind === 'step' && e.step === 'vault')).toBe(true);
+        expect(oq.confirmOnboardingStep).not.toHaveBeenCalled();
     });
 
     it('profiles step enriches links with urlmap metadata (display name, logo, trimmed color, profile URL)', async () => {
@@ -105,7 +155,7 @@ describe('runOnboardingTurn', () => {
             { siteName: 'instagram', cardPlatformName: 'Instagram', siteImage: null, colorHex: '#E1306C\r', appStringFormat: 'https://instagram.com/%@' },
         ]);
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.links).toEqual(expect.arrayContaining([
             expect.objectContaining({
@@ -136,7 +186,7 @@ describe('runOnboardingTurn', () => {
                 : { imageUrl: null, title: null }
         ));
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(fetchLinkPreview).toHaveBeenCalledWith('https://open.spotify.com/artist/spot1');
         expect(fetchLinkPreview).toHaveBeenCalledWith('https://instagram.com/nova');
@@ -154,7 +204,7 @@ describe('runOnboardingTurn', () => {
             { siteName: 'spotify', cardPlatformName: 'Spotify', siteImage: null, colorHex: '#000000', appStringFormat: 'https://open.spotify.com/artist/%@' },
         ]);
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         const spotifyLink = step.payload.links.find(l => l.siteName === 'spotify');
         expect(spotifyLink.colorHex).toBeNull();
@@ -166,7 +216,7 @@ describe('runOnboardingTurn', () => {
         const artistQ = await import('@/server/utils/queries/artistQueries');
         artistQ.getAllLinks.mockRejectedValueOnce(new Error('urlmap down'));
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.links).toEqual([
             { siteName: 'spotify', value: 'spot1' },
@@ -181,7 +231,7 @@ describe('runOnboardingTurn', () => {
         const artistQ = await import('@/server/utils/queries/artistQueries');
         artistQ.getArtistById.mockResolvedValueOnce({ id: 'a1', name: 'Nova Reyes' }); // no link columns set
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes('Paste your Spotify'))).toBe(true);
         expect(chats.some(t => t.includes("Leaving a card as-is confirms it"))).toBe(false);
@@ -202,7 +252,7 @@ describe('runOnboardingTurn', () => {
             yield { kind: 'checked', platform: 'tiktok', displayName: 'TikTok' };
         });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(discoverArtistProfilesStream).toHaveBeenCalledWith('a1');
         // The incremental `candidate` event fires as its own frame, ahead of
         // the terminal `step` event — additive live feedback, not the only
@@ -235,7 +285,7 @@ describe('runOnboardingTurn', () => {
             yield { kind: 'checked', platform: 'instagram', displayName: 'Instagram' };
         });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
 
         const groupEvents = events.filter(e => e.kind === 'progress' && e.group === 'platform-search');
         // 3 DISTINCT platforms (spotify, instagram, tiktok) → exactly 3
@@ -275,7 +325,7 @@ describe('runOnboardingTurn', () => {
         // Default mock (from the top-level jest.mock) is an empty generator —
         // no "searching" events at all.
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(events.some(e => e.kind === 'progress' && e.group === 'platform-search')).toBe(false);
     });
 
@@ -283,7 +333,7 @@ describe('runOnboardingTurn', () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.candidates).toEqual([]);
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
@@ -295,7 +345,7 @@ describe('runOnboardingTurn', () => {
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
         const { discoverArtistProfiles } = await import('@/server/utils/profileDiscovery');
         const { runOnboardingTurn } = await import('../turnHandlers');
-        await collect(runOnboardingTurn('a1', { type: 'open' }));
+        await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(discoverArtistProfiles).not.toHaveBeenCalled();
     });
 

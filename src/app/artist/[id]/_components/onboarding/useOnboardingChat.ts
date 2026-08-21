@@ -39,7 +39,6 @@ export type ClientTurnShape =
     | { type: "confirm_profiles"; addedLinks: { url: string }[]; removedSiteNames: string[] }
     // "Look for more" — re-runs profile discovery with a fresh budget, because a slow
     // run drops its later tiers and returns fewer profiles than a fast one.
-    | { type: "confirm_identity"; isMe: boolean }
     | { type: "find_more_profiles"; addedLinks?: { url: string }[]; removedSiteNames?: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
     // `question` round-trips the question TEXT the client was shown — needed
@@ -55,7 +54,6 @@ export type ClientTurnShape =
 function userEcho(turn: ClientTurnShape): string | null {
     switch (turn.type) {
         case "confirm_profiles": return "Looks good — that's me.";
-        case "confirm_identity": return turn.isMe ? "Yes, that’s me." : "Not quite — let me check.";
         case "find_more_profiles": return "Have another look for my profiles.";
         case "vault_review": return "Done sorting those.";
         case "interview_answer": return turn.answer ?? "Skip that one.";
