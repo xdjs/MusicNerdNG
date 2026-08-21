@@ -194,6 +194,47 @@ a metal band called Pharaoh) landed as a non-citable lead.
 adding YouTube oEmbed to the classifier. The first is moot now Gemini is off this path. The
 second is still worth doing for the JS-rendered blind spot — see 2.5.
 
+### 2.6 Artist approval doesn't make a source citable `todo`
+`isCitableSource` reads `extractedText` only — status is irrelevant — and
+`artistDocService` does `approvedSources.filter(isCitableSource)`. So an artist can look at a
+source, recognise it as their own work, approve it, and it still never reaches their About. We
+ask them to curate and then discard the answer. Nothing tells them.
+
+Widened by `requireFullName` (2.1): more real sources now land as leads, so more approvals get
+discarded.
+
+**But it is a genuine tension, not a clean bug.** Honouring approval would let a careless yes put
+a namesake into the About — exactly the Thrasher case below. Ignoring it is silently protective
+and silently lossy. Needs a decision, not a patch. Options: honour approval outright; re-fetch on
+approval and store text only if it still reads; or keep the behaviour and tell the artist plainly
+that a source can't be used as evidence.
+
+### 2.7 Black Dave verification, 8/21 — what the namesake gate actually did
+Run against `Black Dave MK2` (dev `011645a7`), the hardest case we have: three Black Daves in the
+database, plus Dave the UK rapper, plus a **Chord DAVE** audio DAC.
+
+- **11 sources, 0 dead URLs, 6s. No namesake became citable.**
+- The one that did become citable is **correct** — Sound of Fractures' *"An interview with
+  Multi-hyphenate Black Dave Mk2"*, verified by reading it: "mk2" three times, "the intersection
+  of anime, rap music, streetwear and sneaker culture", no skate/NYC content.
+- Chord DAVE DAC reviews, the Guardian on Dave the UK rapper, and a Thrasher "Black Dave
+  interview" all landed as non-citable leads.
+
+**Names are messier than expected.** Spotify's own name for `7cOl6pCLdiRKfC8nnNQ0ax` really is
+"Black Dave MK2" — that suffix is his, not our bookkeeping. But `Black Dave NYC` in our database
+is "Black Dave" on Spotify, so *that* suffix is ours and does leak into queries. Worth using the
+verified platform name where we have one.
+
+**And press is written under the older name.** Coverage of him as plain "Black Dave" can't clear
+`requireFullName` against "Black Dave MK2". That is the cost of the gate, paid knowingly: a
+missed real source is recoverable, a cited namesake is not.
+
+*Correction for the record: this note first described the Thrasher interview as genuinely his.
+That was an assumption from "skate magazine sounds plausible for a rapper", not a check. Pete
+challenged it. The page is Cloudflare-blocked so nobody can read it, there is a known NYC
+skater-rapper Black Dave, and MEMORY.md records the earlier About bug pulling "the wrong Black
+Dave's skate pages". Treat it as the wrong artist.*
+
 ### 2.5 The verifier can't see JS-rendered pages `todo`
 YouTube returns HTTP 200 for a nonexistent video, and its pages carry no readable text, so
 `extractedText` never reaches `MIN_VERIFIED_TEXT` (400) and the ladder returns `lead` — never
