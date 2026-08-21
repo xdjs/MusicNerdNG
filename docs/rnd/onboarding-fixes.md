@@ -313,6 +313,23 @@ challenged it. The page is Cloudflare-blocked so nobody can read it, there is a 
 skater-rapper Black Dave, and MEMORY.md records the earlier About bug pulling "the wrong Black
 Dave's skate pages". Treat it as the wrong artist.*
 
+### 2.9 requireFullName demoted the artist's own website — fixed same day
+Found by running **Pete Rango** through discovery as a third test artist, which is the whole
+argument for testing more than one.
+
+`requireFullName` (2.1) is right for a page a keyword search returned and wrong for the artist's
+own site. Measured on the real peterango.com: `nameAppearsIn` loose = true → `verified`, strict =
+false → `lead`. The page renders the two words apart, so the full phrase never appears in the
+extracted body — **exactly the case `nameAppearsIn`'s own docblock was written about**, re-broken
+by my change.
+
+Fixed by exempting the artist's own domain: a hostname that IS the artist's name is stronger
+evidence of ownership than any phrase in the body. It cannot reopen the namesake hole — "Black
+Dave MK2" matches none of theguardian.com, head-fi.org or soundnews.net, and a test pins that.
+
+Live result: peterango.com went lead → **CITABLE**, and his citable count went 2 → 3 while
+dead and citable-off-topic stayed at 0 for all three artists.
+
 ### 2.5 The verifier can't see JS-rendered pages `todo`
 YouTube returns HTTP 200 for a nonexistent video, and its pages carry no readable text, so
 `extractedText` never reaches `MIN_VERIFIED_TEXT` (400) and the ladder returns `lead` — never
@@ -374,14 +391,16 @@ Pete, 8/21. Press, interviews, and features shouldn't be gathered in the same st
 streaming profiles — they're a different kind of thing and the current mixing is what produced
 3.2. Give research links their own section rather than folding them into "profiles".
 
-### 3.2 The "add more" ask doesn't say what to add `todo`
+### 3.2 The "add more" ask doesn't say what to add `done`
 > It just asked for profiles that are mine. And then it said "add more," but it didn't specify
 > adding things like publications.
 
-He read "profiles" literally as social profiles, so he never added the article about him. Name
-the categories: publications, interviews, features, your own site. Cheapest high-value fix on
-this list, and it feeds 2.2 — the discovery gap partly self-corrects if artists know what to
-hand us.
+He read "profiles" literally as social profiles, so he never added the article about him. **Done 8/21.** The vault step's EMPTY copy already named the categories; the non-empty one did
+not — it said "We found N sources about you. Keep what's accurate", which invites curation and
+nothing else. He had sources found, so that is the variant he got. `vault(count)` now asks for
+additions by name, the profiles ask is scoped to profiles and says press comes next, and the two
+placeholders match. Also removed the last user-facing "AI" from the narration (CY, 8/20) — none
+remains anywhere in the flow.
 
 ### 3.3 Say what the flow is doing, while it does it `todo`
 > It was a little confusing. I wasn't entirely sure what it was doing.

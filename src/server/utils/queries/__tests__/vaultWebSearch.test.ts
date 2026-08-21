@@ -171,6 +171,37 @@ describe("searchAndPopulateVault", () => {
     expect(row.extractedText).toBeNull(); // demoted to an unverified lead
   });
 
+  it("verifies the artist's OWN domain even when the page never spells the full name", async () => {
+    // Regression I introduced with requireFullName: peterango.com reads fine and
+    // is unambiguously his, but renders the two words apart so a full-name text
+    // match fails. Measured on the real site — strict said lead, loose said
+    // verified. A hostname that IS the artist's name outranks body text.
+    const SITE = "RANGO. Producer, artist, and builder. Selected work below. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pete Rango", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://peterango.com", "Pete Rango")]);
+    mockFetchPage.mockResolvedValue({ title: "Pete Rango", snippet: "s", extractedText: SITE, fullText: SITE, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls[0][0].extractedText).toBe(SITE);
+  });
+
+  it("does not extend that exemption to a third-party domain", async () => {
+    // The namesake gate must still hold everywhere else.
+    const RAPPER = "Dave talks about his song Black and growing up in south London. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://theguardian.com/dave", "Dave")]);
+    mockFetchPage.mockResolvedValue({ title: "Dave", snippet: "s", extractedText: RAPPER, fullText: RAPPER, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls[0][0].extractedText).toBeNull();
+  });
+
   it("still verifies a page that names the artist in full", async () => {
     const REAL = "Black Dave released a new project this week in Charleston. ".repeat(20);
     mockGetArtist.mockResolvedValue({

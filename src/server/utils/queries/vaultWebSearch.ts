@@ -73,6 +73,30 @@ async function resolveRedirectUrl(url: string): Promise<string | null> {
     return null;
 }
 
+/**
+ * Is this URL's host the artist's own domain?
+ *
+ * `requireFullName` (below) is right for a page a keyword search returned, but
+ * wrong for the artist's own site: peterango.com reads fine, is unambiguously
+ * his, and still fails a full-name text match because the page renders the two
+ * words apart. Measured — strict said `lead`, loose said `verified`.
+ *
+ * A hostname that IS the artist's name is stronger evidence of ownership than
+ * any phrase in the body, so it earns the looser text check. It cannot reopen
+ * the namesake hole this gate exists to close: "Black Dave MK2" matches none of
+ * theguardian.com, head-fi.org or soundnews.net.
+ */
+function isArtistOwnDomain(url: string, artistName: string): boolean {
+    const fold = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const name = fold(artistName);
+    if (name.length < 5) return false; // too short to be distinctive in a domain
+    try {
+        return fold(new URL(url).hostname).includes(name);
+    } catch {
+        return false;
+    }
+}
+
 /** Normalize a URL for dedup comparison: lowercase, strip protocol/www/trailing slash */
 function normalizeUrl(raw: string): string {
     try {
@@ -246,7 +270,9 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // would be a worse failure than the invented URLs this path replaced,
             // because it is plausible. Anything that only half-matches degrades to
             // an unverified lead the artist can still see and judge.
-            const verdict = classifyFetchedSource(page, artistName, { requireFullName: true });
+            const verdict = classifyFetchedSource(page, artistName, {
+                requireFullName: !isArtistOwnDomain(result.url, artistName),
+            });
             if (verdict === "dead") {
                 console.warn(`[vaultWebSearch] Dropping unreachable/irrelevant URL (status ${page.status}): ${result.url.slice(0, 120)}`);
                 dropped++;
