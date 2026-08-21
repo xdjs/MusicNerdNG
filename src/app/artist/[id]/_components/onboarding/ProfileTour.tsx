@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function tourFlagKey(artistId: string): string {
     return `mn-tour-done-${artistId}`;
@@ -21,7 +21,7 @@ const STOPS: Stop[] = [
     {
         anchor: "mn-about",
         title: "This is your About",
-        body: "Written from the sources below, not invented. Edit it in your own words any time, or regenerate it after you've added more.",
+        body: "Written from the sources below, not invented. Edit it in your own words any time, or regenerate it once you've added more.",
     },
     {
         anchor: "mn-sources",
@@ -30,46 +30,125 @@ const STOPS: Stop[] = [
     },
 ];
 
+const CARD_WIDTH = 340;
+const GAP = 16;
+const EDGE = 12;
+
+type Placement = { top: number; left: number; side: "right" | "left" | "below" | "above" };
+
+/** Where the card goes relative to the section it describes.
+ *
+ *  Beside the section when there's room — that's what makes it read as pointing
+ *  AT something rather than floating over the page. Falls back to below, then
+ *  above, then clamps into the viewport, so a narrow window or a tall section
+ *  degrades instead of putting the card off-screen. */
+function place(rect: DOMRect, vw: number, vh: number, cardHeight: number): Placement {
+    const verticalCenter = rect.top + rect.height / 2 - cardHeight / 2;
+    const clampTop = (t: number) => Math.min(Math.max(t, EDGE), Math.max(EDGE, vh - cardHeight - EDGE));
+    const clampLeft = (l: number) => Math.min(Math.max(l, EDGE), Math.max(EDGE, vw - CARD_WIDTH - EDGE));
+
+    if (rect.right + GAP + CARD_WIDTH + EDGE <= vw) {
+        return { top: clampTop(verticalCenter), left: rect.right + GAP, side: "right" };
+    }
+    if (rect.left - GAP - CARD_WIDTH - EDGE >= 0) {
+        return { top: clampTop(verticalCenter), left: rect.left - GAP - CARD_WIDTH, side: "left" };
+    }
+    const horizontalCenter = clampLeft(rect.left + rect.width / 2 - CARD_WIDTH / 2);
+    if (rect.bottom + GAP + cardHeight + EDGE <= vh) {
+        return { top: rect.bottom + GAP, left: horizontalCenter, side: "below" };
+    }
+    return { top: clampTop(rect.top - GAP - cardHeight), left: horizontalCenter, side: "above" };
+}
+
 /**
  * A one-time guided pass, AFTER the page is built.
  *
  * The build asks the artist nothing (see runAutoBuild), which is right — the
  * claim already established who they are, so a question before the payoff is
- * ceremony. But it leaves them on a finished page with no idea what just
- * happened or what they're allowed to change. Pete, 2026-08-21: "a person needs
- * to know what to do after the build is done."
+ * ceremony. But it leaves them on a finished page with no idea what happened or
+ * what they're allowed to change. Pete, 2026-08-21: "a person needs to know what
+ * to do after the build is done."
  *
  * Deliberately NOT a wizard in front of the work. A wizard is a gate wearing a
  * different hat: it still blocks the payoff and still explains things the artist
- * has no context for yet. Here the thing being described is already on screen
- * and already theirs, so "this is your About" means something.
+ * has no context for yet. Here the thing being described is already on screen and
+ * already theirs, so "this is your About" means something.
  *
- * Each stop scrolls its section into view and rings it, so the words always
- * point at something visible. Targets ids rather than layout, so the page can be
- * rearranged without touching this.
+ * The card is ANCHORED beside the section it describes, with an arrow pointing at
+ * it, the section lifted above a dimmed page. A first pass put the card at the
+ * bottom of the screen; it read as a notification rather than direction, which is
+ * a fair description of what it was.
  *
- * Shown once per artist per browser. Skipping counts as done — an artist who
- * dismisses it does not want it again.
+ * Targets element ids rather than layout, so the page can be rearranged without
+ * touching this, and it still renders if a section is missing.
  */
 export default function ProfileTour({ artistId }: { artistId: string }) {
     const [index, setIndex] = useState(0);
     const [dismissed, setDismissed] = useState(false);
+    const [placement, setPlacement] = useState<Placement | null>(null);
+    const cardRef = useRef<HTMLDivElement | null>(null);
 
     const stop = STOPS[index];
 
+    const reposition = useCallback(() => {
+        if (!stop) return;
+        const el = document.getElementById(stop.anchor);
+        if (!el) { setPlacement(null); return; }
+        const rect = el.getBoundingClientRect();
+        const cardHeight = cardRef.current?.offsetHeight ?? 200;
+        setPlacement(place(rect, window.innerWidth, window.innerHeight, cardHeight));
+    }, [stop]);
+
+    // Scroll the section into view, lift it above the dim, and ring it. Cleanup
+    // restores the element's own styles so the tour leaves no trace.
     useEffect(() => {
         if (dismissed || !stop) return;
         const el = document.getElementById(stop.anchor);
         if (!el) return;
         el.scrollIntoView({ behavior: "smooth", block: "center" });
-        // Ring the section for as long as we're describing it. Inline styles
-        // rather than a class so this needs no global CSS and cleans itself up.
-        const previous = el.style.boxShadow;
+
+        const prev = {
+            boxShadow: el.style.boxShadow,
+            position: el.style.position,
+            zIndex: el.style.zIndex,
+            borderRadius: el.style.borderRadius,
+        };
         el.style.boxShadow = "0 0 0 3px rgb(236 72 153 / 0.9)";
         el.style.borderRadius = "0.75rem";
         el.style.transition = "box-shadow 250ms ease";
-        return () => { el.style.boxShadow = previous; };
+        // Above the dim backdrop so the section stays fully legible.
+        if (!el.style.position || el.style.position === "static") el.style.position = "relative";
+        el.style.zIndex = "45";
+
+        return () => {
+            el.style.boxShadow = prev.boxShadow;
+            el.style.position = prev.position;
+            el.style.zIndex = prev.zIndex;
+            el.style.borderRadius = prev.borderRadius;
+        };
     }, [index, dismissed, stop]);
+
+    // Measure after paint, and keep up while the smooth scroll is still running.
+    useLayoutEffect(() => {
+        if (dismissed) return;
+        reposition();
+        let frame = 0;
+        const settle = window.setInterval(reposition, 100);
+        const stopSettling = window.setTimeout(() => window.clearInterval(settle), 900);
+        const onMove = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(reposition);
+        };
+        window.addEventListener("scroll", onMove, { passive: true });
+        window.addEventListener("resize", onMove);
+        return () => {
+            window.clearInterval(settle);
+            window.clearTimeout(stopSettling);
+            cancelAnimationFrame(frame);
+            window.removeEventListener("scroll", onMove);
+            window.removeEventListener("resize", onMove);
+        };
+    }, [index, dismissed, reposition]);
 
     const finish = () => {
         try { sessionStorage.setItem(tourFlagKey(artistId), "1"); } catch { /* private mode */ }
@@ -77,20 +156,48 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
     };
 
     if (dismissed || !stop) return null;
-
     const isLast = index === STOPS.length - 1;
 
+    // Arrow sits on the edge facing the section.
+    const arrowClass = {
+        right: "left-[-6px] top-1/2 -translate-y-1/2",
+        left: "right-[-6px] top-1/2 -translate-y-1/2",
+        below: "top-[-6px] left-1/2 -translate-x-1/2",
+        above: "bottom-[-6px] left-1/2 -translate-x-1/2",
+    }[placement?.side ?? "below"];
+
     return (
-        <div
-            role="dialog"
-            aria-label="Getting started"
-            className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 pointer-events-none"
-        >
-            <div className="pointer-events-auto w-full max-w-md glass rounded-xl p-5 space-y-3 shadow-2xl border border-pink-500/30">
+        <>
+            {/* Dims the page so the ringed section is the only lit thing. Never
+                blocks clicks — the artist can still use the section we're
+                pointing at, which is the entire point of pointing at it. */}
+            <div className="fixed inset-0 z-40 bg-black/50 pointer-events-none" aria-hidden="true" />
+
+            <div
+                ref={cardRef}
+                role="dialog"
+                aria-label={`Getting started: ${stop.title}`}
+                style={
+                    placement
+                        ? { position: "fixed", top: placement.top, left: placement.left, width: CARD_WIDTH }
+                        : { position: "fixed", bottom: EDGE, left: EDGE, right: EDGE }
+                }
+                className="z-50 rounded-xl border border-pink-500/40 bg-white dark:bg-neutral-900 p-5 space-y-3 shadow-2xl"
+            >
+                {placement && (
+                    <div
+                        aria-hidden="true"
+                        className={`absolute w-3 h-3 rotate-45 bg-white dark:bg-neutral-900 border-pink-500/40 ${arrowClass} ${
+                            placement.side === "right" ? "border-l border-b"
+                            : placement.side === "left" ? "border-r border-t"
+                            : placement.side === "below" ? "border-l border-t"
+                            : "border-r border-b"
+                        }`}
+                    />
+                )}
+
                 <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium text-pink-500">
-                        {index + 1} of {STOPS.length}
-                    </p>
+                    <p className="text-xs font-medium text-pink-500">{index + 1} of {STOPS.length}</p>
                     <button
                         onClick={finish}
                         className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
@@ -119,6 +226,6 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </>
     );
 }

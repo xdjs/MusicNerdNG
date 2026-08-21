@@ -53,6 +53,40 @@ describe('ProfileTour', () => {
         expect(document.getElementById('mn-about').style.boxShadow).not.toBe('');
     });
 
+    it('anchors the card BESIDE the section, not parked at the bottom of the screen', () => {
+        // A first pass put a fixed card at the bottom. It read as a
+        // notification rather than direction — which is what it was. The card
+        // has to point at the thing it is describing.
+        const links = document.getElementById('mn-links');
+        links.getBoundingClientRect = () => ({
+            top: 200, bottom: 400, left: 100, right: 500, width: 400, height: 200, x: 100, y: 200, toJSON: () => ({}),
+        });
+        render(<ProfileTour artistId="a1" />);
+        const card = screen.getByRole('dialog');
+        expect(card.style.position).toBe('fixed');
+        // To the RIGHT of the section (right edge 500 + gap), vertically centred
+        // on it — not pinned to the viewport bottom.
+        expect(parseInt(card.style.left, 10)).toBeGreaterThanOrEqual(500);
+        expect(card.style.bottom).toBe('');
+    });
+
+    it('lifts the section above the dimmed page so it stays readable', () => {
+        render(<ProfileTour artistId="a1" />);
+        const links = document.getElementById('mn-links');
+        expect(links.style.zIndex).toBe('45');
+        // …and restores it on the way out.
+        fireEvent.click(screen.getByRole('button', { name: /next/i }));
+        expect(links.style.zIndex).toBe('');
+    });
+
+    it('never blocks clicks on the section it is pointing at', () => {
+        // Dimming that swallowed clicks would defeat the purpose: the artist is
+        // being told to act on that exact section.
+        const { container } = render(<ProfileTour artistId="a1" />);
+        const backdrop = container.querySelector('[aria-hidden="true"].fixed');
+        expect(backdrop?.className).toContain('pointer-events-none');
+    });
+
     it('can go back', () => {
         render(<ProfileTour artistId="a1" />);
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
