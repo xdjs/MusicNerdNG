@@ -1,9 +1,9 @@
-import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { insertVaultSource, getVaultSourcesByArtistId } from "./dashboardQueries";
 import { getArtistById } from "./artistQueries";
-import { SOURCE_TYPES, type SourceType } from "@/lib/sourceTypes";
+import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
+import { webSearch } from "@/server/utils/webSearch";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
 // External fetches (redirect resolution) fan out with plain Promise.all — the result set
@@ -18,6 +18,11 @@ import type { ArtistVaultSource } from "@/server/db/DbTypes";
  *  purely on our own impatience. Demoting a real source is a cheaper mistake than
  *  citing a fake one, but it is still a mistake. */
 const VERIFY_TIMEOUT_MS = 8000;
+
+/** Per query, across three queries — so up to 15 candidates before dedupe, which
+ *  overlaps heavily in practice. Roughly matches the 8 the old prompt asked for
+ *  while giving the dedupe something to work with. */
+const TAVILY_RESULTS_PER_QUERY = 5;
 
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
@@ -52,6 +57,10 @@ interface WebSearchResult {
  * cannot resolve is a candidate we drop.
  */
 async function resolveRedirectUrl(url: string): Promise<string | null> {
+    // Vestigial on this path since retrieval moved to a search API, which returns
+    // destination URLs. Kept as a passthrough guard: it is a no-op for any normal
+    // URL, and it is the safety net if a future provider ever hands back a
+    // redirect token instead of a destination.
     if (!isGroundingRedirect(url)) return url;
     try {
         const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(5000) });
@@ -78,8 +87,24 @@ function normalizeUrl(raw: string): string {
 }
 
 /**
- * Uses Gemini Flash with Google Search grounding to find articles/interviews/reviews
- * about an artist, then inserts them as pending vault sources.
+ * Finds articles/interviews/reviews about an artist and inserts them as pending
+ * vault sources.
+ *
+ * Retrieval is a REAL SEARCH API (see webSearch.ts), not a model. It used to be
+ * Gemini with `googleSearch` grounding asked to "return ONLY a JSON array" —
+ * which meant the model AUTHORED the URLs. Grounding loads real results into
+ * context, but emitting JSON is generation, and nothing bound the two together:
+ * Gemini reports what it actually retrieved in `groundingMetadata.groundingChunks`
+ * and that was never read. The result was confident fabrication — a real artist's
+ * vault filled with a YouTube interview whose video ID 404s and a channel page
+ * that never mentions him, both with invented titles and descriptions.
+ *
+ * The same lesson was already learned for profile discovery (webSearch.ts's
+ * docblock: "a model deciding whether to search is not a substitute for an actual
+ * search API") and simply never applied here.
+ *
+ * A search API cannot invent a URL. It CAN return the wrong person, so the
+ * verification pass below runs with `requireFullName` — see the comment there.
  */
 export async function searchAndPopulateVault(artistId: string): Promise<ArtistVaultSource[]> {
     const artist = await getArtistById(artistId);
@@ -87,76 +112,40 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
 
     const artistName = artist.name ?? "Unknown Artist";
 
-    // Build identity context so Gemini knows exactly who this artist is
-    const identityParts: string[] = [];
-    if (artist.spotify) identityParts.push(`Spotify artist ID: ${artist.spotify}`);
-    if (artist.instagram) identityParts.push(`Instagram: @${artist.instagram}`);
-    if (artist.x) identityParts.push(`X/Twitter: @${artist.x}`);
-    if (artist.youtube) identityParts.push(`YouTube: ${artist.youtube}`);
-    if (artist.soundcloud) identityParts.push(`SoundCloud: ${artist.soundcloud}`);
-    if (artist.bandcamp) identityParts.push(`Bandcamp: ${artist.bandcamp}`);
-
-    const identityContext = identityParts.length > 0
-        ? `\n\nThis artist's known profiles:\n${identityParts.join("\n")}`
-        : "";
-
-    const searchRequest = {
-        model: GEMINI_MODEL_FLASH,
-        contents: `Search the web for articles, interviews, reviews, profiles, and notable content specifically about the music artist "${artistName}".${identityContext}
-
-IMPORTANT: Every result MUST be specifically about "${artistName}" the music artist. Do NOT include results about other people, bands, or websites that happen to share a similar name.
-
-Search for:
-- "${artistName}" music artist interview
-- "${artistName}" music review
-- "${artistName}" artist profile
-- "${artistName}" new music
-
-Find up to 8 high-quality results. For each result, provide:
-- The exact URL (must be a real, working URL you found via web search)
-- The article title
-- A 1-2 sentence description of the content
-- The type: "article", "interview", "review", "news", or "profile"
-
-Return ONLY a JSON array in this format, no other text:
-[{"url": "...", "title": "...", "snippet": "...", "type": "..."}]
-
-If you cannot find any results specifically about this artist, return an empty array: []`,
-        config: {
-            systemInstruction: "You are a music research assistant. You search the web for articles, interviews, reviews, and content specifically about a given music artist. You must be precise — only return results that are directly about the specified artist, not about other artists or people with similar names.",
-            tools: [{ googleSearch: {} }],
-        },
-    };
+    // Exact-phrase queries: an unquoted multi-word name matches each token
+    // independently, which is how "Black Dave" returns Dave the UK rapper. The
+    // three angles mirror the categories the vault actually wants.
+    const queries = [
+        `"${artistName}" music artist interview`,
+        `"${artistName}" music review`,
+        `"${artistName}" artist profile`,
+    ];
 
     try {
-        // Gemini intermittently returns an EMPTY or unparseable grounded response
-        // (transient — not artist-specific). Treating that as "no sources" wrongly
-        // reduced even famous artists (e.g. Grimes) to nothing. Retry until we get a
-        // parseable non-empty list; a genuinely sourceless artist exhausts attempts → [].
-        const MAX_ATTEMPTS = 4;
-        let results: WebSearchResult[] = [];
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            let outputText = "";
-            try {
-                const response = await getGemini().models.generateContent(searchRequest);
-                outputText = response.text ?? "";
-            } catch (e) {
-                console.error(`[vaultWebSearch] Gemini call failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, e);
-            }
-            const jsonMatch = outputText.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                try {
-                    const parsed = JSON.parse(jsonMatch[0]);
-                    if (Array.isArray(parsed) && parsed.length > 0) { results = parsed; break; }
-                } catch {
-                    console.error(`[vaultWebSearch] Unparseable JSON (attempt ${attempt}/${MAX_ATTEMPTS}):`, jsonMatch[0].slice(0, 120));
-                }
-            }
-            if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 700 * attempt));
+        const perQuery = await Promise.all(
+            queries.map(q => webSearch(q, { maxResults: TAVILY_RESULTS_PER_QUERY })),
+        );
+
+        // Dedupe across queries by URL; the three angles overlap heavily.
+        const byUrl = new Map<string, WebSearchResult>();
+        for (const hit of perQuery.flat()) {
+            if (!hit.url || !hit.title) continue;
+            const key = normalizeUrl(hit.url);
+            if (byUrl.has(key)) continue;
+            byUrl.set(key, {
+                url: hit.url,
+                title: hit.title,
+                snippet: hit.snippet ?? "",
+                // Tavily returns no category, and asking a model to supply one
+                // would put generated content back on this path for no benefit.
+                // The URL itself is a better signal and it cannot be invented.
+                type: inferTypeFromUrl(hit.url),
+            });
         }
+        const results: WebSearchResult[] = [...byUrl.values()];
 
         if (results.length === 0) {
-            console.log(`[vaultWebSearch] No usable results for "${artistName}" after ${MAX_ATTEMPTS} attempts`);
+            console.log(`[vaultWebSearch] Web search returned nothing for "${artistName}"`);
             return [];
         }
 
@@ -188,11 +177,11 @@ If you cannot find any results specifically about this artist, return an empty a
         const candidates: WebSearchResult[] = [];
         let skipped = 0;
         for (const result of resolved) {
-            // Reject non-http(s) schemes and private/local hosts. Gemini can return
-            // (or be prompt-injected into returning) javascript:/data:/file: URLs that
-            // would become stored XSS when rendered as <a href> on the public page.
+            // Reject non-http(s) schemes and private/local hosts. Still required with
+            // a search API: these URLs are rendered as <a href> on a public page, and
+            // the provider is an external system whose output we do not control.
             if (isUnsafeUrl(result.url)) {
-                console.warn(`[vaultWebSearch] Skipping unsafe URL from Gemini: ${result.url.slice(0, 100)}`);
+                console.warn(`[vaultWebSearch] Skipping unsafe URL: ${result.url.slice(0, 100)}`);
                 continue;
             }
             const normalized = normalizeUrl(result.url);
@@ -205,13 +194,15 @@ If you cannot find any results specifically about this artist, return an empty a
             candidates.push(result);
         }
 
-        // VERIFICATION PASS — the point of this function's existence.
+        // VERIFICATION PASS — still the point of this function's existence.
         //
-        // Everything above this line is model output: Gemini was asked to TYPE urls,
-        // titles and descriptions, and it produces plausible ones. Until a candidate is
-        // fetched, we do not know that its URL exists, and we certainly do not know that
-        // its description is true of the page. Storing that as a source is how an
-        // invented URL and a model-written summary ended up cited in a published About.
+        // Retrieval no longer invents URLs, but a search hit is a claim about a page,
+        // not the page. It can be dead, paywalled, since-repurposed, or about a
+        // different person of the same name — and the last of those is the live risk
+        // now that a keyword index is the source: "Black Dave" returns real, working
+        // articles about Dave the UK rapper. So every candidate is still fetched and
+        // classified before a row is written, because a row is the thing that later
+        // gets cited.
         //
         // So every candidate is fetched, in parallel, and classified. This is AWAITED
         // (it used to be fire-and-forget) because the classification has to happen before
@@ -229,7 +220,15 @@ If you cannot find any results specifically about this artist, return an empty a
         const insertedSources: ArtistVaultSource[] = [];
         let dropped = 0;
         for (const { result, page } of verified) {
-            const verdict = classifyFetchedSource(page, artistName);
+            // requireFullName: a keyword search returns REAL pages about the wrong
+            // person, and the default distinctive-token match is far too loose for
+            // that — "Black Dave" reduces to "black", which matches a large share of
+            // the web. Without this, a namesake article becomes `verified`, gains
+            // extractedText, and is therefore citable in the artist's About. That
+            // would be a worse failure than the invented URLs this path replaced,
+            // because it is plausible. Anything that only half-matches degrades to
+            // an unverified lead the artist can still see and judge.
+            const verdict = classifyFetchedSource(page, artistName, { requireFullName: true });
             if (verdict === "dead") {
                 console.warn(`[vaultWebSearch] Dropping unreachable/irrelevant URL (status ${page.status}): ${result.url.slice(0, 120)}`);
                 dropped++;

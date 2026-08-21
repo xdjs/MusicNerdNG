@@ -94,7 +94,7 @@ Depeche Mode, Tommy Richman, Cherrelle). The collaboration question is gone.
 **Why it survived:** the existing unit test used `artist_name: 'P3T3RANGO'` — a handle in caps.
 It passed because `norm` lowercases. The test encoded the same wrong assumption as the code.
 
-### 2.1 + 2.2 Hallucinated sources — ROOT CAUSE FOUND `todo`
+### 2.1 + 2.2 Hallucinated sources `done`
 They were one bug. Investigated 8/21 with Pharaoh's real data.
 
 **The URLs are written by the model, not retrieved by search.**
@@ -159,7 +159,52 @@ Relatedness needs the identity anchoring already built for the About (verified p
 `nameAppearsIn` on fetched content). That machinery exists and simply isn't applied on this path.
 Tavily returns the artist's correct Spotify ID, so anchoring has something real to bind against.
 
-**Fix options** (not yet chosen):
+**Fixed 8/21.** Retrieval moved to Tavily via `webSearch()`; Gemini is out of this path
+entirely and back to synthesis only. Type comes from `inferTypeFromUrl` rather than a model —
+the URL is a better signal and can't be invented. Queries quote the artist name, because an
+unquoted multi-word name matches each token independently, which is how "Black Dave" returns
+Dave the UK rapper.
+
+**The swap alone would have been a regression**, which the coverage probe caught in time.
+`nameAppearsIn` falls back to the most *distinctive token* when the full name is absent — for
+"Black Dave" that's `black`, which matches a large share of the web. A real Guardian interview
+with Dave the UK rapper would have classified as `verified`, gained `extractedText`, become
+citable, and been quoted in Black Dave's About. Today's fabricated YouTube links avoid that only
+by being unreadable. **A plausible wrong-artist source is worse than an obvious fake.**
+
+So `classifyFetchedSource` now takes `requireFullName`, set on this path only: a search-retrieved
+page must name the artist in full to be citable. Anything that half-matches degrades to an
+unverified lead the artist still sees and judges. The artist's own site and links they hand us
+keep the looser rule, which exists because Pete's homepage renders "RANGO" as a wordmark.
+
+**Verified live against Pharaoh** (dev): **12 real sources, 0 dead URLs, 8s** — against 2
+sources, both fabricated, before. Includes "PHARAOH SISTARE on Shockoe Sessions Live!", the
+Richmond session discovery was said to have missed. Every namesake (Pharaoh Overlord, Pharaoh Jo,
+a metal band called Pharaoh) landed as a non-citable lead.
+
+**Two limits, honestly:**
+- **Only 2 of 12 are citable**, and both are aggregators (Viberate, Apple Music). The best source
+  — the Shockoe Sessions video — is a lead because YouTube is JS-rendered and unreadable, so it
+  can't feed the About. Rich editorial material is still thin.
+- **Namesake leads are still displayed**, just not citable. A readable page that never says the
+  artist's full name could arguably be dropped outright rather than shown; not done, because the
+  looser rule exists for a real reason and dropping is irreversible. Open question below.
+
+**Superseded fix options** (kept for the record): reading `groundingMetadata.groundingChunks`, or
+adding YouTube oEmbed to the classifier. The first is moot now Gemini is off this path. The
+second is still worth doing for the JS-rendered blind spot — see 2.5.
+
+### 2.5 The verifier can't see JS-rendered pages `todo`
+YouTube returns HTTP 200 for a nonexistent video, and its pages carry no readable text, so
+`extractedText` never reaches `MIN_VERIFIED_TEXT` (400) and the ladder returns `lead` — never
+`dead`. `DEAD_PAGE_MARKERS` sits *below* that gate and is unreachable for such pages. Real and
+fake YouTube URLs are indistinguishable to the verifier.
+
+Less urgent now retrieval can't fabricate, but it's why the Shockoe Sessions video can't be
+cited. YouTube's oEmbed endpoint is keyless and correctly 404s a fake — worth using both to
+verify existence and to lift real videos out of lead status.
+
+**Old fix options, for reference:**
 1. **Read `groundingMetadata.groundingChunks`** and discard any emitted URL not in the retrieved
    set. The minimal correct binding; no architecture change.
 2. **Use Tavily** (`webSearch.ts`, already in the repo and wired for profile discovery) — a real
