@@ -12,8 +12,8 @@ import {
 import { db } from '@/server/db/drizzle';
 
 describe('firstUnconfirmedStep (pure derivation)', () => {
-    it('returns profiles for an empty set', () => {
-        expect(firstUnconfirmedStep(new Set())).toBe('profiles');
+    it('returns identity for an empty set — the hybrid flow opens by asking who this is', () => {
+        expect(firstUnconfirmedStep(new Set())).toBe('identity');
     });
     it('returns the first gap even when later steps are confirmed (out-of-order safety)', () => {
         expect(firstUnconfirmedStep(new Set(['profiles', 'interview']))).toBe('vault');
@@ -25,7 +25,15 @@ describe('firstUnconfirmedStep (pure derivation)', () => {
         expect(firstUnconfirmedStep(new Set(ONBOARDING_STEPS))).toBeNull();
     });
     it('ignores unknown junk in the set', () => {
-        expect(firstUnconfirmedStep(new Set(['bogus']))).toBe('profiles');
+        expect(firstUnconfirmedStep(new Set(['bogus']))).toBe('identity');
+    });
+
+    it('treats a confirmed profiles step as implying identity, so a finished artist is not dragged back', () => {
+        // `identity` was added after artists had already onboarded. Anyone who
+        // confirmed their profiles necessarily asserted their identity; without
+        // this, every completed artist would resume at step one.
+        expect(firstUnconfirmedStep(new Set(['profiles', 'vault', 'interview', 'publish']))).toBeNull();
+        expect(firstUnconfirmedStep(new Set(['profiles']))).toBe('vault');
     });
 });
 

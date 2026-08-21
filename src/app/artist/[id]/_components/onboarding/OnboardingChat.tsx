@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
-import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
+import { IdentityCard, ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
 import MusicNerdLoader from "@/app/_components/MusicNerdLoader";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
@@ -193,6 +193,8 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                     </div>
                 );
             case "step": {
+                if (item.step === "identity") return <IdentityCard payload={item.payload as never} disabled={!interactive}
+                        onAnswer={isMe => void sendTurn({ type: "confirm_identity", isMe })} />;
                 if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive}
                         onFindMore={r => void sendTurn({ type: "find_more_profiles", ...r })} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
                 if (item.step === "vault") return <VaultCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "vault_review", ...r })} />;
