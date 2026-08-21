@@ -7,23 +7,30 @@ with Pete, run without coaching per Carl and CY's instruction on 8/20.
 
 ---
 
-## The headline finding
+## On the length of the flow
 
-**He found the flow short.** Asked what he liked, unprompted, first thing:
+Two things he said, both true, and they aren't in conflict.
+
+**He found the flow short.** Unprompted, asked what he liked:
 
 > A pretty streamlined process. It just keeps going down, and there's not too much clicking
 > elsewhere you have to do.
 
-That cuts against the premise of the 8/20 decision to collapse the flow. Carl's reasoning was
-that artists would abandon before seeing the payoff — but the one artist who has actually walked
-through it described it as streamlined and never mentioned length.
+**And he preferred Carl's version anyway.** Asked whether he'd rather claim, confirm one thing,
+have everything built for him, and then be walked through it:
 
-**Don't over-read it.** He was sitting next to Pete, who he knows, having agreed to test
-something. Abandonment pressure in that setting is close to zero, which is exactly the pressure
-the collapse is meant to relieve. One friendly in-person run is not a funnel.
+> Yeah, that would be cool. Because as I was typing that out, I was like, "This is basically my
+> Spotify bio."
 
-But it is the only real evidence either way, and it should reach Carl before we rebuild the flow
-around the opposite assumption.
+That reason matters more than the agreement does. He wasn't being polite — he'd noticed
+mid-session that he was hand-typing something the system should already have known. The guided
+post-generation review isn't just less work; it's the version where he doesn't have to supply
+what we could have found.
+
+**Net:** the collapse isn't validated by someone complaining the flow was long — nobody did. It's
+validated by an artist saying he'd rather review a finished profile than assemble one. Those
+argue for the same build, for a different reason, and the difference matters when we decide what
+"done" looks like: the payoff isn't fewer steps, it's arriving at something already correct.
 
 ## What he actually wanted
 
@@ -76,15 +83,12 @@ flow doesn't explain what it's looking for or why, at the moment it asks.
 
 ## What he endorsed
 
-Both with genuine interest, but both in response to Pete describing the idea rather than
-experiencing it — so treat as directional, not validation:
+- **The collapsed flow** — see above. Endorsed with a reason, which is what makes it count.
+- **Weekly emails asking about recent posts** — *"Yeah, that'd be cool."* Pete's framing, that it
+  gives you somewhere documenting your story without it having to be a formal interview, landed.
 
-- The collapsed "is this you? → we build it → you review" flow: *"Yeah, that would be cool."*
-- Weekly emails asking about recent posts: *"Yeah, that'd be cool."* Pete's framing — somewhere
-  documenting your story without it having to be a formal interview — landed.
-
-These were leading questions. Real validation is watching an artist use it, not asking whether
-they'd like it.
+The email idea was described rather than experienced, so it's directional. Worth building a real
+one and sending it to him rather than asking again.
 
 ---
 
