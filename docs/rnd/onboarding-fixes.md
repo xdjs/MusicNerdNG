@@ -94,15 +94,52 @@ Depeche Mode, Tommy Richman, Cherrelle). The collaboration question is gone.
 **Why it survived:** the existing unit test used `artist_name: 'P3T3RANGO'` — a handle in caps.
 It passed because `norm` lowercases. The test encoded the same wrong assumption as the code.
 
-### 2.1 Hallucinated links still appearing `todo`
-Seen live on a YouTube interview. Not yet investigated. Needs the actual bad output captured
-before guessing — which tier produced it (id mappings, platform search, or scoped web search),
-and whether verification was skipped or passed something it shouldn't.
+### 2.1 + 2.2 Hallucinated sources — ROOT CAUSE FOUND `todo`
+They were one bug. Investigated 8/21 with Pharaoh's real data.
 
-### 2.2 Discovery missed the press that exists about him `todo`
-He has at least one article written about him; discovery surfaced none of it. Unclear whether
-that's a query problem, a verification problem, or the same root cause as 2.1. Investigate with
-2.1 — they may be one bug.
+**The URLs are written by the model, not retrieved by search.**
+
+`vaultWebSearch` enables `tools: [{ googleSearch: {} }]` and then, in the same call, asks the
+model to *"Return ONLY a JSON array"* of results. Grounding loads real search results into
+context, but emitting JSON is **generation**, not retrieval. Gemini returns what was actually
+retrieved in `groundingMetadata.groundingChunks` — **that field is never read anywhere in this
+codebase.** The code parses the model's prose instead, so nothing binds an emitted URL to
+anything search returned.
+
+The prompt does try: *"must be a real, working URL you found via web search"*. That's an
+instruction, not a constraint. You can't instruct a model out of generating.
+
+**Evidence.** Pharaoh's entire discovery yield was two sources, both fabricated:
+- `youtube.com/watch?v=F_f7k9Q8sA4` — "Pop Music RVA: Pharaoh Sistare". oEmbed returns **404**;
+  the video does not exist. Title and snippet invented.
+- `music.youtube.com/channel/UC-K-sO8x5N2g-K_f9_p8Q5Q` — page carries a "not available" marker
+  and the word "Pharaoh" appears **zero** times.
+
+Both were deleted 8/21 (backed up first). So 2.2 isn't a separate bug: discovery didn't *miss*
+his press, it retrieved nothing and invented two items.
+
+**Why verification didn't catch it.** `classifyFetchedSource` is sound but YouTube defeats it:
+YouTube returns **HTTP 200 for a nonexistent video** (776KB of JS shell), and its pages are
+JS-rendered so `extractedText` never reaches `MIN_VERIFIED_TEXT` (400). The ladder therefore
+returns `"lead"` — never `"dead"` — and the `DEAD_PAGE_MARKERS` check sits *below* the 400-char
+gate, so it's unreachable for JS-rendered pages. Real and fabricated YouTube URLs classify
+identically.
+
+**Contained, but not harmless.** `extracted_text` is NULL on leads, so `isCitableSource` excludes
+them and the About won't quote them — the About guardrails held. But the artist is shown a
+confident-sounding source and approved it, so fabricated press sat on his profile.
+
+**Fix options** (not yet chosen):
+1. **Read `groundingMetadata.groundingChunks`** and discard any emitted URL not in the retrieved
+   set. The minimal correct binding; no architecture change.
+2. **Use Tavily** (`webSearch.ts`, already in the repo and wired for profile discovery) — a real
+   retrieval API whose URLs come from an index, so it structurally cannot invent one.
+3. **YouTube oEmbed** in `classifyFetchedSource` — keyless, correctly 404s a fake and 200s a real
+   video. Fixes the verification blind spot but not the generation of bad URLs.
+
+Note: the previously-planned **grounded-prose → ungrounded-structuring split** improves JSON
+reliability but does **not** fix this on its own — a structuring pass can still alter a URL.
+Binding to retrieval (1) or retrieving directly (2) is what actually closes it.
 
 ---
 
