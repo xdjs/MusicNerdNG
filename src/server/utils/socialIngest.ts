@@ -87,6 +87,15 @@ function norm(handle: string): string {
     return handle.trim().toLowerCase().replace(/^@/, "");
 }
 
+/** Compares a DISPLAY NAME against a HANDLE, which `norm` cannot do: it keeps
+ *  spaces and punctuation, so "Pharaoh Sistare" never equals "pharaohsistare".
+ *  Strips everything that isn't alphanumeric so the two forms of the same
+ *  identity collapse together. Handle-to-handle comparisons should keep using
+ *  `norm` — this is deliberately lossy. */
+function normLoose(value: string): string {
+    return value.trim().toLowerCase().replace(/^@/, "").replace(/[^a-z0-9]/g, "");
+}
+
 function stringArray(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return value.filter((v): v is string => typeof v === "string" && v.length > 0);
@@ -119,7 +128,7 @@ function dedupeExcludingSelf(handles: string[], selfNorm: string): string[] {
 /** musicInfo is noisy: most video posts carry it, but it's frequently "the
  *  artist's own original audio" (uninteresting) rather than a real track
  *  credit. Only keep it when it looks like a genuine song reference. */
-function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string): { musicTitle: string | null; musicArtist: string | null } {
+function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string, realArtistName?: string): { musicTitle: string | null; musicArtist: string | null } {
     const info = raw.musicInfo as ApifyMusicInfo | undefined;
     if (!info || typeof info !== "object") return { musicTitle: null, musicArtist: null };
 
@@ -128,8 +137,32 @@ function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string): 
     if (!songName || !artistName) return { musicTitle: null, musicArtist: null };
     if (info.uses_original_audio === true) return { musicTitle: null, musicArtist: null };
     if (songName.toLowerCase() === "original audio") return { musicTitle: null, musicArtist: null };
-    // The music "artist" is just the poster's own handle — not a real credit.
-    if (norm(artistName) === selfNorm || norm(artistName) === norm(ownerUsername)) {
+    // The music "artist" is the poster themselves — not a real third-party
+    // credit. Instagram reports `artist_name` as a DISPLAY NAME ("Pharaoh
+    // Sistare") while ownerUsername is a HANDLE ("pharaohsistare"), so this
+    // must compare loosely; `norm` alone keeps the space and never matches.
+    //
+    // That mismatch is why a real artist was asked "how did that collaboration
+    // and remix come about?" about a track he had no part in — the audio
+    // credit was his own name, we kept it as a third-party track reference,
+    // and the question generator faithfully asked about the collaboration it
+    // implied. See docs/rnd/research/2026-08-21-artist-test-pharaoh.md.
+    //
+    // When the credited artist IS the poster we cannot tell "their own release"
+    // from "Instagram mislabelled the audio", so dropping it is the safe read —
+    // which was always this guard's intent.
+    // Compare against the artist's REAL NAME first, not just their handle. A
+    // handle is not a name: "Black Dave" posts as @worstgeneration, "Pete
+    // Rango" as @p3t3rango. Matching only on the handle would keep working for
+    // artists whose handle happens to be their name with the spaces removed
+    // and silently fail for everyone else — the same shape of near-miss that
+    // caused this bug in the first place.
+    const credited = normLoose(artistName);
+    const isSelfCredit =
+        credited === normLoose(selfNorm)
+        || credited === normLoose(ownerUsername)
+        || (!!realArtistName && credited === normLoose(realArtistName));
+    if (isSelfCredit) {
         return { musicTitle: null, musicArtist: null };
     }
 
@@ -141,7 +174,7 @@ function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string): 
  * item isn't a real post (Apify datasets can contain error placeholders for
  * posts it failed to fetch — those lack `id`/`url`/`ownerUsername`).
  */
-export function mapApifyPost(rawItem: unknown, artistId: string, handle: string): SocialPostInsert | null {
+export function mapApifyPost(rawItem: unknown, artistId: string, handle: string, artistName?: string): SocialPostInsert | null {
     if (!rawItem || typeof rawItem !== "object") return null;
     const raw = rawItem as ApifyPost;
     if (raw.error) return null;
@@ -161,7 +194,7 @@ export function mapApifyPost(rawItem: unknown, artistId: string, handle: string)
         [...stringArray(raw.mentions), ...usernamesFrom(raw.taggedUsers)],
         selfNorm,
     );
-    const { musicTitle, musicArtist } = extractMusic(raw, ownerUsername, selfNorm);
+    const { musicTitle, musicArtist } = extractMusic(raw, ownerUsername, selfNorm, artistName);
 
     const likeCount = typeof raw.likesCount === "number" ? raw.likesCount : null;
     const commentCount = typeof raw.commentsCount === "number" ? raw.commentsCount : null;
@@ -275,8 +308,9 @@ export async function ingestInstagramPosts(
             return EMPTY_RESULT;
         }
 
+        const artistName = await getArtistNameById(artistId);
         const rows = items
-            .map(item => mapApifyPost(item, artistId, handle))
+            .map(item => mapApifyPost(item, artistId, handle, artistName))
             .filter((r): r is SocialPostInsert => r !== null);
 
         return await upsertMappedRows(rows);
@@ -328,8 +362,9 @@ export async function ingestInstagramPostsFromItems(
 ): Promise<IngestResult> {
     if (!artistId || !handle) return EMPTY_RESULT;
     try {
+        const artistName = await getArtistNameById(artistId);
         const rows = items
-            .map(item => mapApifyPost(item, artistId, handle))
+            .map(item => mapApifyPost(item, artistId, handle, artistName))
             .filter((r): r is SocialPostInsert => r !== null);
         return await upsertMappedRows(rows);
     } catch (e) {
@@ -354,6 +389,22 @@ export type EnsureSocialPostsOutcome =
     | { status: "ingested"; count: number }
     | { status: "found_nothing" }
     | { status: "error" };
+
+/** The artist's stored name, for the self-credit check in `extractMusic`.
+ *  Looked up here rather than pushed onto every caller so the CLI script and
+ *  the onboarding path get the same protection without signature churn. */
+async function getArtistNameById(artistId: string): Promise<string | undefined> {
+    try {
+        const row = await db.query.artists.findFirst({
+            where: eq(artists.id, artistId),
+            columns: { name: true },
+        });
+        return row?.name ?? undefined;
+    } catch (e) {
+        console.error("[getArtistNameById] Error:", e);
+        return undefined;
+    }
+}
 
 /** Cheap existence probe — avoids hydrating every row just to ask "any?".
  *  Deliberately a boolean, not a count: `LIMIT 1` can't produce a real total,

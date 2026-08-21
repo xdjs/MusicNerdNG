@@ -71,6 +71,29 @@ keeping the opt-in/opt-out semantics intact.
 
 ## 2 · Bugs still needing investigation
 
+### 2.0 Hallucinated *authorship* in interview questions `done`
+Found 8/21 while verifying 1.1. Pharaoh was asked *"You tagged the Yamumoto Remix of 'Don't Let
+Me Go Alone,' featuring Jameir Thompson; how did that collaboration and remix come about?"* — a
+track he had no part in.
+
+Not a model hallucination. `extractMusic` already had a guard for "the audio is credited to the
+poster, so it isn't a real third-party credit" — it just never fired. It compared Instagram's
+`artist_name` (a **display name**, "Pharaoh Sistare") against the **handle** (`pharaohsistare`)
+using a normaliser that preserves spaces. Those can never match, so 11 posts across 5 titles kept
+a bogus credit and the generator faithfully asked about the collaboration they implied.
+
+The first fix compared loosely against the handle — which only worked because Pharaoh's handle is
+his name minus the space. Pete caught it: **a handle is not a name.** "Black Dave" posts as
+@worstgeneration, "Pete Rango" as @p3t3rango. The guard now compares against `artists.name`,
+resolved once per ingest so the CLI path gets the same protection.
+
+Verified by re-mapping Pharaoh's 60 stored raw items through the fixed path — no new scrape:
+self-credits 11 → **0**, and the four remaining credits are all genuinely third-party (Chic,
+Depeche Mode, Tommy Richman, Cherrelle). The collaboration question is gone.
+
+**Why it survived:** the existing unit test used `artist_name: 'P3T3RANGO'` — a handle in caps.
+It passed because `norm` lowercases. The test encoded the same wrong assumption as the code.
+
 ### 2.1 Hallucinated links still appearing `todo`
 Seen live on a YouTube interview. Not yet investigated. Needs the actual bad output captured
 before guessing — which tier produced it (id mappings, platform search, or scoped web search),
