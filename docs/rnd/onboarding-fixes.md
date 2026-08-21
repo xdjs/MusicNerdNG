@@ -129,6 +129,36 @@ identically.
 them and the About won't quote them — the About guardrails held. But the artist is shown a
 confident-sounding source and approved it, so fabricated press sat on his profile.
 
+**Tavily coverage probe, 8/21 — run before committing to a rewrite.** Tavily is already in the
+repo but wired to ONE caller: `profileDiscovery.ts` tier 4. `vaultWebSearch` (press, interviews,
+articles — called from claim approval, the vault step, the "Search web" button, and About
+generation) still uses the Gemini pattern. The lesson was learned for profiles and never applied
+to sources. `webSearch.ts`'s own docblock argues the case: *"a model deciding whether to search
+is not a substitute for an actual search API."*
+
+Results, 3 queries per artist, URLs HTTP-checked:
+
+- **Pharaoh Sistare** — 11 real URLs, 7/8 sampled returned 200. Including
+  **"PHARAOH SISTARE on Shockoe Sessions Live!"** (`youtube.com/watch?v=GvqK4m2i9Mc`) — the
+  Richmond session Pete asked him about, and the exact thing discovery "missed". Gemini invented
+  *"Pop Music RVA: Pharaoh Sistare"* instead of returning it. Also surfaced his correct Spotify
+  ID, Chartmetric, Instagram, TikTok. **So 2.2 was never a coverage problem — the content was
+  always findable.**
+- **Black Dave** — 10 real, resolving URLs, and **none about the right artist.** All Dave the UK
+  rapper, his song "Black", or Dave Black the composer.
+- **Grimes** — good coverage, with a "Luke Grimes" country review leaking in.
+
+**Conclusion: the two failures are separate and Tavily only fixes one.**
+
+| | Gemini today | Tavily |
+|---|---|---|
+| links that don't work | invents them | fixed — URLs come from an index |
+| links that aren't related | invents *and* conflates | **not fixed** — real URLs, wrong person |
+
+Relatedness needs the identity anchoring already built for the About (verified platform ID,
+`nameAppearsIn` on fetched content). That machinery exists and simply isn't applied on this path.
+Tavily returns the artist's correct Spotify ID, so anchoring has something real to bind against.
+
 **Fix options** (not yet chosen):
 1. **Read `groundingMetadata.groundingChunks`** and discard any emitted URL not in the retrieved
    set. The minimal correct binding; no architecture change.
