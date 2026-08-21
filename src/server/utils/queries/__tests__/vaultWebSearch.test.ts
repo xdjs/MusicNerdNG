@@ -115,6 +115,29 @@ describe("searchAndPopulateVault", () => {
     expect(mockInsert.mock.calls.map(c => c[0].url)).toContain("https://example.com/deleted-before");
   });
 
+  it("skips a profile we already hold as a link, but keeps other content on the same host", async () => {
+    // Discovery kept offering an artist their own Spotify and X pages as
+    // "sources about you". They are identity we already have, not research.
+    // Matched on the stored VALUE appearing in the URL, not the host — host
+    // matching would have discarded the Shockoe Sessions interview, the best
+    // source found for another artist, purely because he has a YouTube link.
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pete Rango", spotify: "3DmaZbBPnKSGnxYRpHobss",
+      instagram: null, x: null, youtube: "p3t3rango", soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([
+      hit("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss", "Pete Rango - Spotify"),
+      hit("https://www.youtube.com/watch?v=GvqK4m2i9Mc", "Live session"),
+    ]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const inserted = mockInsert.mock.calls.map(c => c[0].url);
+    expect(inserted).not.toContain("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
+    expect(inserted).toContain("https://www.youtube.com/watch?v=GvqK4m2i9Mc");
+  });
+
   // ---- Verification gate -------------------------------------------------
   // A search API cannot invent a URL, but a search hit is a claim about a page,
   // not the page: it can be dead, paywalled, repurposed, or about a namesake.

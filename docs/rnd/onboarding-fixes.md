@@ -354,6 +354,38 @@ Binding to retrieval (1) or retrieving directly (2) is what actually closes it.
 
 ---
 
+### 2.10 Questions about years-old posts — `postedAt` was never used `done`
+Raised by Pete in the 8/20 meeting (*"now it's referencing a post I did in 2020… how is it
+relevant now?"*), not fixed, and hit again on 8/21 when his own run asked him to reflect on 2020.
+
+`postedAt` was stored from the very first ingest and **used by nothing** — no sort, no window, no
+weighting anywhere in `socialSignals.ts`. A 2020 post competed on exactly equal footing with last
+week's.
+
+Signals now derive from a recency window (548 days — generous, because an album cycle is long and
+last year's release is still live for an independent artist). If recent activity is thinner than
+30 posts, it falls back to the artist's **whole history** rather than an arbitrary slice: the
+window exists to stop old posts crowding out new ones, not to discard data from someone who posts
+rarely. Engagement medians are computed over the same subset on purpose — a standout should stand
+out against what the artist does now, not a five-year average.
+
+**Verified on Pete's real 299 posts** (2018–2026): the window selects **47** (2026: 44, 2025: 3),
+and the questions changed from *"your post reflecting on 2020"* to his Colombia earthquake relief
+page and a recent @dameatlas collaboration — the kind he singled out as good in the demo.
+
+### 2.11 Discovery re-offered profiles we already have as links `done`
+Pete, 8/21: his own Spotify and X pages were surfaced among 13 "sources about you". They aren't
+research — they're identity we already hold, and re-presenting them costs a decision for nothing.
+
+Discovery deduped only against vault sources, never against the artist's platform links. Now a
+candidate whose URL contains a stored platform value is skipped. Matched on the VALUE, not the
+host — host matching would discard every youtube.com result for any artist with a YouTube link,
+including the Shockoe Sessions interview that was the best source found for Pharaoh.
+
+*Note from the same run: those three profile URLs were already `approved` in his vault — almost
+certainly by default rather than by decision, since the vault card is keep-by-default. That is
+the clearest evidence yet for the position taken in 2.6.*
+
 ### 2.3 The questions are shallow by construction `todo`
 Pete, 8/21, on *"You often use the word 'single' in your captions..."*: **"so shallow and has no
 depth. we should be finding out more about the artist."**

@@ -77,7 +77,12 @@ describe('generateGroundedQuestions', () => {
 
         const theme = questions.find(q => q.kind === 'theme');
         expect(theme.key).toBe('social_theme_hashtag_housemusic');
-        expect(theme.sourceUrls).toEqual(['https://www.instagram.com/p/OWN1/', 'https://www.instagram.com/p/OWN1B/']);
+        // Order-independent: signals are now derived from posts sorted by recency,
+        // so evidence comes out newest-first. This test is about the URLs being
+        // OUR signal data rather than the model's, not about their order.
+        expect([...theme.sourceUrls].sort()).toEqual(
+            ['https://www.instagram.com/p/OWN1/', 'https://www.instagram.com/p/OWN1B/'].sort()
+        );
     });
 
     it('drops any answer whose signalId was not one WE supplied (hallucination defense)', async () => {

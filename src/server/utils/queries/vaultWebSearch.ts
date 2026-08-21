@@ -24,6 +24,13 @@ const VERIFY_TIMEOUT_MS = 8000;
  *  while giving the dedupe something to work with. */
 const TAVILY_RESULTS_PER_QUERY = 5;
 
+/** The artist's own platform links — mirrors PROFILE_DISPLAY_COLUMNS in
+ *  linkPresentation.ts. Used to recognise "this is a profile we already have". */
+const PROFILE_LINK_COLUMNS = [
+    "spotify", "deezer", "instagram", "tiktok", "x", "youtube",
+    "youtubechannel", "soundcloud", "bandcamp", "twitch", "facebook",
+] as const;
+
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
 };
@@ -95,6 +102,32 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
     } catch {
         return false;
     }
+}
+
+/**
+ * URLs that are just a profile we ALREADY have linked.
+ *
+ * Discovery kept offering an artist their own Spotify and X pages as "sources
+ * about you". They aren't research — they're identity we already hold, and
+ * re-presenting them costs the artist a decision for nothing.
+ *
+ * Matched on the stored platform VALUE appearing in the URL, not on the host.
+ * Host matching would be wrong: an artist with a YouTube channel would lose
+ * every youtube.com result, including the Shockoe Sessions interview that is
+ * the best source we found for one of them. A URL containing their actual
+ * Spotify ID or handle is their profile; a video about them is not.
+ */
+const IDENTITY_MATCH_MIN_LENGTH = 4; // shorter values match far too much
+
+function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolean {
+    const haystack = url.toLowerCase();
+    return PROFILE_LINK_COLUMNS.some(col => {
+        const value = artist[col];
+        if (typeof value !== "string") return false;
+        const v = value.trim().toLowerCase().replace(/^@/, "");
+        if (v.length < IDENTITY_MATCH_MIN_LENGTH) return false;
+        return haystack.includes(v);
+    });
 }
 
 /** Normalize a URL for dedup comparison: lowercase, strip protocol/www/trailing slash */
@@ -221,6 +254,10 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // Reject non-http(s) schemes and private/local hosts. Still required with
             // a search API: these URLs are rendered as <a href> on a public page, and
             // the provider is an external system whose output we do not control.
+            if (isKnownProfileUrl(result.url, artist as unknown as Record<string, unknown>)) {
+                skipped++;
+                continue;
+            }
             if (isUnsafeUrl(result.url)) {
                 console.warn(`[vaultWebSearch] Skipping unsafe URL: ${result.url.slice(0, 100)}`);
                 continue;
