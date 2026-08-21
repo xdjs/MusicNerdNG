@@ -1,6 +1,7 @@
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
+import { getArtistDocContext } from "@/server/utils/artistDocService";
 import { isRealBio } from "@/lib/bioConstants";
 
 // PUBLIC ENDPOINT — intentionally unauthenticated (rate-limited via middleware STRICT tier).
@@ -63,6 +64,17 @@ export async function POST(req: Request) {
             }
         } catch (e) {
             console.error("[askArtist] Error fetching vault sources:", e);
+        }
+
+        // Artist doc (post-claim onboarding knowledgebase) — capped slice, ground truth
+        // like the vault sources. Interview quotes inside it are the artist's own words.
+        try {
+            const docContext = await getArtistDocContext(artistId);
+            if (docContext) {
+                contextParts.push(`\n--- ARTIST DOC (compiled with the artist; treat as ground truth) ---\n${docContext}\n--- END ARTIST DOC ---`);
+            }
+        } catch (e) {
+            console.error("[askArtist] Error fetching artist doc:", e);
         }
 
         const artistContext = contextParts.join("\n");

@@ -20,6 +20,8 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import OnboardingGate from "./_components/onboarding/OnboardingGate";
+import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 
 type ArtistProfileProps = {
@@ -111,6 +113,13 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     const directEditLinks = isClaimedByUser;
     const autoApproveLinkSubmissions = isAdmin || !!dbUser?.isWhiteListed;
 
+    // Onboarding state costs a query — computed ONLY for the approved claimant.
+    // getOnboardingState returns null when the confirmed-steps read FAILED (fail
+    // CLOSED — spec C1), not just when there's nothing to show. The `onboardingState
+    // && ...` gate below already renders neither the takeover nor the banner in
+    // that case — never fall back to a default/guessed state here.
+    const onboardingState = isClaimedByUser ? await getOnboardingState(id) : null;
+
     const pendingSources = canEdit ? pendingSourcesRaw : [];
 
     const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
@@ -120,6 +129,14 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
             <EditModeProvider canEdit={canEdit}>
             <AutoRefresh showLoading={false} />
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
+
+                {onboardingState && !onboardingState.complete && (
+                    <OnboardingGate
+                        artistId={artist.id}
+                        artistName={artist.name ?? "your profile"}
+                        currentStep={onboardingState.currentStep}
+                    />
+                )}
 
                 {/* 1. Hero Section */}
                 <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} artistId={artist.id} />
@@ -168,10 +185,10 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
                 </RevealSection>
 
-                {/* 5. Social Links (icon grid) */}
+                {/* 5. Links (icon grid) */}
                 <RevealSection className="glass p-4 sm:p-5 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="text-black dark:text-white text-xl font-bold">Social Links</h2>
+                        <h2 className="text-black dark:text-white text-xl font-bold">Links</h2>
                         <AddArtistData
                             artist={artist}
                             spotifyImg={platformImage ?? ""}

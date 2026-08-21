@@ -19,6 +19,8 @@
     "test:e2e": "playwright test",
     "type-check": "tsc --noEmit",
     "ci": "npm run type-check && npm run lint && npm run test:ci && npm run build",
+    "onboarding": "bash scripts/onboarding-scenario.sh",
+    "ingest-social": "bash scripts/ingest-social.sh",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",

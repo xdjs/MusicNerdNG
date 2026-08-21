@@ -181,7 +181,45 @@ export async function extractArtistId(artistUrl: string) {
                 }
             }
             
-            let extractedId = match[1] || match[2] || match[3];
+            // Handle Spotify URL parsing. The urlmap regex is
+            // `^https:\/\/open\.spotify\.com\/(track|album|artist|playlist|episode|show)\/([a-zA-Z0-9]+)(?:\?.*)?$`
+            // — group 1 is the URL *type* segment (e.g. the literal string
+            // "artist"), NOT the ID; group 2 is the real base62 ID. The
+            // generic `match[1] || match[2] || match[3]` fallback below would
+            // wrongly return the literal string "artist" as the ID. Only a
+            // /artist/ URL identifies an artist profile — a track/album/
+            // playlist/episode/show URL is not an artist profile and must be
+            // rejected rather than silently saving the wrong kind of ID.
+            if (siteName === 'spotify') {
+                const urlType = match[1];
+                const spotifyId = match[2];
+
+                if (urlType?.toLowerCase() !== 'artist') {
+                    return null;
+                }
+
+                if (!spotifyId || !/^[A-Za-z0-9]{22}$/.test(spotifyId)) {
+                    return null;
+                }
+
+                return {
+                    siteName: 'spotify',
+                    cardPlatformName,
+                    id: spotifyId
+                };
+            }
+
+            // The SoundCloud regex is
+            // `^https:\/\/(www\.)?soundcloud\.com\/([^/]+)(?:\/.*)?$` — group 1
+            // is the OPTIONAL literal "www." prefix, NOT the ID; group 2 is the
+            // real username. The generic `match[1] || match[2] || match[3]`
+            // fallback below would wrongly return the literal string "www." as
+            // the ID for any www.soundcloud.com URL — including the one this
+            // app's own urlmap `app_string_format` template builds
+            // (`https://www.soundcloud.com/%@`), so this bit unconditionally
+            // for every SoundCloud profile probed via that template. Prefer
+            // group 2 first for this one platform only.
+            let extractedId = siteName === 'soundcloud' ? (match[2] || match[1]) : (match[1] || match[2] || match[3]);
 
             // Decode any percent-encoded characters in the captured ID as well
             try {

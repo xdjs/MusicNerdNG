@@ -31,6 +31,77 @@
   background-color: rgba(255, 255, 255, 0.32);
 }
 
+/* Onboarding chat panel entrance: fade + slight rise. */
+@keyframes onboarding-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-onboarding-panel-in {
+  animation: onboarding-panel-in 0.25s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-onboarding-panel-in {
+    animation: none;
+  }
+}
+
+/* Onboarding progress chip: a slow, deliberate "breathing" glow while work is
+   in flight — reads as clearly alive without the flat, mechanical feel of a
+   plain opacity pulse. Settles instantly to a calm, static pill once `done`
+   (see OnboardingChat.tsx's progress case) — the border/checkmark state
+   change plus this animation's absence together read as "finished", no
+   separate settle animation needed. */
+@keyframes onboarding-progress-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(236, 72, 153, 0.05);
+  }
+}
+
+.animate-onboarding-progress-breathe {
+  animation: onboarding-progress-breathe 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-onboarding-progress-breathe {
+    animation: none;
+  }
+}
+
+/* The Music Nerd mark as a loading indicator. It's a face, so it breathes
+   rather than spins — see MusicNerdLoader.tsx. */
+@keyframes music-nerd-loader {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+.animate-music-nerd-loader {
+  animation: music-nerd-loader 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-music-nerd-loader {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

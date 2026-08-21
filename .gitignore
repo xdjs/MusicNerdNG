@@ -89,3 +89,10 @@ ds-bundle/
 # Supabase CLI local link state
 supabase/.temp/
 supabase/.branches/
+
+# R&D scratch (Pete's raw notes — never committed, see docs/rnd/README.md)
+docs/rnd/research/_scratch/*
+!docs/rnd/research/_scratch/.gitkeep
+
+# R&D agenda recipients (contact data — public repo)
+docs/rnd/recipients.md

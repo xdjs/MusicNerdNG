@@ -47,6 +47,20 @@ jest.mock("../queries/queriesTS", () => ({
       siteName: "bluesky",
       cardPlatformName: "Bluesky",
     },
+    {
+      // Real urlmap Spotify regex — group 1 is the URL *type* segment
+      // (track|album|artist|playlist|episode|show), group 2 is the ID.
+      regex: /^https:\/\/open\.spotify\.com\/(track|album|artist|playlist|episode|show)\/([a-zA-Z0-9]+)(?:\?.*)?$/,
+      siteName: "spotify",
+      cardPlatformName: "Spotify",
+    },
+    {
+      // Real urlmap SoundCloud regex — group 1 is the OPTIONAL literal
+      // "www." prefix, group 2 is the real username.
+      regex: /^https:\/\/(www\.)?soundcloud\.com\/([^/]+)(?:\/.*)?$/,
+      siteName: "soundcloud",
+      cardPlatformName: "SoundCloud",
+    },
   ]),
 }));
 
@@ -299,6 +313,75 @@ describe("utils/services", () => {
     it("returns null when url does not match any pattern", async () => {
       const res = await extractArtistId("https://unknown.com/user");
       expect(res).toBeNull();
+    });
+
+    // Bug 1 regression: the generic `match[1] || match[2] || match[3]`
+    // fallback returned the URL *type* segment ("artist") as the ID instead
+    // of the real base62 ID in match[2]. Proven to have already corrupted a
+    // production-shaped row (spotify column literally == "artist").
+    describe("Spotify links (Bug 1 regression)", () => {
+      it("extracts the real base62 artist ID from a Spotify artist URL", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
+        expect(res).toEqual({
+          siteName: "spotify",
+          cardPlatformName: "Spotify",
+          id: "3DmaZbBPnKSGnxYRpHobss",
+        });
+      });
+
+      it("still extracts the real ID when a ?si=... query string is present", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss?si=abc123def456");
+        expect(res).toEqual({
+          siteName: "spotify",
+          cardPlatformName: "Spotify",
+          id: "3DmaZbBPnKSGnxYRpHobss",
+        });
+      });
+
+      it("rejects a Spotify TRACK url — a track is not an artist profile", async () => {
+        const res = await extractArtistId("https://open.spotify.com/track/3DmaZbBPnKSGnxYRpHobss");
+        expect(res).toBeNull();
+      });
+
+      it("rejects a Spotify ALBUM url", async () => {
+        const res = await extractArtistId("https://open.spotify.com/album/3DmaZbBPnKSGnxYRpHobss");
+        expect(res).toBeNull();
+      });
+
+      it("rejects a malformed/short Spotify ID", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/short123");
+        expect(res).toBeNull();
+      });
+
+      it("never returns the literal string \"artist\" as the id (regression for Bug 1)", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
+        expect(res?.id).not.toBe("artist");
+      });
+    });
+
+    describe("SoundCloud links (www.-prefix regression)", () => {
+      it("extracts the real username from a www.soundcloud.com URL, not the literal \"www.\" prefix", async () => {
+        const res = await extractArtistId("https://www.soundcloud.com/peterango");
+        expect(res).toEqual({
+          siteName: "soundcloud",
+          cardPlatformName: "SoundCloud",
+          id: "peterango",
+        });
+      });
+
+      it("still extracts the username from a soundcloud.com URL with no www. prefix", async () => {
+        const res = await extractArtistId("https://soundcloud.com/peterango");
+        expect(res).toEqual({
+          siteName: "soundcloud",
+          cardPlatformName: "SoundCloud",
+          id: "peterango",
+        });
+      });
+
+      it("never returns the literal string \"www.\" as the id (regression)", async () => {
+        const res = await extractArtistId("https://www.soundcloud.com/peterango");
+        expect(res?.id).not.toBe("www.");
+      });
     });
   });
 
