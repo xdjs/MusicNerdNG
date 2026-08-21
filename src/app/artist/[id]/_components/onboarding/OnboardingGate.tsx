@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import OnboardingChat from "./OnboardingChat";
 import OnboardingBanner from "./OnboardingBanner";
+import ProfileTour, { tourFlagKey } from "./ProfileTour";
 
 export function skipFlagKey(artistId: string): string {
     return `mn-onboarding-skip-${artistId}`;
@@ -21,7 +22,7 @@ type Props = {
  */
 export default function OnboardingGate({ artistId, artistName, currentStep }: Props) {
     // Start closed and decide after mount — sessionStorage is unavailable during SSR.
-    const [mode, setMode] = useState<"closed" | "chat" | "banner">("closed");
+    const [mode, setMode] = useState<"closed" | "chat" | "banner" | "tour">("closed");
 
     useEffect(() => {
         const skipped = sessionStorage.getItem(skipFlagKey(artistId)) === "1";
@@ -41,10 +42,21 @@ export default function OnboardingGate({ artistId, artistName, currentStep }: Pr
                 // "See my page" after a real finish: close the takeover WITHOUT the
                 // skip flag, so a later visit (onboarding now complete) never shows
                 // the "Finish setting up" banner it would flash before refresh.
-                onFinish={() => setMode("closed")}
+                //
+                // Then hand straight to the tour. The build asks nothing, which
+                // is right — but it leaves the artist on a finished page with no
+                // idea what happened or what they can change. Skipping the chat
+                // does NOT earn a tour: someone who dismissed the setup does not
+                // want a guided pass either.
+                onFinish={() => {
+                    let seen = false;
+                    try { seen = sessionStorage.getItem(tourFlagKey(artistId)) === "1"; } catch { /* private mode */ }
+                    setMode(seen ? "closed" : "tour");
+                }}
             />
         );
     }
+    if (mode === "tour") return <ProfileTour artistId={artistId} />;
     return (
         <OnboardingBanner
             currentStep={currentStep}

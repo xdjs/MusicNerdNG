@@ -170,7 +170,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </div>
 
                 {/* 3. Bio */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-about" className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold">About</h2>
                     <BlurbSection
                         key={artist.bio ?? ""}
@@ -187,7 +187,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 5. Links (icon grid) */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-links" className="glass p-4 sm:p-5 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <h2 className="text-black dark:text-white text-xl font-bold">Links</h2>
                         <AddArtistData
@@ -221,7 +221,9 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 7. Press & Features (vault sources) */}
+                <div id="mn-sources">
                 <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
+                </div>
 
             </div>
             </EditModeProvider>
