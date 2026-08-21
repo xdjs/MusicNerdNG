@@ -106,6 +106,36 @@ that's a query problem, a verification problem, or the same root cause as 2.1. I
 
 ---
 
+### 2.3 The questions are shallow by construction `todo`
+Pete, 8/21, on *"You often use the word 'single' in your captions..."*: **"so shallow and has no
+depth. we should be finding out more about the artist."**
+
+Not a wording problem. `deriveSocialSignals` compresses every post to countable things — word
+counts, hashtag counts, engagement outliers, audio credits — and the captions are discarded
+before the model sees them. Frequency isn't meaning, so questions derived from frequency can't
+have depth. "single" cleared `MIN_THEME_COUNT_GENERIC_WORD = 5` and became a "theme".
+
+The counting layer exists for a good reason: the EVIDENCE INVARIANT. Structured signals make
+correct citation trivial, and handing raw captions to a model reintroduces the "question has
+nothing to do with the post" bug Pete hit in earlier testing.
+
+Resolvable: give the model `id + caption + date + engagement` and require it to return the post
+**ids** it chose. Real material, exact citation, no counting layer. Then look for the
+unexplained, what changed over time, and what's missing from the record we already hold — not
+what's frequent. Full argument in
+[notes](notes/claude/2026-08-21-shallow-questions-are-structural.md).
+
+Supersedes the narrower question of whether to trust audio credits (2.0) — under this design a
+credit is context the model weighs, not a category to trust or drop.
+
+### 2.4 Generic words clear the theme bar `todo`
+`MIN_THEME_COUNT_GENERIC_WORD = 5` lets music-domain filler ("single", "song", "music", "next",
+"first", "time", "year") become themes. **Logged, not fixed** — Pete's call on 8/21: one artist
+isn't enough to tune a threshold on, and hand-tuning against Pharaoh's captions would overfit to
+him. Revisit with more artist tests. Likely moot if 2.3 lands.
+
+---
+
 ## 3 · Copy and structure
 
 ### 3.1 Separate press/research links from social and streaming `todo`
