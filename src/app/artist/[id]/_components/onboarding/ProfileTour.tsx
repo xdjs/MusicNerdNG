@@ -6,6 +6,17 @@ export function tourFlagKey(artistId: string): string {
     return `mn-tour-done-${artistId}`;
 }
 
+/** Set when the build finishes, read when the tour mounts.
+ *
+ *  The tour used to live inside OnboardingGate, which the page renders ONLY
+ *  while onboarding is incomplete. The build's last act is confirming
+ *  `publish` — so by the time there is anything to tour, the component holding
+ *  the tour has stopped being rendered. It appeared, the page re-fetched, and
+ *  it vanished. A flag survives both the refresh and the completion. */
+export function tourPendingKey(artistId: string): string {
+    return `mn-tour-pending-${artistId}`;
+}
+
 type Stop = {
     anchor: string;
     title: string;
@@ -85,10 +96,24 @@ function place(rect: DOMRect, vw: number, vh: number, cardHeight: number): Place
 export default function ProfileTour({ artistId }: { artistId: string }) {
     const [index, setIndex] = useState(0);
     const [dismissed, setDismissed] = useState(false);
+    // Starts closed and decides after mount — sessionStorage is unavailable
+    // during SSR, and rendering optimistically would flash the card for every
+    // visitor before the flag says otherwise.
+    const [armed, setArmed] = useState(false);
     const [placement, setPlacement] = useState<Placement | null>(null);
     const cardRef = useRef<HTMLDivElement | null>(null);
 
     const stop = STOPS[index];
+
+    useEffect(() => {
+        try {
+            const pending = sessionStorage.getItem(tourPendingKey(artistId)) === "1";
+            const done = sessionStorage.getItem(tourFlagKey(artistId)) === "1";
+            setArmed(pending && !done);
+        } catch {
+            // Private mode: no tour rather than a tour that can never be dismissed.
+        }
+    }, [artistId]);
 
     const reposition = useCallback(() => {
         if (!stop) return;
@@ -102,7 +127,7 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
     // Scroll the section into view, lift it above the dim, and ring it. Cleanup
     // restores the element's own styles so the tour leaves no trace.
     useEffect(() => {
-        if (dismissed || !stop) return;
+        if (!armed || dismissed || !stop) return;
         const el = document.getElementById(stop.anchor);
         if (!el) return;
         el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -126,11 +151,11 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
             el.style.zIndex = prev.zIndex;
             el.style.borderRadius = prev.borderRadius;
         };
-    }, [index, dismissed, stop]);
+    }, [index, armed, dismissed, stop]);
 
     // Measure after paint, and keep up while the smooth scroll is still running.
     useLayoutEffect(() => {
-        if (dismissed) return;
+        if (!armed || dismissed) return;
         reposition();
         let frame = 0;
         const settle = window.setInterval(reposition, 100);
@@ -148,14 +173,17 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
             window.removeEventListener("scroll", onMove);
             window.removeEventListener("resize", onMove);
         };
-    }, [index, dismissed, reposition]);
+    }, [index, armed, dismissed, reposition]);
 
     const finish = () => {
-        try { sessionStorage.setItem(tourFlagKey(artistId), "1"); } catch { /* private mode */ }
+        try {
+            sessionStorage.setItem(tourFlagKey(artistId), "1");
+            sessionStorage.removeItem(tourPendingKey(artistId));
+        } catch { /* private mode */ }
         setDismissed(true);
     };
 
-    if (dismissed || !stop) return null;
+    if (!armed || dismissed || !stop) return null;
     const isLast = index === STOPS.length - 1;
 
     // Arrow sits on the edge facing the section.

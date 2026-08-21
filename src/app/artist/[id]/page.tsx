@@ -22,6 +22,7 @@ import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
 import OfficialSiteLinks from "./_components/OfficialSiteLinks";
 import OnboardingGate from "./_components/onboarding/OnboardingGate";
+import ProfileTour from "./_components/onboarding/ProfileTour";
 import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 
@@ -130,6 +131,13 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
             <EditModeProvider canEdit={canEdit}>
             <AutoRefresh showLoading={false} />
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
+
+                {/* Rendered for the claimant regardless of onboarding state, and
+                    self-gating on its own flag. It must OUTLIVE onboarding: the
+                    build completes onboarding as its last act, so anything
+                    conditioned on "not complete" is unmounted before the tour
+                    has anything to point at. */}
+                {isClaimedByUser && <ProfileTour artistId={artist.id} />}
 
                 {onboardingState && !onboardingState.complete && (
                     <OnboardingGate

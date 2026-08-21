@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { render, screen, fireEvent } from '@testing-library/react';
-import ProfileTour, { tourFlagKey } from '@/app/artist/[id]/_components/onboarding/ProfileTour';
+import ProfileTour, { tourFlagKey, tourPendingKey } from '@/app/artist/[id]/_components/onboarding/ProfileTour';
 
 // jsdom has no layout engine, so scrollIntoView is absent on elements.
 beforeAll(() => { Element.prototype.scrollIntoView = jest.fn(); });
@@ -17,6 +17,8 @@ describe('ProfileTour', () => {
     beforeEach(() => {
         document.body.replaceChildren();
         sessionStorage.clear();
+        // The build arms the tour; without the flag it renders nothing.
+        sessionStorage.setItem(tourPendingKey('a1'), '1');
         withAnchors();
     });
 
@@ -105,5 +107,45 @@ describe('ProfileTour', () => {
         document.body.replaceChildren(); // no anchors at all
         expect(() => render(<ProfileTour artistId="a1" />)).not.toThrow();
         expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
+    });
+});
+
+
+describe('ProfileTour — surviving the end of onboarding', () => {
+    beforeEach(() => {
+        document.body.replaceChildren();
+        sessionStorage.clear();
+        withAnchors();
+    });
+
+    it('renders nothing until the build arms it', () => {
+        // Otherwise every visitor to a claimed profile would get a tour.
+        render(<ProfileTour artistId="a1" />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('runs when armed, and survives being re-mounted by a page refresh', () => {
+        sessionStorage.setItem(tourPendingKey('a1'), '1');
+        const first = render(<ProfileTour artistId="a1" />);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+        // The bug: the tour lived inside a component the page renders only while
+        // onboarding is INCOMPLETE, and the build completes it as its last act.
+        // A server re-fetch unmounted the tour mid-flight — "appeared and
+        // disappeared". A flag outlives the remount.
+        first.unmount();
+        render(<ProfileTour artistId="a1" />);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('does not come back after it has been completed', () => {
+        sessionStorage.setItem(tourPendingKey('a1'), '1');
+        const first = render(<ProfileTour artistId="a1" />);
+        fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+        expect(sessionStorage.getItem(tourPendingKey('a1'))).toBeNull();
+
+        first.unmount();
+        render(<ProfileTour artistId="a1" />);
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 });

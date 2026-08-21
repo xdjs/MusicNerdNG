@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import OnboardingChat from "./OnboardingChat";
 import OnboardingBanner from "./OnboardingBanner";
-import ProfileTour, { tourFlagKey } from "./ProfileTour";
+import { tourFlagKey, tourPendingKey } from "./ProfileTour";
 
 export function skipFlagKey(artistId: string): string {
     return `mn-onboarding-skip-${artistId}`;
@@ -22,7 +22,7 @@ type Props = {
  */
 export default function OnboardingGate({ artistId, artistName, currentStep }: Props) {
     // Start closed and decide after mount — sessionStorage is unavailable during SSR.
-    const [mode, setMode] = useState<"closed" | "chat" | "banner" | "tour">("closed");
+    const [mode, setMode] = useState<"closed" | "chat" | "banner">("closed");
 
     useEffect(() => {
         const skipped = sessionStorage.getItem(skipFlagKey(artistId)) === "1";
@@ -43,20 +43,23 @@ export default function OnboardingGate({ artistId, artistName, currentStep }: Pr
                 // skip flag, so a later visit (onboarding now complete) never shows
                 // the "Finish setting up" banner it would flash before refresh.
                 //
-                // Then hand straight to the tour. The build asks nothing, which
-                // is right — but it leaves the artist on a finished page with no
-                // idea what happened or what they can change. Skipping the chat
-                // does NOT earn a tour: someone who dismissed the setup does not
-                // want a guided pass either.
+                // Arms the tour rather than rendering it. This component is only
+                // rendered while onboarding is INCOMPLETE, and the build's last
+                // act is completing it — so a tour owned here is unmounted by the
+                // next server re-fetch, which is exactly what happened. The flag
+                // outlives both. Skipping the chat arms nothing: someone who
+                // dismissed the setup does not want a guided pass either.
                 onFinish={() => {
-                    let seen = false;
-                    try { seen = sessionStorage.getItem(tourFlagKey(artistId)) === "1"; } catch { /* private mode */ }
-                    setMode(seen ? "closed" : "tour");
+                    try {
+                        if (sessionStorage.getItem(tourFlagKey(artistId)) !== "1") {
+                            sessionStorage.setItem(tourPendingKey(artistId), "1");
+                        }
+                    } catch { /* private mode */ }
+                    setMode("closed");
                 }}
             />
         );
     }
-    if (mode === "tour") return <ProfileTour artistId={artistId} />;
     return (
         <OnboardingBanner
             currentStep={currentStep}
