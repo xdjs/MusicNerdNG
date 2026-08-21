@@ -415,6 +415,38 @@ including the Shockoe Sessions interview that was the best source found for Phar
 certainly by default rather than by decision, since the vault card is keep-by-default. That is
 the clearest evidence yet for the position taken in 2.6.*
 
+### 2.12 Stale facts stated in the present tense `todo`
+Pete, 8/21, on his own About: *"it's not good to assume that Parris Pierce is my production
+partner — that interview was years ago and we don't work together anymore."*
+
+Same class as the relationship-inflation in `MEMORY.md`, but across TIME rather than across
+people. The prompt has an ANTI-INFLATION rule, and it only preserves time-scoping the document
+already carries — **the document carries none, because we never record when a source was
+published.** `artist_vault_sources` stores `created_at` (when *we* found it), not the article's
+date. Every source therefore reads as equally current, and a 2019 collaboration becomes "his
+production partner".
+
+Fix: capture a publication date during verification — `article:published_time`, `og:updated_time`,
+JSON-LD `datePublished` are all in the HTML we already fetch — carry it into the doc's source
+manifest, and require claims to be scoped by it. Anything not evidenced as current is past tense.
+
+### 2.13 Relevance is a substring check where it should be judgment `todo`
+Pete, 8/21: *"a lot of links in the vault that don't relate to me… in the age of AI and tech there
+would be a better, smarter way to figure out what's what."* Correct.
+
+Relevance is decided by `requireFullName` — does the fetched page contain the literal string
+"Pete Rango". That is a substring test standing in for "is this page about this person", and it
+structurally cannot tell a Chord DAVE amplifier review from Black Dave, or a Peter Calandra
+interview from Pete Rango.
+
+Meanwhile a **verified identity anchor sits unused**: the artist's platform ID, their real
+catalog from Spotify, their confirmed handles. A model reading the fetched page against that
+anchor can answer the question the substring check is pretending to answer.
+
+This is the division already argued for and only half-built — **retrieval is a search API,
+judgment should be the model.** Retrieval was fixed on 8/21; judgment is still a string match.
+Note it also has to stay cheap: it runs per candidate, inside the build.
+
 ### 2.3 The questions are shallow by construction `todo`
 Pete, 8/21, on *"You often use the word 'single' in your captions..."*: **"so shallow and has no
 depth. we should be finding out more about the artist."**
