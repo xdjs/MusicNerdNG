@@ -469,7 +469,7 @@ describe('runOnboardingTurn', () => {
         }));
         expect(dq.insertVaultSource).toHaveBeenCalledWith({
             artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
-            type: 'article', status: 'approved',
+            type: 'website', status: 'approved',
         });
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
@@ -594,6 +594,37 @@ describe('runOnboardingTurn', () => {
         expect(chats.some(t => t.includes('it looks like your site'))).toBe(false);
     });
 
+    it("confirm_profiles: the artist's own site is typed 'website' while a third-party page stays 'article' — the ownership signal is recorded, not discarded", async () => {
+        // inferTypeFromUrl is mocked to ALWAYS return 'article' (see the module
+        // mock at the top of this file), so a 'website' result can only come
+        // from the ownedByArtist override — that's what this pins.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview
+            .mockResolvedValueOnce({ imageUrl: null, title: 'Nova Reyes — Official Site' })
+            .mockResolvedValueOnce({ imageUrl: null, title: 'Totally Unrelated Blog' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://novareyesmusic.com/' }, { url: 'https://example.com/blog' }],
+            removedSiteNames: [],
+        }));
+        // Title carries the artist's name -> their official site.
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
+            type: 'website', status: 'approved',
+        });
+        // No ownership evidence -> unchanged behaviour, still a pending article.
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://example.com/blog', title: 'Totally Unrelated Blog',
+            type: 'article', status: 'pending',
+        });
+    });
+
     it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Links support', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
@@ -663,7 +694,7 @@ describe('runOnboardingTurn', () => {
         // Non-platform link: routed to the vault, approved (name match).
         expect(dq.insertVaultSource).toHaveBeenCalledWith({
             artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
-            type: 'article', status: 'approved',
+            type: 'website', status: 'approved',
         });
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);

@@ -866,7 +866,15 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
                         artistId,
                         url: raw.url,
                         title: preview.title ?? undefined,
-                        type: inferTypeFromUrl(raw.url),
+                        // `ownedByArtist` means the artist handed us this URL AND
+                        // the page's own title carries their name — that is the
+                        // artist's official site, so record it as such instead of
+                        // discarding the signal. inferTypeFromUrl can't determine
+                        // this (a URL alone never says who owns it) and would call
+                        // a personal domain an "article", indistinguishable from a
+                        // magazine piece about them. The profile surfaces approved
+                        // "website" sources beside Links rather than burying them.
+                        type: ownedByArtist ? "website" : inferTypeFromUrl(raw.url),
                         status: ownedByArtist ? "approved" : "pending",
                     });
                     existingVaultStatusByUrl.set(raw.url, ownedByArtist ? "approved" : "pending");

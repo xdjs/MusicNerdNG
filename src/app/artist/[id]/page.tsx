@@ -20,6 +20,7 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import OfficialSiteLinks from "./_components/OfficialSiteLinks";
 import OnboardingGate from "./_components/onboarding/OnboardingGate";
 import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
@@ -200,6 +201,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         />
                     </div>
                     <ArtistLinksGrid isMonetized={false} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
+                    <OfficialSiteLinks sources={approvedSources} />
                 </RevealSection>
 
                 {/* 6. Support the Artist (icon grid) */}
