@@ -205,7 +205,7 @@ a metal band called Pharaoh) landed as a non-citable lead.
 adding YouTube oEmbed to the classifier. The first is moot now Gemini is off this path. The
 second is still worth doing for the JS-rendered blind spot — see 2.5.
 
-### 2.8 The artist's judgment is discarded in BOTH directions `todo`
+### 2.8 The artist's judgment is discarded in BOTH directions `done (URL level)`
 Pete, 8/21: *"the artist should be able to flag when something is not them and that should help
 optimize the build of their profile and make it more accurate."* Correct, and it's worse than it
 looks — the discard is deliberate:
@@ -236,8 +236,26 @@ Built for one domain, never applied to sources.
   filter it from future queries.
 
 The entity level is what makes discovery improve per-artist over time instead of repeating the
-same mistakes at the same confidence forever. Pairs with 2.6 — decide both together, since they
-are the same question asked in opposite directions.
+same mistakes at the same confidence forever.
+
+**Done 8/21 — URL level.** Discovery now dedups against `rejected` as well as pending and
+approved. Deleted rows are unaffected: a deleted row is gone from the table, so it appears in
+none of the three sets and stays re-discoverable, which was the original reason rejections were
+excluded. Rejected URLs are dropped *before* the verification pass, so a rejection also saves the
+fetch it would have cost. Logs now distinguish "we already had this" from "the artist said no".
+
+**Verified live.** Rejected three real namesakes for Black Dave (Dave the UK rapper in the
+Guardian, two Chord DAVE audio-DAC pages) and re-ran discovery:
+`Skipped 2 duplicate(s), 2 previously rejected by the artist`. Tavily offered them again;
+discovery dropped them.
+
+**And the same run proved the URL level is not enough.** Two *different* Chord DAVE reviews came
+back — soundnews.net and the-ear.net. He rejected two, the web has dozens. Blocking one URL at a
+time cannot keep up with an entity that has unlimited coverage. **Entity-level rejection is now
+demonstrated as necessary rather than speculated:** three rejections all matching "Chord DAVE"
+should teach us that entity isn't him, and filter it from future queries.
+
+Pairs with 2.6 — see the position taken there.
 
 ### 2.6 Artist approval doesn't make a source citable `todo`
 `isCitableSource` reads `extractedText` only — status is irrelevant — and
@@ -248,11 +266,26 @@ ask them to curate and then discard the answer. Nothing tells them.
 Widened by `requireFullName` (2.1): more real sources now land as leads, so more approvals get
 discarded.
 
-**But it is a genuine tension, not a clean bug.** Honouring approval would let a careless yes put
-a namesake into the About — exactly the Thrasher case below. Ignoring it is silently protective
-and silently lossy. Needs a decision, not a patch. Options: honour approval outright; re-fetch on
-approval and store text only if it still reads; or keep the behaviour and tell the artist plainly
-that a source can't be used as evidence.
+**Position taken 8/21: do not honour approval — it is not a signal.**
+
+The vault card is keep-by-default: `status: skipped.has(s.id) ? "rejected" : "approved"`. Every
+source the artist does not touch becomes "approved". Treating that as authorisation to cite means
+treating *"didn't read it"* as *"I verified this"* — which is exactly how the Thrasher article
+would reach Black Dave's About while he thinks he is just moving on.
+
+Rejection is the opposite: it requires a deliberate click. That asymmetry is why 2.8 is safe to
+build and why 2.6 is not its mirror image.
+
+So the fix is to change **what counts as affirmation**, not the citability bar — the bar is doing
+its job, and is why no namesake has become citable in any run. Split by actual cause:
+
+- **A: the page is unreadable** (Cloudflare, JS-rendered). There is no text, so honouring approval
+  would not help — there would still be nothing to cite. **Fix with content, not trust:** the
+  YouTube transcript path (4.3) turns these into citable sources carrying real verbatim material.
+- **B: readable, but the name is absent.** We have the text and chose not to trust it. Real cases
+  exist — Black Dave's press is written under "Black Dave", not "Black Dave MK2". **Fix with a
+  deliberate act:** an explicit "this is me" on a *specific* source, distinct from the default
+  keep. Only that promotes to citable.
 
 ### 2.7 Black Dave verification, 8/21 — what the namesake gate actually did
 Run against `Black Dave MK2` (dev `011645a7`), the hardest case we have: three Black Daves in the

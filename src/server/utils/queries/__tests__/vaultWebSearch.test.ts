@@ -14,9 +14,10 @@ jest.mock("@/server/utils/queries/artistQueries", () => ({
 }));
 
 const mockInsert = jest.fn().mockResolvedValue({ id: "src-1", url: "https://example.com/a", title: "A", status: "pending" });
+const mockGetSources = jest.fn().mockResolvedValue([]);
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
   insertVaultSource: (...a) => mockInsert(...a),
-  getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+  getVaultSourcesByArtistId: (...a) => mockGetSources(...a),
   updateVaultSourceContent: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -44,6 +45,8 @@ describe("searchAndPopulateVault", () => {
     mockInsert.mockResolvedValue({ id: "src-1", url: "https://example.com/a", title: "A", status: "pending" });
     mockFetchPage.mockReset();
     mockFetchPage.mockResolvedValue(goodPage);
+    mockGetSources.mockReset();
+    mockGetSources.mockResolvedValue([]);
   });
 
   // ---- Retrieval ---------------------------------------------------------
@@ -80,6 +83,36 @@ describe("searchAndPopulateVault", () => {
     const result = await searchAndPopulateVault("a1");
     expect(mockInsert).not.toHaveBeenCalled();
     expect(result).toEqual([]);
+  });
+
+  it("never re-offers a source the artist has already rejected", async () => {
+    // A rejection is the most reliable signal we have about who an artist is
+    // NOT, and it used to be discarded — discovery deduped against pending and
+    // approved only, so Black Dave could reject the Chord DAVE amplifier
+    // reviews and get them straight back on the next run.
+    mockGetSources.mockImplementation(async (_id, status) =>
+      status === "rejected" ? [{ id: "old", url: "https://example.com/not-me", status: "rejected" }] : []);
+    mockWebSearch.mockResolvedValue([hit("https://example.com/not-me"), hit("https://example.com/new")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const inserted = mockInsert.mock.calls.map(c => c[0].url);
+    expect(inserted).not.toContain("https://example.com/not-me");
+    expect(inserted).toContain("https://example.com/new");
+    // Rejected URLs are dropped BEFORE the verification pass, so a rejection
+    // also saves the fetch it would otherwise have cost.
+    expect(mockFetchPage).not.toHaveBeenCalledWith("https://example.com/not-me", expect.anything());
+  });
+
+  it("still re-discovers a URL that was deleted rather than rejected", async () => {
+    // A deleted row is gone from the table entirely, so it appears in none of
+    // the three status sets — deletion must stay a way to get a fresh look.
+    mockGetSources.mockResolvedValue([]);
+    mockWebSearch.mockResolvedValue([hit("https://example.com/deleted-before")]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls.map(c => c[0].url)).toContain("https://example.com/deleted-before");
   });
 
   // ---- Verification gate -------------------------------------------------

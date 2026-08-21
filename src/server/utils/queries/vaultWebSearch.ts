@@ -149,12 +149,25 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             return [];
         }
 
-        // Only dedup against pending + approved sources (allow re-discovery of deleted/rejected URLs)
-        const [pendingSources, approvedSources] = await Promise.all([
+        // Dedup against pending, approved AND rejected.
+        //
+        // Rejected was deliberately excluded, to "allow re-discovery of
+        // deleted/rejected URLs". That cost more than it bought: a rejection is
+        // the single most reliable signal we have about who an artist is NOT,
+        // and re-offering something they already said no to reads as not
+        // listening. Black Dave rejecting the Chord DAVE amplifier reviews and
+        // Dave the UK rapper's Guardian interview should not have to reject
+        // them again on the next run.
+        //
+        // Deleted URLs are unaffected: a deleted row is gone from the table, so
+        // it can never appear in any of these three sets and stays
+        // re-discoverable exactly as before.
+        const [pendingSources, approvedSources, rejectedSources] = await Promise.all([
             getVaultSourcesByArtistId(artistId, "pending"),
             getVaultSourcesByArtistId(artistId, "approved"),
+            getVaultSourcesByArtistId(artistId, "rejected"),
         ]);
-        const existingSources = [...pendingSources, ...approvedSources];
+        const existingSources = [...pendingSources, ...approvedSources, ...rejectedSources];
         const existingUrls = new Set(
             existingSources.map((s) => normalizeUrl(s.url))
         );
@@ -174,8 +187,12 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
 
         // Dedup and safety-filter BEFORE fetching, so the verification pass below
         // never spends its budget on a URL we were going to discard anyway.
+        // Tracked separately so the logs distinguish "we already had this" from
+        // "the artist told us no" — the second is a signal worth watching.
+        const rejectedUrls = new Set(rejectedSources.map(r => normalizeUrl(r.url)));
         const candidates: WebSearchResult[] = [];
         let skipped = 0;
+        let rejectedSkips = 0;
         for (const result of resolved) {
             // Reject non-http(s) schemes and private/local hosts. Still required with
             // a search API: these URLs are rendered as <a href> on a public page, and
@@ -186,6 +203,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             }
             const normalized = normalizeUrl(result.url);
             if (existingUrls.has(normalized)) {
+                if (rejectedUrls.has(normalized)) rejectedSkips++;
                 skipped++;
                 continue;
             }
@@ -265,7 +283,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         }
 
         if (skipped > 0) {
-            console.log(`[vaultWebSearch] Skipped ${skipped} duplicate(s) for "${artistName}"`);
+            console.log(`[vaultWebSearch] Skipped ${skipped} duplicate(s) for "${artistName}"${rejectedSkips > 0 ? `, ${rejectedSkips} previously rejected by the artist` : ""}`);
         }
         if (dropped > 0) {
             console.log(`[vaultWebSearch] Dropped ${dropped} unverifiable candidate(s) for "${artistName}"`);
