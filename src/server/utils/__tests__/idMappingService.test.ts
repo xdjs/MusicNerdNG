@@ -1,5 +1,8 @@
 // @ts-nocheck
 import { jest } from "@jest/globals";
+import { PgDialect } from "drizzle-orm/pg-core";
+
+const dialect = new PgDialect();
 
 describe("idMappingService", () => {
   beforeEach(() => {
@@ -9,6 +12,7 @@ describe("idMappingService", () => {
   async function setup() {
     const { db } = await import("@/server/db/drizzle");
     db.execute = jest.fn().mockResolvedValue([]);
+    db.transaction = jest.fn(async (callback) => callback(db));
     (db as any).query.artists = {
       findFirst: jest.fn().mockResolvedValue({ id: "artist-123" }),
       findMany: jest.fn(),
@@ -88,12 +92,63 @@ describe("idMappingService", () => {
     ).rejects.toThrow("Artist not found");
   });
 
+  it("runs mapping resolution under the platform identity lock in a transaction", async () => {
+    const { db, resolveArtistMapping } = await setup();
+
+    await resolveArtistMapping({
+      artistId: "artist-123", platform: "deezer", platformId: "456",
+      confidence: "high", source: "manual",
+    });
+
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    // Stable artist/platform lock + external ID lock + mapping insert.
+    expect(db.execute).toHaveBeenCalledTimes(3);
+    expect(
+      db.execute.mock.calls.slice(0, 2).map(([query]) =>
+        dialect.sqlToQuery(query).params[0]
+      ),
+    ).toEqual([
+      "musicnerd:artist-platform-slot:artist-123:deezer",
+      "musicnerd:artist-platform:deezer:456",
+    ]);
+  });
+
+  it("rejects a first-class platform ID owned by another artist", async () => {
+    const { db, resolveArtistMapping } = await setup();
+    const { MappingConflictError } = await import("../idMappingService");
+    (db as any).query.artists.findFirst
+      .mockResolvedValueOnce({ id: "artist-123", spotify: null, deezer: null })
+      .mockResolvedValueOnce({ id: "other-artist" });
+
+    await expect(resolveArtistMapping({
+      artistId: "artist-123", platform: "deezer", platformId: "456",
+      confidence: "high", source: "manual",
+    })).rejects.toThrow(MappingConflictError);
+    expect((db as any).query.artistIdMappings.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mapping that contradicts the target artist's first-class ID", async () => {
+    const { db, resolveArtistMapping } = await setup();
+    (db as any).query.artists.findFirst
+      .mockResolvedValueOnce({ id: "artist-123", spotify: null, deezer: "existing-deezer-id" })
+      .mockResolvedValueOnce(null);
+
+    await expect(resolveArtistMapping({
+      artistId: "artist-123", platform: "deezer", platformId: "different-deezer-id",
+      confidence: "high", source: "manual",
+    })).rejects.toThrow("already contains a different platform ID");
+    expect((db as any).query.artistIdMappings.findFirst).not.toHaveBeenCalled();
+  });
+
   it("reports cross-artist conflict when platform_id_uniq constraint is violated", async () => {
     const { db, resolveArtistMapping } = await setup();
     const dbError = new Error("duplicate key value violates unique constraint");
     (dbError as any).code = "23505";
     (dbError as any).constraint = "artist_id_mappings_platform_id_uniq";
-    db.execute = jest.fn().mockRejectedValue(dbError);
+    db.execute = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(dbError);
     await expect(
       resolveArtistMapping({ artistId: "artist-123", platform: "deezer", platformId: "456", confidence: "high", source: "manual" })
     ).rejects.toThrow("already mapped to a different artist");
@@ -105,7 +160,10 @@ describe("idMappingService", () => {
     const dbError = new Error("duplicate key value violates unique constraint");
     (dbError as any).code = "23505";
     (dbError as any).constraint = "artist_id_mappings_artist_platform_uniq";
-    db.execute = jest.fn().mockRejectedValue(dbError);
+    db.execute = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(dbError);
     await expect(
       resolveArtistMapping({ artistId: "artist-123", platform: "deezer", platformId: "456", confidence: "high", source: "manual" })
     ).rejects.toThrow(MappingConcurrentWriteError);
@@ -120,7 +178,10 @@ describe("idMappingService", () => {
     const dbError = new Error("duplicate key value violates unique constraint");
     (dbError as any).code = "23505";
     (dbError as any).constraint = "artist_id_mappings_platform_id_uniq";
-    db.execute = jest.fn().mockRejectedValue(dbError);
+    db.execute = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(dbError);
     await expect(
       resolveArtistMapping({ artistId: "artist-123", platform: "deezer", platformId: "taken-id", confidence: "high", source: "manual" })
     ).rejects.toThrow(MappingConflictError);
@@ -133,7 +194,10 @@ describe("idMappingService", () => {
     (pgError as any).constraint_name = "artist_id_mappings_platform_id_uniq";
     const wrapperError = new Error("Failed query");
     (wrapperError as any).cause = pgError;
-    db.execute = jest.fn().mockRejectedValue(wrapperError);
+    db.execute = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(wrapperError);
     await expect(
       resolveArtistMapping({ artistId: "artist-123", platform: "deezer", platformId: "456", confidence: "high", source: "manual" })
     ).rejects.toThrow("already mapped to a different artist");
@@ -356,13 +420,11 @@ describe("idMappingService", () => {
 
   it("batch continues on individual failures", async () => {
     const { db, resolveArtistMappingBatch } = await setup();
-    // First item: artist exists, second item: artist not found
-    let callCount = 0;
-    (db as any).query.artists.findFirst.mockImplementation(() => {
-      callCount++;
-      if (callCount === 2) return Promise.resolve(null);
-      return Promise.resolve({ id: "artist-123" });
-    });
+    // First item: target exists and the direct ID has no owner. Second target is absent.
+    (db as any).query.artists.findFirst
+      .mockResolvedValueOnce({ id: "artist-123" })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
 
     const result = await resolveArtistMappingBatch([
       { artistId: "artist-123", platform: "deezer", platformId: "456", confidence: "high", source: "wikidata" },

@@ -253,6 +253,7 @@ jest.mock('@/server/utils/musicPlatform', () => ({
         getArtistImages: jest.fn().mockResolvedValue(new Map()),
         getActivePlatform: jest.fn().mockReturnValue(null),
     },
+    findReciprocalArtistIdentity: jest.fn().mockResolvedValue(null),
     SpotifyProvider: jest.fn(),
     DeezerProvider: jest.fn(),
     ArtistMusicPlatformDataProvider: jest.fn(),
@@ -268,4 +269,4 @@ jest.mock('@/app/actions/serverActions', () => ({
     removeFromWhitelistAction: jest.fn(),
     addUsersToAdminAction: jest.fn(),
     removeFromAdminAction: jest.fn(),
-})); 
+}));

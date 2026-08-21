@@ -1,7 +1,11 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { notifyDiscordOfArtistLinkAdded } from "@/server/utils/artistLinkDiscordNotifier";
-import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
+import {
+    ArtistLinkConflictError,
+    setArtistLink,
+    clearArtistLink,
+} from "@/server/utils/artistLinkService";
 import { getUserById } from "@/server/utils/queries/userQueries";
 import { extractArtistId } from "@/server/utils/services";
 import { LINK_NOT_SUPPORTED_LONG } from "@/lib/linkSubmissionMessages";
@@ -64,6 +68,12 @@ export async function POST(req: Request) {
 
         return Response.json({ error: "Invalid action" }, { status: 400 });
     } catch (error) {
+        if (error instanceof ArtistLinkConflictError) {
+            return Response.json(
+                { error: error.message, code: "CONFLICT" },
+                { status: 409 },
+            );
+        }
         console.error("[directEditLink] Error:", error);
         return Response.json({ error: "Internal server error" }, { status: 500 });
     } finally {

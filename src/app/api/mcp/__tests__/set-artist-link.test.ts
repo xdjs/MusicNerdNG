@@ -5,10 +5,20 @@ import { jest } from "@jest/globals";
 jest.mock("@/server/utils/services", () => ({
   extractArtistId: jest.fn(),
 }));
-jest.mock("@/server/utils/artistLinkService", () => ({
-  setArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
-  clearArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
-}));
+jest.mock("@/server/utils/artistLinkService", () => {
+  class ArtistLinkConflictError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "ArtistLinkConflictError";
+    }
+  }
+
+  return {
+    ArtistLinkConflictError,
+    setArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
+    clearArtistLink: jest.fn().mockResolvedValue({ oldValue: null }),
+  };
+});
 jest.mock("../audit", () => ({
   logMcpAudit: jest.fn().mockResolvedValue(undefined),
 }));
@@ -24,14 +34,14 @@ describe("set_artist_link MCP tool", () => {
 
   async function setup() {
     const { extractArtistId } = await import("@/server/utils/services");
-    const { setArtistLink } = await import("@/server/utils/artistLinkService");
+    const { ArtistLinkConflictError, setArtistLink } = await import("@/server/utils/artistLinkService");
     const { logMcpAudit } = await import("../audit");
     const { requireMcpAuth, McpAuthError } = await import("../auth");
 
     // Import server to get the registered tools
     const { server } = await import("../server");
 
-    return { extractArtistId, setArtistLink, logMcpAudit, requireMcpAuth, McpAuthError, server };
+    return { ArtistLinkConflictError, extractArtistId, setArtistLink, logMcpAudit, requireMcpAuth, McpAuthError, server };
   }
 
   // Helper to call the set_artist_link tool handler directly via _registeredTools
@@ -127,6 +137,34 @@ describe("set_artist_link MCP tool", () => {
     const result = await callSetArtistLink(s, { artistId: "00000000-0000-0000-0000-000000000001", url: "https://instagram.com/testuser" });
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success).toBe(true);
+  });
+
+  it("returns a terminal conflict when the platform identity belongs elsewhere", async () => {
+    const s = await setup();
+    (s.requireMcpAuth as jest.Mock).mockReturnValue("test-hash");
+    (s.extractArtistId as jest.Mock).mockResolvedValue({
+      siteName: "spotify",
+      id: "spotify-123",
+      cardPlatformName: "Spotify",
+    });
+    (s.setArtistLink as jest.Mock).mockRejectedValue(
+      new s.ArtistLinkConflictError(
+        "That spotify artist ID is already linked to a different artist",
+      ),
+    );
+
+    const result = await callSetArtistLink(s, {
+      artistId: "00000000-0000-0000-0000-000000000001",
+      url: "https://open.spotify.com/artist/spotify-123",
+    });
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(result.isError).toBe(true);
+    expect(parsed).toEqual({
+      error: "That spotify artist ID is already linked to a different artist",
+      code: "CONFLICT",
+    });
+    expect(s.logMcpAudit).not.toHaveBeenCalled();
   });
 
   it("returns error when no auth context", async () => {
