@@ -39,7 +39,7 @@ export type ClientTurnShape =
     | { type: "confirm_profiles"; addedLinks: { url: string }[]; removedSiteNames: string[] }
     // "Look for more" — re-runs profile discovery with a fresh budget, because a slow
     // run drops its later tiers and returns fewer profiles than a fast one.
-    | { type: "find_more_profiles" }
+    | { type: "find_more_profiles"; addedLinks?: { url: string }[]; removedSiteNames?: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
     // `question` round-trips the question TEXT the client was shown — needed
     // server-side to store a grounded (non-static) question's wording; see

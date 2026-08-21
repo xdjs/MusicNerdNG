@@ -23,6 +23,43 @@ describe('ProfilesCard — accepted-by-default', () => {
         expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: ['instagram'] });
     });
 
+    it('sends the artist\'s decisions to "Look for more", not just to "continue"', () => {
+        // The bug a real artist hit: "Look for more" took no arguments, so every
+        // confirmation and removal was discarded, the card re-rendered from
+        // server state, and his own profiles came back as unconfirmed
+        // candidates. Both buttons must report the same decisions.
+        const onConfirm = jest.fn();
+        const onFindMore = jest.fn();
+        render(<ProfilesCard payload={payload} onConfirm={onConfirm} onFindMore={onFindMore} disabled={false} />);
+
+        fireEvent.click(screen.getByLabelText(/remove instagram/i));
+        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://tiktok.com/@nova' } });
+        fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+        fireEvent.click(screen.getByRole('button', { name: /look for more/i }));
+        expect(onFindMore).toHaveBeenCalledWith({
+            addedLinks: [{ url: 'https://tiktok.com/@nova' }],
+            removedSiteNames: ['instagram'],
+        });
+
+        // …and identical to what continuing would have sent.
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm.mock.calls[0][0]).toEqual(onFindMore.mock.calls[0][0]);
+    });
+
+    it('stops listing a platform as missing once the artist has pasted its link', () => {
+        // Seen live: the hint read "Still missing: TikTok" on the line directly
+        // below the TikTok link he had just added, because the covered-set was
+        // built from server payload + candidates and ignored local state.
+        render(<ProfilesCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getByText(/still missing/i).textContent).toMatch(/TikTok/);
+
+        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://www.tiktok.com/@nova' } });
+        fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+        expect(screen.getByText(/still missing/i).textContent).not.toMatch(/TikTok/);
+    });
+
     it('collects pasted links as additions', () => {
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payload} onConfirm={onConfirm} disabled={false} />);

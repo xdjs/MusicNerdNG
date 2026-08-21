@@ -51,6 +51,24 @@ const SUPPORTED_PLATFORM_LABELS: Record<string, string> = {
 };
 const SUPPORTED_PLATFORMS = Object.keys(SUPPORTED_PLATFORM_LABELS);
 
+/** Which supported platforms a pasted URL covers, by host.
+ *
+ *  Host-based rather than regex-based on purpose: the real matching lives
+ *  server-side in `urlmap` and this is only feeding a hint. Every supported
+ *  platform has a distinctive registrable domain, so this is exact enough —
+ *  and matching on the host segment rather than a substring keeps "x" from
+ *  matching every hostname containing the letter. */
+function platformsInUrl(raw: string): string[] {
+    let host: string;
+    try {
+        host = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+            .hostname.replace(/^www\./, "").toLowerCase();
+    } catch {
+        return [];
+    }
+    return SUPPORTED_PLATFORMS.filter(p => host === p || host.startsWith(`${p}.`) || host.includes(`.${p}.`));
+}
+
 // siteNames whose stored value is a platform-issued opaque ID, never a human
 // handle — never render these raw (see PROFILE_HANDLE_SITENAMES below for the
 // inverse: platforms where the value IS a readable handle worth showing as-is).
@@ -262,9 +280,12 @@ export function LiveDiscoveryFeed({ candidates }: { candidates: ProfileCandidate
 export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
     payload: ProfilesPayload;
     onConfirm: (r: { addedLinks: { url: string }[]; removedSiteNames: string[] }) => void;
-    /** Re-runs discovery. Optional so the card still renders in tests and any
-     *  caller that doesn't offer a re-search. */
-    onFindMore?: () => void;
+    /** Re-runs discovery, carrying the SAME decisions as onConfirm so the
+     *  artist's confirmations and removals survive the re-search. It used to
+     *  take no arguments, which is how a real artist lost four confirmed
+     *  profiles and was shown them again as unconfirmed candidates. Optional so
+     *  the card still renders in tests and for any caller without a re-search. */
+    onFindMore?: (r: { addedLinks: { url: string }[]; removedSiteNames: string[] }) => void;
     disabled: boolean;
 }) {
     const [removed, setRemoved] = useState<Set<string>>(new Set());
@@ -306,6 +327,17 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
     };
 
     const candidates = payload.candidates ?? [];
+    /** The artist's decisions, in the shape both buttons send. Built in ONE place
+     *  so "Looks good, continue" and "Look for more" can never disagree about
+     *  what the artist just told us. */
+    const decisions = () => ({
+        addedLinks: [
+            ...added.map(url => ({ url })),
+            ...candidates.filter(c => accepted.has(c.siteName)).map(c => ({ url: c.profileUrl })),
+        ],
+        removedSiteNames: [...removed],
+    });
+
     const visibleCandidates = candidates.filter(c => !dismissed.has(c.siteName));
 
     // "Still missing" hint: platforms with neither a confirmed link nor even
@@ -314,6 +346,11 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
     const coveredSiteNames = new Set([
         ...payload.links.filter(l => !removed.has(l.siteName)).map(l => l.siteName),
         ...candidates.map(c => c.siteName),
+        // Links the artist has pasted in THIS card but not submitted yet. They
+        // live in local state, so without this the hint kept telling a real
+        // artist "Still missing: TikTok" on the line directly below the TikTok
+        // link he had just added.
+        ...added.flatMap(platformsInUrl),
     ]);
     const stillMissing = SUPPORTED_PLATFORMS.filter(p => !coveredSiteNames.has(p));
 
@@ -435,13 +472,7 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
                 </button>
             </div>
             <button
-                onClick={() => onConfirm({
-                    addedLinks: [
-                        ...added.map(url => ({ url })),
-                        ...candidates.filter(c => accepted.has(c.siteName)).map(c => ({ url: c.profileUrl })),
-                    ],
-                    removedSiteNames: [...removed],
-                })}
+                onClick={() => onConfirm(decisions())}
                 disabled={disabled}
                 className="w-full bg-pink-500 enabled:hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -453,7 +484,7 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
                 Secondary by design — most artists should just continue. */}
             {onFindMore && (
                 <button
-                    onClick={onFindMore}
+                    onClick={() => onFindMore(decisions())}
                     disabled={disabled}
                     className="w-full text-sm py-2 rounded-lg border border-pink-500 text-pink-500 enabled:hover:bg-pink-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >

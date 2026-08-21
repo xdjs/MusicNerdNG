@@ -194,7 +194,7 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 );
             case "step": {
                 if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive}
-                        onFindMore={() => void sendTurn({ type: "find_more_profiles" })} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
+                        onFindMore={r => void sendTurn({ type: "find_more_profiles", ...r })} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
                 if (item.step === "vault") return <VaultCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "vault_review", ...r })} />;
                 if (item.step === "interview") {
                     const payload = item.payload as InterviewPayload;

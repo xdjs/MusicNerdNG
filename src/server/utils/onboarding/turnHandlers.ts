@@ -122,7 +122,10 @@ export type ClientTurn =
     // tiers on a slow run, so two runs for the same artist can return different numbers
     // of profiles. Re-runs the search with a fresh budget rather than leaving the artist
     // to wonder whether that was everything.
-    | { type: "find_more_profiles" }
+    // Carries the SAME decisions as confirm_profiles. Re-searching must not cost
+    // the artist the confirmations and removals they have already made — see
+    // applyProfileLinkDecisions. Optional so an older client still works.
+    | { type: "find_more_profiles"; addedLinks?: { url: string }[]; removedSiteNames?: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
     // `question` is the stateless round-trip of the question TEXT the client
     // was actually shown (same pattern as `publish`'s doc/about — see
@@ -765,6 +768,173 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
     }
 }
 
+/** What applying an artist's profile-card decisions produced, bucketed by what
+ *  went wrong — each bucket gets different copy (see the build*Message helpers). */
+interface ProfileLinkOutcome {
+    unrecognized: string[];
+    writeRejected: string[];
+    routedToVaultApproved: string[];
+    routedToVaultPending: string[];
+    vaultInsertFailed: string[];
+}
+
+/**
+ * Saves the artist's decisions from the profiles card: clear what they removed,
+ * add what they kept or pasted, route a non-platform URL to the vault.
+ *
+ * Shared by `confirm_profiles` AND `find_more_profiles`. That sharing is the
+ * point: "Look for more" used to send NO payload, so every confirmation and
+ * removal the artist had made was discarded, the card re-rendered from server
+ * state, and their own profiles came back as fresh unconfirmed candidates —
+ * seen happening to a real artist. The card's own copy promises "leaving a card
+ * as-is confirms it", so re-searching has to honour that promise too.
+ *
+ * Only `confirm_profiles` advances the step; this function never does.
+ */
+async function applyProfileLinkDecisions(
+    artistId: string,
+    addedLinks: { url: string }[],
+    removedSiteNames: string[],
+): Promise<ProfileLinkOutcome> {
+    for (const siteName of removedSiteNames) {
+        try {
+            await clearArtistLink(artistId, siteName);
+        } catch (e) {
+            console.error(`[onboarding] clearArtistLink failed for ${siteName}:`, e);
+        }
+    }
+
+    // Bug 3: track the two failure causes separately — a URL we couldn't
+    // parse at all (unrecognized) vs. one we parsed fine but whose write
+    // was rejected (e.g. a unique-constraint collision) — they get
+    // different copy below.
+    const unrecognized: string[] = [];
+    const writeRejected: string[] = [];
+    // A URL that doesn't extract to any platform (an artist's own
+    // website, most commonly — urlmap has no generic website platform)
+    // routed to the vault instead of rejected. Split by ownership
+    // confidence — the two get different copy below (buildRoutedToVault*),
+    // since only the approved bucket has any evidence it's the artist's
+    // own page.
+    const routedToVaultApproved: string[] = [];
+    const routedToVaultPending: string[] = [];
+    // The write succeeded (recognized fine) but the vault insert itself
+    // threw — a real DB failure, not an "unrecognized" link. Distinct
+    // bucket so the copy doesn't misreport what actually went wrong.
+    const vaultInsertFailed: string[] = [];
+    // Only needed for the ownership cross-check below, which no
+    // platform-recognized URL ever reaches — fetched at most once, so a
+    // turn with no failed-extraction URLs never pays for it.
+    let artistName: string | undefined;
+    // Idempotency: a reconnect can resubmit the exact same addedLinks
+    // (spec §9 — every handler upserts and continues, never double-acts).
+    // setArtistLink/clearArtistLink are naturally idempotent (same column,
+    // same value); a plain insertVaultSource is not, so URLs already in
+    // the vault (from an earlier attempt at this exact turn, or a
+    // duplicate paste) are looked up once and skipped rather than
+    // re-inserted as a second row.
+    let existingVaultStatusByUrl: Map<string, string> | undefined;
+    for (const raw of addedLinks) {
+        let extracted;
+        try {
+            extracted = await extractArtistId(raw.url);
+        } catch (e) {
+            console.error(`[onboarding] extractArtistId failed for ${raw.url}:`, e);
+            unrecognized.push(raw.url);
+            continue;
+        }
+        if (!extracted?.siteName || !extracted?.id) {
+            // Not a recognized platform profile. Before rejecting it, see
+            // if it's a real page we can route to the vault instead — the
+            // single best About source an artist can hand us (their own
+            // site) has nowhere to go in urlmap and must not be thrown
+            // away just because it isn't a platform profile.
+            if (isUnsafeUrl(raw.url)) {
+                unrecognized.push(raw.url);
+                continue;
+            }
+            if (existingVaultStatusByUrl === undefined) {
+                const existing = await getVaultSourcesByArtistId(artistId);
+                existingVaultStatusByUrl = new Map(existing.map(s => [s.url, s.status]));
+            }
+            const existingStatus = existingVaultStatusByUrl.get(raw.url);
+            if (existingStatus) {
+                // Already routed to the vault (an earlier attempt at this
+                // turn, or a duplicate paste) — idempotent no-op, not a
+                // fresh insert or a fetch.
+                (existingStatus === "approved" ? routedToVaultApproved : routedToVaultPending).push(raw.url);
+                continue;
+            }
+            const preview = await fetchLinkPreview(raw.url);
+            if (!preview.title && !preview.imageUrl) {
+                // Dead link / no metadata to go on — genuinely unrecognized.
+                unrecognized.push(raw.url);
+                continue;
+            }
+            // Resolves to a real page. Confidence on ownership: does the
+            // page's own title carry the artist's name? If so, it's
+            // authoritative and self-authored — the artist just handed it
+            // to us — so approve it outright. Otherwise park it as
+            // `pending` for curation at the vault step, same as any other
+            // web-found source. Reuses the same name cross-check the
+            // handle-probing tier uses (`titleMatchesArtist`) rather than
+            // a second matcher.
+            if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
+            const ownedByArtist = !!preview.title && titleMatchesArtist(preview.title, artistName);
+            try {
+                const source = await insertVaultSource({
+                    artistId,
+                    url: raw.url,
+                    title: preview.title ?? undefined,
+                    // `ownedByArtist` means the artist handed us this URL AND
+                    // the page's own title carries their name — that is the
+                    // artist's official site, so record it as such instead of
+                    // discarding the signal. inferTypeFromUrl can't determine
+                    // this (a URL alone never says who owns it) and would call
+                    // a personal domain an "article", indistinguishable from a
+                    // magazine piece about them. The profile surfaces approved
+                    // "website" sources beside Links rather than burying them.
+                    type: ownedByArtist ? "website" : inferTypeFromUrl(raw.url),
+                    status: ownedByArtist ? "approved" : "pending",
+                });
+                existingVaultStatusByUrl.set(raw.url, ownedByArtist ? "approved" : "pending");
+                // Fire-and-forget content enrichment (snippet/extractedText,
+                // and title too if we don't already have a good one) so doc
+                // synthesis isn't left with a bare URL — mirrors the
+                // vault_review addedUrls background fetch further below.
+                // Title is deliberately left alone when `preview.title` is
+                // already set: fetchPageContent falls back to a generic
+                // "Source from <host>" title on ANY non-ok response, and
+                // must never be allowed to downgrade the real og:title (e.g.
+                // "Pete Rango") we already captured synchronously above.
+                if (source?.id) {
+                    fetchPageContent(raw.url).then(content => {
+                        updateVaultSourceContent(source.id, {
+                            ...(preview.title ? {} : { title: content.title }),
+                            snippet: content.snippet,
+                            extractedText: content.extractedText,
+                            ogImage: content.ogImage,
+                        }).catch(e => console.error("[onboarding] Background content update failed:", e));
+                    }).catch(e => console.error("[onboarding] Background fetch failed:", e));
+                }
+                (ownedByArtist ? routedToVaultApproved : routedToVaultPending).push(raw.url);
+            } catch (e) {
+                console.error(`[onboarding] insertVaultSource failed for ${raw.url}:`, e);
+                vaultInsertFailed.push(raw.url);
+            }
+            continue;
+        }
+        try {
+            await setArtistLink(artistId, extracted.siteName, extracted.id);
+        } catch (e) {
+            console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
+            writeRejected.push(raw.url);
+        }
+    }
+
+    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed };
+}
+
 export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): AsyncGenerator<TurnEvent> {
     const state = await getOnboardingState(artistId);
     // `null` = the confirmed-steps read failed (e.g. migration/grants issue) —
@@ -799,9 +969,23 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, state.currentStep);
             return;
         }
-        // Re-emits the whole card. Both of its lists reset to their safe defaults —
-        // found links stay accepted (opt-out), candidates stay unaccepted (opt-in) —
-        // so a re-search can't quietly save something the artist had rejected.
+        // Save what the artist has already decided BEFORE re-searching. This used
+        // to send nothing at all, so every confirmation and removal was discarded
+        // and their own profiles came back as unconfirmed candidates — which is
+        // what a real artist hit in testing. Persisting first also means the
+        // re-emitted card reflects their decisions, because it reads from the
+        // database rather than from client state that no longer exists.
+        const findMore = await applyProfileLinkDecisions(
+            artistId,
+            turn.addedLinks ?? [],
+            turn.removedSiteNames ?? [],
+        );
+        // `blocked: true` — the step is being re-emitted, so the copy should
+        // invite another paste rather than point at a profile page they have
+        // not reached yet.
+        if (findMore.unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(findMore.unrecognized, true) };
+        if (findMore.writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(findMore.writeRejected, true) };
+        if (findMore.vaultInsertFailed.length > 0) yield { kind: "chat", text: buildVaultInsertFailedMessage(findMore.vaultInsertFailed) };
         yield* emitStep(artistId, "profiles", true);
         return;
     }
@@ -820,141 +1004,8 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, state.currentStep);
             return;
         }
-        for (const siteName of turn.removedSiteNames ?? []) {
-            try {
-                await clearArtistLink(artistId, siteName);
-            } catch (e) {
-                console.error(`[onboarding] clearArtistLink failed for ${siteName}:`, e);
-            }
-        }
-
-        // Bug 3: track the two failure causes separately — a URL we couldn't
-        // parse at all (unrecognized) vs. one we parsed fine but whose write
-        // was rejected (e.g. a unique-constraint collision) — they get
-        // different copy below.
-        const unrecognized: string[] = [];
-        const writeRejected: string[] = [];
-        // A URL that doesn't extract to any platform (an artist's own
-        // website, most commonly — urlmap has no generic website platform)
-        // routed to the vault instead of rejected. Split by ownership
-        // confidence — the two get different copy below (buildRoutedToVault*),
-        // since only the approved bucket has any evidence it's the artist's
-        // own page.
-        const routedToVaultApproved: string[] = [];
-        const routedToVaultPending: string[] = [];
-        // The write succeeded (recognized fine) but the vault insert itself
-        // threw — a real DB failure, not an "unrecognized" link. Distinct
-        // bucket so the copy doesn't misreport what actually went wrong.
-        const vaultInsertFailed: string[] = [];
-        // Only needed for the ownership cross-check below, which no
-        // platform-recognized URL ever reaches — fetched at most once, so a
-        // turn with no failed-extraction URLs never pays for it.
-        let artistName: string | undefined;
-        // Idempotency: a reconnect can resubmit the exact same addedLinks
-        // (spec §9 — every handler upserts and continues, never double-acts).
-        // setArtistLink/clearArtistLink are naturally idempotent (same column,
-        // same value); a plain insertVaultSource is not, so URLs already in
-        // the vault (from an earlier attempt at this exact turn, or a
-        // duplicate paste) are looked up once and skipped rather than
-        // re-inserted as a second row.
-        let existingVaultStatusByUrl: Map<string, string> | undefined;
-        for (const raw of turn.addedLinks ?? []) {
-            let extracted;
-            try {
-                extracted = await extractArtistId(raw.url);
-            } catch (e) {
-                console.error(`[onboarding] extractArtistId failed for ${raw.url}:`, e);
-                unrecognized.push(raw.url);
-                continue;
-            }
-            if (!extracted?.siteName || !extracted?.id) {
-                // Not a recognized platform profile. Before rejecting it, see
-                // if it's a real page we can route to the vault instead — the
-                // single best About source an artist can hand us (their own
-                // site) has nowhere to go in urlmap and must not be thrown
-                // away just because it isn't a platform profile.
-                if (isUnsafeUrl(raw.url)) {
-                    unrecognized.push(raw.url);
-                    continue;
-                }
-                if (existingVaultStatusByUrl === undefined) {
-                    const existing = await getVaultSourcesByArtistId(artistId);
-                    existingVaultStatusByUrl = new Map(existing.map(s => [s.url, s.status]));
-                }
-                const existingStatus = existingVaultStatusByUrl.get(raw.url);
-                if (existingStatus) {
-                    // Already routed to the vault (an earlier attempt at this
-                    // turn, or a duplicate paste) — idempotent no-op, not a
-                    // fresh insert or a fetch.
-                    (existingStatus === "approved" ? routedToVaultApproved : routedToVaultPending).push(raw.url);
-                    continue;
-                }
-                const preview = await fetchLinkPreview(raw.url);
-                if (!preview.title && !preview.imageUrl) {
-                    // Dead link / no metadata to go on — genuinely unrecognized.
-                    unrecognized.push(raw.url);
-                    continue;
-                }
-                // Resolves to a real page. Confidence on ownership: does the
-                // page's own title carry the artist's name? If so, it's
-                // authoritative and self-authored — the artist just handed it
-                // to us — so approve it outright. Otherwise park it as
-                // `pending` for curation at the vault step, same as any other
-                // web-found source. Reuses the same name cross-check the
-                // handle-probing tier uses (`titleMatchesArtist`) rather than
-                // a second matcher.
-                if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
-                const ownedByArtist = !!preview.title && titleMatchesArtist(preview.title, artistName);
-                try {
-                    const source = await insertVaultSource({
-                        artistId,
-                        url: raw.url,
-                        title: preview.title ?? undefined,
-                        // `ownedByArtist` means the artist handed us this URL AND
-                        // the page's own title carries their name — that is the
-                        // artist's official site, so record it as such instead of
-                        // discarding the signal. inferTypeFromUrl can't determine
-                        // this (a URL alone never says who owns it) and would call
-                        // a personal domain an "article", indistinguishable from a
-                        // magazine piece about them. The profile surfaces approved
-                        // "website" sources beside Links rather than burying them.
-                        type: ownedByArtist ? "website" : inferTypeFromUrl(raw.url),
-                        status: ownedByArtist ? "approved" : "pending",
-                    });
-                    existingVaultStatusByUrl.set(raw.url, ownedByArtist ? "approved" : "pending");
-                    // Fire-and-forget content enrichment (snippet/extractedText,
-                    // and title too if we don't already have a good one) so doc
-                    // synthesis isn't left with a bare URL — mirrors the
-                    // vault_review addedUrls background fetch further below.
-                    // Title is deliberately left alone when `preview.title` is
-                    // already set: fetchPageContent falls back to a generic
-                    // "Source from <host>" title on ANY non-ok response, and
-                    // must never be allowed to downgrade the real og:title (e.g.
-                    // "Pete Rango") we already captured synchronously above.
-                    if (source?.id) {
-                        fetchPageContent(raw.url).then(content => {
-                            updateVaultSourceContent(source.id, {
-                                ...(preview.title ? {} : { title: content.title }),
-                                snippet: content.snippet,
-                                extractedText: content.extractedText,
-                                ogImage: content.ogImage,
-                            }).catch(e => console.error("[onboarding] Background content update failed:", e));
-                        }).catch(e => console.error("[onboarding] Background fetch failed:", e));
-                    }
-                    (ownedByArtist ? routedToVaultApproved : routedToVaultPending).push(raw.url);
-                } catch (e) {
-                    console.error(`[onboarding] insertVaultSource failed for ${raw.url}:`, e);
-                    vaultInsertFailed.push(raw.url);
-                }
-                continue;
-            }
-            try {
-                await setArtistLink(artistId, extracted.siteName, extracted.id);
-            } catch (e) {
-                console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
-                writeRejected.push(raw.url);
-            }
-        }
+        const { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed } =
+            await applyProfileLinkDecisions(artistId, turn.addedLinks ?? [], turn.removedSiteNames ?? []);
 
         // Bug 2: never infer success from the request payload — a write can
         // silently fail. Re-read the artist's own link columns (the same set

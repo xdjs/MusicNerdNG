@@ -53,19 +53,30 @@ reached a real artist.
 but nothing cleared the bar, and the ingest outcome itself (`disabled` / `no_handle` /
 `already_present` / `ingested` / `found_nothing` / `error`).
 
-### 1.3 "Still missing: TikTok" after TikTok was added `todo`
+### 1.3 "Still missing: TikTok" after TikTok was added `done`
 `StepCards.tsx` builds `coveredSiteNames` from `payload.links` + `candidates` only. A link the
 artist pastes locally lives in separate client state and never joins that set, so the platform
 stays listed as missing directly below the line confirming it was added. Seen in the session.
 
-### 1.4 "Look for more" discards confirmations and re-offers the same profiles `todo`
+**Done 8/21.** Pasted links now count toward the covered set, matched by host segment (so "x"
+can't match every hostname containing the letter).
+
+### 1.4 "Look for more" discards confirmations and re-offers the same profiles `done`
 Card confirmations are client-side until "Looks good, continue" persists them.
 `find_more_profiles` calls `emitStep(..., true)`, which re-renders from server state — where only
 Deezer was saved. His four confirmed profiles were thrown away and came back as fresh candidates.
 
 The reset is deliberate (a re-search must not silently save something the artist rejected) but it
-discards accepted ones too. Fix: round-trip or persist the current card state on "Look for more",
-keeping the opt-in/opt-out semantics intact.
+discards accepted ones too.
+
+**Done 8/21.** `find_more_profiles` now carries the same payload as `confirm_profiles` and saves
+it before re-searching, so the re-emitted card reflects the artist's decisions because it reads
+from the database rather than client state that no longer exists. The link-application logic was
+extracted to `applyProfileLinkDecisions`, shared by both handlers — only `confirm_profiles`
+advances the step. The card builds its payload in one place so the two buttons cannot drift.
+
+Consistent with what the card already promises the artist: *"Leaving a card as-is confirms it."*
+Re-searching now honours that too.
 
 ---
 

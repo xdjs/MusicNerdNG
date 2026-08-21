@@ -1334,6 +1334,32 @@ describe('runOnboardingTurn', () => {
         expect(events.find(e => e.kind === 'step')?.step).toBe('profiles');
     });
 
+    it('find_more_profiles SAVES the artist\'s decisions before re-searching, without advancing', async () => {
+        // The leak a real artist hit: re-searching sent no payload, so his four
+        // confirmed profiles were discarded and came back as unconfirmed
+        // candidates. The card's own copy promises "leaving a card as-is
+        // confirms it" — re-searching has to honour that too.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce({ siteName: 'tiktok', id: 'nova' });
+        const { setArtistLink, clearArtistLink } = await import('@/server/utils/artistLinkService');
+        setArtistLink.mockClear(); clearArtistLink.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'find_more_profiles',
+            addedLinks: [{ url: 'https://tiktok.com/@nova' }],
+            removedSiteNames: ['facebook'],
+        }));
+
+        expect(setArtistLink).toHaveBeenCalledWith('a1', 'tiktok', 'nova');
+        expect(clearArtistLink).toHaveBeenCalledWith('a1', 'facebook');
+        // Re-searching is not confirming: the step must NOT advance.
+        expect(oq.confirmOnboardingStep).not.toHaveBeenCalled();
+        expect(events.some(e => e.kind === 'error')).toBe(false);
+    });
+
     it('find_more_profiles refuses once the artist has moved past the profiles step', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
