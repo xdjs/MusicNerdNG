@@ -31,6 +31,11 @@ jest.mock("@/server/utils/fetchPageContent", () => ({
   isUnsafeUrl: jest.fn().mockReturnValue(false),
 }));
 
+// Hermetic by default: the judge abstains unless a test says otherwise, so
+// every existing expectation still exercises the name-check path.
+const mockJudge = jest.fn(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
+jest.mock("@/server/utils/sourceRelevance", () => ({ judgeSourceRelevance: (...a) => mockJudge(...a) }));
+
 const hit = (url, title = "A Grimes Interview") => ({ url, title, snippet: "s" });
 
 describe("searchAndPopulateVault", () => {
@@ -47,6 +52,8 @@ describe("searchAndPopulateVault", () => {
     mockFetchPage.mockResolvedValue(goodPage);
     mockGetSources.mockReset();
     mockGetSources.mockResolvedValue([]);
+    mockJudge.mockReset();
+    mockJudge.mockImplementation(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
   });
 
   // ---- Retrieval ---------------------------------------------------------
@@ -170,6 +177,53 @@ describe("searchAndPopulateVault", () => {
     await searchAndPopulateVault("a1");
     const row = mockInsert.mock.calls[0][0];
     expect(row.extractedText).toBeNull(); // stored, but never citable
+  });
+
+  // ---- Relevance judgement ------------------------------------------------
+
+  it("drops a page the judge says is about someone else, rather than keeping it as a lead", async () => {
+    // We READ it and it isn't them. Leads exist for pages we could not read,
+    // not for pages we read and rejected — a Chord DAVE amplifier review has no
+    // business sitting in an artist's vault waiting to be dismissed by hand.
+    mockJudge.mockImplementation(async () => new Map([["https://head-fi.org/chord-dave", "not-about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://head-fi.org/chord-dave", "Chord DAVE review")]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it("lets an affirmed page be citable even when it never spells the full name", async () => {
+    // Black Dave's press is written under "Black Dave", which can never satisfy
+    // requireFullName against "Black Dave MK2". The judge is stronger evidence
+    // than a string match, so it lifts that constraint.
+    const PRESS = "Dave has been putting out anime-inflected rap out of Charleston for years. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave MK2", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockJudge.mockImplementation(async () => new Map([["https://example.com/press", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://example.com/press", "An interview")]);
+    mockFetchPage.mockResolvedValue({ title: "T", snippet: "s", extractedText: PRESS, fullText: PRESS, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls[0][0].extractedText).toBe(PRESS);
+  });
+
+  it("falls back to the name check when the judge abstains", async () => {
+    // An unavailable judge must not delete real press.
+    const RAPPER = "Dave talks about his song Black and growing up in south London. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockJudge.mockImplementation(async (_a, c) => new Map(c.map(x => [x.url, "undecided"])));
+    mockWebSearch.mockResolvedValue([hit("https://theguardian.com/dave", "Dave")]);
+    mockFetchPage.mockResolvedValue({ title: "Dave", snippet: "s", extractedText: RAPPER, fullText: RAPPER, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    // Stored, but demoted — exactly the pre-judge behaviour.
+    expect(mockInsert.mock.calls[0][0].extractedText).toBeNull();
   });
 
   // ---- Namesakes ---------------------------------------------------------

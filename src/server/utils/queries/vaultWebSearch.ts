@@ -4,6 +4,8 @@ import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTyp
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
+import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
+import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
 // External fetches (redirect resolution) fan out with plain Promise.all — the result set
@@ -296,6 +298,41 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             }))
         );
 
+        // RELEVANCE JUDGEMENT — the model's job, now that retrieval is not.
+        //
+        // A substring check ("does the page contain the artist's name") cannot
+        // tell a Chord DAVE amplifier review from Black Dave, or a Peter Calandra
+        // interview from Pete Rango. All three reached real artists' vaults. The
+        // verified anchor below — real catalog, confirmed accounts — is evidence
+        // a name match doesn't have.
+        //
+        // Runs once for the whole batch, and never rejects on failure: an
+        // unavailable judge leaves everything `undecided` and the name check
+        // below decides, exactly as before. Deleting an artist's real press
+        // because Gemini had a bad day would be worse than no judge at all.
+        const spotifyId = typeof artist.spotify === "string" ? artist.spotify : "";
+        const catalog = spotifyId
+            ? await (async () => {
+                try {
+                    return await getSpotifyCatalogNames(spotifyId, await getSpotifyHeaders());
+                } catch {
+                    return { releases: [] as string[], topTracks: [] as string[] };
+                }
+            })()
+            : { releases: [] as string[], topTracks: [] as string[] };
+        const identifiers = PROFILE_LINK_COLUMNS.flatMap(col => {
+            const v = (artist as unknown as Record<string, unknown>)[col];
+            return typeof v === "string" && v ? [`${col}: ${v}`] : [];
+        });
+        const relevance = await judgeSourceRelevance(
+            { name: artistName, catalog: [...catalog.topTracks, ...catalog.releases], identifiers },
+            verified.map(({ result, page }) => ({
+                url: result.url,
+                title: page.title ?? result.title,
+                text: page.fullText ?? page.extractedText,
+            })),
+        );
+
         const insertedSources: ArtistVaultSource[] = [];
         let dropped = 0;
         for (const { result, page } of verified) {
@@ -307,8 +344,21 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // would be a worse failure than the invented URLs this path replaced,
             // because it is plausible. Anything that only half-matches degrades to
             // an unverified lead the artist can still see and judge.
+            // A page the judge says is about someone else is dropped outright,
+            // not stored as a lead: we READ it and it isn't them. Leads exist for
+            // pages we could not read, not for pages we read and rejected.
+            if (relevance.get(result.url) === "not-about-artist") {
+                console.log(`[vaultWebSearch] Judge: not about "${artistName}" — ${result.url.slice(0, 100)}`);
+                dropped++;
+                continue;
+            }
             const verdict = classifyFetchedSource(page, artistName, {
                 requireFullName: !isArtistOwnDomain(result.url, artistName),
+                // The judge READ the page and affirmed it. That outranks any
+                // string match — which is what kept genuine press written under
+                // an artist's earlier name ("Black Dave" vs "Black Dave MK2")
+                // from ever becoming citable.
+                identityConfirmed: relevance.get(result.url) === "about-artist",
             });
             if (verdict === "dead") {
                 console.warn(`[vaultWebSearch] Dropping unreachable/irrelevant URL (status ${page.status}): ${result.url.slice(0, 120)}`);

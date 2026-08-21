@@ -430,7 +430,7 @@ Fix: capture a publication date during verification — `article:published_time`
 JSON-LD `datePublished` are all in the HTML we already fetch — carry it into the doc's source
 manifest, and require claims to be scoped by it. Anything not evidenced as current is past tense.
 
-### 2.13 Relevance is a substring check where it should be judgment `todo`
+### 2.13 Relevance is a substring check where it should be judgment `done (readable pages)`
 Pete, 8/21: *"a lot of links in the vault that don't relate to me… in the age of AI and tech there
 would be a better, smarter way to figure out what's what."* Correct.
 
@@ -445,7 +445,33 @@ anchor can answer the question the substring check is pretending to answer.
 
 This is the division already argued for and only half-built — **retrieval is a search API,
 judgment should be the model.** Retrieval was fixed on 8/21; judgment is still a string match.
-Note it also has to stay cheap: it runs per candidate, inside the build.
+
+**Done 8/21.** `sourceRelevance.judgeSourceRelevance` reads each fetched page against a verified
+anchor — the artist's real Spotify catalog and confirmed accounts, not just their name — in one
+batched call. A page judged to be about someone else is **dropped**, not parked as a lead: we read
+it and it isn't them, and leads exist for pages we could not read. A page it affirms becomes
+citable even without a full-name match (`identityConfirmed`), which is what kept genuine press
+written under an artist's earlier name from ever being usable.
+
+Verdicts bind by **index, never by an echoed URL** — a model asked to repeat identifiers invents
+them, which is exactly how this pipeline once stored a YouTube video that does not exist. Failure
+of any kind leaves every candidate `undecided` and the name check decides, unchanged: a judge that
+deletes real press on a bad Gemini day is worse than no judge.
+
+**Measured live.** Black Dave: 11 sources / 8 off-topic → **4 / 1**, with the Thrasher skater
+interview, a "David Black of Seduce" interview and both Chord DAVE amplifier threads dropped
+outright. Pete: Wikipedia's "Pete" and Pete Buttigieg's Instagram dropped.
+
+**Remaining gap — unreadable pages bypass the judge.** Bot-blocked (403), oddly-statused, and
+JS-rendered pages have no text to reason about, so the judge abstains and they survive as
+non-citable leads: Pete Buttigieg on Ballotpedia, Merriam-Webster's *definition of "pete"*, a
+Chord DAVE review on the-ear.net. They cannot reach an About, but they are precisely the vault
+clutter artists complain about.
+
+Judging those on URL + title would catch all three. The counter-case is real and worth stating:
+`readdork.com/artists/black-dave-mk2` is Black Dave's own artist profile and also 403s — a
+URL/title judge keeps it, but a careless one could drop a real source we simply could not read,
+and a wrong drop is unrecoverable. Not built; decide deliberately.
 
 ### 2.3 The questions are shallow by construction `todo`
 Pete, 8/21, on *"You often use the word 'single' in your captions..."*: **"so shallow and has no
