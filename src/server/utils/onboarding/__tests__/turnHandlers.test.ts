@@ -376,11 +376,11 @@ describe('runOnboardingTurn', () => {
         expect(events.some(e => e.kind === 'error')).toBe(false); // recovery is a re-emitted step, not an error event
         // The closing line must match what actually happens next: on the
         // blocked path (re-emitting the step) it invites a retry paste, NOT
-        // the "add it later from Social Links" copy that only makes sense on
+        // the "add it later from Links" copy that only makes sense on
         // the confirm-and-advance path (the closing-line bug the advisor flagged).
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes("I'll try again"))).toBe(true);
-        expect(chats.some(t => t.includes('Social Links section'))).toBe(false);
+        expect(chats.some(t => t.includes('Links section'))).toBe(false);
     });
 
     it('confirm_profiles: at least one addition succeeds — confirms the step and advances to vault as before', async () => {
@@ -444,11 +444,11 @@ describe('runOnboardingTurn', () => {
         expect(writeRejectedMsg).toMatch(/save/i);
         expect(writeRejectedMsg).not.toMatch(/recognize/i);
         // This turn advances to vault (a pre-existing link means it's not the
-        // all-failed/blocked path) — the closing line must point to Social
+        // all-failed/blocked path) — the closing line must point to
         // Links, NOT invite a paste-and-retry that has nowhere to land once
         // "Profiles confirmed" and the vault card have already been sent.
-        expect(unrecognizedMsg).toContain('Social Links section');
-        expect(writeRejectedMsg).toContain('Social Links section');
+        expect(unrecognizedMsg).toContain('Links section');
+        expect(writeRejectedMsg).toContain('Links section');
         expect(unrecognizedMsg).not.toContain("I'll try again");
     });
 
@@ -594,7 +594,7 @@ describe('runOnboardingTurn', () => {
         expect(chats.some(t => t.includes('it looks like your site'))).toBe(false);
     });
 
-    it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Social Links support', async () => {
+    it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Links support', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
         const { extractArtistId } = await import('@/server/utils/services');
@@ -611,10 +611,10 @@ describe('runOnboardingTurn', () => {
         const failureMsg = chats.find(t => t.includes('deadsite.example'));
         expect(failureMsg).toBeDefined();
         expect(failureMsg).toMatch(/couldn't recognize/);
-        // The fix: no longer unconditionally promises Social Links support —
+        // The fix: no longer unconditionally promises Links support —
         // it's hedged, since urlmap has no generic website platform.
         expect(failureMsg).toContain('if it\'s on a platform we support');
-        expect(failureMsg).toContain('Social Links section');
+        expect(failureMsg).toContain('Links section');
         expect(dq.insertVaultSource).not.toHaveBeenCalled();
         expect(chats.some(t => t.includes('added it as a source'))).toBe(false);
     });

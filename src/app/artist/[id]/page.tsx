@@ -174,10 +174,10 @@ export default async function ArtistProfile({ params }: ArtistProfileProps) {
                     <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
                 </RevealSection>
 
-                {/* 5. Social Links (icon grid) */}
+                {/* 5. Links (icon grid) */}
                 <RevealSection className="glass p-4 sm:p-5 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="text-black dark:text-white text-xl font-bold">Social Links</h2>
+                        <h2 className="text-black dark:text-white text-xl font-bold">Links</h2>
                         <AddArtistData
                             artist={artist}
                             spotifyImg={platformImage ?? ""}

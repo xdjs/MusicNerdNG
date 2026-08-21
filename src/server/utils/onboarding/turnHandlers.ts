@@ -333,17 +333,17 @@ function pluralize(count: number, singular: string, plural: string): string {
  *  earlier copy, while now naming the offending link(s) and explaining why.
  *
  *  The closing line is hedged ("if it's on a platform we support") rather
- *  than asserting Social Links can hold it: urlmap has no generic website
+ *  than asserting Links can hold it: urlmap has no generic website
  *  platform (only `linktree`), so that used to be flatly wrong advice for
  *  anything that isn't a supported platform — a bare `instagram.com` (no
- *  username) genuinely can be added from Social Links, but a dead personal
+ *  username) genuinely can be added from Links, but a dead personal
  *  domain can't, and the copy must not promise otherwise.
  *
  *  `blocked` must match what actually happens next: when the step is about
  *  to be re-emitted for a retry (Bug 2's all-failed path) the closing line
  *  invites a paste; when the step is confirming and advancing to vault
  *  instead, inviting a paste right before "Profiles confirmed" would be a
- *  message that doesn't match reality — so it points to Social Links later. */
+ *  message that doesn't match reality — so it points to Links later. */
 function buildUnrecognizedLinksMessage(urls: string[], blocked: boolean): string {
     const list = formatFailedLinkList(urls);
     const noun = pluralize(urls.length, "one of your links", `${urls.length} of your links`);
@@ -352,7 +352,7 @@ function buildUnrecognizedLinksMessage(urls: string[], blocked: boolean): string
     const linkNoun = pluralize(urls.length, "a direct profile link", "direct profile links");
     const tail = blocked
         ? "paste the profile URL and I'll try again."
-        : `if it's on a platform we support, you can add ${pluralize(urls.length, "it", "them")} anytime from the Social Links section of your page.`;
+        : `if it's on a platform we support, you can add ${pluralize(urls.length, "it", "them")} anytime from the Links section of your page.`;
     return `Heads up — I couldn't recognize ${noun}: ${list}. ${subject} ${verb} look like ${linkNoun} (no username or handle at the end) — ${tail}`;
 }
 
@@ -366,7 +366,7 @@ function buildWriteRejectedLinksMessage(urls: string[], blocked: boolean): strin
     const pronoun = pluralize(urls.length, "it's", "they're");
     const tail = blocked
         ? "try a different link, or reach out if that seems wrong."
-        : "you can try again anytime from the Social Links section of your page, or reach out if that seems wrong.";
+        : "you can try again anytime from the Links section of your page, or reach out if that seems wrong.";
     return `Heads up — I couldn't save ${noun}: ${list}. Looks like ${pronoun} already linked to another profile on Music Nerd — ${tail}`;
 }
 
