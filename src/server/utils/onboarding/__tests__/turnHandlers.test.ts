@@ -814,8 +814,12 @@ describe('runOnboardingTurn', () => {
             await jest.advanceTimersByTimeAsync(45_000);
             const events = await eventsPromise;
 
+            // Substring, not the exact sentence: this test is about WHEN the
+            // empty-state narration fires (after the discovery cap, not before),
+            // and pinning the full prose made a copy edit look like a
+            // behavioural regression.
             expect(events.some(e =>
-                e.kind === 'chat' && e.text === "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue."
+                e.kind === 'chat' && e.text.includes("didn't find much about you on the web")
             )).toBe(true);
             expect(events.some(e => e.kind === 'step' && e.step === 'vault' && e.payload.sources.length === 0)).toBe(true);
         } finally {

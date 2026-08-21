@@ -458,7 +458,7 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
                 <input
                     value={draft}
                     onChange={e => setDraft(e.target.value)}
-                    placeholder="Paste a link we missed…"
+                    placeholder="Paste a profile we missed…"
                     aria-label="Add a missing profile link"
                     disabled={disabled}
                     className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm text-black dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -620,7 +620,7 @@ export function VaultCard({ payload, onConfirm, disabled }: {
                 <input
                     value={draft}
                     onChange={e => setDraft(e.target.value)}
-                    placeholder="Paste a link — press, an interview, your site…"
+                    placeholder="Paste press, an interview, a feature, your site…"
                     aria-label="Add a source link"
                     disabled={disabled}
                     className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm text-black dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:opacity-50 disabled:cursor-not-allowed"

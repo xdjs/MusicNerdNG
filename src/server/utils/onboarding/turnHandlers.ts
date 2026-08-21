@@ -189,14 +189,20 @@ const NARRATION = {
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",
-    profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a link we missed.",
+    profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a profile we missed. Press and interviews come next.",
     profilesEmpty: "Let's start with where people can find you. Paste your Spotify, Instagram, or anywhere else you live online — or skip ahead and add them later.",
     profilesCandidatesFound: (count: number) =>
         `I also found ${count} more ${pluralize(count, "profile", "profiles")} by searching the web — take a look below and confirm the ones that are yours, then let me know if anything's still missing.`,
     profilesDone: "Profiles confirmed. Now let's look at what the internet says about you.",
+    // Names what to ADD, not just what to keep. The empty variant below always
+    // did; this one didn't, so an artist who had sources found was never told
+    // this was the step for press. A real artist read the earlier "paste a link
+    // we missed" as profiles-only (correctly), never realised publications were
+    // wanted, and an article written about him went uncollected — the run then
+    // surfaced no press at all. Also drops "the AI" for what it actually does.
     vault: (count: number) =>
-        `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.`,
-    vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue.",
+        `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate, and add anything we missed — press, interviews, features, your own site. These feed your About and the answers your page gives fans.`,
+    vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste anything written about you below — press, an interview, a feature, your own site — or just continue.",
     vaultDone: "Sources sorted. Now the fun part — three quick questions. Skip any of them.",
     generating: "Okay, I have everything I need — building your knowledge document now from your links, your sources, and your own answers.",
     docReady: "Here's your knowledge document. It's the record everything else is built from — your About, your page's Q&A, your fun facts — so it's worth reading closely. Check the claims against the sources and fix anything I got wrong.",

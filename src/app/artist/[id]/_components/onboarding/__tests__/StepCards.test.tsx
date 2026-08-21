@@ -33,7 +33,7 @@ describe('ProfilesCard — accepted-by-default', () => {
         render(<ProfilesCard payload={payload} onConfirm={onConfirm} onFindMore={onFindMore} disabled={false} />);
 
         fireEvent.click(screen.getByLabelText(/remove instagram/i));
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://tiktok.com/@nova' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://tiktok.com/@nova' } });
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
 
         fireEvent.click(screen.getByRole('button', { name: /look for more/i }));
@@ -54,7 +54,7 @@ describe('ProfilesCard — accepted-by-default', () => {
         render(<ProfilesCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
         expect(screen.getByText(/still missing/i).textContent).toMatch(/TikTok/);
 
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://www.tiktok.com/@nova' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://www.tiktok.com/@nova' } });
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
 
         expect(screen.getByText(/still missing/i).textContent).not.toMatch(/TikTok/);
@@ -63,7 +63,7 @@ describe('ProfilesCard — accepted-by-default', () => {
     it('collects pasted links as additions', () => {
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payload} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://tiktok.com/@nova' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://tiktok.com/@nova' } });
         fireEvent.click(screen.getByRole('button', { name: /add/i }));
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
         expect(onConfirm).toHaveBeenCalledWith({
@@ -185,7 +185,7 @@ describe('ProfilesCard — accepted-by-default', () => {
         expect(list.className).toEqual(expect.stringContaining('overflow-y-auto'));
         expect(list.className).toEqual(expect.stringContaining('max-h-'));
         // The paste-a-link input and confirm button stay reachable outside the capped region.
-        expect(screen.getByPlaceholderText(/paste a link/i)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/paste a profile/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /looks good/i })).toBeInTheDocument();
     });
 
@@ -296,7 +296,7 @@ describe('ProfilesCard — discovered candidates (opt-in, never auto-saved)', ()
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
         fireEvent.click(screen.getByLabelText('add tiktok profile'));
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://bandcamp.com/novareyes' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://bandcamp.com/novareyes' } });
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
         expect(onConfirm).toHaveBeenCalledWith({
@@ -334,7 +334,7 @@ describe('VaultCard — keep-by-default', () => {
     it('collects pasted URLs as artist-added sources (spec §9 paste-a-link degrade)', () => {
         const onConfirm = jest.fn();
         render(<VaultCard payload={{ sources: [] }} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://press.example/nova' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste press/i), { target: { value: 'https://press.example/nova' } });
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
         fireEvent.click(screen.getByRole('button', { name: /continue/i }));
         expect(onConfirm).toHaveBeenCalledWith({ decisions: [], addedUrls: ['https://press.example/nova'] });
@@ -415,7 +415,7 @@ describe('VaultCard — keep-by-default', () => {
         expect(list.className).toEqual(expect.stringContaining('overflow-y-auto'));
         expect(list.className).toEqual(expect.stringContaining('max-h-'));
         // The paste-a-link input and confirm button stay reachable outside the capped region.
-        expect(screen.getByPlaceholderText(/paste a link/i)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/paste press/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /keep these/i })).toBeInTheDocument();
     });
 
