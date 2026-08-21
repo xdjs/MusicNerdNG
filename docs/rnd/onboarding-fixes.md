@@ -194,6 +194,40 @@ a metal band called Pharaoh) landed as a non-citable lead.
 adding YouTube oEmbed to the classifier. The first is moot now Gemini is off this path. The
 second is still worth doing for the JS-rendered blind spot — see 2.5.
 
+### 2.8 The artist's judgment is discarded in BOTH directions `todo`
+Pete, 8/21: *"the artist should be able to flag when something is not them and that should help
+optimize the build of their profile and make it more accurate."* Correct, and it's worse than it
+looks — the discard is deliberate:
+
+```js
+// Only dedup against pending + approved sources (allow re-discovery of deleted/rejected URLs)
+```
+
+| Artist says | What happens today |
+|---|---|
+| "yes, that's mine" | still not citable — never reaches their About (2.6) |
+| "no, that isn't me" | may be re-surfaced by the next discovery run |
+
+So Black Dave can reject the Chord DAVE amplifier reviews and Dave the UK rapper's Guardian
+interview, and get both back next week. **The artist is the highest-quality signal we have about
+who they are, and we throw away both answers.** Every accuracy problem in this thread — namesakes,
+the wrong Black Dave, fabricated sources — is the system guessing at something the artist could
+tell us once.
+
+**Prior art exists in this repo:** `artist_mapping_exclusions` (schema.ts:514) does exactly this
+for ID mapping — unique on `(artist_id, platform)`, typed `exclusion_reason`, soft-deletable.
+Built for one domain, never applied to sources.
+
+**A rejection can teach more than "hide this row":**
+- **URL** — never re-surface it. Trivial, immediate, fixes the re-discovery bug outright.
+- **Domain** — two rejected `head-fi.org` threads means stop trusting that host *for this artist*.
+- **Entity** — three rejected "Pharaoh Overlord" results means that name variant isn't him;
+  filter it from future queries.
+
+The entity level is what makes discovery improve per-artist over time instead of repeating the
+same mistakes at the same confidence forever. Pairs with 2.6 — decide both together, since they
+are the same question asked in opposite directions.
+
 ### 2.6 Artist approval doesn't make a source citable `todo`
 `isCitableSource` reads `extractedText` only — status is irrelevant — and
 `artistDocService` does `approvedSources.filter(isCitableSource)`. So an artist can look at a
@@ -333,6 +367,24 @@ conflation happened. Needs a deliberate line, not a default.
 ### 4.3 Weekly follow-up emails `todo`
 Endorsed, but described rather than experienced. Build a real one and send it to him rather than
 asking again.
+
+**Pete, 8/21: YouTube transcripts belong here, not in the About.** Verified working — Gemini
+accepts a YouTube URL directly as video input and returns verbatim quotes with timestamps. On
+Pharaoh's real Shockoe Sessions session: *"Thank you all for being here and thank you for having
+me at Shockoe Sessions in your ear"* (0:12:34), *"This first song I'm going to sing is called
+Strolight."* 79s at low media resolution, 152s at `fps: 0.2`.
+
+That is the richest question material available anywhere in this system — the artist talking about
+their own work, unprompted. "You said this at Shockoe Sessions, tell me more" is a different order
+of question from "you use the word 'single' a lot" (see 2.3). And the email format dissolves the
+latency problem: nothing is waiting on an 80s transcription.
+
+Costs: token-heavy (a full-length video blew the 1M limit before sampling was capped), needs
+selection so music videos don't burn budget, and it transposed his name to "Pharoah" from
+on-screen branding — fine as source material, not to be copied verbatim into a profile.
+
+*Separately, the same API call is a free verification signal: a fabricated video ID returns
+NO_ACCESS in ~1s. See 2.5.*
 
 ### 4.4 Spotify bio is not available `parked`
 He assumed it was the natural source and retyped it from memory. Spotify's API doesn't expose
