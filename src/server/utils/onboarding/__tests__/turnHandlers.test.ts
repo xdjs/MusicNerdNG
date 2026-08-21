@@ -31,6 +31,11 @@ jest.mock('@/server/utils/fetchPageContent', () => ({
 jest.mock('@/server/utils/linkPreview', () => ({
     fetchLinkPreview: jest.fn().mockResolvedValue({ imageUrl: null, title: null }),
 }));
+jest.mock('@/server/utils/socialIngest', () => ({
+    ensureRecentSocialPosts: jest.fn().mockResolvedValue({ status: 'ingested', count: 12 }),
+    waitForSocialPosts: jest.fn().mockResolvedValue(true),
+    hasSocialPosts: jest.fn().mockResolvedValue(true),
+}));
 jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnValue('article') }));
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
@@ -623,6 +628,49 @@ describe('runOnboardingTurn', () => {
             artistId: 'a1', url: 'https://example.com/blog', title: 'Totally Unrelated Blog',
             type: 'article', status: 'pending',
         });
+    });
+
+    it('confirm_profiles: kicks off the Instagram ingest as background work once the step is confirmed', async () => {
+        // Regression guard for the bug found with a real artist: ingestion was
+        // only ever run by a manual CLI script, so grounded interview questions
+        // fired solely for artists whose posts had been hand-seeded.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce({ siteName: 'instagram', id: 'nova' });
+        const { ensureRecentSocialPosts } = await import('@/server/utils/socialIngest');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://instagram.com/nova' }],
+            removedSiteNames: [],
+        }));
+        await new Promise(r => setTimeout(r, 0)); // flush the after()/floating-promise fallback
+        expect(ensureRecentSocialPosts).toHaveBeenCalledWith('a1');
+    });
+
+    it('confirm_profiles: does NOT start an ingest when every addition failed and the step is re-emitted', async () => {
+        // The early return means the artist is still on the profiles step with
+        // no saved links — there is no confirmed handle to scrape, and paying
+        // for an Apify run here would be wasted.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const aq = await import('@/server/utils/queries/artistQueries');
+        aq.getArtistById.mockResolvedValueOnce({ id: 'a1', name: 'Nova Reyes' }); // no link columns set
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: null }); // dead link -> unrecognized
+        const { ensureRecentSocialPosts } = await import('@/server/utils/socialIngest');
+        ensureRecentSocialPosts.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://deadsite.example/gone' }],
+            removedSiteNames: [],
+        }));
+        await new Promise(r => setTimeout(r, 0));
+        expect(ensureRecentSocialPosts).not.toHaveBeenCalled();
     });
 
     it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Links support', async () => {

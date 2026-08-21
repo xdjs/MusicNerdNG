@@ -10,7 +10,7 @@ are ready to build. The rest need investigation before they're estimable.
 
 ## 1 · Bugs with root cause found — ready to build
 
-### 1.1 Instagram ingestion is never wired in `todo`
+### 1.1 Instagram ingestion is never wired in `done`
 The grounded-question feature has never run on data it collected itself.
 `ingestInstagramPosts()` is called only by `scripts/ingest-social.ts`, a manual CLI. Pharaoh had
 0 rows in `artist_social_posts`; Pete had 299, hand-seeded.
@@ -22,12 +22,36 @@ step wait on it; run it ahead of the interview step; or make it background work 
 polls for.
 
 Also: `artist_social_profiles` has zero rows for both artists, so that table looks unwritten even
-on the working path. Check while in here.
+on the working path. Check while in here. *(Still open — not touched by the fix below.)*
 
-### 1.2 The empty-posts path is silent `todo`
+**Done 8/21.** `ensureRecentSocialPosts()` — idempotent, and deliberately knows nothing about
+onboarding steps so the trigger can move to claim approval under a pre-filled-profile flow
+without a rewrite. Fired from `confirm_profiles` via Next's `after()` (first use in the repo;
+a bare floating promise can be frozen by Vercel once the response flushes). Onboarding ingests
+60 posts rather than the CLI's 200 — same signals, materially faster run. The interview step
+waits up to 8s for a nearly-finished scrape before falling back.
+
+**Verified end to end against Pharaoh on dev**, not just unit-tested — the wiring gap is exactly
+what unit tests missed the first time. 0 posts → `ensureRecentSocialPosts` → **60 posts in 58s**
+→ 3 grounded questions with real source URLs (e.g. *"You tagged the Yamumoto Remix of 'Don't Let
+Me Go Alone,' featuring Jameir Thompson; how did that collaboration and remix come about?"*).
+Second call returned `already_present` without re-scraping.
+
+**The 58s number is the one to remember.** The scrape runs about as long as the entire vault step
+(45s of discovery plus curation time), so the race is real but usually winnable, and the 8s wait
+covers the margin. If the vault step ever gets faster, this gets tighter.
+
+Open follow-up: see "when do the questions get asked if the flow collapses" in `decisions.md` —
+moving them to the email cadence would delete this race rather than work around it.
+
+### 1.2 The empty-posts path is silent `done`
 `generateGroundedQuestions` does `if (posts.length === 0) return []` — no log, no signal. A
 degraded run looks identical to a working one with nothing to ask about. This is *why* 1.1
-reached a real artist. Make the empty case observable regardless of how 1.1 is fixed.
+reached a real artist.
+
+**Done 8/21.** The three causes are now distinguishable in logs: no posts at all, posts present
+but nothing cleared the bar, and the ingest outcome itself (`disabled` / `no_handle` /
+`already_present` / `ingested` / `found_nothing` / `error`).
 
 ### 1.3 "Still missing: TikTok" after TikTok was added `todo`
 `StepCards.tsx` builds `coveredSiteNames` from `payload.links` + `candidates` only. A link the

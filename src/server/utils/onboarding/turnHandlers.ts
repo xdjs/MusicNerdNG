@@ -48,7 +48,9 @@ import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/uti
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
+import { after } from "next/server";
 import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
+import { ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
 
 const MAX_DOC_SOURCES = 200;
 
@@ -150,6 +152,36 @@ export type ClientTurn =
  *  turn. The wait is narrated by a progress chip rather than being dead air. */
 const VAULT_DISCOVERY_BUDGET_MS = 45_000;
 
+/** How long the interview step will wait for a background Instagram ingest to
+ *  land before giving up and asking static questions instead.
+ *
+ *  The ingest starts when profiles are confirmed, two steps earlier, so it has
+ *  the whole vault step (45s of discovery plus however long the artist spends
+ *  curating) to finish. This is the last-resort top-up for a run that is nearly
+ *  done — NOT the main mechanism. Kept short because the artist is watching a
+ *  spinner, and a miss costs only the grounded questions, which is exactly what
+ *  happens today. */
+const SOCIAL_INGEST_WAIT_MS = 8_000;
+
+/** Runs work after the response has flushed.
+ *
+ *  Next's `after()` is the only mechanism Vercel guarantees will still execute
+ *  once a serverless response is sent — a bare floating promise can be frozen,
+ *  which is the known gap that makes the About flow's self-heal unreliable
+ *  (see MEMORY.md). Falls back to a floating promise outside a request scope
+ *  (tests, scripts) where `after()` throws.
+ *
+ *  Never let background failure surface to the artist: this is best-effort by
+ *  construction. */
+function runAfterResponse(label: string, work: () => Promise<unknown>): void {
+    const guarded = () => work().catch(e => console.error(`[onboarding] ${label} failed:`, e));
+    try {
+        after(guarded);
+    } catch {
+        void guarded();
+    }
+}
+
 const NARRATION = {
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
@@ -200,7 +232,19 @@ interface InterviewQuestionCandidate {
 async function buildInterviewQuestions(artistId: string): Promise<InterviewQuestionCandidate[]> {
     let grounded: GroundedQuestion[] = [];
     try {
+        // The ingest kicked off at confirm_profiles may still be in flight.
+        // Bounded top-up, not the main mechanism — see SOCIAL_INGEST_WAIT_MS.
+        const havePosts = await waitForSocialPosts(artistId, SOCIAL_INGEST_WAIT_MS);
+        if (!havePosts) {
+            // Deliberately loud. An empty grounded-question list used to be
+            // indistinguishable from "we looked and nothing was interesting",
+            // which is how this shipped broken to a real artist.
+            console.warn(`[onboarding] no social posts for ${artistId} — interview falls back to static questions`);
+        }
         grounded = await generateGroundedQuestions(artistId, { max: INTERVIEW_QUESTION_CAP });
+        if (havePosts && grounded.length === 0) {
+            console.warn(`[onboarding] posts exist for ${artistId} but no grounded questions cleared the bar`);
+        }
     } catch (e) {
         console.error("[onboarding] generateGroundedQuestions failed:", e);
     }
@@ -940,6 +984,26 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         }
 
         await confirmOnboardingStep(artistId, "profiles");
+
+        // Now that the artist's links are saved we know their Instagram handle,
+        // and the interview (two steps later) needs their posts to ask grounded
+        // questions. Kick the scrape off here so it runs during the vault step
+        // instead of stalling the interview: a run takes 1-5 minutes against a
+        // 55s turn deadline, so it can never be awaited inline.
+        //
+        // Until this existed the ingest was only ever run by hand via
+        // scripts/ingest-social.ts, so grounded questions worked solely for
+        // artists whose posts had been seeded manually — see
+        // docs/rnd/research/2026-08-21-artist-test-pharaoh.md.
+        //
+        // `ensureRecentSocialPosts` is idempotent and flow-agnostic on purpose:
+        // when onboarding collapses to a pre-filled profile, this call moves to
+        // claim approval and nothing here needs rewriting.
+        runAfterResponse("social ingest", async () => {
+            const outcome = await ensureRecentSocialPosts(artistId);
+            console.debug(`[onboarding] social ingest for ${artistId}: ${outcome.status}`);
+        });
+
         if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };
         if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, false) };
         if (vaultInsertFailed.length > 0) yield { kind: "chat", text: buildVaultInsertFailedMessage(vaultInsertFailed) };

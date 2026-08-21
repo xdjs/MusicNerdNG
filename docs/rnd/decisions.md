@@ -80,6 +80,16 @@ Raised, not settled. Move up into a dated section when they close.
   "streamlined" and never mentioned length — which cuts against the 8/20 premise. Weak evidence
   (in-person, friendly, zero abandonment pressure), but it is the only evidence we have. Worth
   putting to Carl before rebuilding around the opposite assumption. *(8/21)*
+- **Where do the artist's answers get displayed?** Today an interview answer is pure input — it
+  feeds the knowledge doc, the About, and the Ask section, and the artist never sees the sentence
+  they wrote presented as theirs. Set against CY's "feeling seen" bar, an answer that dissolves
+  into third-person prose reads as being harvested, not seen. And it's Pharaoh's complaint from
+  the other side: he could tell the output was his own words handed back. Sketched in
+  [notes](notes/claude/2026-08-21-where-do-the-artists-answers-go.md). Raised by Pete. *(8/21)*
+- **When do the questions get asked if the flow collapses?** There's no interview step to hang
+  them on once onboarding becomes claim → confirm → pre-filled profile. Inside the guided review,
+  in the weekly email cadence, or one of each. Also deletes the scrape-vs-artist race the current
+  wait works around. Raised by Pete. *(8/21)*
 - **Wiring Instagram ingestion into the flow.** `ingestInstagramPosts` is called only by a manual
   CLI script, so the grounded-question feature has never run on data it collected itself. Needs a
   decision on where it triggers and what happens during the wait, given it's an Apify round-trip
