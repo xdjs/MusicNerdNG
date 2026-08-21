@@ -30,6 +30,7 @@ docs/rnd/
 | `decisions.md` | One line per decision, newest first, linked to where it was made. Answers "what's our position on X" without reading every meeting in order. Open questions live at the bottom. |
 | `retro.md` | Running keep / fix / try, plus open commitments and who owns them. Appended weekly, carried until closed. |
 | `onboarding-fixes.md` | Working task list for the onboarding flow, sourced from artist tests. Status per item, root cause where known. |
+| `hybrid-onboarding-proposal.md` | The proposed shape of the collapsed onboarding flow — what's pre-built, the one question, where the affordances live. For reaction. |
 | `agendas/` | One file per Thursday. Written before the meeting, emailed to the team. `_template.md` is the shape. |
 | `meetings/` | Synthesized notes from each meeting — decisions, open threads, what didn't get reached, what's next. |
 | `events/` | Roundtable and showcase: the concept and who's in the room, the run of show, and afterward what came out of it. |
