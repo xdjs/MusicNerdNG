@@ -51,6 +51,13 @@ const SUPPORTED_PLATFORM_LABELS: Record<string, string> = {
 };
 const SUPPORTED_PLATFORMS = Object.keys(SUPPORTED_PLATFORM_LABELS);
 
+/** siteNames we found exactly one candidate for — the confident matches. */
+function unambiguousCandidateSiteNames(candidates: { siteName: string }[]): string[] {
+    const counts = new Map<string, number>();
+    for (const c of candidates) counts.set(c.siteName, (counts.get(c.siteName) ?? 0) + 1);
+    return [...counts.entries()].filter(([, n]) => n === 1).map(([siteName]) => siteName);
+}
+
 /** Which supported platforms a pasted URL covers, by host.
  *
  *  Host-based rather than regex-based on purpose: the real matching lives
@@ -291,11 +298,24 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
     const [removed, setRemoved] = useState<Set<string>>(new Set());
     const [added, setAdded] = useState<string[]>([]);
     const [draft, setDraft] = useState("");
-    // Candidates are the INVERSE of confirmed links: nothing here is
-    // submitted unless explicitly accepted (opt-in), vs. confirmed links
-    // which are submitted unless explicitly removed (opt-out) — a guessed
-    // profile is never auto-saved.
-    const [accepted, setAccepted] = useState<Set<string>>(new Set());
+    // A discovered profile for a platform we found EXACTLY ONE candidate for is
+    // pre-accepted, like a confirmed link. Decided 2026-08-20 (Carl: the goal is
+    // to get the profile created, so the quickest path wins) and not implemented
+    // until an artist lost every one of his socials to it: candidates were
+    // opt-in while the card's own first line said "Leaving a card as-is confirms
+    // it". He read that, left the card alone, completed all four steps, and
+    // ended with only the Deezer link he started with.
+    //
+    // Platforms with SEVERAL candidates are excluded entirely rather than
+    // pre-accepted — CY, same meeting: unchecking your own old profiles feels
+    // worse than adding the right one. They fall through to "Still missing", so
+    // the artist is asked to paste the correct one. (This also avoids a real
+    // defect: `accepted` is keyed by siteName, so accepting one of two
+    // same-platform candidates would have saved both, and they collide as React
+    // keys besides.)
+    const [accepted, setAccepted] = useState<Set<string>>(
+        () => new Set(unambiguousCandidateSiteNames(payload.candidates ?? [])),
+    );
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
     const toggleRemoved = (siteName: string) => {
@@ -326,7 +346,12 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
         });
     };
 
-    const candidates = payload.candidates ?? [];
+    // Only the confident matches are shown. A platform with several candidates
+    // is dropped here rather than offered — see the `accepted` note above — so
+    // it surfaces in "Still missing" and the artist pastes the right one.
+    const allCandidates = payload.candidates ?? [];
+    const unambiguous = new Set(unambiguousCandidateSiteNames(allCandidates));
+    const candidates = allCandidates.filter(c => unambiguous.has(c.siteName));
     /** The artist's decisions, in the shape both buttons send. Built in ONE place
      *  so "Looks good, continue" and "Look for more" can never disagree about
      *  what the artist just told us. */

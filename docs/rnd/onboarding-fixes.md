@@ -354,6 +354,35 @@ Binding to retrieval (1) or retrieving directly (2) is what actually closes it.
 
 ---
 
+### 1.5 Discovered profiles were never saved — the card contradicted itself `done`
+**The worst bug found so far.** Pete completed all four onboarding steps on 8/21 and ended with
+only the Deezer link he started with. Spotify, Instagram, X, YouTube, SoundCloud, Bandcamp,
+Facebook — all discovered, all shown, none saved. He assumed he'd forgotten to approve them.
+
+He hadn't. Discovered profiles were **opt-in** (`nothing here is submitted unless explicitly
+accepted`) while the card's own first line read **"Leaving a card as-is confirms it — remove
+anything that isn't you."** That sentence describes opt-*out*. Half the card behaved the opposite
+way to its own instruction, and the artist did exactly what he was told.
+
+**This was already decided on 8/20 and never implemented** — see `decisions.md`: *"Pre-select
+confident single matches. Where several candidates exist for one platform, don't surface them to
+be unchecked."* Neither half was in effect.
+
+Now implemented as agreed:
+- A platform with **exactly one** candidate is pre-accepted, like a confirmed link. Continuing
+  saves it. (Carl's reasoning: the goal is getting the profile created, so the quickest path
+  wins.)
+- A platform with **several** candidates is dropped from the card entirely and surfaces in "Still
+  missing", so the artist pastes the right one. (CY's reasoning: unchecking your own old profiles
+  feels worse than adding the correct one.) This also avoids two real defects — `accepted` is
+  keyed by siteName, so accepting one of two same-platform candidates would have saved both, and
+  they collide as React keys.
+- The narration says they're added rather than asking the artist to confirm them.
+
+Four existing tests encoded the old opt-in rule and were rewritten rather than deleted — the
+safety property moved from "never auto-save a guess" to "never auto-save an *ambiguous* guess",
+which is what the meeting actually decided.
+
 ### 2.10 Questions about years-old posts — `postedAt` was never used `done`
 Raised by Pete in the 8/20 meeting (*"now it's referencing a post I did in 2020… how is it
 relevant now?"*), not fixed, and hit again on 8/21 when his own run asked him to reflect on 2020.

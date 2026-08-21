@@ -191,8 +191,12 @@ const NARRATION = {
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",
     profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a profile we missed. Press and interviews come next.",
     profilesEmpty: "Let's start with where people can find you. Paste your Spotify, Instagram, or anywhere else you live online — or skip ahead and add them later.",
+    // Says they're already added, because they now are. The old copy — "confirm
+    // the ones that are yours" — described an opt-in list sitting under a card
+    // whose first line promised "leaving a card as-is confirms it". An artist
+    // followed the first line and lost every discovered profile.
     profilesCandidatesFound: (count: number) =>
-        `I also found ${count} more ${pluralize(count, "profile", "profiles")} by searching the web — take a look below and confirm the ones that are yours, then let me know if anything's still missing.`,
+        `I also found ${count} more ${pluralize(count, "profile", "profiles")} by searching the web and added ${pluralize(count, "it", "them")} below — remove anything that isn't you.`,
     profilesDone: "Profiles confirmed. Now let's look at what the internet says about you.",
     // Names what to ADD, not just what to keep. The empty variant below always
     // did; this one didn't, so an artist who had sources found was never told
