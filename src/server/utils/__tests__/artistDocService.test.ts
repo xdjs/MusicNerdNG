@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 
 jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: jest.fn() }));
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({ getVaultSourcesByArtistId: jest.fn() }));
+jest.mock('@/server/utils/queries/docCorrectionQueries', () => ({ getDocCorrections: jest.fn().mockResolvedValue([]) }));
 jest.mock('@/server/utils/queries/onboardingQueries', () => ({ getInterviewAnswers: jest.fn(), getArtistDoc: jest.fn() }));
 jest.mock('@/server/utils/socialIngest', () => ({ getSocialPostsForArtist: jest.fn().mockResolvedValue([]) }));
 jest.mock('@/server/lib/gemini', () => ({
@@ -143,7 +144,7 @@ describe('artistDocService', () => {
             ]);
             const sources = await svc.buildDocSources('a1');
             expect(sources.filter(s => s.kind === 'vault')).toEqual([
-                { id: 1, kind: 'vault', label: 'Real', url: 'https://real.example/x' },
+                { id: 1, kind: 'vault', label: 'Real', url: 'https://real.example/x' , publishedAt: null },
             ]);
         });
 
@@ -151,7 +152,7 @@ describe('artistDocService', () => {
             const { svc } = await setup();
             const sources = await svc.buildDocSources('a1');
             expect(sources).toEqual([
-                { id: 1, kind: 'vault', label: 'Pitchfork review', url: 'https://pitchfork.com/x' },
+                { id: 1, kind: 'vault', label: 'Pitchfork review', url: 'https://pitchfork.com/x' , publishedAt: null },
                 { id: 2, kind: 'interview', label: 'Their own words — "Sound?"', url: null },
             ]);
         });
@@ -194,6 +195,34 @@ describe('artistDocService', () => {
             expect(call.config.systemInstruction).toContain('ANTI-INFLATION');
         });
 
+
+        it("puts the artist's corrections in the prompt, above the sources", async () => {
+            // The document is regenerated whenever sources change, so a correction
+            // typed INTO it would appear to save and then vanish. Corrections live
+            // outside it and must be re-applied on every rebuild.
+            const { getDocCorrections } = await import('@/server/utils/queries/docCorrectionQueries');
+            getDocCorrections.mockResolvedValue([
+                { id: 'c1', claim: 'Parris Pierce is his production partner', kind: 'fix', correction: 'They worked together 2018-2019, not since.' },
+                { id: 'c2', claim: 'He has worked with Black Youngsta', kind: 'wrong', correction: null },
+            ]);
+            const { svc, generateContent } = await setup();
+            await svc.synthesizeArtistDoc('a1');
+            const sent = generateContent.mock.calls[0][0].contents;
+            expect(sent).toContain('CORRECTIONS FROM THE ARTIST');
+            expect(sent).toContain('They worked together 2018-2019, not since.');
+            // A "wrong" correction must read as a removal, not as a fact to keep.
+            expect(sent).toMatch(/REMOVE[^\n]*Black Youngsta/);
+            expect(generateContent.mock.calls[0][0].config.systemInstruction).toContain('CORRECTIONS —');
+        });
+
+        it("omits the corrections block entirely when there are none", async () => {
+            const { getDocCorrections } = await import('@/server/utils/queries/docCorrectionQueries');
+            getDocCorrections.mockResolvedValue([]);
+            const { svc, generateContent } = await setup();
+            await svc.synthesizeArtistDoc('a1');
+            expect(generateContent.mock.calls[0][0].contents).not.toContain('CORRECTIONS FROM THE ARTIST');
+        });
+
         it('labels every source with its age, so a claim can be scoped in time', async () => {
             // "Parris Pierce is my production partner" reached a real artist's
             // profile in the present tense, from an interview published in 2019.
@@ -211,7 +240,7 @@ describe('artistDocService', () => {
 
         it('generateAboutFromDoc strips a marker not present in the passed sources list', async () => {
             const { svc } = await setup({ geminiText: 'They cited Lauryn Hill[1] and something unverifiable[7].' });
-            const sources = [{ id: 1, kind: 'vault', label: 'SoundBetter profile', url: 'https://soundbetter.com/profiles/x' }];
+            const sources = [{ id: 1, kind: 'vault', label: 'SoundBetter profile', url: 'https://soundbetter.com/profiles/x' , publishedAt: null }];
             const about = await svc.generateAboutFromDoc('Nova Reyes', '## Overview\ndoc', sources);
             expect(about).toContain('Lauryn Hill[1]');
             expect(about).not.toContain('[7]');

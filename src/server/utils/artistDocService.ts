@@ -20,6 +20,7 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { getInterviewAnswers, getArtistDoc, upsertArtistDoc, upsertArtistDocSources } from "@/server/utils/queries/onboardingQueries";
+import { getDocCorrections } from "@/server/utils/queries/docCorrectionQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
@@ -55,6 +56,11 @@ export type DocSource = {
     kind: "vault" | "interview" | "social";
     label: string;
     url: string | null;
+    /** ISO date the source says it was published, when it says. Persisted with
+     *  the manifest so the artist's own review surface can show "VoyageMIA ·
+     *  2019" against a claim — which is usually the whole explanation for why a
+     *  claim reads stale. Only vault sources have one. */
+    publishedAt?: string | null;
 };
 
 // Collaborators are capped much tighter than track credits: a track credit
@@ -148,7 +154,7 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
 function toSourceList(m: DocMaterial): DocSource[] {
     const sources: DocSource[] = [];
     let nextId = 1;
-    for (const s of m.vaultSources) sources.push({ id: nextId++, kind: "vault", label: s.title ?? s.url, url: s.url });
+    for (const s of m.vaultSources) sources.push({ id: nextId++, kind: "vault", label: s.title ?? s.url, url: s.url, publishedAt: s.publishedAt ?? null });
     for (const a of m.answers) sources.push({ id: nextId++, kind: "interview", label: `Their own words — "${a.question}"`, url: null });
     for (const c of m.socialCollaborators) sources.push({ id: nextId++, kind: "social", label: `Instagram collaboration with @${c.handle}`, url: c.url });
     for (const r of m.socialMusicRefs) sources.push({ id: nextId++, kind: "social", label: `Track credit — "${r.title}" (${r.artist})`, url: r.url });
@@ -293,12 +299,19 @@ CITATIONS — every factual claim must carry a marker:
 - Never invent a source number. Only cite ids that actually appear in the SOURCES manifest.
 - INTERVIEW sources are the artist's own words — quote them verbatim in quotation marks, never paraphrase, and still cite them.
 
+CORRECTIONS — if a CORRECTIONS FROM THE ARTIST block is present, it is the highest authority in this document, above every source:
+- A claim the artist marked REMOVE must not appear in any form. Do not rephrase it, do not soften it, do not keep the part you think is still true. They read it and said it was wrong about them.
+- Where the artist supplied a correction, state THEIR version. A source saying otherwise is out of date or mistaken, not a second opinion to balance.
+- Corrections carry no [n] marker. Write the corrected claim without one rather than citing a source that contradicts it.
+- Never argue with a correction in the text ("though one source says..."). The artist is the authority on their own life.
+
 TIME — every source is labelled with when it was published, and you must use it:
 - A claim from an old source describes the moment that source was written, NOT today. "Parris Pierce is my production partner", taken from a 2019 interview, is "as of 2019, he was working with Parris Pierce" — never a statement about now. Write those in the past tense, or attach the year.
 - The present tense is for things a RECENT source supports, or things that do not decay: where someone was born, what they released, what a record sounds like. Roles, partnerships, locations, jobs, "currently", "is working on", and anything about who someone is signed to or lives with all decay — scope them.
 - Two sources disagreeing is usually one of them being older, not a contradiction. Prefer the newer, and say the older was true earlier if it is worth keeping at all.
 - "date unknown" means you do not know it is current, NOT that it is. Treat it like an old source: attribute rather than assert.
 - Do not invent a date, and never write a year that does not appear in the source labels.
+- The source labels are for YOU, not for the reader. Never copy "date unknown", "published ...", or "N years ago" into the document itself. If you do not know when something happened, write it without a date rather than announcing the gap.
 
 ANTI-INFLATION — characterize the artist's body of work only as far as the evidence actually supports:
 - A trait, style, or interest shown in only recent material (a handful of posts, one interview answer, the latest release) is described as recent and scoped in time — "on his latest releases", "he's said recently" — never generalized into "his sound is X" or "known for X" when the evidence only covers a narrow recent window.
@@ -475,6 +488,20 @@ async function buildDocContext(artistId: string, presetSources?: DocSource[]): P
     if (socialIds.length > 0) {
         const socialContext = socialIds.map(s => `[${s.id}] ${s.label}`).join("\n");
         parts.push(`\n--- SOCIAL SIGNALS (confirmed collaborations / track credits) ---\n${socialContext}\n--- END SOCIAL SIGNALS ---`);
+    }
+
+    // The artist's own corrections, LAST so they are the final word before the
+    // manifest. Everything above is what we read about them; this is what they
+    // told us, and it outranks the lot.
+    const corrections = await getDocCorrections(artistId);
+    if (corrections.length > 0) {
+        const lines = corrections.map(c => c.kind === "fix" && c.correction
+            ? `- WRONG: "${c.claim}"\n  THE ARTIST SAYS: ${c.correction}`
+            : `- REMOVE, the artist says this is not true or not them: "${c.claim}"`);
+        parts.push(
+            `\n--- CORRECTIONS FROM THE ARTIST (these OVERRIDE the sources above) ---\n`
+            + `${lines.join("\n")}\n--- END CORRECTIONS ---`
+        );
     }
 
     parts.push(sourceManifestBlock(sources));

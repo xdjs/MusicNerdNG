@@ -23,6 +23,8 @@ import { inferTypeFromUrl, SOURCE_TYPES } from "@/lib/sourceTypes";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { refreshArtistDoc } from "@/server/utils/artistDocService";
+import { getDocCorrections, upsertDocCorrection, deleteDocCorrection } from "@/server/utils/queries/docCorrectionQueries";
+import { getArtistDoc } from "@/server/utils/queries/onboardingQueries";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { updateVaultSourceContent } from "@/server/utils/queries/dashboardQueries";
 import { generateReferenceCode } from "@/lib/referenceCode";
@@ -319,6 +321,97 @@ export async function removeVaultSources(
     } catch (error) {
         console.error("[removeVaultSources] Error:", error);
         return { success: false, error: "Failed to delete sources" };
+    }
+}
+
+// ------ Knowledge document ------
+
+/** How much claim text we key a correction on. Claims are sentences or bullets;
+ *  this is a guard against a pathological document, and keeps the unique index
+ *  well clear of Postgres's btree entry limit. */
+const MAX_CLAIM_CHARS = 1000;
+const MAX_CORRECTION_CHARS = 2000;
+
+/** The document plus the artist's corrections, for their own review surface.
+ *  Read-only and owner-gated: this is our working material about a person, not
+ *  something to serve to visitors. */
+export async function getKnowledgeDoc(artistId: string): Promise<{
+    success: boolean;
+    content?: string;
+    sources?: unknown[];
+    corrections?: Awaited<ReturnType<typeof getDocCorrections>>;
+    error?: string;
+}> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false, error: "Not authenticated" };
+    try {
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
+        const doc = await getArtistDoc(artistId);
+        if (!doc) return { success: true, content: undefined, sources: [], corrections: [] };
+        return {
+            success: true,
+            content: doc.content,
+            sources: (doc.sources as unknown[]) ?? [],
+            corrections: await getDocCorrections(artistId),
+        };
+    } catch (error) {
+        console.error("[getKnowledgeDoc] Error:", error);
+        return { success: false, error: "Failed to load knowledge document" };
+    }
+}
+
+/**
+ * Record that a claim is wrong, or replace it with the artist's own wording.
+ *
+ * Deliberately does NOT edit the document text. The document is regenerated
+ * whenever sources change, so an in-place edit would appear to work and then
+ * vanish days later. The correction is stored separately and re-applied on
+ * every rebuild — see buildDocContext.
+ */
+export async function correctDocClaim(
+    artistId: string,
+    claim: string,
+    kind: "wrong" | "fix",
+    correction?: string | null,
+): Promise<{ success: boolean; error?: string }> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false, error: "Not authenticated" };
+    try {
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
+
+        const trimmedClaim = claim.trim().slice(0, MAX_CLAIM_CHARS);
+        if (!trimmedClaim) return { success: false, error: "No claim given" };
+        const trimmedFix = kind === "fix" ? (correction ?? "").trim().slice(0, MAX_CORRECTION_CHARS) : null;
+        // A "fix" with nothing in it is a no-op that would silently teach the
+        // model to delete the claim — reject it rather than guess.
+        if (kind === "fix" && !trimmedFix) return { success: false, error: "Write your correction first" };
+
+        await upsertDocCorrection(artistId, trimmedClaim, kind, trimmedFix);
+        // Rebuild so the artist sees their correction take effect, rather than
+        // being told it was saved and watching nothing change.
+        scheduleDocRefresh(artistId);
+        return { success: true };
+    } catch (error) {
+        console.error("[correctDocClaim] Error:", error);
+        return { success: false, error: "Failed to save your correction" };
+    }
+}
+
+/** Undo a correction. The next rebuild stops applying it. */
+export async function undoDocCorrection(artistId: string, correctionId: string): Promise<{ success: boolean; error?: string }> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false, error: "Not authenticated" };
+    try {
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
+        await deleteDocCorrection(artistId, correctionId);
+        scheduleDocRefresh(artistId);
+        return { success: true };
+    } catch (error) {
+        console.error("[undoDocCorrection] Error:", error);
+        return { success: false, error: "Failed to undo" };
     }
 }
 

@@ -14,6 +14,7 @@ import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
 import VaultSection from "./_components/VaultSection";
+import KnowledgeSection from "./_components/KnowledgeSection";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
@@ -235,6 +236,18 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 <div id="mn-sources">
                 <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
                 </div>
+
+                {/* 8. What we know — the knowledge document, as correctable claims.
+                    Owner-only: this is our working material about a person, and it
+                    sits AFTER the sources deliberately, because every claim in it
+                    points back at one of them. The server action re-checks
+                    ownership regardless of this gate. */}
+                {canEdit && (
+                    <RevealSection id="mn-knowledge" className="glass p-4 sm:p-5 space-y-3">
+                        <h2 className="text-lg font-bold text-black dark:text-white">What we know about you</h2>
+                        <KnowledgeSection artistId={artist.id} />
+                    </RevealSection>
+                )}
 
             </div>
             </EditModeProvider>
