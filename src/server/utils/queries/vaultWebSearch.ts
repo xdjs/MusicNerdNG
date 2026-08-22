@@ -1,11 +1,12 @@
 import { insertVaultSource, getVaultSourcesByArtistId } from "./dashboardQueries";
 import { getArtistById } from "./artistQueries";
 import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTypes";
-import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
+import { fetchPageContent, isUnsafeUrl, type PageContent } from "@/server/utils/fetchPageContent";
 import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
 import { extractArtistId } from "@/server/utils/services";
+import { isReservedHandle } from "@/lib/platformHandles";
 import { setArtistLink } from "@/server/utils/artistLinkService";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
@@ -34,6 +35,14 @@ const TAVILY_RESULTS_PER_QUERY = 5;
  *  is about the artist" also means "this account is theirs". Deliberately
  *  excludes wikipedia and imdb: those identifiers are article titles about a
  *  subject, and an article being about someone does not make it their account. */
+/** How many links we chase out of index pages in one discovery run.
+ *
+ *  Bounded hard because this runs inside discovery's latency budget and an index
+ *  can link to hundreds of articles. Three covers a tag archive of one artist's
+ *  own coverage, which is the case this exists for; a directory of OTHER people
+ *  yields links the judge then rejects, costing three fetches and nothing else. */
+const MAX_INDEX_FOLLOWS = 3;
+
 const ACCOUNT_PLATFORMS = new Set([
     "instagram", "x", "tiktok", "youtube", "youtubechannel",
     "soundcloud", "bandcamp", "twitch", "facebook", "spotify", "deezer",
@@ -380,6 +389,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         );
 
         const insertedSources: ArtistVaultSource[] = [];
+        /** Article URLs harvested from index pages, followed after the main pass. */
+        const indexLinks = new Set<string>();
         let dropped = 0;
         for (const { result, page } of verified) {
             // requireFullName: a keyword search returns REAL pages about the wrong
@@ -404,18 +415,43 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // identifier is a handle a person owns, while wikipedia and imdb
             // identifiers are article titles about a subject. Only the former can
             // be inferred from a page being about someone.
-            if (relevance.get(result.url) === "about-artist") {
-                const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
-                if (profileMatch?.siteName && profileMatch?.id && ACCOUNT_PLATFORMS.has(profileMatch.siteName)) {
-                    try {
-                        await setArtistLink(artistId, profileMatch.siteName, profileMatch.id);
-                        console.log(`[vaultWebSearch] ${profileMatch.siteName} profile -> links: ${result.url.slice(0, 80)}`);
-                    } catch (e) {
-                        console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch.siteName} profile:`, e);
-                    }
-                    skipped++;
-                    continue;
+            const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
+            const isAccountUrl = !!profileMatch?.siteName
+                && !!profileMatch?.id
+                && ACCOUNT_PLATFORMS.has(profileMatch.siteName)
+                // `instagram.com/p/DUtSSjnCYcU` is a POST, and the urlmap regex
+                // reads its first path segment as the handle — so this arrives as
+                // `{ instagram, id: "p" }`. Writing that would set the artist's
+                // Instagram to "p". See isReservedHandle.
+                && !isReservedHandle(profileMatch.siteName, profileMatch.id);
+
+            if (isAccountUrl && relevance.get(result.url) === "about-artist") {
+                try {
+                    await setArtistLink(artistId, profileMatch!.siteName, profileMatch!.id);
+                    console.log(`[vaultWebSearch] ${profileMatch!.siteName} profile -> links: ${result.url.slice(0, 80)}`);
+                } catch (e) {
+                    console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch!.siteName} profile:`, e);
                 }
+                skipped++;
+                continue;
+            }
+
+            // An account page is IDENTITY, never coverage — so it is not a vault
+            // source whatever the judge concluded. These platforms serve a bot
+            // nothing, so they are unreadable, so the judge returns `undecided`,
+            // and they were being stored as "sources" with zero body text. Pete,
+            // on seeing exactly that: "it put my X and my instagram in the vault
+            // instead of my links? makes zero sense."
+            //
+            // Dropped rather than linked when unconfirmed. Adding a link on a URL
+            // pattern alone is the mistake that put a film soundtrack's Wikipedia
+            // page on a real artist's profile; DECLINING to file something as
+            // press carries no such risk. Profile discovery owns finding these
+            // properly — it can probe and verify, which this path cannot.
+            if (profileMatch?.siteName && ACCOUNT_PLATFORMS.has(profileMatch.siteName)) {
+                console.log(`[vaultWebSearch] Account page, not coverage — leaving to profile discovery: ${result.url.slice(0, 90)}`);
+                skipped++;
+                continue;
             }
 
             // A page the judge says is about someone else is dropped outright,
@@ -437,6 +473,13 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // passed such pages as "about-artist" for months.
             if (relevance.get(result.url) === "lists-artist") {
                 console.log(`[vaultWebSearch] Judge: index/directory page, not coverage — ${result.url.slice(0, 100)}`);
+                // But an index is a table of contents, not a dead end. Pete:
+                // "rvamag was a good article, it's just that it was presenting
+                // an index and the article as separate links." Its tag page
+                // leads to a 2026 piece naming him as a documentary's
+                // co-director — the most current coverage of him anywhere, lost
+                // both by storing the index and by discarding it.
+                for (const link of page.links ?? []) indexLinks.add(link);
                 dropped++;
                 continue;
             }
@@ -493,6 +536,55 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 if (source) insertedSources.push(source);
             } catch (e) {
                 console.error("[vaultWebSearch] Failed to insert source:", result.url, e);
+            }
+        }
+
+        // Follow the indexes. Bounded hard: this runs inside discovery's latency
+        // budget, and an index page can link to hundreds of articles. Three is
+        // enough for a tag archive of one artist's own coverage, which is the
+        // case this exists for — a directory of OTHER people yields links the
+        // judge then rejects, costing three fetches and nothing else.
+        const toFollow = [...indexLinks].filter(u => !existingUrls.has(stripQuery(u))).slice(0, MAX_INDEX_FOLLOWS);
+        if (toFollow.length > 0) {
+            console.log(`[vaultWebSearch] Following ${toFollow.length} link(s) out of index page(s)`);
+            const followed = await Promise.all(toFollow.map(async url => {
+                try { return { url, page: await fetchPageContent(url, { timeoutMs: VERIFY_TIMEOUT_MS }) }; }
+                catch { return null; }
+            }));
+            const readable = followed.filter((f): f is { url: string; page: PageContent } =>
+                !!f && (f.page.fullText?.length ?? 0) > 0);
+            if (readable.length > 0) {
+                // Judged exactly like any other candidate — being reached via the
+                // artist's own tag page is a lead, never a verdict.
+                const followVerdicts = await judgeSourceRelevance(
+                    { name: artistName, catalog: [...catalog.topTracks, ...catalog.releases], identifiers },
+                    readable.map(({ url, page }) => ({ url, title: page.title, text: page.fullText ?? page.extractedText })),
+                );
+                for (const { url, page } of readable) {
+                    if (followVerdicts.get(url) !== "about-artist") {
+                        console.log(`[vaultWebSearch] Followed link is not about "${artistName}" — ${url.slice(0, 90)}`);
+                        continue;
+                    }
+                    try {
+                        const source = await insertVaultSource({
+                            artistId,
+                            url,
+                            title: page.title,
+                            snippet: page.snippet ?? "",
+                            type: normalizeSourceType("article"),
+                            status: "pending",
+                            extractedText: page.extractedText,
+                            ogImage: page.ogImage ?? null,
+                            publishedAt: page.publishedAt ?? null,
+                        });
+                        if (source) {
+                            insertedSources.push(source);
+                            console.log(`[vaultWebSearch] Recovered from index: ${page.title?.slice(0, 70)}`);
+                        }
+                    } catch (e) {
+                        console.error("[vaultWebSearch] Failed to insert followed source:", url, e);
+                    }
+                }
             }
         }
 

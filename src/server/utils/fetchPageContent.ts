@@ -36,6 +36,13 @@ export interface PageContent {
      *  presented as true now. The document cannot scope a claim in time if it
      *  does not know when the claim was made. */
     publishedAt?: string | null;
+    /** Same-host article links found on the page, absolute and deduped.
+     *
+     *  Only populated so an INDEX page can be followed to what it indexes. A tag
+     *  archive is a table of contents, not a dead end: rvamag.com's
+     *  "Pete Rango Kevin Carroll" tag lists a real piece he is credited on, and
+     *  both storing the index and discarding it lose that piece. */
+    links?: string[];
 }
 
 /** Decode HTML entities (&#8217; → ', &amp; → &, etc.) */
@@ -288,6 +295,53 @@ export function extractPublishedDate(html: string, now: Date = new Date()): stri
     return null;
 }
 
+/** Path segments that mark a listing rather than an article. */
+const NON_ARTICLE_PATH = /\/(tags?|categor(y|ies)|author|page|search|feed|wp-|wp-content|wp-admin|comments?|login|register|subscribe|privacy|terms|contact|about-us)(\/|$|\?)/i;
+
+/**
+ * Same-host links from a page that plausibly point at articles.
+ *
+ * Used to follow an INDEX to its contents. A tag archive or category page is a
+ * table of contents — dropping it loses the real coverage behind it, and storing
+ * it stores navigation. Following it gets the article, which is then judged on
+ * its own merits like any other candidate.
+ *
+ * Same host only: an index's off-site links are ads, social buttons and
+ * syndication, and following those turns one page into the open web.
+ */
+export function extractArticleLinks(html: string, baseUrl: string, max = 25): string[] {
+    let origin: string;
+    let basePath: string;
+    try {
+        const u = new URL(baseUrl);
+        origin = u.origin;
+        basePath = u.pathname.replace(/\/$/, "");
+    } catch { return []; }
+
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const m of html.matchAll(/<a[^>]+href=["']([^"'\s>]+)["']/gi)) {
+        let href = m[1];
+        if (/^(mailto:|tel:|javascript:|#)/i.test(href)) continue;
+        try {
+            const abs = new URL(href, baseUrl);
+            if (abs.origin !== origin) continue;
+            abs.hash = "";
+            href = abs.toString().replace(/\/$/, "");
+            const path = abs.pathname.replace(/\/$/, "");
+            if (!path || path === basePath) continue;
+            // A bare section root ("/community") is another index, not a piece.
+            if (path.split("/").filter(Boolean).length < 2 && !/\.html?$/i.test(path)) continue;
+            if (NON_ARTICLE_PATH.test(path)) continue;
+            if (seen.has(href)) continue;
+            seen.add(href);
+            out.push(href);
+            if (out.length >= max) break;
+        } catch { /* unparseable href */ }
+    }
+    return out;
+}
+
 /**
  * Fetch a URL and extract title, meta description, and body text.
  * Returns a domain-based fallback title on failure, and always reports
@@ -305,6 +359,7 @@ export async function fetchPageContent(
     let failure: PageContent["failure"];
     let fullText: string | undefined;
     let publishedAt: string | null = null;
+    let links: string[] | undefined;
 
     if (isUnsafeUrl(url)) {
         return { title, extractedText: null, status: null, failure: "network", publishedAt: null };
@@ -344,6 +399,7 @@ export async function fetchPageContent(
             // When the page says it was published — so a claim from a years-old
             // interview can be scoped in time rather than stated as current.
             publishedAt = extractPublishedDate(html);
+            links = extractArticleLinks(html, url);
 
             // Extract body text: the article, not the page furniture.
             const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -367,5 +423,5 @@ export async function fetchPageContent(
         else failure = "network";
     }
 
-    return { title, snippet, extractedText, ogImage, status, failure, fullText, publishedAt };
+    return { title, snippet, extractedText, ogImage, status, failure, fullText, publishedAt, links };
 }
