@@ -190,9 +190,9 @@ function runAfterResponse(label: string, work: () => Promise<unknown>): void {
 }
 
 const NARRATION = {
-    building: "Your profile's yours — building your page now. This takes a moment.",
-    built: "Done. Your page is live below — everything on it is editable, and anything that isn't you can be removed.",
-    builtThin: "Done — though I couldn't find much about you online yet. Your page is live below; add a link or two and I'll have more to work with.",
+    building: "Your profile is yours. Building your page now, which takes a moment.",
+    built: "Done. Your page is live below. You can edit anything on it, and take off anything that isn't you.",
+    builtThin: "Done, though I didn't find much about you online yet. Your page is live below. Add a link or two and I'll have more to work with.",
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",

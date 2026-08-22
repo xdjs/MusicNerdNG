@@ -12,7 +12,7 @@ describe('BuildStatus', () => {
         render(<BuildStatus artistName="Pete Rango" items={[]} complete={false} onSkip={jest.fn()} onFinish={jest.fn()} />);
         expect(screen.getByText(/building your page/i)).toBeInTheDocument();
         expect(screen.getByText(/finding your profiles/i)).toBeInTheDocument();
-        expect(screen.getByText(/written about you/i)).toBeInTheDocument();
+        expect(screen.getByText(/wrote about you/i)).toBeInTheDocument();
         expect(screen.getByText(/writing your about/i)).toBeInTheDocument();
     });
 

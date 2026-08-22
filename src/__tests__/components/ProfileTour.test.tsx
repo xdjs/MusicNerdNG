@@ -26,7 +26,7 @@ describe('ProfileTour', () => {
         // An earlier pass went Links -> About -> Sources, which jumped around
         // the page and matched neither reading order nor build order.
         render(<ProfileTour artistId="a1" />);
-        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
+        expect(screen.getByText(/we wrote you a first draft/i)).toBeInTheDocument();
         expect(screen.getByText(/1 of 4/i)).toBeInTheDocument();
     });
 
@@ -47,7 +47,7 @@ describe('ProfileTour', () => {
         // Pete: not every artist wants an AI-written bio. Publishing one and
         // then explaining how to edit it is backwards.
         render(<ProfileTour artistId="a1" />);
-        expect(screen.getByText(/it's a draft/i)).toBeInTheDocument();
+        expect(screen.getByText(/rewrite it in your own words/i)).toBeInTheDocument();
     });
 
     it('tells the artist the sources feed the ASK section, not only the About', () => {
@@ -55,7 +55,7 @@ describe('ProfileTour', () => {
         // ask section than the about."
         render(<ProfileTour artistId="a1" />);
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
-        expect(screen.getByText(/answered from what we found/i)).toBeInTheDocument();
+        expect(screen.getByText(/answers come from those same sources/i)).toBeInTheDocument();
     });
 
     it('scrolls each section into view so the words always point at something visible', () => {
@@ -112,7 +112,7 @@ describe('ProfileTour', () => {
         render(<ProfileTour artistId="a1" />);
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
         fireEvent.click(screen.getByRole('button', { name: /back/i }));
-        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
+        expect(screen.getByText(/we wrote you a first draft/i)).toBeInTheDocument();
     });
 
     it('treats Skip as done — an artist who dismisses it does not want it again', () => {
@@ -125,7 +125,7 @@ describe('ProfileTour', () => {
     it('renders nothing rather than throwing when a section is missing from the page', () => {
         document.body.replaceChildren(); // no anchors at all
         expect(() => render(<ProfileTour artistId="a1" />)).not.toThrow();
-        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
+        expect(screen.getByText(/we wrote you a first draft/i)).toBeInTheDocument();
     });
 });
 
@@ -192,7 +192,7 @@ describe('ProfileTour — armed while already mounted', () => {
         act(() => armTour('a1'));
 
         expect(screen.getByRole('dialog')).toBeInTheDocument();
-        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
+        expect(screen.getByText(/we wrote you a first draft/i)).toBeInTheDocument();
     });
 
     it('ignores an arming event for a different artist', () => {

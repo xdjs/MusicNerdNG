@@ -47,23 +47,23 @@ type Stop = {
 const STOPS: Stop[] = [
     {
         anchor: "mn-about",
-        title: "We drafted your About",
-        body: "Written from the sources further down — not invented. It's a draft: edit it in your own words, or replace it entirely. Plenty of artists would rather write their own.",
+        title: "We wrote you a first draft",
+        body: "It comes from the sources further down this page. Rewrite it in your own words, or replace it completely. Plenty of artists would rather write their own.",
     },
     {
         anchor: "mn-ask",
         title: "Fans can ask about you here",
-        body: "Answered from what we found about you, not from guesswork. This is where the sources below do most of their work.",
+        body: "The answers come from those same sources, so what you keep down there decides what fans get told up here.",
     },
     {
         anchor: "mn-links",
         title: "These are your links",
-        body: "Found by searching for you. Remove anything that isn't yours, or add one we missed — the Add button is right here.",
+        body: "We found these by searching for you. Take out anything that isn't yours, and add whatever we missed.",
     },
     {
         anchor: "mn-sources",
         title: "This is what we found written about you",
-        body: "It feeds the answers above and the About draft. Anything here that isn't you is worth removing — tell us once and we won't show it again.",
+        body: "These feed the answers above and the About draft. If something here isn't you, remove it once and we won't bring it back.",
     },
 ];
 

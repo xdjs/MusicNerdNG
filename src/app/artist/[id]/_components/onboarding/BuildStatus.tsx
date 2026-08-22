@@ -1,11 +1,13 @@
 "use client";
 
+import MusicNerdLoader from "@/app/_components/MusicNerdLoader";
+
 /** Progress group ids emitted by runAutoBuild, in the order they run. Kept in
  *  sync with turnHandlers.ts by hand — a stage that never reports simply stays
  *  pending rather than breaking the view. */
 export const BUILD_STAGES = [
     { group: "platform-search", label: "Finding your profiles" },
-    { group: "source-search", label: "Reading what's written about you" },
+    { group: "source-search", label: "Reading what people wrote about you" },
     { group: "about-write", label: "Writing your About" },
 ] as const;
 
@@ -41,11 +43,14 @@ function Tick({ state }: { state: StageState }) {
         );
     }
     if (state === "active") {
+        // The Music Nerd mark, breathing, rather than a generic spinner. The mark
+        // is a face, so it scales and brightens instead of rotating — see
+        // MusicNerdLoader. A halo behind it carries the same pink as the rest of
+        // the card.
         return (
-            <span className="relative flex-shrink-0 w-6 h-6" aria-hidden="true">
-                {/* Halo: reads as alive without the mechanical feel of a bare spinner. */}
-                <span className="absolute inset-0 rounded-full bg-pink-500/25 motion-safe:animate-ping" />
-                <span className="absolute inset-0 rounded-full border-2 border-pink-500 border-t-transparent motion-safe:animate-spin" />
+            <span className="relative flex-shrink-0 w-6 h-6 flex items-center justify-center">
+                <span aria-hidden="true" className="absolute inset-0 rounded-full bg-pink-500/25 motion-safe:animate-ping" />
+                <MusicNerdLoader size={24} label="Working on this step" className="relative" />
             </span>
         );
     }
@@ -99,7 +104,8 @@ export default function BuildStatus({
             />
             <div className="relative px-6 pt-6 pb-4 space-y-1">
                 <div className="flex items-start justify-between gap-3">
-                    <h2 className="text-xl font-bold tracking-tight text-black dark:text-white">
+                    <h2 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-black dark:text-white">
+                        {!complete && <MusicNerdLoader size={22} label="Building your page" />}
                         {complete ? "Your page is ready" : "Building your page"}
                     </h2>
                     {!complete && (
@@ -113,7 +119,7 @@ export default function BuildStatus({
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-300/80">
                     {complete
-                        ? `${artistName} — everything below is editable, and anything that isn't you can be removed.`
+                        ? `${artistName}. You can edit anything below, and take off anything that isn't you.`
                         : artistName}
                 </p>
             </div>

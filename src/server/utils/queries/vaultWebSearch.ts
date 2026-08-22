@@ -5,6 +5,8 @@ import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
+import { extractArtistId } from "@/server/utils/services";
+import { setArtistLink } from "@/server/utils/artistLinkService";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
@@ -132,6 +134,19 @@ function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolea
     });
 }
 
+/** Query strings and fragments are never part of a platform handle, and
+ *  extractArtistId will happily fold one in ("p3t3rango?hl=en"). */
+function stripQuery(raw: string): string {
+    try {
+        const u = new URL(raw);
+        u.search = "";
+        u.hash = "";
+        return u.toString();
+    } catch {
+        return raw.split(/[?#]/)[0];
+    }
+}
+
 /** Normalize a URL for dedup comparison: lowercase, strip protocol/www/trailing slash */
 function normalizeUrl(raw: string): string {
     try {
@@ -257,6 +272,29 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // a search API: these URLs are rendered as <a href> on a public page, and
             // the provider is an external system whose output we do not control.
             if (isKnownProfileUrl(result.url, artist as unknown as Record<string, unknown>)) {
+                skipped++;
+                continue;
+            }
+            // A social profile is IDENTITY, not something written about the
+            // artist. Search returns these constantly, and they were being filed
+            // as press: a real artist finished onboarding with x.com/<handle> and
+            // instagram.com/<handle> sitting in his vault as "sources", and no X
+            // or Instagram link on his profile at all.
+            //
+            // extractArtistId recognises them perfectly — we simply never asked.
+            // So ask, and route it to where it belongs. The query string is
+            // stripped first because it otherwise ends up INSIDE the handle
+            // ("p3t3rango?hl=en").
+            const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
+            if (profileMatch?.siteName && profileMatch?.id) {
+                try {
+                    await setArtistLink(artistId, profileMatch.siteName, profileMatch.id);
+                    console.log(`[vaultWebSearch] Routed ${profileMatch.siteName} profile to links, not the vault: ${result.url.slice(0, 80)}`);
+                } catch (e) {
+                    // Already linked elsewhere, or a constraint conflict. Either
+                    // way it is still not a source — drop it rather than vault it.
+                    console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch.siteName} profile:`, e);
+                }
                 skipped++;
                 continue;
             }
