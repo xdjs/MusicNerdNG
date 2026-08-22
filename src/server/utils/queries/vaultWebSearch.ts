@@ -30,6 +30,15 @@ const TAVILY_RESULTS_PER_QUERY = 5;
 
 /** The artist's own platform links — mirrors PROFILE_DISPLAY_COLUMNS in
  *  linkPresentation.ts. Used to recognise "this is a profile we already have". */
+/** Platforms whose identifier is an ACCOUNT the artist owns, so that "this page
+ *  is about the artist" also means "this account is theirs". Deliberately
+ *  excludes wikipedia and imdb: those identifiers are article titles about a
+ *  subject, and an article being about someone does not make it their account. */
+const ACCOUNT_PLATFORMS = new Set([
+    "instagram", "x", "tiktok", "youtube", "youtubechannel",
+    "soundcloud", "bandcamp", "twitch", "facebook", "spotify", "deezer",
+]);
+
 const PROFILE_LINK_COLUMNS = [
     "spotify", "deezer", "instagram", "tiktok", "x", "youtube",
     "youtubechannel", "soundcloud", "bandcamp", "twitch", "facebook",
@@ -275,29 +284,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 skipped++;
                 continue;
             }
-            // A social profile is IDENTITY, not something written about the
-            // artist. Search returns these constantly, and they were being filed
-            // as press: a real artist finished onboarding with x.com/<handle> and
-            // instagram.com/<handle> sitting in his vault as "sources", and no X
-            // or Instagram link on his profile at all.
-            //
-            // extractArtistId recognises them perfectly — we simply never asked.
-            // So ask, and route it to where it belongs. The query string is
-            // stripped first because it otherwise ends up INSIDE the handle
-            // ("p3t3rango?hl=en").
-            const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
-            if (profileMatch?.siteName && profileMatch?.id) {
-                try {
-                    await setArtistLink(artistId, profileMatch.siteName, profileMatch.id);
-                    console.log(`[vaultWebSearch] Routed ${profileMatch.siteName} profile to links, not the vault: ${result.url.slice(0, 80)}`);
-                } catch (e) {
-                    // Already linked elsewhere, or a constraint conflict. Either
-                    // way it is still not a source — drop it rather than vault it.
-                    console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch.siteName} profile:`, e);
-                }
-                skipped++;
-                continue;
-            }
+
             if (isUnsafeUrl(result.url)) {
                 console.warn(`[vaultWebSearch] Skipping unsafe URL: ${result.url.slice(0, 100)}`);
                 continue;
@@ -382,6 +369,34 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // would be a worse failure than the invented URLs this path replaced,
             // because it is plausible. Anything that only half-matches degrades to
             // an unverified lead the artist can still see and judge.
+            // A social profile is IDENTITY, not something written about the artist,
+            // so it belongs in links rather than the vault. But ONLY once the page
+            // has been fetched and the judge has affirmed it is this artist.
+            //
+            // An earlier version routed on the URL pattern alone, before any
+            // fetch. It put en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture
+            // on a real artist's profile as "his" Wikipedia, because the URL
+            // matched the wikipedia pattern. Matching a platform's URL shape says
+            // nothing whatsoever about whose page it is.
+            //
+            // ACCOUNT_PLATFORMS is the second half of that lesson: an account
+            // identifier is a handle a person owns, while wikipedia and imdb
+            // identifiers are article titles about a subject. Only the former can
+            // be inferred from a page being about someone.
+            if (relevance.get(result.url) === "about-artist") {
+                const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
+                if (profileMatch?.siteName && profileMatch?.id && ACCOUNT_PLATFORMS.has(profileMatch.siteName)) {
+                    try {
+                        await setArtistLink(artistId, profileMatch.siteName, profileMatch.id);
+                        console.log(`[vaultWebSearch] ${profileMatch.siteName} profile -> links: ${result.url.slice(0, 80)}`);
+                    } catch (e) {
+                        console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch.siteName} profile:`, e);
+                    }
+                    skipped++;
+                    continue;
+                }
+            }
+
             // A page the judge says is about someone else is dropped outright,
             // not stored as a lead: we READ it and it isn't them. Leads exist for
             // pages we could not read, not for pages we read and rejected.

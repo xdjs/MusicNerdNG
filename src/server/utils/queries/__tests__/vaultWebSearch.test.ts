@@ -36,6 +36,11 @@ jest.mock("@/server/utils/fetchPageContent", () => ({
 const mockJudge = jest.fn(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
 jest.mock("@/server/utils/sourceRelevance", () => ({ judgeSourceRelevance: (...a) => mockJudge(...a) }));
 
+const mockExtract = jest.fn(async () => undefined);
+jest.mock("@/server/utils/services", () => ({ extractArtistId: (...a) => mockExtract(...a) }));
+const mockSetLink = jest.fn(async () => ({}));
+jest.mock("@/server/utils/artistLinkService", () => ({ setArtistLink: (...a) => mockSetLink(...a) }));
+
 const hit = (url, title = "A Grimes Interview") => ({ url, title, snippet: "s" });
 
 describe("searchAndPopulateVault", () => {
@@ -52,6 +57,8 @@ describe("searchAndPopulateVault", () => {
     mockFetchPage.mockResolvedValue(goodPage);
     mockGetSources.mockReset();
     mockGetSources.mockResolvedValue([]);
+    mockExtract.mockReset(); mockExtract.mockResolvedValue(undefined);
+    mockSetLink.mockReset(); mockSetLink.mockResolvedValue({});
     mockJudge.mockReset();
     mockJudge.mockImplementation(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
   });
@@ -224,6 +231,45 @@ describe("searchAndPopulateVault", () => {
     await searchAndPopulateVault("a1");
     // Stored, but demoted — exactly the pre-judge behaviour.
     expect(mockInsert.mock.calls[0][0].extractedText).toBeNull();
+  });
+
+  it("never writes a link from a URL pattern alone, before the page is judged", async () => {
+    // This shipped: en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture
+    // was saved as a real artist's Wikipedia link, because the URL matched the
+    // wikipedia pattern. Matching a platform's URL shape says nothing about
+    // whose page it is.
+    mockExtract.mockResolvedValue({ siteName: "wikipedia", id: "Rango:_Music_from_the_Motion_Picture" });
+    mockJudge.mockImplementation(async () => new Map([["https://en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture", "not-about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture", "Rango soundtrack")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockSetLink).not.toHaveBeenCalled();
+  });
+
+  it("does not infer an encyclopedia entry is the artist's account, even when affirmed", async () => {
+    // A wikipedia or imdb identifier is an article title ABOUT a subject. An
+    // article being about someone does not make it their account.
+    mockExtract.mockResolvedValue({ siteName: "wikipedia", id: "Pete_Rango" });
+    mockJudge.mockImplementation(async () => new Map([["https://en.wikipedia.org/wiki/Pete_Rango", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://en.wikipedia.org/wiki/Pete_Rango", "Pete Rango")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockSetLink).not.toHaveBeenCalled();
+  });
+
+  it("routes an AFFIRMED social account to links instead of filing it as press", async () => {
+    // The bug this exists for: a real artist finished onboarding with
+    // x.com/<handle> in his vault as a "source" and no X link on his profile.
+    mockExtract.mockResolvedValue({ siteName: "x", id: "p3t3rango" });
+    mockJudge.mockImplementation(async () => new Map([["https://x.com/p3t3rango", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://x.com/p3t3rango", "Pete Rango")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockSetLink).toHaveBeenCalledWith("a1", "x", "p3t3rango");
+    expect(mockInsert).not.toHaveBeenCalled(); // and not stored as a source
   });
 
   // ---- Namesakes ---------------------------------------------------------
