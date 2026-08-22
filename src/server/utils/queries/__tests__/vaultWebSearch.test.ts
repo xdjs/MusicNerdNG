@@ -152,6 +152,40 @@ describe("searchAndPopulateVault", () => {
     expect(inserted).toContain("https://www.youtube.com/watch?v=GvqK4m2i9Mc");
   });
 
+  it("never stores a feed, and does not even fetch it", async () => {
+    // A real artist's vault held rvamag.com/tags/<tag> AND
+    // rvamag.com/tags/<tag>/feed. They looked like duplicates because an RSS
+    // channel carries the same <title> as its page, but the second was raw XML
+    // — clicking it hands a fan an XML document.
+    mockWebSearch.mockResolvedValue([
+      hit("https://rvamag.com/tags/pete-rango-kevin-carroll/feed", "Pete Rango Kevin Carroll Archives - RVA Mag"),
+      hit("https://example.com/press.rss", "Press"),
+      hit("https://example.com/real-article", "A real article"),
+    ]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const stored = mockInsert.mock.calls.map(c => c[0].url);
+    expect(stored).not.toContain("https://rvamag.com/tags/pete-rango-kevin-carroll/feed");
+    expect(stored).not.toContain("https://example.com/press.rss");
+    expect(stored).toContain("https://example.com/real-article");
+    // Filtered before the fetch, so it costs nothing.
+    expect(mockFetchPage).not.toHaveBeenCalledWith("https://rvamag.com/tags/pete-rango-kevin-carroll/feed", expect.anything());
+  });
+
+  it("drops an XML document served from an ordinary-looking URL", async () => {
+    mockWebSearch.mockResolvedValue([hit("https://example.com/press", "Press")]);
+    mockFetchPage.mockResolvedValue({
+      title: "Press", snippet: "s", status: 200,
+      extractedText: '<?xml version="1.0"?><rss><channel><title>Press</title></channel></rss>',
+      fullText: '<?xml version="1.0"?><rss><channel><title>Press</title></channel></rss>',
+      ogImage: null,
+    });
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
   // ---- Verification gate -------------------------------------------------
   // A search API cannot invent a URL, but a search hit is a claim about a page,
   // not the page: it can be dead, paywalled, repurposed, or about a namesake.

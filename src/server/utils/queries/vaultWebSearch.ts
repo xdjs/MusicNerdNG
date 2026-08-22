@@ -156,6 +156,22 @@ function stripQuery(raw: string): string {
     }
 }
 
+/** Machine formats a person should never be handed as a "source".
+ *
+ *  A real artist's vault held the same article twice: rvamag.com/tags/<tag> and
+ *  rvamag.com/tags/<tag>/feed. They looked like duplicates because an RSS
+ *  channel carries the same <title> as its page, but the second was raw XML.
+ *  Dedup could not catch it (different paths, correctly) and the deeper problem
+ *  was accepting a feed at all: clicking it shows a fan an XML document.
+ *
+ *  Filtering these before the fetch also saves the request. */
+function isMachineFormatUrl(raw: string): boolean {
+    const url = raw.toLowerCase().split(/[?#]/)[0];
+    if (/\.(xml|rss|atom|json)$/.test(url)) return true;
+    if (/\/(feed|rss|atom)\/?$/.test(url)) return true;
+    return /[?&](feed|format)=(rss|atom|xml|json)/.test(raw.toLowerCase());
+}
+
 /** Normalize a URL for dedup comparison: lowercase, strip protocol/www/trailing slash */
 function normalizeUrl(raw: string): string {
     try {
@@ -285,6 +301,11 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 continue;
             }
 
+            if (isMachineFormatUrl(result.url)) {
+                console.log(`[vaultWebSearch] Skipping machine format (feed/XML): ${result.url.slice(0, 100)}`);
+                skipped++;
+                continue;
+            }
             if (isUnsafeUrl(result.url)) {
                 console.warn(`[vaultWebSearch] Skipping unsafe URL: ${result.url.slice(0, 100)}`);
                 continue;
@@ -402,6 +423,14 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // pages we could not read, not for pages we read and rejected.
             if (relevance.get(result.url) === "not-about-artist") {
                 console.log(`[vaultWebSearch] Judge: not about "${artistName}" — ${result.url.slice(0, 100)}`);
+                dropped++;
+                continue;
+            }
+            // Some feeds are served from ordinary-looking URLs. If what came back
+            // is a document rather than a page, it is not a source either.
+            const body = (page.fullText ?? page.extractedText ?? "").trimStart();
+            if (body.startsWith("<?xml") || body.startsWith("<rss")) {
+                console.log(`[vaultWebSearch] Skipping XML document: ${result.url.slice(0, 100)}`);
                 dropped++;
                 continue;
             }

@@ -337,6 +337,10 @@ export async function insertVaultSource(data: {
     ogImage?: string | null;
 }) {
     try {
+        // onConflictDoNothing pairs with the unique index on (artist_id, url)
+        // added in 0014. Dedup used to be a read-then-write with nothing
+        // underneath, so two overlapping discovery runs both read "absent" and
+        // both inserted — a real artist's vault held the same interview twice.
         const [source] = await db
             .insert(artistVaultSources)
             .values({
@@ -353,7 +357,11 @@ export async function insertVaultSource(data: {
                 extractedText: data.extractedText,
                 ogImage: data.ogImage,
             })
+            .onConflictDoNothing({ target: [artistVaultSources.artistId, artistVaultSources.url] })
             .returning();
+        // Undefined when the row already existed — a concurrent run won the
+        // race. Callers treat a missing row as "nothing new to enrich", which is
+        // correct: the source is present either way.
         return source;
     } catch (e) {
         console.error("[insertVaultSource] Error:", e);
