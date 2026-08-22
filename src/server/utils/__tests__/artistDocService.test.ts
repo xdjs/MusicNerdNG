@@ -241,3 +241,35 @@ describe("stripCitationMarkers — punctuation left behind", () => {
         expect(stripCitationMarkers("First line.\n[1] Second line.")).toBe("First line.\nSecond line.");
     });
 });
+
+describe("source text selection — the best material is rarely at the top", () => {
+    it("keeps paragraphs that name the artist over ones that merely came first", async () => {
+        // Real failure: a 5,000-character profile carried "featured in HBO's
+        // Insecure" at character 2,466, and a 2,000-character HEAD slice cut it.
+        // The artist's About read as a summary of his childhood and never
+        // mentioned the credit, because an interview opens with childhood and
+        // puts the career in the middle.
+        const { selectSourceText } = await import("@/server/utils/artistDocService");
+        const filler = "Richmond has a long history of independent venues and community radio. ".repeat(60);
+        const credit = "\n\nPete Rango landed a placement for his song on HBO's Insecure.\n\n";
+        const text = filler + credit + filler;
+        expect(text.indexOf("HBO")).toBeGreaterThan(2000); // the condition that broke it
+
+        const selected = selectSourceText(text, "Pete Rango");
+        expect(selected).toContain("HBO");
+    });
+
+    it("returns short text untouched", async () => {
+        const { selectSourceText } = await import("@/server/utils/artistDocService");
+        const short = "Pete Rango is a producer from Bogota.";
+        expect(selectSourceText(short, "Pete Rango")).toBe(short);
+    });
+
+    it("falls back to a head slice when the text has no paragraph structure", async () => {
+        const { selectSourceText } = await import("@/server/utils/artistDocService");
+        const blob = "x".repeat(9000);
+        const out = selectSourceText(blob, "Pete Rango");
+        expect(out.length).toBeLessThan(blob.length);
+        expect(out.length).toBeGreaterThan(0);
+    });
+});

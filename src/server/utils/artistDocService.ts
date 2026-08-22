@@ -301,6 +301,55 @@ OTHER RULES:
 - Never fabricate. No hype words ("rising star", "eclectic", "undeniable").
 - Target under 900 words total.`;
 
+/** How much of one source's text reaches the document prompt. */
+const SOURCE_TEXT_BUDGET = 3_500;
+
+/**
+ * The most relevant `SOURCE_TEXT_BUDGET` characters of a source, not the first.
+ *
+ * Taking the head systematically favours whatever a page opens with, which for
+ * an interview is the childhood and for an article is the boilerplate. A real
+ * artist's best credit — "featured in HBO's Insecure" — sat at character 2,466
+ * of a 5,000-character profile and was cut by a 2,000-character head slice, so
+ * his About read as a summary of his childhood and never mentioned the credit.
+ *
+ * Paragraphs that name the artist are kept first, in their original order, then
+ * the rest fill whatever budget remains. Order is preserved so the model still
+ * reads a coherent narrative rather than a pile of ranked fragments.
+ */
+export function selectSourceText(text: string, artistName: string): string {
+    if (text.length <= SOURCE_TEXT_BUDGET) return text;
+
+    const paragraphs = text.split(/\n{2,}|(?<=\.)\s{2,}/).filter(p => p.trim());
+    if (paragraphs.length < 2) return text.slice(0, SOURCE_TEXT_BUDGET);
+
+    const tokens = artistName.toLowerCase().split(/\s+/).filter(t => t.length >= 4);
+    const mentionsArtist = (p: string) => {
+        const low = p.toLowerCase();
+        return low.includes(artistName.toLowerCase()) || tokens.some(t => low.includes(t));
+    };
+
+    const kept = new Set<number>();
+    let used = 0;
+    // Pass 1: paragraphs that actually talk about this artist.
+    paragraphs.forEach((para, i) => {
+        if (!mentionsArtist(para)) return;
+        if (used + para.length > SOURCE_TEXT_BUDGET) return;
+        kept.add(i);
+        used += para.length;
+    });
+    // Pass 2: fill the remainder with surrounding context, still in order.
+    paragraphs.forEach((para, i) => {
+        if (kept.has(i)) return;
+        if (used + para.length > SOURCE_TEXT_BUDGET) return;
+        kept.add(i);
+        used += para.length;
+    });
+    if (kept.size === 0) return text.slice(0, SOURCE_TEXT_BUDGET);
+
+    return paragraphs.filter((_, i) => kept.has(i)).join("\n\n");
+}
+
 const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You are a music writer. Write the public "About" for "${artistName}" from their cited knowledge document.
 
 WHAT THIS IS: a short editorial paragraph a music publication would run. Not a summary, not a changelog, not a list of true facts with verbs attached. A reader should finish it knowing who this artist IS — not merely what they have done.
@@ -361,7 +410,7 @@ async function buildDocContext(artistId: string, presetSources?: DocSource[]): P
             // regex, so Gemini simply can't cite it — never a wrong id.
             const p = [`[${vaultIds[i]?.id}] Source: ${s.title ?? s.url}`];
             if (s.snippet) p.push(s.snippet);
-            if (s.extractedText) p.push(s.extractedText.slice(0, 2000));
+            if (s.extractedText) p.push(selectSourceText(s.extractedText, artist.name ?? ""));
             return p.join(" — ");
         }).join("\n");
         parts.push(`\n--- APPROVED SOURCES (about this exact artist) ---\n${sourceContext}\n--- END SOURCES ---`);
