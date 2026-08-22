@@ -6,7 +6,7 @@ import ProfileTour, { tourFlagKey, tourPendingKey, armTour } from '@/app/artist/
 beforeAll(() => { Element.prototype.scrollIntoView = jest.fn(); });
 
 function withAnchors() {
-    for (const id of ['mn-links', 'mn-about', 'mn-sources']) {
+    for (const id of ['mn-about', 'mn-ask', 'mn-links', 'mn-sources']) {
         const el = document.createElement('div');
         el.id = id;
         document.body.appendChild(el);
@@ -22,21 +22,40 @@ describe('ProfileTour', () => {
         withAnchors();
     });
 
-    it('opens on the links section, because that is what the build changed most visibly', () => {
+    it('walks the page top to bottom, starting at the About', () => {
+        // An earlier pass went Links -> About -> Sources, which jumped around
+        // the page and matched neither reading order nor build order.
         render(<ProfileTour artistId="a1" />);
-        expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
-        expect(screen.getByText(/1 of 3/i)).toBeInTheDocument();
+        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
+        expect(screen.getByText(/1 of 4/i)).toBeInTheDocument();
     });
 
-    it('walks all three sections and ends', () => {
+    it('walks all four sections in page order and ends', () => {
         render(<ProfileTour artistId="a1" />);
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
-        expect(screen.getByText(/this is your about/i)).toBeInTheDocument();
+        expect(screen.getByText(/fans can ask about you/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /next/i }));
+        expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
         expect(screen.getByText(/what we found written about you/i)).toBeInTheDocument();
         // Last stop offers completion, not another Next.
         fireEvent.click(screen.getByRole('button', { name: /got it/i }));
         expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('frames the About as a draft the artist can replace', () => {
+        // Pete: not every artist wants an AI-written bio. Publishing one and
+        // then explaining how to edit it is backwards.
+        render(<ProfileTour artistId="a1" />);
+        expect(screen.getByText(/it's a draft/i)).toBeInTheDocument();
+    });
+
+    it('tells the artist the sources feed the ASK section, not only the About', () => {
+        // Pete: "some artists would be more interested that the vault feeds the
+        // ask section than the about."
+        render(<ProfileTour artistId="a1" />);
+        fireEvent.click(screen.getByRole('button', { name: /next/i }));
+        expect(screen.getByText(/answered from what we found/i)).toBeInTheDocument();
     });
 
     it('scrolls each section into view so the words always point at something visible', () => {
@@ -49,17 +68,17 @@ describe('ProfileTour', () => {
 
     it('rings the section it is describing, and un-rings it on the way out', () => {
         render(<ProfileTour artistId="a1" />);
-        expect(document.getElementById('mn-links').style.boxShadow).not.toBe('');
-        fireEvent.click(screen.getByRole('button', { name: /next/i }));
-        expect(document.getElementById('mn-links').style.boxShadow).toBe('');
         expect(document.getElementById('mn-about').style.boxShadow).not.toBe('');
+        fireEvent.click(screen.getByRole('button', { name: /next/i }));
+        expect(document.getElementById('mn-about').style.boxShadow).toBe('');
+        expect(document.getElementById('mn-ask').style.boxShadow).not.toBe('');
     });
 
     it('anchors the card BESIDE the section, not parked at the bottom of the screen', () => {
         // A first pass put a fixed card at the bottom. It read as a
         // notification rather than direction — which is what it was. The card
         // has to point at the thing it is describing.
-        const links = document.getElementById('mn-links');
+        const links = document.getElementById('mn-about');
         links.getBoundingClientRect = () => ({
             top: 200, bottom: 400, left: 100, right: 500, width: 400, height: 200, x: 100, y: 200, toJSON: () => ({}),
         });
@@ -74,7 +93,7 @@ describe('ProfileTour', () => {
 
     it('lifts the section above the dimmed page so it stays readable', () => {
         render(<ProfileTour artistId="a1" />);
-        const links = document.getElementById('mn-links');
+        const links = document.getElementById('mn-about');
         expect(links.style.zIndex).toBe('45');
         // …and restores it on the way out.
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -93,7 +112,7 @@ describe('ProfileTour', () => {
         render(<ProfileTour artistId="a1" />);
         fireEvent.click(screen.getByRole('button', { name: /next/i }));
         fireEvent.click(screen.getByRole('button', { name: /back/i }));
-        expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
+        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
     });
 
     it('treats Skip as done — an artist who dismisses it does not want it again', () => {
@@ -106,7 +125,7 @@ describe('ProfileTour', () => {
     it('renders nothing rather than throwing when a section is missing from the page', () => {
         document.body.replaceChildren(); // no anchors at all
         expect(() => render(<ProfileTour artistId="a1" />)).not.toThrow();
-        expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
+        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
     });
 });
 
@@ -173,7 +192,7 @@ describe('ProfileTour — armed while already mounted', () => {
         act(() => armTour('a1'));
 
         expect(screen.getByRole('dialog')).toBeInTheDocument();
-        expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
+        expect(screen.getByText(/we drafted your about/i)).toBeInTheDocument();
     });
 
     it('ignores an arming event for a different artist', () => {

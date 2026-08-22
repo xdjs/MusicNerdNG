@@ -189,7 +189,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 4. Ask About Artist (AI Q&A) */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-ask" className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold break-words">Ask About {artist.name}</h2>
                     <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
                 </RevealSection>

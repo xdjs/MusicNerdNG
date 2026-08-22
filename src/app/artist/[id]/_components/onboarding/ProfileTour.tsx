@@ -41,21 +41,29 @@ type Stop = {
     body: string;
 };
 
+// Page order, top to bottom. An earlier pass went Links -> About -> Sources,
+// which jumped around the page and matched neither reading order nor the
+// order things were built in.
 const STOPS: Stop[] = [
+    {
+        anchor: "mn-about",
+        title: "We drafted your About",
+        body: "Written from the sources further down — not invented. It's a draft: edit it in your own words, or replace it entirely. Plenty of artists would rather write their own.",
+    },
+    {
+        anchor: "mn-ask",
+        title: "Fans can ask about you here",
+        body: "Answered from what we found about you, not from guesswork. This is where the sources below do most of their work.",
+    },
     {
         anchor: "mn-links",
         title: "These are your links",
         body: "Found by searching for you. Remove anything that isn't yours, or add one we missed — the Add button is right here.",
     },
     {
-        anchor: "mn-about",
-        title: "This is your About",
-        body: "Written from the sources below, not invented. Edit it in your own words any time, or regenerate it once you've added more.",
-    },
-    {
         anchor: "mn-sources",
         title: "This is what we found written about you",
-        body: "Your About is built from these, so anything here that isn't you is worth removing — and we won't show it to you again.",
+        body: "It feeds the answers above and the About draft. Anything here that isn't you is worth removing — tell us once and we won't show it again.",
     },
 ];
 
