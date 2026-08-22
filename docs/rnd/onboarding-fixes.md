@@ -696,6 +696,62 @@ NO_ACCESS in ~1s. See 2.5.*
 He assumed it was the natural source and retyped it from memory. Spotify's API doesn't expose
 artist bios. No action unless someone finds a route.
 
+### 4.5 Does the Instagram scrape belong in onboarding? `for the team — 8/27`
+
+**Left ON for now.** Pete, 8/22: *"let's keep it for now."* This is a question to put to Carl and
+CY rather than settle unilaterally, because it trades cash against a feature none of us has seen
+working at scale yet.
+
+**What it costs.** Measured from the Apify API, not the rate card. `apify/instagram-scraper` bills
+$2.70/1,000 results and onboarding pulls 60 posts, so **$0.162 per claimed artist**, once — the
+`hasSocialPosts` guard means it never re-runs. Lifetime spend to date is $1.11 across 4 runs.
+
+| | |
+|---|---|
+| artists in the database | 41,984 |
+| …with an Instagram handle | 29,059 |
+| **approved claims (the only artists who onboard)** | **5** |
+| 100 claims/month | $16/month |
+| 1,000 claims/month | $162/month |
+| every IG-having artist claimed | $4,707 one-time |
+
+So it is free today and becomes a real line item precisely when claiming starts working, which is
+the thing we are trying to make happen.
+
+**What it buys.** Thin, and thinner for the artists who need help most:
+
+```
+Pete Rango    299 posts →  38 coauthored,  37 track credits
+Pharaoh        60 posts →   0 coauthored,   4 track credits
+```
+
+Pharaoh's run is the one at the real onboarding limit. It cost $0.162 and returned **no
+collaborators at all**. Halving the limit to 30 does not fix that — it buys less of nothing more
+cheaply. And the signal it does produce ("Instagram collaboration with @kevaux__") is exactly what
+`DOC_SYSTEM_INSTRUCTION` forbids writing down: a bare handle with nothing said about what the
+collaboration was.
+
+Worth weighing against where the quality actually came from this week — the interview extraction
+fix, the quotes section, publication dates. All free.
+
+**The options.**
+
+1. **Leave it in onboarding.** Simplest. Questions can be grounded in real posts during the flow,
+   which is the only thing that has ever made a generated question feel specific.
+2. **Move it after profile generation.** Per-claim cost goes to zero and the spend becomes
+   discretionary. It is already off the critical path — the build finishes in ~19s and the scrape
+   runs in the background at the interview step — so nothing in the flow slows down without it.
+3. **Where Pete wants it to end up:** scrape *after* the profile exists, and use it to drive
+   follow-up emails that ask the artist about specific posts on their Instagram and TikTok. That
+   turns a cost centre into the engagement loop from [4.3](#43-weekly-follow-up-emails-todo), and
+   it means we only pay for artists who came back.
+
+The mechanics are ready either way: `ensureRecentSocialPosts` is idempotent and flow-agnostic on
+purpose, so moving it is deleting one call at `turnHandlers.ts:1188` and adding a trigger wherever
+the follow-up job lands. TikTok is the open question for option 3 — see
+[2.16](#216-tiktok-cannot-be-probed-at-all-done-as-far-as-it-goes); we cannot even confirm an
+artist has one, let alone read their posts.
+
 ---
 
 ## Suggested order

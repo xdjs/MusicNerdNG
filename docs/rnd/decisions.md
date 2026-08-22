@@ -94,6 +94,10 @@ Raised, not settled. Move up into a dated section when they close.
   CLI script, so the grounded-question feature has never run on data it collected itself. Needs a
   decision on where it triggers and what happens during the wait, given it's an Apify round-trip
   on a user-facing path. *(8/21)*
+- **Does the Instagram scrape stay inside onboarding, or move after profile generation?** It is
+  the only per-claim cost in the flow denominated in cash. **Leaving it on for now** — Pete, 8/22
+  — and taking it to the team. Numbers and the emails-about-posts direction are in
+  [onboarding-fixes 4.5](onboarding-fixes.md). *(8/22)*
 
 - **How relationships in the database become explorable** — what counts as an edge, whether edges
   weigh equally, verified vs. inferred vs. artist-described. On the 8/20 agenda, never reached.
