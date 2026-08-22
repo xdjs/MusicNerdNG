@@ -257,6 +257,11 @@ Spotify artist page linked and verified[1]. Instagram handle @marisolecho, used 
 
 ## Who They Are
 She still keeps her old cover-band setlists in her guitar case — a specific, small habit that says more about where she came from than any bio line would[2].
+
+## In Their Own Words
+- On working alone: "I like that nobody's waiting on me. If a song's bad, it's bad on my own time."[2]
+- On why she left the cover band: "I remember what boring feels like. That's the whole reason I write anything."[2]
+- On the pantry studio: "Everyone keeps telling me to treat the room. I think the fridge is on the record now."[2]
 `.trim();
 // NOTE: no "## Audience & Fanbase" section above — the fictional source
 // material has no real signal for it, so the worked example demonstrates
@@ -276,6 +281,7 @@ Use ONLY these section headers, in this order, and OMIT any section entirely if 
 ## Recent Activity
 ## Online Presence
 ## Who They Are
+## In Their Own Words
 ## Audience & Fanbase
 
 Here is a complete worked example for a fictional artist — follow its shape, density, and citation style exactly (but never reuse any of its facts):
@@ -298,8 +304,9 @@ OTHER RULES:
 - ## Story hooks: 2-5 bullet points, each one narratable specific a fan would repeat to a friend.
 - ## Industry Connections: for each collaborator you name, say what the collaboration actually was (a track, a project, a mix credit) — never list a bare handle or name with nothing said about what happened. If the material gives you a handle with no indication of what the collaboration was, leave it out rather than padding a list with it.
 - ## Who They Are: one or two sentences on something specific and human about them — not a marketing pitch, no "appeals to X demographic" or "multi-genre appeal" language.
+- ## In Their Own Words: 2-6 direct quotations, VERBATIM and in quotation marks, each with a short lead-in saying what it is about — how they work, what they believe, advice they have given. This is the section a fan's question is most often answered from, so prefer what the artist actually said to any paraphrase of it. Interviews are full of this material and it is the first thing a summary throws away. Quote only what a source actually contains; never smooth a quote into better English. Biography belongs in the sections above, not here.
 - Never fabricate. No hype words ("rising star", "eclectic", "undeniable").
-- Target under 900 words total.`;
+- LENGTH: aim for 1,100-1,400 words where the material genuinely supports it. This is a knowledge base that a fan-facing Q&A reads from, not a summary — a specific you leave out is a question that cannot be answered later. But never pad to reach it: an unsourced or generic line is worse than a shorter document, and a thin source set should produce a short one.`;
 
 /** How much of one source's text reaches the document prompt.
  *
