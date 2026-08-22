@@ -293,6 +293,13 @@ CITATIONS — every factual claim must carry a marker:
 - Never invent a source number. Only cite ids that actually appear in the SOURCES manifest.
 - INTERVIEW sources are the artist's own words — quote them verbatim in quotation marks, never paraphrase, and still cite them.
 
+TIME — every source is labelled with when it was published, and you must use it:
+- A claim from an old source describes the moment that source was written, NOT today. "Parris Pierce is my production partner", taken from a 2019 interview, is "as of 2019, he was working with Parris Pierce" — never a statement about now. Write those in the past tense, or attach the year.
+- The present tense is for things a RECENT source supports, or things that do not decay: where someone was born, what they released, what a record sounds like. Roles, partnerships, locations, jobs, "currently", "is working on", and anything about who someone is signed to or lives with all decay — scope them.
+- Two sources disagreeing is usually one of them being older, not a contradiction. Prefer the newer, and say the older was true earlier if it is worth keeping at all.
+- "date unknown" means you do not know it is current, NOT that it is. Treat it like an old source: attribute rather than assert.
+- Do not invent a date, and never write a year that does not appear in the source labels.
+
 ANTI-INFLATION — characterize the artist's body of work only as far as the evidence actually supports:
 - A trait, style, or interest shown in only recent material (a handful of posts, one interview answer, the latest release) is described as recent and scoped in time — "on his latest releases", "he's said recently" — never generalized into "his sound is X" or "known for X" when the evidence only covers a narrow recent window.
 - Do not extrapolate a whole career or a stable identity from a few data points. If the material shows a shift or a new direction, say it's a shift, not a redescription of everything that came before it.
@@ -385,6 +392,31 @@ function withGeminiTimeout<T>(p: Promise<T>, ms: number = GEMINI_TIMEOUT_MS): Pr
     ]);
 }
 
+
+/**
+ * How a source's age is described to the model: "published 2019-01-10, 7 years ago".
+ *
+ * A real artist's profile stated "Parris Pierce is my production partner" in the
+ * present tense. It came from an interview published in January 2019 — true when
+ * written, and presented as a current fact seven years later. The document had an
+ * anti-inflation rule telling it to scope claims in time, and no way to obey it,
+ * because nothing in its material said when anything happened.
+ *
+ * An undated source says so rather than going unmarked, so the model can tell
+ * "we know this is old" apart from "we do not know how old this is" — those call
+ * for different hedging, and conflating them is how a guess becomes a fact.
+ */
+export function sourceAgeLabel(publishedAt: string | null | undefined, now: Date = new Date()): string {
+    if (!publishedAt) return "date unknown";
+    const then = new Date(publishedAt);
+    if (isNaN(then.getTime())) return "date unknown";
+    const years = (now.getTime() - then.getTime()) / (365.25 * 24 * 3600 * 1000);
+    if (years < 0) return `published ${publishedAt}`;
+    if (years < 1) return `published ${publishedAt}, within the last year`;
+    const rounded = Math.round(years);
+    return `published ${publishedAt}, ${rounded} year${rounded === 1 ? "" : "s"} ago`;
+}
+
 /** `presetSources`, when given, is used AS-IS instead of rebuilding the list
  *  from this call's own `gatherDocMaterial` read — this is what lets a caller
  *  (turnHandlers' publish step) build the manifest ONCE and hand the exact
@@ -421,7 +453,11 @@ async function buildDocContext(artistId: string, presetSources?: DocSource[]): P
             // above: a row with no corresponding preset id gets an
             // "[undefined]" line, which never matches the \[\d+\] marker
             // regex, so Gemini simply can't cite it — never a wrong id.
-            const p = [`[${vaultIds[i]?.id}] Source: ${s.title ?? s.url}`];
+            // The date is the difference between "is" and "was". A source with no
+            // date says so explicitly rather than being silently undated, so the
+            // model can tell "we know it is old" from "we do not know".
+            const age = sourceAgeLabel(s.publishedAt);
+            const p = [`[${vaultIds[i]?.id}] Source (${age}): ${s.title ?? s.url}`];
             if (s.snippet) p.push(s.snippet);
             if (s.extractedText) p.push(selectSourceText(s.extractedText, artist.name ?? ""));
             return p.join(" — ");

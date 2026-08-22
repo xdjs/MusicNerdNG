@@ -1,4 +1,4 @@
-import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, jsonb, numeric, index, uniqueIndex, foreignKey, integer, pgEnum, unique } from "drizzle-orm/pg-core"
+import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, date, jsonb, numeric, index, uniqueIndex, foreignKey, integer, pgEnum, unique } from "drizzle-orm/pg-core"
 import { relations, sql } from "drizzle-orm"
 
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
@@ -376,6 +376,11 @@ export const artistVaultSources = pgTable("artist_vault_sources", {
 	contentType: text("content_type"),
 	extractedText: text("extracted_text"),
 	ogImage: text("og_image"),
+	// When the SOURCE says it was published — not when we scraped it. Nullable:
+	// many pages never say, and a guessed date is worse than none, because it
+	// would let the knowledge doc confidently scope a claim to the wrong era.
+	// See migration 0015.
+	publishedAt: date("published_at"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [

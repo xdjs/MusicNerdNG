@@ -27,6 +27,15 @@ export interface PageContent {
      *  kept simply didn't contain his name, so a real source looked like a wrong
      *  one. Checks that ask "is this page about X" read this field. */
     fullText?: string;
+    /** When the page says it was published, as an ISO date (YYYY-MM-DD), or null
+     *  when it does not say.
+     *
+     *  Without this, everything a source contains reads as current. A real
+     *  artist's profile stated "Parris Pierce is my production partner" in the
+     *  present tense, from an interview several years old — true when written,
+     *  presented as true now. The document cannot scope a claim in time if it
+     *  does not know when the claim was made. */
+    publishedAt?: string | null;
 }
 
 /** Decode HTML entities (&#8217; → ', &amp; → &, etc.) */
@@ -216,6 +225,69 @@ export function extractReadableText(bodyHtml: string): string {
     return cleaned;
 }
 
+/** Meta names/properties that carry a publication date, best evidence first.
+ *  `article:published_time` is what the artist actually said it was; `og:updated_time`
+ *  is when the CMS last touched the page, which is weaker but still bounds it. */
+const DATE_META_KEYS = [
+    "article:published_time",
+    "article:modified_time",
+    "datepublished",
+    "date",
+    "dc.date.issued",
+    "og:updated_time",
+    "pubdate",
+];
+
+/**
+ * When a page says it was published, as `YYYY-MM-DD`, or null when it does not say.
+ *
+ * Every source we store reads as present-tense otherwise. A years-old interview
+ * saying "Parris Pierce is my production partner" is true about the moment it was
+ * written and says nothing about now — but the document had no way to tell the
+ * difference, so it wrote the claim as a current fact.
+ *
+ * Deliberately conservative. A wrong date is worse than none: it would let the
+ * document confidently scope a claim to the wrong era. Anything that doesn't
+ * parse, or lands outside a plausible window, returns null and the claim stays
+ * unscoped rather than mis-scoped.
+ */
+export function extractPublishedDate(html: string, now: Date = new Date()): string | null {
+    const candidates: string[] = [];
+
+    for (const key of DATE_META_KEYS) {
+        const k = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(
+            `<meta[^>]*(?:property|name)=["']${k}["'][^>]*content=["']([^"']+)["']`
+            + `|<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${k}["']`,
+            "i",
+        );
+        const m = html.match(re);
+        if (m) candidates.push(m[1] ?? m[2]);
+    }
+
+    // JSON-LD is the other place publishers put this, and often the only one.
+    for (const block of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+        const m = block[1]?.match(/"datePublished"\s*:\s*"([^"]+)"/);
+        if (m) candidates.push(m[1]);
+    }
+
+    // <time datetime="..."> last: it marks any date on the page, including a
+    // comment's or an unrelated article's in a sidebar.
+    const timeTag = html.match(/<time[^>]*datetime=["']([^"']+)["']/i);
+    if (timeTag) candidates.push(timeTag[1]);
+
+    for (const raw of candidates) {
+        const parsed = new Date(raw.trim());
+        if (isNaN(parsed.getTime())) continue;
+        const year = parsed.getUTCFullYear();
+        // The web did not exist before 1995, and a future date is a template
+        // placeholder or a bad parse, not a publication date.
+        if (year < 1995 || parsed.getTime() > now.getTime() + 86_400_000) continue;
+        return parsed.toISOString().slice(0, 10);
+    }
+    return null;
+}
+
 /**
  * Fetch a URL and extract title, meta description, and body text.
  * Returns a domain-based fallback title on failure, and always reports
@@ -232,9 +304,10 @@ export async function fetchPageContent(
     let status: number | null = null;
     let failure: PageContent["failure"];
     let fullText: string | undefined;
+    let publishedAt: string | null = null;
 
     if (isUnsafeUrl(url)) {
-        return { title, extractedText: null, status: null, failure: "network" };
+        return { title, extractedText: null, status: null, failure: "network", publishedAt: null };
     }
 
     try {
@@ -268,6 +341,10 @@ export async function fetchPageContent(
             // Extract og:image
             ogImage = extractOgImage(html) ?? undefined;
 
+            // When the page says it was published — so a claim from a years-old
+            // interview can be scoped in time rather than stated as current.
+            publishedAt = extractPublishedDate(html);
+
             // Extract body text: the article, not the page furniture.
             const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
             if (bodyMatch?.[1]) {
@@ -290,5 +367,5 @@ export async function fetchPageContent(
         else failure = "network";
     }
 
-    return { title, snippet, extractedText, ogImage, status, failure, fullText };
+    return { title, snippet, extractedText, ogImage, status, failure, fullText, publishedAt };
 }

@@ -335,6 +335,8 @@ export async function insertVaultSource(data: {
     contentType?: string;
     extractedText?: string | null;
     ogImage?: string | null;
+    /** ISO date (YYYY-MM-DD) the source says it was published, or null. */
+    publishedAt?: string | null;
 }) {
     try {
         // onConflictDoNothing pairs with the unique index on (artist_id, url)
@@ -419,6 +421,7 @@ export async function updateVaultSourceContent(sourceId: string, data: {
     snippet?: string;
     extractedText?: string | null;
     ogImage?: string;
+    publishedAt?: string | null;
 }) {
     try {
         const [updated] = await db
@@ -428,6 +431,7 @@ export async function updateVaultSourceContent(sourceId: string, data: {
                 ...(data.snippet !== undefined ? { snippet: data.snippet } : {}),
                 ...(data.extractedText !== undefined ? { extractedText: data.extractedText } : {}),
                 ...(data.ogImage !== undefined ? { ogImage: data.ogImage } : {}),
+                ...(data.publishedAt !== undefined ? { publishedAt: data.publishedAt } : {}),
                 updatedAt: sql`(now() AT TIME ZONE 'utc'::text)`,
             })
             .where(eq(artistVaultSources.id, sourceId))

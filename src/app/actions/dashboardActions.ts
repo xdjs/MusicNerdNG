@@ -227,6 +227,7 @@ export async function addVaultSource(
                     snippet: content.snippet,
                     extractedText: content.extractedText,
                     ogImage: content.ogImage,
+                    publishedAt: content.publishedAt ?? null,
                 }).catch(e => console.error("[addVaultSource] Background content update failed:", e));
             }).catch(e => console.error("[addVaultSource] Background fetch failed:", e));
         }

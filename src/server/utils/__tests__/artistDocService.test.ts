@@ -13,7 +13,7 @@ jest.mock('@/server/lib/gemini', () => ({
 describe('artistDocService', () => {
     beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
-    async function setup({ geminiText = '## Overview\nA real doc.', posts } = {}) {
+    async function setup({ geminiText = '## Overview\nA real doc.', posts, vaultSources } = {}) {
         const { getArtistById } = await import('@/server/utils/queries/artistQueries');
         const { getVaultSourcesByArtistId } = await import('@/server/utils/queries/dashboardQueries');
         const { getInterviewAnswers, getArtistDoc } = await import('@/server/utils/queries/onboardingQueries');
@@ -22,7 +22,7 @@ describe('artistDocService', () => {
         const generateContent = jest.fn().mockResolvedValue({ text: geminiText });
         getGemini.mockReturnValue({ models: { generateContent } });
         getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes', spotify: 'spot123', instagram: 'novareyes' });
-        getVaultSourcesByArtistId.mockResolvedValue([
+        getVaultSourcesByArtistId.mockResolvedValue(vaultSources ?? [
             // Long enough to be CITABLE: a source is only usable as evidence if we
             // actually fetched and read the page, and stored body text is that record.
             { title: 'Pitchfork review', url: 'https://pitchfork.com/x', snippet: 'bedroom auteur', extractedText: 'the review text '.repeat(40) },
@@ -188,10 +188,25 @@ describe('artistDocService', () => {
             const { svc, generateContent } = await setup();
             await svc.synthesizeArtistDoc('a1');
             const call = generateContent.mock.calls[0][0];
-            expect(call.contents).toContain('[1] Source: Pitchfork review');
+            expect(call.contents).toContain('[1] Source (date unknown): Pitchfork review');
             expect(call.contents).toContain('NUMBERED SOURCES');
             expect(call.config.systemInstruction).toContain('CITATIONS');
             expect(call.config.systemInstruction).toContain('ANTI-INFLATION');
+        });
+
+        it('labels every source with its age, so a claim can be scoped in time', async () => {
+            // "Parris Pierce is my production partner" reached a real artist's
+            // profile in the present tense, from an interview published in 2019.
+            // The doc had an anti-inflation rule telling it to scope claims in
+            // time and no way to obey it: nothing in its material said when
+            // anything happened.
+            const { svc, generateContent } = await setup({
+                vaultSources: [{ id: 'v1', url: 'https://voyagemia.com/x', title: 'Meet Nova', snippet: '', extractedText: 'Nova Reyes said something. '.repeat(40), status: 'approved', publishedAt: '2019-01-10' }],
+            });
+            await svc.synthesizeArtistDoc('a1');
+            const call = generateContent.mock.calls[0][0];
+            expect(call.contents).toMatch(/\[1\] Source \(published 2019-01-10, \d+ years ago\)/);
+            expect(call.config.systemInstruction).toContain('TIME —');
         });
 
         it('generateAboutFromDoc strips a marker not present in the passed sources list', async () => {
