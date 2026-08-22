@@ -1013,7 +1013,7 @@ describe('discoverArtistProfiles', () => {
             expect(tiktokSearchCalls).toHaveLength(1);
         });
 
-        it('never probes X — a platform known to block server-side OG scraping — so a miss there can never produce a false "found"', async () => {
+        it('DOES probe X now that it returns og data again (re-measured 2026-08-21)', async () => {
             const { artistQ, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
@@ -1021,8 +1021,13 @@ describe('discoverArtistProfiles', () => {
 
             await discoverArtistProfiles('a1');
 
+            // X was excluded from probing on the grounds that it returns no
+            // og:title/og:image to a bot. Re-measuring showed it now returns
+            // both ("Pete Rango ... (@p3t3rango) on X", image present). While
+            // excluded, X could never be found AT ALL: probing skipped it, and
+            // tier 4 could not rescue it either.
             const probedUrls = fetchLinkPreview.mock.calls.map((call: unknown[]) => call[0]);
-            expect(probedUrls.some((u: unknown) => typeof u === 'string' && u.includes('x.com'))).toBe(false);
+            expect(probedUrls.some((u: unknown) => typeof u === 'string' && u.includes('x.com'))).toBe(true);
         });
 
         it('never throws and still resolves to [] when every probe attempt rejects outright', async () => {
@@ -1035,5 +1040,23 @@ describe('discoverArtistProfiles', () => {
 
             await expect(discoverArtistProfiles('a1')).resolves.toEqual([]);
         });
+    });
+});
+
+describe("stripUrlQuery — tracking params are not part of a handle", () => {
+    it("drops the query string a search result carries", async () => {
+        // Tavily returns instagram.com/p3t3rango?hl=en as the top hit for the
+        // artist's name. extractArtistId captures the first path segment
+        // verbatim, so without this the artist's stored handle becomes
+        // "p3t3rango?hl=en" — which then fails to round-trip through urlmap.
+        const { stripUrlQuery } = await import("@/server/utils/profileDiscovery");
+        expect(stripUrlQuery("https://www.instagram.com/p3t3rango?hl=en")).toBe("https://www.instagram.com/p3t3rango");
+        expect(stripUrlQuery("https://x.com/p3t3rango?s=20&t=abc")).toBe("https://x.com/p3t3rango");
+    });
+
+    it("leaves a clean URL alone and never throws on a malformed one", async () => {
+        const { stripUrlQuery } = await import("@/server/utils/profileDiscovery");
+        expect(stripUrlQuery("https://x.com/p3t3rango")).toBe("https://x.com/p3t3rango");
+        expect(stripUrlQuery("not a url?x=1")).toBe("not a url");
     });
 });

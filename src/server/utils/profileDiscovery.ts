@@ -323,12 +323,15 @@ async function* tierTwoPlatformSearchStream(
 // — see the module docblock). This is sub-second per probe and inherently
 // self-validating, so it needs no separate OG-existence gate afterward.
 
-/** Platforms known to block server-side OG scraping entirely (verified live:
- *  a real x.com profile page returns no og:image/og:title to a bot UA — see
- *  linkPreview.ts). A MISS there is NOT evidence the handle doesn't exist,
- *  so these are never probed for confirmation; they're left in `missing` for
- *  the tier-4 Gemini last-resort to attempt instead of a false negative. */
-const PROBE_UNVERIFIABLE_PLATFORMS = new Set<ProfileDisplayColumn>(["x"]);
+/** Platforms that block server-side OG scraping, where a MISS is not evidence
+ *  the handle is absent, so probing would produce false negatives.
+ *
+ *  Empty as of 2026-08-21. x.com was listed here, and re-measuring showed it now
+ *  returns both og:title and og:image to our fetcher ("Pete Rango ... (@p3t3rango)
+ *  on X", image present). While it was listed, X could never be found at all:
+ *  probing skipped it because fetches were assumed useless, and tier 4 could not
+ *  rescue it. Re-measure before adding a platform back. */
+const PROBE_UNVERIFIABLE_PLATFORMS = new Set<ProfileDisplayColumn>([]);
 
 /** Cap on simultaneous in-flight probe fetches — a polite-client bound so a
  *  large candidate set can't fire dozens of requests at third-party servers
@@ -339,6 +342,18 @@ const PROBE_CONCURRENCY = 8;
  *  combinatorially explode (a 5-word artist name still yields at most this
  *  many slugs, not one per permutation). */
 const MAX_DERIVED_SLUGS = 4;
+
+/** Query strings and fragments are never part of a handle. Search results carry
+ *  tracking params (?hl=en, ?igsh=...), and extractArtistId captures the first
+ *  path segment verbatim, so they otherwise end up inside the stored handle. */
+export function stripUrlQuery(raw: string): string {
+    // Deliberately a string split rather than a URL round-trip: `new
+    // URL(x).toString()` NORMALISES as well as strips, and adds a trailing
+    // slash to a bare domain. That turned Bandcamp's canonical
+    // "<handle>.bandcamp.com" into "<handle>.bandcamp.com/" and stopped it
+    // matching. Stripping must not reformat.
+    return raw.split(/[?#]/)[0];
+}
 
 function normalizeHandle(raw: string): string {
     return raw.trim().replace(/^@/, "");
@@ -787,12 +802,13 @@ async function resultPassesNameCheck(
     platform: ProfileDisplayColumn,
     artistName: string,
 ): Promise<boolean> {
-    if (!looksLikeProfileUrl(result.url)) return false;
-    if (platform === "bandcamp" && isReservedBandcampSubdomain(result.url)) return false;
+    const url = stripUrlQuery(result.url);
+    if (!looksLikeProfileUrl(url)) return false;
+    if (platform === "bandcamp" && isReservedBandcampSubdomain(url)) return false;
 
     let extracted;
     try {
-        extracted = await extractArtistId(result.url);
+        extracted = await extractArtistId(url);
     } catch {
         return false;
     }
@@ -954,7 +970,12 @@ interface ValidationContext {
 async function validateCandidate(candidate: TierCandidate, ctx: ValidationContext): Promise<DiscoveredProfile | null> {
     let extracted;
     try {
-        extracted = await extractArtistId(candidate.url);
+        // Strip the query string first. A search result is a real URL with real
+        // tracking params, and extractArtistId captures the first path segment
+        // verbatim — so instagram.com/p3t3rango?hl=en yields the handle
+        // "p3t3rango?hl=en", which then fails to round-trip and would be stored
+        // as the artist's handle if it did.
+        extracted = await extractArtistId(stripUrlQuery(candidate.url));
     } catch (e) {
         console.error(`[profileDiscovery] extractArtistId threw for ${candidate.url}:`, e);
         return null;
