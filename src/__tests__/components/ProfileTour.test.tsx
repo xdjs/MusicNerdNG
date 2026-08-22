@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { render, screen, fireEvent } from '@testing-library/react';
-import ProfileTour, { tourFlagKey, tourPendingKey } from '@/app/artist/[id]/_components/onboarding/ProfileTour';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import ProfileTour, { tourFlagKey, tourPendingKey, armTour } from '@/app/artist/[id]/_components/onboarding/ProfileTour';
 
 // jsdom has no layout engine, so scrollIntoView is absent on elements.
 beforeAll(() => { Element.prototype.scrollIntoView = jest.fn(); });
@@ -146,6 +146,46 @@ describe('ProfileTour — surviving the end of onboarding', () => {
 
         first.unmount();
         render(<ProfileTour artistId="a1" />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+});
+
+
+describe('ProfileTour — armed while already mounted', () => {
+    beforeEach(() => {
+        document.body.replaceChildren();
+        sessionStorage.clear();
+        withAnchors();
+    });
+
+    it('starts when the build arms it, even though it mounted long before', () => {
+        // The bug Pete hit: the tour is rendered by the artist page on INITIAL
+        // load, before the build starts. Its mount effect read "not pending" and
+        // never looked again — router.refresh() re-renders server components
+        // without remounting a client component in the same position. The build
+        // finished, the flag was set, and nothing was listening. He saw his whole
+        // profile and no tour.
+        render(<ProfileTour artistId="a1" />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+
+        // act(): the state update originates from a window listener, outside
+        // React's own event system, so it must be flushed explicitly here.
+        act(() => armTour('a1'));
+
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/these are your links/i)).toBeInTheDocument();
+    });
+
+    it('ignores an arming event for a different artist', () => {
+        render(<ProfileTour artistId="a1" />);
+        act(() => armTour('someone-else'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('does not re-open for an artist who already completed it', () => {
+        sessionStorage.setItem(tourFlagKey('a1'), '1');
+        render(<ProfileTour artistId="a1" />);
+        act(() => armTour('a1'));
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 });

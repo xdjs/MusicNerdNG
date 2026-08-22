@@ -17,6 +17,24 @@ export function tourPendingKey(artistId: string): string {
     return `mn-tour-pending-${artistId}`;
 }
 
+/** Fired when the build arms the tour.
+ *
+ *  The flag alone is not enough. ProfileTour is rendered by the artist page on
+ *  INITIAL LOAD — before the build has even started — so its mount effect reads
+ *  "not pending" and that is the last time it ever looks. The flag is set
+ *  minutes later, and `router.refresh()` re-renders server components without
+ *  remounting a client component in the same position, so the effect never runs
+ *  again. Result: the build completes, the flag is set, and nothing is
+ *  listening. An event closes that gap without polling. */
+export const TOUR_ARMED_EVENT = "mn-tour-armed";
+
+export function armTour(artistId: string): void {
+    try {
+        sessionStorage.setItem(tourPendingKey(artistId), "1");
+    } catch { /* private mode */ }
+    window.dispatchEvent(new CustomEvent(TOUR_ARMED_EVENT, { detail: artistId }));
+}
+
 type Stop = {
     anchor: string;
     title: string;
@@ -106,13 +124,25 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
     const stop = STOPS[index];
 
     useEffect(() => {
-        try {
-            const pending = sessionStorage.getItem(tourPendingKey(artistId)) === "1";
-            const done = sessionStorage.getItem(tourFlagKey(artistId)) === "1";
-            setArmed(pending && !done);
-        } catch {
-            // Private mode: no tour rather than a tour that can never be dismissed.
-        }
+        const check = () => {
+            try {
+                const pending = sessionStorage.getItem(tourPendingKey(artistId)) === "1";
+                const done = sessionStorage.getItem(tourFlagKey(artistId)) === "1";
+                setArmed(pending && !done);
+            } catch {
+                // Private mode: no tour rather than one that can never be dismissed.
+            }
+        };
+        // On mount, for a reload that lands with the flag already set…
+        check();
+        // …and on the arming event, for the far more common case: this component
+        // mounted long before the build finished and would otherwise never look
+        // again. See TOUR_ARMED_EVENT.
+        const onArmed = (e: Event) => {
+            if ((e as CustomEvent).detail === artistId) check();
+        };
+        window.addEventListener(TOUR_ARMED_EVENT, onArmed);
+        return () => window.removeEventListener(TOUR_ARMED_EVENT, onArmed);
     }, [artistId]);
 
     const reposition = useCallback(() => {

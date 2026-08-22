@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import OnboardingChat from "./OnboardingChat";
 import OnboardingBanner from "./OnboardingBanner";
-import { tourFlagKey, tourPendingKey } from "./ProfileTour";
+import { armTour, tourFlagKey } from "./ProfileTour";
 
 export function skipFlagKey(artistId: string): string {
     return `mn-onboarding-skip-${artistId}`;
@@ -50,11 +50,9 @@ export default function OnboardingGate({ artistId, artistName, currentStep }: Pr
                 // outlives both. Skipping the chat arms nothing: someone who
                 // dismissed the setup does not want a guided pass either.
                 onFinish={() => {
-                    try {
-                        if (sessionStorage.getItem(tourFlagKey(artistId)) !== "1") {
-                            sessionStorage.setItem(tourPendingKey(artistId), "1");
-                        }
-                    } catch { /* private mode */ }
+                    let alreadyDone = false;
+                    try { alreadyDone = sessionStorage.getItem(tourFlagKey(artistId)) === "1"; } catch { /* private mode */ }
+                    if (!alreadyDone) armTour(artistId);
                     setMode("closed");
                 }}
             />
