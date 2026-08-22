@@ -415,7 +415,7 @@ including the Shockoe Sessions interview that was the best source found for Phar
 certainly by default rather than by decision, since the vault card is keep-by-default. That is
 the clearest evidence yet for the position taken in 2.6.*
 
-### 2.12 Stale facts stated in the present tense `todo`
+### 2.12 Stale facts stated in the present tense `code done, migration pending`
 Pete, 8/21, on his own About: *"it's not good to assume that Parris Pierce is my production
 partner — that interview was years ago and we don't work together anymore."*
 
@@ -429,6 +429,35 @@ production partner".
 Fix: capture a publication date during verification — `article:published_time`, `og:updated_time`,
 JSON-LD `datePublished` are all in the HTML we already fetch — carry it into the doc's source
 manifest, and require claims to be scoped by it. Anything not evidenced as current is past tense.
+
+**Built.** `extractPublishedDate` reads those, with `<time datetime>` last (it marks any date on a
+page, including a comment's). Measured on his four real sources:
+
+| source | published |
+|---|---|
+| voyagemia | **2019-01-10** — the Parris Pierce interview, seven and a half years old |
+| lifechangesnetwork | 2024-01-24 |
+| soundbetter | none (a directory has no publication date) |
+| rvamag | none |
+
+Conservative by design: unparseable, pre-1995 or future dates return null, because a *wrong* date
+would let the document confidently scope a claim to the wrong era. Undated sources are labelled
+"date unknown" rather than left unmarked — "we know this is old" and "we do not know how old this
+is" need different hedging, and conflating them is how a guess becomes a fact.
+
+The doc prompt gained a TIME section: old claims take the past tense or a year; the present tense
+is reserved for recent sources and things that do not decay (birthplace, releases, what a record
+sounds like) rather than things that do (roles, partnerships, locations, "currently"); and two
+sources disagreeing is usually one being older, not a contradiction.
+
+**Not yet verified end to end.** The `published_at` column needs a privileged connection — the app
+role `mnweb` cannot run DDL, and `SUPABASE_DB_CONNECTION` is that role, so `npm run db:migrate`
+cannot apply it either. Migration `0015` is written and registered; dev needs it applied by hand
+before the effect on his About can be measured.
+
+*Found alongside: migration `0014` was hand-written and applied straight to dev but never added to
+`drizzle/meta/_journal.json`, so `db:migrate` would have skipped it and the unique index behind
+vault dedup would never have reached production. Both are registered now. Prod needs 0011-0015.*
 
 ### 2.13 Relevance is a substring check where it should be judgment `done (readable pages)`
 Pete, 8/21: *"a lot of links in the vault that don't relate to me… in the age of AI and tech there
@@ -538,7 +567,7 @@ render in the same generic divs as the artist's own. Checked empirically after t
 rival credits reached his document, so the density-gated selection that was ready to go was not
 added on spec. If it shows up in a later artist, that is the fix.
 
-### 2.15 Two of his four approved sources are index pages, not coverage `todo`
+### 2.15 Two of his four approved sources are index pages, not coverage `done`
 
 Found while measuring the above. Mention density per source, after clean extraction:
 
@@ -561,8 +590,23 @@ regex rule. Density alone does not separate these cleanly (6.7% vs 9.0% is too c
 on) and `Archives` / `who worked with` are site-specific strings. Retrieval retrieves, the model
 judges; this is that line applied one level up.
 
-Pete removes these two in the UI rather than us re-judging approved rows behind him — which also
-exercises the rejection-durability path from 2.8.
+**Shipped.** `judgeSourceRelevance` gained a third verdict, `lists-artist`, and each page's mention
+density is handed to it as evidence. Verified against all four of his real sources, twice: both
+interviews `about-artist`, both index pages `lists-artist`, stable across runs. Deliberately not a
+threshold — once handles are counted, VoyageMIA (9.0%) scores *lower* than the rvamag tag archive
+(6.7%), so thresholding would have inverted exactly that pair. Retrieval retrieves, the model
+judges.
+
+**And the half he could see.** The knowledge document was written once at publish and never again,
+while the sources under it stayed editable — so removing a bad source left the document citing it
+forever, and the Ask section kept answering from it. There is no view or edit surface for the
+document anywhere in the product, which is why nothing surfaced this. `refreshArtistDoc` now runs
+on approve, reject and delete, debounced so a burst of removals costs one rebuild. It never touches
+`artists.bio`: the About is the artist's and may be hand-edited.
+
+**Still open: the document has no UI at all.** Pete, 8/22: *"how does one access the knowledge doc
+to edit after page is done generating?"* You cannot. It is the thing that answers fan questions and
+it is invisible and uneditable. Worth its own decision — read-only view, or editable.
 
 ### 2.16 TikTok cannot be probed at all `done (as far as it goes)`
 
