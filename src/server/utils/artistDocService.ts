@@ -19,7 +19,7 @@
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
-import { getInterviewAnswers, getArtistDoc } from "@/server/utils/queries/onboardingQueries";
+import { getInterviewAnswers, getArtistDoc, upsertArtistDoc, upsertArtistDocSources } from "@/server/utils/queries/onboardingQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
@@ -535,6 +535,40 @@ export async function synthesizeFallbackAbout(artistId: string, artistName: stri
 }
 
 /** Capped doc slice for prompt injection (askArtist / funFacts / bio). Null when no doc. */
+/**
+ * Rebuild the knowledge document from the artist's CURRENT sources.
+ *
+ * The document was written once, at publish, and then never again — while the
+ * sources under it stayed editable. So an artist who removed a bad source kept a
+ * document that cited it forever, and the Ask section kept answering from it.
+ * Removing a marketplace directory from the vault did nothing whatsoever. The
+ * document is invisible in the product (there is no view or edit surface for
+ * it), so there was no way to notice, either.
+ *
+ * Deliberately does NOT touch `artists.bio`. The About belongs to the artist and
+ * may have been hand-edited; the document is ours. Publish stays the only moment
+ * that writes a bio implicitly.
+ *
+ * No-ops when the artist has no document — nothing to refresh, and creating one
+ * outside onboarding would be a different feature. Never throws: this runs
+ * fire-and-forget behind a user action that has already succeeded, so a Gemini
+ * failure must not turn a successful removal into an error.
+ */
+export async function refreshArtistDoc(artistId: string): Promise<boolean> {
+    try {
+        if (!(await getArtistDoc(artistId))) return false;
+        const sources = await buildDocSources(artistId);
+        const doc = await synthesizeArtistDoc(artistId, sources);
+        await upsertArtistDoc(artistId, doc);
+        await upsertArtistDocSources(artistId, sources);
+        console.log(`[refreshArtistDoc] Rebuilt doc for ${artistId} from ${sources.length} sources`);
+        return true;
+    } catch (e) {
+        console.error("[refreshArtistDoc] Failed:", e);
+        return false;
+    }
+}
+
 export async function getArtistDocContext(artistId: string): Promise<string | null> {
     const doc = await getArtistDoc(artistId);
     if (!doc?.content) return null;

@@ -426,6 +426,20 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 dropped++;
                 continue;
             }
+            // An index page: real, genuinely concerns the artist, and useless as a
+            // source. A marketplace directory titled "Producers who worked with
+            // <artist>" reached a real artist's vault and named him in 2 of its 173
+            // paragraphs; the other 171 were a genre filter and OTHER producers'
+            // credits. Those names are worse than noise — on a page indexed under
+            // his name they read as his collaborators when they are his
+            // competitors. Dropped like any other non-source, but logged
+            // separately: this is the category the judge had no word for, so it
+            // passed such pages as "about-artist" for months.
+            if (relevance.get(result.url) === "lists-artist") {
+                console.log(`[vaultWebSearch] Judge: index/directory page, not coverage — ${result.url.slice(0, 100)}`);
+                dropped++;
+                continue;
+            }
             // Some feeds are served from ordinary-looking URLs. If what came back
             // is a document rather than a page, it is not a source either.
             const body = (page.fullText ?? page.extractedText ?? "").trimStart();

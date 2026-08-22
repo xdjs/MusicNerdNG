@@ -22,6 +22,7 @@ import {
 import { inferTypeFromUrl, SOURCE_TYPES } from "@/lib/sourceTypes";
 import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
+import { refreshArtistDoc } from "@/server/utils/artistDocService";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { updateVaultSourceContent } from "@/server/utils/queries/dashboardQueries";
 import { generateReferenceCode } from "@/lib/referenceCode";
@@ -54,6 +55,35 @@ function pruneBioRegenTimestamps(now: number): void {
     // a single debounce window, nuke the whole map. Worst case is one extra regen
     // per artist on the next request — best-effort debounce, by design.
     if (bioRegenTimestamps.size > BIO_REGEN_MAP_SOFT_CAP) bioRegenTimestamps.clear();
+}
+
+
+/**
+ * Rebuild the knowledge document after the source set changed.
+ *
+ * The document feeds the Ask section, fun facts, and the bio generator, and it
+ * was written once at publish and never again — so it kept citing sources the
+ * artist had removed, and never learned about ones they added. There is no UI
+ * for the document, so nothing surfaced this.
+ *
+ * Fire-and-forget behind an action that already succeeded, debounced on the same
+ * map as the bio regen (the `doc:` prefix keeps the two independent while reusing
+ * one prune and one soft cap). Rebuilding costs a Gemini call, and a burst of
+ * removals should cost one rebuild, not one each.
+ */
+function scheduleDocRefresh(artistId: string | undefined): void {
+    if (!artistId) return;
+    const key = `doc:${artistId}`;
+    const now = Date.now();
+    if (now - (bioRegenTimestamps.get(key) ?? 0) <= BIO_REGEN_DEBOUNCE_MS) {
+        console.log(`[scheduleDocRefresh] Skipping doc refresh for ${artistId} — debounced`);
+        return;
+    }
+    pruneBioRegenTimestamps(now);
+    bioRegenTimestamps.set(key, now);
+    Promise.resolve(refreshArtistDoc(artistId)).catch(e =>
+        console.error("[scheduleDocRefresh] Background doc refresh failed:", e)
+    );
 }
 
 export async function claimArtistProfile(artistId: string): Promise<{ success: boolean; error?: string; alreadyClaimed?: boolean; referenceCode?: string }> {
@@ -126,6 +156,11 @@ export async function updateSourceStatus(
                 console.log(`[updateSourceStatus] Skipping bio regen for ${ownership.artistId} — debounced`);
             }
         }
+
+        // The document follows the sources in BOTH directions. Approving is not
+        // the only change that matters: rejecting a source the document cites is
+        // exactly the case the artist is trying to fix.
+        scheduleDocRefresh(ownership.artistId);
 
         return { success: true };
     } catch (error) {
@@ -237,6 +272,7 @@ export async function removeVaultSource(
         if (!ownership.authorized) return { success: false, error: ownership.error };
 
         await deleteVaultSource(sourceId);
+        scheduleDocRefresh(ownership.artistId);
         return { success: true };
     } catch (error) {
         console.error("[removeVaultSource] Error:", error);
@@ -277,6 +313,7 @@ export async function removeVaultSources(
         }
 
         const deleted = await deleteVaultSources(sourceIds);
+        artistIds.forEach(scheduleDocRefresh);
         return { success: true, count: deleted.length };
     } catch (error) {
         console.error("[removeVaultSources] Error:", error);
