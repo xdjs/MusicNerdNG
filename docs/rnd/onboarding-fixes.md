@@ -503,6 +503,80 @@ him. Revisit with more artist tests. Likely moot if 2.3 lands.
 
 ---
 
+### 2.14 We were reading a fifth of each source, and the wrong fifth `done`
+
+Pete, 8/21: *"if we're supposed to be a research nerd, why are we only taking part of the
+material? isn't part of what we're doing scraping these sources to add to the knowledge doc?"*
+
+Three truncations stacked on top of each other. The first was permanent.
+
+**Scrape time.** `fetchPageContent` kept 5,000 characters and dropped the rest before anything
+reached the database, so it was never recoverable. That is 54% of his VoyageMIA interview. Raised
+to 50,000 — this is the archive, not a context limit, and we never re-fetch a stored source.
+
+**A dead selection path.** The extractor ended in `\s+ -> " "`, collapsing every page to a single
+line. `selectSourceText` — which keeps the paragraphs that name the artist — splits on blank
+lines, so it saw one paragraph, bailed, and head-sliced. **It had never once run against a real
+scrape.** Its unit tests passed because the fixtures still had newlines in them. A test can only
+prove the thing it is fed resembles production.
+
+**No boilerplate stripping.** Only `<script>` and `<style>` were removed. So a stored "source"
+about an artist could be a cookie-consent policy listing Google Analytics cookie durations
+(lifechangesnetwork, everything past character 4,700), or a comment form and a list of articles
+about other people (voyagemia). `extractReadableText` now drops nav/footer/aside/form, keeps block
+structure, and decodes entities instead of storing `people&#8217;s souls` for the model to read.
+
+**The document was then compressing all of it to 512 words** against a consumer cap of 8,000
+characters, on an instruction written when a source was a 5,000-character stub. The first thing
+that compression discarded was the artist talking. Added `## In Their Own Words` and a length
+target matched to the cap: his doc is now 847 words and carries six verbatim quotes — on work/life
+balance, on when to release a song, on who to collaborate with and why — every one of which sat
+past character 5,000 and had never entered the database at all.
+
+**What it does not fix.** Regex cannot lift a rival's listing out of a marketplace page; those
+render in the same generic divs as the artist's own. Checked empirically after the change: no
+rival credits reached his document, so the density-gated selection that was ready to go was not
+added on spec. If it shows up in a later artist, that is the fix.
+
+### 2.15 Two of his four approved sources are index pages, not coverage `todo`
+
+Found while measuring the above. Mention density per source, after clean extraction:
+
+| source | paragraphs naming him | what it actually is |
+|---|---|---|
+| lifechangesnetwork | 8 / 58 (13.8%) | real interview |
+| voyagemia | 6 / 67 (9.0%) | real interview |
+| rvamag | 1 / 15 (6.7%) | **tag archive page** |
+| soundbetter | 2 / 173 (1.2%) | **marketplace directory** |
+
+SoundBetter's own title says it: *"Mixing & Mastering Engineers, Producers & Songwriters who
+worked with Pete Rango"*. It is a list of **other** producers, indexed under his name, plus a
+genre filter dropdown. `judgeSourceRelevance` saw that exact title and passed it — correctly,
+given the only categories it was offered were about / not-about / passing-mention. There is no
+category for *"this page merely lists them."*
+
+That is the concrete start of **2.8** at the entity level. When it happens, hand the judge the
+title and "mentions the artist in N of M paragraphs" as **evidence** and let it decide — not as a
+regex rule. Density alone does not separate these cleanly (6.7% vs 9.0% is too close to threshold
+on) and `Archives` / `who worked with` are site-specific strings. Retrieval retrieves, the model
+judges; this is that line applied one level up.
+
+Pete removes these two in the UI rather than us re-judging approved rows behind him — which also
+exercises the rejection-durability path from 2.8.
+
+### 2.16 TikTok cannot be probed at all `done (as far as it goes)`
+
+Pete, 8/21: *"how is tiktok not findable through search if every other social media is?"*
+
+Measured against two real handles, `@p3t3rango` and `@peterango`: both return `title=null
+img=none`, while an Instagram control on the same run returns a real title and image. TikTok
+serves a server-side fetch nothing. Moved into `PROBE_UNVERIFIABLE_PLATFORMS` and covered by a
+test.
+
+The consequence has to be stated honestly in the product: **we cannot tell whether he has a
+TikTok.** A miss is not evidence of absence, and the flow must not imply it is. Any real fix needs
+a route that renders JavaScript.
+
 ## 3 · Copy and structure
 
 ### 3.1 Separate press/research links from social and streaming `todo`
