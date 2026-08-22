@@ -358,6 +358,7 @@ export async function insertVaultSource(data: {
                 contentType: data.contentType,
                 extractedText: data.extractedText,
                 ogImage: data.ogImage,
+                publishedAt: data.publishedAt ?? null,
             })
             .onConflictDoNothing({ target: [artistVaultSources.artistId, artistVaultSources.url] })
             .returning();
