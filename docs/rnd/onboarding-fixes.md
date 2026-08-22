@@ -459,6 +459,12 @@ before the effect on his About can be measured.
 `drizzle/meta/_journal.json`, so `db:migrate` would have skipped it and the unique index behind
 vault dedup would never have reached production. Both are registered now. Prod needs 0011-0015.*
 
+> **Before the next `npm run db:generate`:** 0014 and 0015 have journal entries but no
+> `drizzle/meta/00{14,15}_snapshot.json`. drizzle-kit diffs against the newest snapshot it has,
+> which is 0013 — so it will re-propose the unique index and the `published_at` column, and its
+> generated SQL has no `IF NOT EXISTS`, so applying it would fail against a database that already
+> has them. Either write the two snapshots or hand-edit whatever `generate` produces.
+
 ### 2.13 Relevance is a substring check where it should be judgment `done (readable pages)`
 Pete, 8/21: *"a lot of links in the vault that don't relate to me… in the age of AI and tech there
 would be a better, smarter way to figure out what's what."* Correct.
