@@ -39,7 +39,7 @@ const ACCOUNT_PLATFORMS = new Set([
     "soundcloud", "bandcamp", "twitch", "facebook", "spotify", "deezer",
 ]);
 
-const PROFILE_LINK_COLUMNS = [
+export const PROFILE_LINK_COLUMNS = [
     "spotify", "deezer", "instagram", "tiktok", "x", "youtube",
     "youtubechannel", "soundcloud", "bandcamp", "twitch", "facebook",
 ] as const;
