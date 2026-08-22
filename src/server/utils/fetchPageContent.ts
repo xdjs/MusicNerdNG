@@ -127,7 +127,94 @@ const DEFAULT_FETCH_TIMEOUT_MS = 10000;
 
 /** How much body text we keep. A storage cap, not a verification one — see
  *  `PageContent.fullText`. */
-const EXTRACT_MAX_CHARS = 5000;
+/** How much of a page we KEEP. This is the archive: whatever is dropped here is
+ *  gone for good, since we do not re-fetch a stored source.
+ *
+ *  It was 5,000, which is about a fifth of a 4,000-word interview — so a real
+ *  artist's credits, sitting at character 2,466 of one profile, were near the
+ *  edge, and anything past 5,000 in a longer piece never entered the database at
+ *  all. That is not a context limit, it is a leftover: the model reading this
+ *  material has roughly a million tokens of context, and a handful of full
+ *  sources is about twenty thousand.
+ *
+ *  Now generous enough to hold a long-form interview whole. Still bounded,
+ *  because a pathological page (a forum thread, a full archive dump) should not
+ *  put megabytes in a row. selectSourceText decides what reaches the prompt. */
+const EXTRACT_MAX_CHARS = 50_000;
+
+/** Elements that never carry a page's subject matter. Removed whole, with their
+ *  contents, before anything is read. <header> is deliberately absent: article
+ *  headlines and bylines live there too. */
+const CHROME_TAGS = [
+    "script", "style", "noscript", "template", "svg", "iframe",
+    "nav", "footer", "aside", "form", "select", "button", "dialog",
+];
+
+/** Block closers that end a paragraph. Inline elements (<span>, <a>, <em>)
+ *  deliberately stay a space so a sentence isn't cut mid-clause. */
+const BLOCK_BREAK = /<\/(p|div|section|article|li|ul|ol|tr|h[1-6]|blockquote|figcaption|dd|dt|pre|table)\s*>|<br\s*\/?>|<hr\s*\/?>/gi;
+
+function textFrom(bodyHtml: string, stripChrome: boolean): string {
+    let html = bodyHtml.replace(/<!--[\s\S]*?-->/g, " ");
+    if (stripChrome) {
+        for (const tag of CHROME_TAGS) {
+            html = html.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`, "gi"), " ");
+        }
+    } else {
+        // Script and style are never readable text, whatever else we keep.
+        html = html
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+            .replace(/<style[\s\S]*?<\/style>/gi, " ");
+    }
+    return decodeEntities(
+        html.replace(BLOCK_BREAK, "\n\n").replace(/<[^>]+>/g, " ")
+    )
+        // Horizontal whitespace only. Collapsing newlines too is the bug this
+        // function exists to fix.
+        .replace(/[^\S\n]+/g, " ")
+        .replace(/ *\n */g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
+/**
+ * The readable text of a page: the article, not the furniture.
+ *
+ * Two problems with the one-liner this replaces, both found by dumping what we
+ * had actually stored about a real artist:
+ *
+ * 1. `\s+ -> " "` flattened every page to a SINGLE LINE. `selectSourceText`,
+ *    which keeps the paragraphs that name the artist, splits on blank lines —
+ *    so it always saw one paragraph, bailed out, and head-sliced instead. That
+ *    selection had never once run against a real scrape; its unit tests passed
+ *    because they fed it text with newlines still in it.
+ * 2. Nothing was removed but <script> and <style>. So a stored "source" could
+ *    be a cookie-consent policy listing Google Analytics cookie durations
+ *    (lifechangesnetwork, everything past character 4,700), or a comment form
+ *    and a list of unrelated articles (voyagemia).
+ *
+ * Drop the chrome, keep the block structure, decode the entities. What survives
+ * is roughly what a reader would have read.
+ *
+ * Regex rather than a DOM parse on purpose: this runs on a request-latency path
+ * during onboarding, against pages we do not control, and a partial result is
+ * fine — whatever survives is judged again by judgeSourceRelevance and
+ * selectSourceText. It CANNOT remove a rival's listing from a marketplace page
+ * (soundbetter renders other producers' credits in the same generic <div>s as
+ * the artist's own), so it is the first line of defence, not the only one.
+ */
+export function extractReadableText(bodyHtml: string): string {
+    const cleaned = textFrom(bodyHtml, true);
+    // Safety net for a page that wraps its ARTICLE in <aside> or <form>: we would
+    // otherwise store nothing. Deliberately narrow — it needs a substantial page
+    // gutted down to almost nothing, so that a genuinely short page stripped to
+    // its few real sentences is left alone rather than having its nav put back.
+    if (cleaned.length < 200) {
+        const raw = textFrom(bodyHtml, false);
+        if (raw.length > 1000) return raw;
+    }
+    return cleaned;
+}
 
 /**
  * Fetch a URL and extract title, meta description, and body text.
@@ -181,15 +268,10 @@ export async function fetchPageContent(
             // Extract og:image
             ogImage = extractOgImage(html) ?? undefined;
 
-            // Extract body text (strip tags, collapse whitespace)
+            // Extract body text: the article, not the page furniture.
             const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
             if (bodyMatch?.[1]) {
-                const text = bodyMatch[1]
-                    .replace(/<script[\s\S]*?<\/script>/gi, "")
-                    .replace(/<style[\s\S]*?<\/style>/gi, "")
-                    .replace(/<[^>]+>/g, " ")
-                    .replace(/\s+/g, " ")
-                    .trim();
+                const text = extractReadableText(bodyMatch[1]);
                 if (text.length > 50) {
                     fullText = text;
                     extractedText = text.slice(0, EXTRACT_MAX_CHARS);

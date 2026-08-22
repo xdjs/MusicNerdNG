@@ -326,12 +326,17 @@ async function* tierTwoPlatformSearchStream(
 /** Platforms that block server-side OG scraping, where a MISS is not evidence
  *  the handle is absent, so probing would produce false negatives.
  *
- *  Empty as of 2026-08-21. x.com was listed here, and re-measuring showed it now
+ *  Measured 2026-08-21: tiktok.com returns no title and no image for ANY handle,
+ *  including ones we know exist, so probing it can only produce false negatives.
+ *  Because of that we cannot currently tell whether an artist HAS a TikTok —
+ *  say that rather than reporting one as absent.
+ *
+ *  x.com was listed here, and re-measuring showed it now
  *  returns both og:title and og:image to our fetcher ("Pete Rango ... (@p3t3rango)
  *  on X", image present). While it was listed, X could never be found at all:
  *  probing skipped it because fetches were assumed useless, and tier 4 could not
  *  rescue it. Re-measure before adding a platform back. */
-const PROBE_UNVERIFIABLE_PLATFORMS = new Set<ProfileDisplayColumn>([]);
+const PROBE_UNVERIFIABLE_PLATFORMS = new Set<ProfileDisplayColumn>(["tiktok"]);
 
 /** Cap on simultaneous in-flight probe fetches — a polite-client bound so a
  *  large candidate set can't fire dozens of requests at third-party servers

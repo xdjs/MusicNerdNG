@@ -266,10 +266,13 @@ describe("source text selection — the best material is rarely at the top", () 
     });
 
     it("falls back to a head slice when the text has no paragraph structure", async () => {
-        const { selectSourceText } = await import("@/server/utils/artistDocService");
-        const blob = "x".repeat(9000);
+        // Legacy rows: every source stored before extractReadableText landed was
+        // flattened to a single line at scrape time, so there are no paragraphs
+        // to choose between and the head slice is all this can do. Sized past
+        // SOURCE_TEXT_BUDGET deliberately — under it, text is returned whole.
+        const { selectSourceText, SOURCE_TEXT_BUDGET } = await import("@/server/utils/artistDocService");
+        const blob = "x".repeat(SOURCE_TEXT_BUDGET + 3000);
         const out = selectSourceText(blob, "Pete Rango");
-        expect(out.length).toBeLessThan(blob.length);
-        expect(out.length).toBeGreaterThan(0);
+        expect(out.length).toBe(SOURCE_TEXT_BUDGET);
     });
 });

@@ -301,8 +301,14 @@ OTHER RULES:
 - Never fabricate. No hype words ("rising star", "eclectic", "undeniable").
 - Target under 900 words total.`;
 
-/** How much of one source's text reaches the document prompt. */
-const SOURCE_TEXT_BUDGET = 3_500;
+/** How much of one source's text reaches the document prompt.
+ *
+ *  Sized against what the model can actually read, not against habit: a handful
+ *  of full-length sources is roughly twenty thousand tokens against a context of
+ *  about a million. The previous 2,000 was cutting an artist's best credit out
+ *  of his own profile. selectSourceText only has to choose at all when a source
+ *  runs longer than this. */
+export const SOURCE_TEXT_BUDGET = 12_000;
 
 /**
  * The most relevant `SOURCE_TEXT_BUDGET` characters of a source, not the first.
