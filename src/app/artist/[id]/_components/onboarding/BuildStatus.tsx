@@ -30,8 +30,11 @@ function stageStates(items: ProgressItem[]): { label: string; detail: string | n
 function Tick({ state }: { state: StageState }) {
     if (state === "done") {
         return (
-            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center" aria-hidden="true">
-                <svg viewBox="0 0 12 12" className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <span
+                className="flex-shrink-0 w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center shadow-[0_0_12px_rgba(236,72,153,0.55)]"
+                aria-hidden="true"
+            >
+                <svg viewBox="0 0 12 12" className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.4">
                     <path d="M2.5 6.5l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
             </span>
@@ -39,13 +42,19 @@ function Tick({ state }: { state: StageState }) {
     }
     if (state === "active") {
         return (
-            <span
-                className="flex-shrink-0 w-5 h-5 rounded-full border-2 border-pink-500 border-t-transparent animate-spin"
-                aria-hidden="true"
-            />
+            <span className="relative flex-shrink-0 w-6 h-6" aria-hidden="true">
+                {/* Halo: reads as alive without the mechanical feel of a bare spinner. */}
+                <span className="absolute inset-0 rounded-full bg-pink-500/25 motion-safe:animate-ping" />
+                <span className="absolute inset-0 rounded-full border-2 border-pink-500 border-t-transparent motion-safe:animate-spin" />
+            </span>
         );
     }
-    return <span className="flex-shrink-0 w-5 h-5 rounded-full border-2 border-black/15 dark:border-white/20" aria-hidden="true" />;
+    return (
+        <span
+            className="flex-shrink-0 w-6 h-6 rounded-full border border-black/15 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.04]"
+            aria-hidden="true"
+        />
+    );
 }
 
 /**
@@ -82,10 +91,15 @@ export default function BuildStatus({
     const finishedCount = stages.filter(s => s.state === "done").length;
 
     return (
-        <div className="w-full max-w-md rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-2xl overflow-hidden">
-            <div className="px-5 pt-5 pb-4 space-y-1">
+        <div className="glass relative w-full max-w-md overflow-hidden shadow-2xl shadow-black/40">
+            {/* Brand wash — keeps the card from reading as a system dialog. */}
+            <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-gradient-to-b from-pink-500/25 via-purple-500/10 to-transparent blur-2xl"
+            />
+            <div className="relative px-6 pt-6 pb-4 space-y-1">
                 <div className="flex items-start justify-between gap-3">
-                    <h2 className="text-lg font-bold text-black dark:text-white">
+                    <h2 className="text-xl font-bold tracking-tight text-black dark:text-white">
                         {complete ? "Your page is ready" : "Building your page"}
                     </h2>
                     {!complete && (
@@ -97,30 +111,32 @@ export default function BuildStatus({
                         </button>
                     )}
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-gray-600 dark:text-gray-300/80">
                     {complete
                         ? `${artistName} — everything below is editable, and anything that isn't you can be removed.`
                         : artistName}
                 </p>
             </div>
 
-            {/* Thin determinate bar: three stages, not four abstract steps. */}
-            <div className="h-1 bg-black/5 dark:bg-white/10">
+            {/* Thin determinate bar: three real stages, not four abstract steps. */}
+            <div className="relative h-[3px] bg-black/5 dark:bg-white/10">
                 <div
-                    className="h-full bg-pink-500 transition-[width] duration-700 ease-out"
+                    className="h-full bg-gradient-to-r from-pink-500 to-purple-400 shadow-[0_0_10px_rgba(236,72,153,0.7)] transition-[width] duration-700 ease-out"
                     style={{ width: `${(finishedCount / BUILD_STAGES.length) * 100}%` }}
                 />
             </div>
 
-            <ul className="px-5 py-4 space-y-3">
+            <ul className="relative px-6 py-5 space-y-3.5">
                 {stages.map(stage => (
-                    <li key={stage.label} className="flex items-center gap-3">
+                    <li key={stage.label} className="flex items-center gap-3.5">
                         <Tick state={stage.state} />
                         <span
-                            className={`text-sm ${
+                            className={`text-sm transition-colors duration-500 ${
                                 stage.state === "pending"
                                     ? "text-gray-400 dark:text-gray-500"
-                                    : "text-black dark:text-white"
+                                    : stage.state === "active"
+                                        ? "text-black dark:text-white font-medium"
+                                        : "text-gray-700 dark:text-gray-300"
                             }`}
                         >
                             {stage.label}
@@ -130,10 +146,10 @@ export default function BuildStatus({
             </ul>
 
             {complete && (
-                <div className="px-5 pb-5">
+                <div className="relative px-6 pb-6">
                     <button
                         onClick={onFinish}
-                        className="w-full bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2.5 rounded-lg"
+                        className="w-full bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-3 rounded-xl shadow-lg shadow-pink-500/30"
                     >
                         See my page
                     </button>

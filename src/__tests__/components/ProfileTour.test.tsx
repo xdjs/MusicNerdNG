@@ -208,3 +208,28 @@ describe('ProfileTour — armed while already mounted', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 });
+
+
+describe('ProfileTour — must not run mid-build', () => {
+    // The page now gates the tour on onboarding being COMPLETE, so a stale flag
+    // cannot start it while the build is still going. This pins the component
+    // half of that contract: it renders only when armed, and completing clears
+    // the arming flag so a later visit does not resurrect it.
+    beforeEach(() => {
+        document.body.replaceChildren();
+        sessionStorage.clear();
+        withAnchors();
+    });
+
+    it('a stale pending flag from a previous session does not survive completion', () => {
+        // Pete saw "we drafted your About" over an About that did not exist yet,
+        // because a pending flag from an earlier run was still set.
+        sessionStorage.setItem(tourPendingKey('a1'), '1');
+        const first = render(<ProfileTour artistId="a1" />);
+        fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+        first.unmount();
+
+        render(<ProfileTour artistId="a1" />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+});

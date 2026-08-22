@@ -132,12 +132,15 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
             <AutoRefresh showLoading={false} />
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
 
-                {/* Rendered for the claimant regardless of onboarding state, and
-                    self-gating on its own flag. It must OUTLIVE onboarding: the
-                    build completes onboarding as its last act, so anything
-                    conditioned on "not complete" is unmounted before the tour
-                    has anything to point at. */}
-                {isClaimedByUser && <ProfileTour artistId={artist.id} />}
+                {/* Gated on onboarding being COMPLETE, which is the only state in
+                    which a post-build tour makes sense. Without this, a stale
+                    "pending" flag from an earlier session started the tour while
+                    the build was still running — the artist watched a card say
+                    "we drafted your About" over an About that did not exist yet.
+                    Note this is the INVERSE of the gate on OnboardingGate below:
+                    once complete it stays complete, so unlike that one this
+                    cannot be unmounted out from under the tour. */}
+                {isClaimedByUser && onboardingState?.complete && <ProfileTour artistId={artist.id} />}
 
                 {onboardingState && !onboardingState.complete && (
                     <OnboardingGate
