@@ -19,6 +19,7 @@
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
+import { getSpotifyCatalogDetail, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
 import { getInterviewAnswers, getArtistDoc, upsertArtistDoc, upsertArtistDocSources } from "@/server/utils/queries/onboardingQueries";
 import { getDocCorrections } from "@/server/utils/queries/docCorrectionQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
@@ -184,7 +185,22 @@ export function extractCitedIds(text: string): Set<number> {
  *  the UI. Valid markers are left exactly as the model wrote them. */
 function validateCitations(text: string, sources: DocSource[]): string {
     const validIds = new Set(sources.map(s => s.id));
-    return text.replace(/\[(\d+)\]/g, (full, idStr) => (validIds.has(Number(idStr)) ? full : ""));
+    return text
+        .replace(/\[(\d+)\]/g, (full, idStr) => (validIds.has(Number(idStr)) ? full : ""))
+        // A marker that isn't a number at all. The model cited the catalog block
+        // as "[VERIFIED CATALOG]" — reference data presented to the reader as a
+        // source, and one that resolves to nothing. Only numbered ids from the
+        // manifest are citations; anything else in brackets is model litter.
+        // Deliberately narrow: real prose uses brackets for asides, so this only
+        // removes ALL-CAPS bracket tokens, which prose does not produce.
+        .replace(/\s*\[[A-Z][A-Z \-_]{2,}\]/g, "")
+        // "(date unknown)" is OUR label for the model, telling it we could not
+        // establish a date. It has now twice been copied into the document as
+        // though it were a fact about the release — '"Vi$ions" (date unknown)'.
+        // The prompt forbids it and the model does it anyway, so remove it here
+        // rather than adding a third sentence asking nicely. A missing date
+        // should simply be absent, not announced.
+        .replace(/\s*\((?:date unknown|year unknown|no date)\)/gi, "");
 }
 
 /** The public-facing counterpart to `validateCitations`: removes EVERY `[n]`
@@ -275,6 +291,18 @@ She still keeps her old cover-band setlists in her guitar case — a specific, s
 // signal" placeholder here would teach the model the exact anti-pattern the
 // omit rule forbids ("no placeholders, no 'TBD', no empty sections").
 
+/** Today, for the model.
+ *
+ *  Without it, a source written before a release date describes that release in
+ *  its own future tense and the document copies it straight through. A real
+ *  artist's page read "his latest release, 'rush', was scheduled to drop on
+ *  Subvert on March 1" in late August — the record was out, and we were
+ *  announcing it. A model cannot reconcile tense against a date it does not
+ *  have. */
+function todayISO(): string {
+    return new Date().toISOString().slice(0, 10);
+}
+
 const DOC_SYSTEM_INSTRUCTION = (artistName: string) => `You compile an internal knowledge document about the music artist "${artistName}" for Music Nerd — a public artist directory, not a label's internal pitch deck.
 
 Use ONLY these section headers, in this order, and OMIT any section entirely if you have no real, specific material for it (no placeholders, no "not enough signal" lines — just leave the section out):
@@ -305,13 +333,24 @@ CORRECTIONS — if a CORRECTIONS FROM THE ARTIST block is present, it is the hig
 - Corrections carry no [n] marker. Write the corrected claim without one rather than citing a source that contradicts it.
 - Never argue with a correction in the text ("though one source says..."). The artist is the authority on their own life.
 
-TIME — every source is labelled with when it was published, and you must use it:
-- A claim from an old source describes the moment that source was written, NOT today. "Parris Pierce is my production partner", taken from a 2019 interview, is "as of 2019, he was working with Parris Pierce" — never a statement about now. Write those in the past tense, or attach the year.
-- The present tense is for things a RECENT source supports, or things that do not decay: where someone was born, what they released, what a record sounds like. Roles, partnerships, locations, jobs, "currently", "is working on", and anything about who someone is signed to or lives with all decay — scope them.
-- Two sources disagreeing is usually one of them being older, not a contradiction. Prefer the newer, and say the older was true earlier if it is worth keeping at all.
-- "date unknown" means you do not know it is current, NOT that it is. Treat it like an old source: attribute rather than assert.
-- Do not invent a date, and never write a year that does not appear in the source labels.
-- The source labels are for YOU, not for the reader. Never copy "date unknown", "published ...", or "N years ago" into the document itself. If you do not know when something happened, write it without a date rather than announcing the gap.
+TIME — today is ${todayISO()}. Read every source against that date.
+
+MOST FACTS ARE PERMANENT. State them plainly, with no hedge and no year attached to them:
+- A release, a track, a credit, a placement, a feature, an award, a competition won, a band formed, a label founded, where someone was born or grew up. These happened. They do not stop having happened.
+- "He has a song on Jesse Boykins III's EP Bartholomew WAVE I" is permanent. Writing "as of 2019, he had a song on..." is WRONG — it reads as though the song might have since come off the record.
+
+ONLY SCOPE WHAT ACTUALLY DECAYS: a current role or job title, an ongoing partnership, where someone lives now, who they are signed to, who they are "currently" developing or working with, and anything phrased as latest/newest/upcoming. Those can quietly stop being true, so they take the year the source was written: "as of 2019, Parris Pierce was his production partner."
+
+"As of YEAR" attaches to a STATE, never to an action. "As of 2026, he co-directed a documentary" is wrong twice over — co-directing is a completed act, and the phrase reads as though it might be undone. Say when it happened instead: "he co-directed Big Scouse (2026)". If you find yourself writing "as of" in front of a past-tense verb, you want a date in brackets.
+
+THE SOURCE'S DATE IS NOT THE EVENT'S DATE. A 2019 interview mentioning a placement does NOT mean the placement happened in 2019 — it means that by 2019 it had happened. Never attach a source's publication year to an event as if it were the event's year. If a source does not say when something happened, write it with no date at all. A missing date is honest; a wrong one is not.
+
+RECONCILE AGAINST TODAY. Sources were written in the past and describe the future in their own present tense. A release "dropping March 1st", read from a page written before that date, has already come out — write it as released, or drop the date language entirely. NEVER carry "will", "is scheduled to", "upcoming", "coming soon" or a future-dated plan into this document for a date that has already passed. This is a music database: saying a released record is forthcoming is worse than saying nothing about it.
+
+- Two sources disagreeing is usually one being older, not a contradiction. Prefer the newer.
+- "date unknown" means you do not know whether a DECAYING claim is current — attribute rather than assert. It changes nothing about permanent facts.
+- Never invent a date. Never write a year that appears nowhere in the material.
+- The source labels are for YOU, not the reader. Never copy "date unknown", "published ...", or "N years ago" into the document.
 
 ANTI-INFLATION — characterize the artist's body of work only as far as the evidence actually supports:
 - A trait, style, or interest shown in only recent material (a handful of posts, one interview answer, the latest release) is described as recent and scoped in time — "on his latest releases", "he's said recently" — never generalized into "his sound is X" or "known for X" when the evidence only covers a narrow recent window.
@@ -322,6 +361,12 @@ OTHER RULES:
 - Mine, don't summarize: prefer one specific, tellable detail over three generic facts.
 - Name real people, places, songs, venues, and dates whenever the material supports them.
 - ## Story hooks: 2-5 bullet points, each one narratable specific a fan would repeat to a friend.
+- ## Discography Highlights: HIGHLIGHTS, NOT A CATALOG. AT MOST 6 ENTRIES. The artist's streaming links already list every release and stay current, so copying the catalog in here adds nothing and goes stale the day they put something out.
+  DO NOT DESCRIBE THE FORMAT. Never write that something is a single, an EP, an album, a mix or a solo release. The reader can see that, and it is the padding this section keeps filling up with.
+  EVERY ENTRY MUST CONTAIN AT LEAST ONE OF: a named collaborator, a named placement (a show, a film, a label, a playlist), or something that actually happened around it. An entry with a title, a year and nothing else FAILS THIS TEST and must be deleted, however much room is left. Check each line you write against that before you keep it.
+  Good: "Vi$ions" (2019) — co-produced with Cherele, placed on HBO's Insecure. Bad: "Por Tu Barrio" (2023) — a single.
+  Three entries that pass beats six that do not. If fewer than two pass, omit the section entirely; the artist's streaming links already list everything.
+  The VERIFIED CATALOG is for TITLES AND DATES, not a list to reproduce. It outranks any date a webpage gives: a release the catalog dates gets that date plainly, "rush (2026)". A release it does not carry gets no date at all.
 - ## Industry Connections: for each collaborator you name, say what the collaboration actually was (a track, a project, a mix credit) — never list a bare handle or name with nothing said about what happened. If the material gives you a handle with no indication of what the collaboration was, leave it out rather than padding a list with it.
 - ## Who They Are: one or two sentences on something specific and human about them — not a marketing pitch, no "appeals to X demographic" or "multi-genre appeal" language.
 - ## In Their Own Words: 2-6 direct quotations, VERBATIM and in quotation marks, each with a short lead-in saying what it is about — how they work, what they believe, advice they have given. This is the section a fan's question is most often answered from, so prefer what the artist actually said to any paraphrase of it. Interviews are full of this material and it is the first thing a summary throws away. Quote only what a source actually contains; never smooth a quote into better English. Biography belongs in the sections above, not here.
@@ -336,6 +381,15 @@ OTHER RULES:
  *  of his own profile. selectSourceText only has to choose at all when a source
  *  runs longer than this. */
 export const SOURCE_TEXT_BUDGET = 12_000;
+
+/** How many catalog rows reach the prompt. Grounding, not a discography — the
+ *  artist's Spotify and Deezer links carry the full catalog and stay current,
+ *  where a copy baked into a generated document goes stale the day they release
+ *  something. Pete, on seeing three Instagram-derived tracks: "that's only a few
+ *  from over a hundred songs I've been a part of" — and then, on the fix:
+ *  "we don't need to shove all the releases into the knowledge doc, if we have
+ *  access to deezer and spotify right?" */
+const CATALOG_LINES = 40;
 
 /**
  * The most relevant `SOURCE_TEXT_BUDGET` characters of a source, not the first.
@@ -459,6 +513,30 @@ async function buildDocContext(artistId: string, presetSources?: DocSource[]): P
     if (artist.x) parts.push(`X: https://x.com/${artist.x}`);
     if (artist.soundcloud) parts.push(`SoundCloud: ${artist.soundcloud}`);
     if (artist.youtube) parts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, "")}`);
+
+    // The artist's real catalog, with real release dates. Before this, releases
+    // came from whatever Instagram captions happened to mention and got dated by
+    // the publication year of the article that referenced them — so a placement
+    // read "as of 2019" because an interview from 2019 mentioned it. Spotify is
+    // authoritative for both the title and the date; a webpage is not.
+    if (artist.spotify) {
+        try {
+            const catalog = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders());
+            if (catalog.length > 0) {
+                const lines = catalog.slice(0, CATALOG_LINES).map(r =>
+                    `${(r.releaseDate ?? "date unknown").padEnd(12)} ${(r.kind ?? "release").padEnd(11)} ${r.name}`);
+                parts.push(
+                    `\n--- VERIFIED CATALOG (the artist's own Spotify — authoritative for titles and release dates) ---\n`
+                    + `This is reference data, NOT a numbered source. Never cite it. Never write "[VERIFIED CATALOG]" or any marker for it.\n`
+                    + `${lines.join("\n")}\n--- END CATALOG ---`
+                );
+            }
+        } catch (e) {
+            // Never fail a document build over the catalog: the sources are the
+            // substance, this is grounding.
+            console.error("[buildDocContext] Spotify catalog unavailable:", e);
+        }
+    }
 
     if (material.vaultSources.length > 0) {
         const sourceContext = material.vaultSources.map((s, i) => {

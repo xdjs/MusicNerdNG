@@ -17,20 +17,35 @@
  * look at and say "that's wrong" about, which is the whole point.
  */
 
-/** Internal section headers, mapped to what an artist should see. A section
- *  absent from this map is not rendered at all: `Overview` is their About and
- *  `Online Presence` is their Links, both already on the page, and showing them
- *  twice invites contradictory edits in two places. */
-const SECTION_LABELS: Record<string, string> = {
-    "Career Highlights": "What you've done",
-    "Story hooks": "Things worth telling",
-    "Sound & Influences": "Your sound",
-    "Discography Highlights": "Your releases",
-    "Industry Connections": "Who you've worked with",
-    "Recent Activity": "Lately",
-    "Who They Are": "You, off the record",
-    "In Their Own Words": "Things you've said",
-    "Audience & Fanbase": "Your audience",
+/**
+ * Internal section headers, mapped to what an artist should see.
+ *
+ * A section absent from this map is not rendered: `Online Presence` is their
+ * Links, already on the page, and editing one fact in two places is how the two
+ * end up disagreeing.
+ *
+ * `Overview` used to be hidden on the same reasoning — it overlaps the About.
+ * That was wrong. The About is public prose; the Overview is the identity
+ * statement the whole document is built on, and hiding it meant the artist could
+ * not correct the single most load-bearing sentence about them. Pete: "nowhere
+ * do we say who you are in the knowledge base."
+ *
+ * `whole` keeps a section's paragraph intact instead of splitting it into
+ * sentences. Who someone IS is one claim — offering three separate corrections
+ * for "producer, creative director and web3 consultant / born in Bogota / moved
+ * at 11" invites fixing a third of a sentence.
+ */
+const SECTIONS: Record<string, { label: string; whole?: boolean }> = {
+    "Overview": { label: "Who you are", whole: true },
+    "Career Highlights": { label: "What you've done" },
+    "Story hooks": { label: "Things worth telling" },
+    "Sound & Influences": { label: "Your sound" },
+    "Discography Highlights": { label: "Your releases" },
+    "Industry Connections": { label: "Who you've worked with" },
+    "Recent Activity": { label: "Lately" },
+    "Who They Are": { label: "What drives you" },
+    "In Their Own Words": { label: "Things you've said" },
+    "Audience & Fanbase": { label: "Your audience" },
 };
 
 export type DocClaim = {
@@ -51,6 +66,8 @@ export type DocSection = {
     label: string;
     claims: DocClaim[];
 };
+
+type Pending = DocSection & { whole: boolean; buffer: string[] };
 
 const MARKER = /\[(\d+)\](?:\[(\d+)\])*/g;
 
@@ -127,10 +144,26 @@ function splitSentences(paragraph: string): string[] {
 export function parseDocClaims(doc: string): DocSection[] {
     if (!doc?.trim()) return [];
     const sections: DocSection[] = [];
-    let current: DocSection | null = null;
+    let current: Pending | null = null;
+
+    const push = (section: Pending, piece: string) => {
+        const text = stripMarkers(piece);
+        // A fragment that is only a citation, or a stub, is not something a
+        // person can judge — dropping it beats rendering an empty row.
+        if (text.length < 12) return;
+        section.claims.push({
+            key: `${section.header}:${section.claims.length}`,
+            text,
+            sourceIds: citedIds(piece),
+        });
+    };
 
     const flush = () => {
-        if (current && current.claims.length > 0) sections.push(current);
+        if (current) {
+            // A `whole` section held its lines back so it becomes one claim.
+            if (current.whole && current.buffer.length > 0) push(current, current.buffer.join(" "));
+            if (current.claims.length > 0) sections.push({ header: current.header, label: current.label, claims: current.claims });
+        }
         current = null;
     };
 
@@ -141,29 +174,20 @@ export function parseDocClaims(doc: string): DocSection[] {
         if (heading) {
             flush();
             const header = heading[1];
-            const label = SECTION_LABELS[header];
-            current = label ? { header, label, claims: [] } : null;
+            const conf = SECTIONS[header];
+            current = conf ? { header, label: conf.label, claims: [], whole: !!conf.whole, buffer: [] } : null;
             continue;
         }
         // The `# NAME - Artist Knowledge Document` title and anything before the
         // first known section.
         if (!current || !line || line.startsWith("#")) continue;
 
+        if (current.whole) { current.buffer.push(line.replace(/^[-*]\s+/, "")); continue; }
+
         const pieces = line.startsWith("- ") || line.startsWith("* ")
             ? [line.slice(2).trim()]
             : splitSentences(line);
-
-        for (const piece of pieces) {
-            const text = stripMarkers(piece);
-            // A fragment that is only a citation, or a stub, is not something a
-            // person can judge — dropping it beats rendering an empty row.
-            if (text.length < 12) continue;
-            current.claims.push({
-                key: `${current.header}:${current.claims.length}`,
-                text,
-                sourceIds: citedIds(piece),
-            });
-        }
+        for (const piece of pieces) push(current, piece);
     }
     flush();
     return sections;

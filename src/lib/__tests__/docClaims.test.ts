@@ -18,13 +18,28 @@ Instagram handle @p3t3rango[instagram].
 `;
 
 describe("parseDocClaims", () => {
-    it("drops sections the artist already sees elsewhere on the page", () => {
-        // Overview is their About and Online Presence is their Links. Rendering
-        // either twice invites contradictory edits in two places.
+    it("drops Online Presence, which is the artist's Links section", () => {
+        // Editing one fact in two places is how the two end up disagreeing.
         const headers = parseDocClaims(DOC).map(s => s.header);
-        expect(headers).not.toContain("Overview");
         expect(headers).not.toContain("Online Presence");
         expect(headers).toContain("Career Highlights");
+    });
+
+    it("SHOWS the Overview, as one claim, under a heading that says who you are", () => {
+        // Overview was hidden on the grounds that it overlaps the About. Wrong:
+        // the About is public prose, the Overview is the identity statement the
+        // rest of the document rests on, and hiding it meant the artist could
+        // not correct the single most load-bearing sentence about them. Pete:
+        // "nowhere do we say who you are in the knowledge base."
+        //
+        // One claim, not three: offering separate corrections for "producer" /
+        // "born in Bogota" / "moved at 11" invites fixing a third of a sentence.
+        const section = parseDocClaims(DOC).find(s => s.header === "Overview");
+        expect(section.label).toBe("Who you are");
+        expect(section.claims).toHaveLength(1);
+        expect(section.claims[0].text).toContain("Pete Rango is a music producer");
+        expect(section.claims[0].text).toContain("He founded XUE RECORDS");
+        expect(section.claims[0].sourceIds).toEqual([4]);
     });
 
     it("gives every section a human label instead of the internal header", () => {
@@ -92,6 +107,6 @@ describe("parseDocClaims", () => {
     });
 
     it("counts claims across sections", () => {
-        expect(countClaims(parseDocClaims(DOC))).toBe(3);
+        expect(countClaims(parseDocClaims(DOC))).toBe(4); // + the Overview, as one
     });
 });

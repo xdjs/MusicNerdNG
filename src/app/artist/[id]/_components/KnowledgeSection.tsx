@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { Check, Pencil, X, ExternalLink, Undo2, Loader2 } from "lucide-react";
+import { EditModeContext } from "@/app/_components/EditModeContext";
+import RevealSection from "./RevealSection";
 import { getKnowledgeDoc, correctDocClaim, undoDocCorrection } from "@/app/actions/dashboardActions";
 import { parseDocClaims, countClaims, type DocSection } from "@/lib/docClaims";
 
@@ -179,10 +181,14 @@ function ClaimRow({
  * it came from and its year, and two actions a person can answer honestly —
  * that's wrong, or here's what it really is.
  *
- * Owner-only. This is working material about a person, not something to serve to
- * visitors; the server action gates on `verifyArtistEditable` regardless.
+ * Owner-only AND edit-mode-only. This is working material about a person, never
+ * something to serve to visitors, and it is not something the artist wants
+ * sitting under their profile the rest of the time either — Pete: "it should
+ * only appear to edit once artist hits edit." Same gate the vault already uses.
+ * The server action re-checks ownership regardless of this.
  */
 export default function KnowledgeSection({ artistId }: { artistId: string }) {
+    const { isEditing, canEdit } = useContext(EditModeContext);
     const [sections, setSections] = useState<DocSection[]>([]);
     const [sources, setSources] = useState<DocSource[]>([]);
     const [corrections, setCorrections] = useState<Correction[]>([]);
@@ -201,7 +207,11 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
         setLoading(false);
     }, [artistId]);
 
-    useEffect(() => { void load(); }, [load]);
+    // Only fetched once the artist is actually editing — otherwise every page
+    // view pays for a server action whose result nobody is allowed to see.
+    useEffect(() => {
+        if (canEdit && isEditing) void load();
+    }, [load, canEdit, isEditing]);
 
     const correctionFor = (claim: string) => corrections.find(c => c.claim === claim);
 
@@ -231,17 +241,26 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
         setBusy(false);
     };
 
+    if (!canEdit || !isEditing) return null;
+
+    const shell = (children: React.ReactNode) => (
+        <RevealSection className="glass p-4 sm:p-5 space-y-3">
+            <h2 className="text-black dark:text-white text-xl font-bold">What we know about you</h2>
+            {children}
+        </RevealSection>
+    );
+
     if (loading) {
-        return (
-            <div className="flex items-center gap-2 text-sm text-gray-500 py-6">
+        return shell(
+            <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                 <Loader2 size={14} className="animate-spin" /> Loading what we know&hellip;
             </div>
         );
     }
 
     if (!hasDoc) {
-        return (
-            <p className="text-sm text-gray-500 dark:text-gray-400 py-4">
+        return shell(
+            <p className="text-sm text-gray-500 dark:text-gray-400">
                 Nothing here yet. This fills in once your page has been built from your sources.
             </p>
         );
@@ -249,7 +268,7 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
 
     const total = countClaims(sections);
 
-    return (
+    return shell(
         <div className="space-y-6">
             <p className="text-sm text-gray-600 dark:text-gray-300/80">
                 {total} thing{total === 1 ? "" : "s"} we&apos;d tell someone who asked about you, and where each one came from.

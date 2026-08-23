@@ -238,16 +238,13 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </div>
 
                 {/* 8. What we know — the knowledge document, as correctable claims.
-                    Owner-only: this is our working material about a person, and it
-                    sits AFTER the sources deliberately, because every claim in it
-                    points back at one of them. The server action re-checks
-                    ownership regardless of this gate. */}
-                {canEdit && (
-                    <RevealSection id="mn-knowledge" className="glass p-4 sm:p-5 space-y-3">
-                        <h2 className="text-lg font-bold text-black dark:text-white">What we know about you</h2>
-                        <KnowledgeSection artistId={artist.id} />
-                    </RevealSection>
-                )}
+                    Sits AFTER the sources deliberately, because every claim in it
+                    points back at one of them. The component owns its own gating
+                    (owner AND editing) the way VaultSection does, so it renders
+                    nothing at all the rest of the time. */}
+                <div id="mn-knowledge">
+                    <KnowledgeSection artistId={artist.id} />
+                </div>
 
             </div>
             </EditModeProvider>
