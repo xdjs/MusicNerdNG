@@ -49,6 +49,11 @@ const MAX_INDEX_FOLLOWS = 3;
  *  urlmap, so this is a real cost on a latency-bounded step. */
 const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
 
+/** One spelling of a handle. Stored values are inconsistently "@"-prefixed. */
+function normalizeHandle(v: string): string {
+    return v.trim().toLowerCase().replace(/^@/, "");
+}
+
 const ACCOUNT_PLATFORMS = new Set([
     "instagram", "x", "tiktok", "youtube", "youtubechannel",
     "soundcloud", "bandcamp", "twitch", "facebook", "spotify", "deezer",
@@ -171,26 +176,49 @@ async function adoptHandlesFromOwnPage(
     const resolved: { siteName: string; id: string }[] = [];
     for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
         const match = await extractArtistId(stripQuery(link)).catch(() => undefined);
-        if (match?.siteName && match?.id) resolved.push({ siteName: match.siteName, id: String(match.id) });
+        if (match?.siteName && match?.id) resolved.push({ siteName: match.siteName, id: normalizeHandle(String(match.id)) });
     }
 
     const corroborator = resolved.find(r => {
         const held = artist[r.siteName];
-        return typeof held === "string" && !!held && held.toLowerCase() === r.id.toLowerCase();
+        // Normalised on BOTH sides. isKnownProfileUrl in this file already
+        // strips a leading "@", as do profileDiscovery, socialIngest and
+        // socialSignals — a stored "@dupesdidit" comparing unequal to a
+        // resolved "dupesdidit" would silently disable this whole feature for
+        // that artist, with no error anywhere.
+        return typeof held === "string" && !!held && normalizeHandle(held) === r.id;
     });
     if (!corroborator) return 0;
     console.log(`[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`);
 
+    // A page naming TWO different handles for one platform is ambiguous — an
+    // artist's footer can carry their own Instagram beside their label's. The
+    // pre-loop `artist` snapshot never sees what this loop just wrote, so
+    // without this the second silently overwrites the first and the result is
+    // decided by link order. Abstain instead of guessing.
+    const ambiguous = new Set(
+        resolved
+            .filter(r => resolved.some(o => o.siteName === r.siteName && o.id !== r.id))
+            .map(r => r.siteName),
+    );
+    for (const platform of ambiguous) {
+        console.log(`[vaultWebSearch] Own page names more than one ${platform} handle — adopting none`);
+    }
+
     let adopted = 0;
+    const done = new Set<string>();
     for (const r of resolved) {
         if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
         // instagram.com/p/<id> resolves to the "handle" p — one adoption away
         // from writing that onto an artist row.
         if (isReservedHandle(r.siteName, r.id)) continue;
+        if (ambiguous.has(r.siteName)) continue;
+        if (done.has(r.siteName)) continue;
         if (artist[r.siteName]) continue; // already have it
         try {
             await setArtistLink(artistId, r.siteName, r.id);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
+            done.add(r.siteName);
             adopted++;
         } catch (e) {
             console.warn(`[vaultWebSearch] Could not save ${r.siteName} from own page:`, e);

@@ -247,13 +247,25 @@ export async function getArtistById(id: string) {
 // Links helpers
 // ----------------------------------
 
+/** The urlmap changes when someone adds a platform, which is rare, and it is
+ *  read on EVERY extractArtistId call — so discovery, which resolves dozens of
+ *  URLs per run, was doing dozens of whole-table selects. A short TTL keeps it
+ *  fresh enough for an admin adding a platform while removing the repeat cost
+ *  inside a single run. Deliberately a plain module-level memo rather than
+ *  unstable_cache: this is called from detached background work where
+ *  unstable_cache throws (see cachedOrDirect). */
+const URLMAP_TTL_MS = 60_000;
+let urlmapCache: { rows: Awaited<ReturnType<typeof db.query.urlmap.findMany>>; at: number } | null = null;
+
 export async function getAllLinks() {
+    if (urlmapCache && Date.now() - urlmapCache.at < URLMAP_TTL_MS) return urlmapCache.rows;
     const start = performance.now();
     try {
-        return await db.query.urlmap.findMany();
+        const rows = await db.query.urlmap.findMany();
+        urlmapCache = { rows, at: Date.now() };
+        return rows;
     } finally {
-        const end = performance.now();
-        console.debug(`[getAllLinks] took ${end - start}ms`);
+        console.debug(`[getAllLinks] took ${performance.now() - start}ms`);
     }
 }
 
