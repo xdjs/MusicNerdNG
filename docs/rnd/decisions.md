@@ -99,5 +99,20 @@ Raised, not settled. Move up into a dated section when they close.
   — and taking it to the team. Numbers and the emails-about-posts direction are in
   [onboarding-fixes 4.5](onboarding-fixes.md). *(8/22)*
 
+- **How does one human hold several DSP artist profiles?** Sherwinn "Dupes" Brice has four Deezer
+  entities and can claim one — compounds minted before multi-primary-artist support ("X & Hebrue")
+  plus punctuation variants. `artists` holds one spotify and one deezer id per row, so there is no
+  representation for it. Detection is easy; auto-merging is the name matching that produced three
+  wrong-artist incidents in a week. Proposal is to ask at claim time and claim all in one action.
+  Written up in [research](research/2026-08-24-identity-fragmentation-and-link-rot.md). Raised by
+  Pete. *(8/24)*
+- **How do we preserve a source after its publisher goes offline?** loopnews.com went down and took
+  much of the Caribbean scene's written record with it. We now store article text, so a dead URL no
+  longer empties a profile — but only for captures since 8/22, and we have no liveness check, no
+  content hash and no independent copy. Pete raised blockchain; the split worth deciding is storage
+  (database/Arweave) versus tamper-evident timestamping (hash on-chain), and what may lawfully be
+  republished permanently versus held internally. Same
+  [research](research/2026-08-24-identity-fragmentation-and-link-rot.md). *(8/24)*
+
 - **How relationships in the database become explorable** — what counts as an edge, whether edges
   weigh equally, verified vs. inferred vs. artist-described. On the 8/20 agenda, never reached.
