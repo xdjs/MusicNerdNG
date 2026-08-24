@@ -19,7 +19,9 @@
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
-import { getInterviewAnswers, getArtistDoc } from "@/server/utils/queries/onboardingQueries";
+import { getSpotifyCatalogDetail, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
+import { getInterviewAnswers, getArtistDoc, upsertArtistDoc, upsertArtistDocSources } from "@/server/utils/queries/onboardingQueries";
+import { getDocCorrections } from "@/server/utils/queries/docCorrectionQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
@@ -55,6 +57,11 @@ export type DocSource = {
     kind: "vault" | "interview" | "social";
     label: string;
     url: string | null;
+    /** ISO date the source says it was published, when it says. Persisted with
+     *  the manifest so the artist's own review surface can show "VoyageMIA ·
+     *  2019" against a claim — which is usually the whole explanation for why a
+     *  claim reads stale. Only vault sources have one. */
+    publishedAt?: string | null;
 };
 
 // Collaborators are capped much tighter than track credits: a track credit
@@ -148,7 +155,7 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
 function toSourceList(m: DocMaterial): DocSource[] {
     const sources: DocSource[] = [];
     let nextId = 1;
-    for (const s of m.vaultSources) sources.push({ id: nextId++, kind: "vault", label: s.title ?? s.url, url: s.url });
+    for (const s of m.vaultSources) sources.push({ id: nextId++, kind: "vault", label: s.title ?? s.url, url: s.url, publishedAt: s.publishedAt ?? null });
     for (const a of m.answers) sources.push({ id: nextId++, kind: "interview", label: `Their own words — "${a.question}"`, url: null });
     for (const c of m.socialCollaborators) sources.push({ id: nextId++, kind: "social", label: `Instagram collaboration with @${c.handle}`, url: c.url });
     for (const r of m.socialMusicRefs) sources.push({ id: nextId++, kind: "social", label: `Track credit — "${r.title}" (${r.artist})`, url: r.url });
@@ -178,7 +185,22 @@ export function extractCitedIds(text: string): Set<number> {
  *  the UI. Valid markers are left exactly as the model wrote them. */
 function validateCitations(text: string, sources: DocSource[]): string {
     const validIds = new Set(sources.map(s => s.id));
-    return text.replace(/\[(\d+)\]/g, (full, idStr) => (validIds.has(Number(idStr)) ? full : ""));
+    return text
+        .replace(/\[(\d+)\]/g, (full, idStr) => (validIds.has(Number(idStr)) ? full : ""))
+        // A marker that isn't a number at all. The model cited the catalog block
+        // as "[VERIFIED CATALOG]" — reference data presented to the reader as a
+        // source, and one that resolves to nothing. Only numbered ids from the
+        // manifest are citations; anything else in brackets is model litter.
+        // Deliberately narrow: real prose uses brackets for asides, so this only
+        // removes ALL-CAPS bracket tokens, which prose does not produce.
+        .replace(/\s*\[[A-Z][A-Z \-_]{2,}\]/g, "")
+        // "(date unknown)" is OUR label for the model, telling it we could not
+        // establish a date. It has now twice been copied into the document as
+        // though it were a fact about the release — '"Vi$ions" (date unknown)'.
+        // The prompt forbids it and the model does it anyway, so remove it here
+        // rather than adding a third sentence asking nicely. A missing date
+        // should simply be absent, not announced.
+        .replace(/\s*\((?:date unknown|year unknown|no date)\)/gi, "");
 }
 
 /** The public-facing counterpart to `validateCitations`: removes EVERY `[n]`
@@ -187,10 +209,20 @@ function validateCitations(text: string, sources: DocSource[]): string {
  *  itself keeps its markers (it's shown with citations as its own artifact);
  *  only the About's clean, published form goes through this. */
 export function stripCitationMarkers(text: string): string {
-    // Markers are written with no space before them ("...influences[3]."), so a
-    // straight removal never leaves a double space behind — no whitespace
-    // collapsing needed beyond the final trim.
-    return text.replace(/\[\d+\]/g, "").trim();
+    // The prompt asks for markers with no space before them ("...influences[3]."),
+    // and the model does not always comply — real output included "based in
+    // Miami, FL [1]." A straight removal then leaves " ." in the PUBLISHED About,
+    // since the auto-build stores exactly this string as the artist's bio.
+    //
+    // Only spaces and tabs are eaten before a marker, never newlines: a marker at
+    // the start of a line must not pull the paragraph break out with it.
+    return text
+        .replace(/[ \t]*\[\d+\]/g, "")
+        .replace(/[ \t]+([.,;:!?)\]])/g, "$1")
+        // A marker that opened a line leaves its trailing space behind.
+        .replace(/(^|\n)[ \t]+/g, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
 }
 
 function sourceManifestBlock(sources: DocSource[]): string {
@@ -247,12 +279,29 @@ Spotify artist page linked and verified[1]. Instagram handle @marisolecho, used 
 
 ## Who They Are
 She still keeps her old cover-band setlists in her guitar case — a specific, small habit that says more about where she came from than any bio line would[2].
+
+## In Their Own Words
+- On working alone: "I like that nobody's waiting on me. If a song's bad, it's bad on my own time."[2]
+- On why she left the cover band: "I remember what boring feels like. That's the whole reason I write anything."[2]
+- On the pantry studio: "Everyone keeps telling me to treat the room. I think the fridge is on the record now."[2]
 `.trim();
 // NOTE: no "## Audience & Fanbase" section above — the fictional source
 // material has no real signal for it, so the worked example demonstrates
 // the omit rule directly rather than describing it. Writing a "not enough
 // signal" placeholder here would teach the model the exact anti-pattern the
 // omit rule forbids ("no placeholders, no 'TBD', no empty sections").
+
+/** Today, for the model.
+ *
+ *  Without it, a source written before a release date describes that release in
+ *  its own future tense and the document copies it straight through. A real
+ *  artist's page read "his latest release, 'rush', was scheduled to drop on
+ *  Subvert on March 1" in late August — the record was out, and we were
+ *  announcing it. A model cannot reconcile tense against a date it does not
+ *  have. */
+function todayISO(): string {
+    return new Date().toISOString().slice(0, 10);
+}
 
 const DOC_SYSTEM_INSTRUCTION = (artistName: string) => `You compile an internal knowledge document about the music artist "${artistName}" for Music Nerd — a public artist directory, not a label's internal pitch deck.
 
@@ -266,6 +315,7 @@ Use ONLY these section headers, in this order, and OMIT any section entirely if 
 ## Recent Activity
 ## Online Presence
 ## Who They Are
+## In Their Own Words
 ## Audience & Fanbase
 
 Here is a complete worked example for a fictional artist — follow its shape, density, and citation style exactly (but never reuse any of its facts):
@@ -277,6 +327,31 @@ CITATIONS — every factual claim must carry a marker:
 - Never invent a source number. Only cite ids that actually appear in the SOURCES manifest.
 - INTERVIEW sources are the artist's own words — quote them verbatim in quotation marks, never paraphrase, and still cite them.
 
+CORRECTIONS — if a CORRECTIONS FROM THE ARTIST block is present, it is the highest authority in this document, above every source:
+- A claim the artist marked REMOVE must not appear in any form. Do not rephrase it, do not soften it, do not keep the part you think is still true. They read it and said it was wrong about them.
+- Where the artist supplied a correction, state THEIR version. A source saying otherwise is out of date or mistaken, not a second opinion to balance.
+- Corrections carry no [n] marker. Write the corrected claim without one rather than citing a source that contradicts it.
+- Never argue with a correction in the text ("though one source says..."). The artist is the authority on their own life.
+
+TIME — today is ${todayISO()}. Read every source against that date.
+
+MOST FACTS ARE PERMANENT. State them plainly, with no hedge and no year attached to them:
+- A release, a track, a credit, a placement, a feature, an award, a competition won, a band formed, a label founded, where someone was born or grew up. These happened. They do not stop having happened.
+- "He has a song on Jesse Boykins III's EP Bartholomew WAVE I" is permanent. Writing "as of 2019, he had a song on..." is WRONG — it reads as though the song might have since come off the record.
+
+ONLY SCOPE WHAT ACTUALLY DECAYS: a current role or job title, an ongoing partnership, where someone lives now, who they are signed to, who they are "currently" developing or working with, and anything phrased as latest/newest/upcoming. Those can quietly stop being true, so they take the year the source was written: "as of 2019, Parris Pierce was his production partner."
+
+"As of YEAR" attaches to a STATE, never to an action. "As of 2026, he co-directed a documentary" is wrong twice over — co-directing is a completed act, and the phrase reads as though it might be undone. Say when it happened instead: "he co-directed Big Scouse (2026)". If you find yourself writing "as of" in front of a past-tense verb, you want a date in brackets.
+
+THE SOURCE'S DATE IS NOT THE EVENT'S DATE. A 2019 interview mentioning a placement does NOT mean the placement happened in 2019 — it means that by 2019 it had happened. Never attach a source's publication year to an event as if it were the event's year. If a source does not say when something happened, write it with no date at all. A missing date is honest; a wrong one is not.
+
+RECONCILE AGAINST TODAY. Sources were written in the past and describe the future in their own present tense. A release "dropping March 1st", read from a page written before that date, has already come out — write it as released, or drop the date language entirely. NEVER carry "will", "is scheduled to", "upcoming", "coming soon" or a future-dated plan into this document for a date that has already passed. This is a music database: saying a released record is forthcoming is worse than saying nothing about it.
+
+- Two sources disagreeing is usually one being older, not a contradiction. Prefer the newer.
+- "date unknown" means you do not know whether a DECAYING claim is current — attribute rather than assert. It changes nothing about permanent facts.
+- Never invent a date. Never write a year that appears nowhere in the material.
+- The source labels are for YOU, not the reader. Never copy "date unknown", "published ...", or "N years ago" into the document.
+
 ANTI-INFLATION — characterize the artist's body of work only as far as the evidence actually supports:
 - A trait, style, or interest shown in only recent material (a handful of posts, one interview answer, the latest release) is described as recent and scoped in time — "on his latest releases", "he's said recently" — never generalized into "his sound is X" or "known for X" when the evidence only covers a narrow recent window.
 - Do not extrapolate a whole career or a stable identity from a few data points. If the material shows a shift or a new direction, say it's a shift, not a redescription of everything that came before it.
@@ -286,16 +361,92 @@ OTHER RULES:
 - Mine, don't summarize: prefer one specific, tellable detail over three generic facts.
 - Name real people, places, songs, venues, and dates whenever the material supports them.
 - ## Story hooks: 2-5 bullet points, each one narratable specific a fan would repeat to a friend.
+- ## Discography Highlights: HIGHLIGHTS, NOT A CATALOG. AT MOST 6 ENTRIES. The artist's streaming links already list every release and stay current, so copying the catalog in here adds nothing and goes stale the day they put something out.
+  DO NOT DESCRIBE THE FORMAT. Never write that something is a single, an EP, an album, a mix or a solo release. The reader can see that, and it is the padding this section keeps filling up with.
+  EVERY ENTRY MUST CONTAIN AT LEAST ONE OF: a named collaborator, a named placement (a show, a film, a label, a playlist), or something that actually happened around it. An entry with a title, a year and nothing else FAILS THIS TEST and must be deleted, however much room is left. Check each line you write against that before you keep it.
+  Good: "Vi$ions" (2019) — co-produced with Cherele, placed on HBO's Insecure. Bad: "Por Tu Barrio" (2023) — a single.
+  Three entries that pass beats six that do not. If fewer than two pass, omit the section entirely; the artist's streaming links already list everything.
+  The VERIFIED CATALOG is for TITLES AND DATES, not a list to reproduce. It outranks any date a webpage gives: a release the catalog dates gets that date plainly, "rush (2026)". A release it does not carry gets no date at all.
 - ## Industry Connections: for each collaborator you name, say what the collaboration actually was (a track, a project, a mix credit) — never list a bare handle or name with nothing said about what happened. If the material gives you a handle with no indication of what the collaboration was, leave it out rather than padding a list with it.
 - ## Who They Are: one or two sentences on something specific and human about them — not a marketing pitch, no "appeals to X demographic" or "multi-genre appeal" language.
+- ## In Their Own Words: 2-6 direct quotations, VERBATIM and in quotation marks, each with a short lead-in saying what it is about — how they work, what they believe, advice they have given. This is the section a fan's question is most often answered from, so prefer what the artist actually said to any paraphrase of it. Interviews are full of this material and it is the first thing a summary throws away. Quote only what a source actually contains; never smooth a quote into better English. Biography belongs in the sections above, not here.
 - Never fabricate. No hype words ("rising star", "eclectic", "undeniable").
-- Target under 900 words total.`;
+- LENGTH: aim for 1,100-1,400 words where the material genuinely supports it. This is a knowledge base that a fan-facing Q&A reads from, not a summary — a specific you leave out is a question that cannot be answered later. But never pad to reach it: an unsourced or generic line is worse than a shorter document, and a thin source set should produce a short one.`;
 
-const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You write the public "About" for the music artist "${artistName}" from their cited knowledge document.
+/** How much of one source's text reaches the document prompt.
+ *
+ *  Sized against what the model can actually read, not against habit: a handful
+ *  of full-length sources is roughly twenty thousand tokens against a context of
+ *  about a million. The previous 2,000 was cutting an artist's best credit out
+ *  of his own profile. selectSourceText only has to choose at all when a source
+ *  runs longer than this. */
+export const SOURCE_TEXT_BUDGET = 12_000;
+
+/** How many catalog rows reach the prompt. Grounding, not a discography — the
+ *  artist's Spotify and Deezer links carry the full catalog and stay current,
+ *  where a copy baked into a generated document goes stale the day they release
+ *  something. Pete, on seeing three Instagram-derived tracks: "that's only a few
+ *  from over a hundred songs I've been a part of" — and then, on the fix:
+ *  "we don't need to shove all the releases into the knowledge doc, if we have
+ *  access to deezer and spotify right?" */
+const CATALOG_LINES = 40;
+
+/**
+ * The most relevant `SOURCE_TEXT_BUDGET` characters of a source, not the first.
+ *
+ * Taking the head systematically favours whatever a page opens with, which for
+ * an interview is the childhood and for an article is the boilerplate. A real
+ * artist's best credit — "featured in HBO's Insecure" — sat at character 2,466
+ * of a 5,000-character profile and was cut by a 2,000-character head slice, so
+ * his About read as a summary of his childhood and never mentioned the credit.
+ *
+ * Paragraphs that name the artist are kept first, in their original order, then
+ * the rest fill whatever budget remains. Order is preserved so the model still
+ * reads a coherent narrative rather than a pile of ranked fragments.
+ */
+export function selectSourceText(text: string, artistName: string): string {
+    if (text.length <= SOURCE_TEXT_BUDGET) return text;
+
+    const paragraphs = text.split(/\n{2,}|(?<=\.)\s{2,}/).filter(p => p.trim());
+    if (paragraphs.length < 2) return text.slice(0, SOURCE_TEXT_BUDGET);
+
+    const tokens = artistName.toLowerCase().split(/\s+/).filter(t => t.length >= 4);
+    const mentionsArtist = (p: string) => {
+        const low = p.toLowerCase();
+        return low.includes(artistName.toLowerCase()) || tokens.some(t => low.includes(t));
+    };
+
+    const kept = new Set<number>();
+    let used = 0;
+    // Pass 1: paragraphs that actually talk about this artist.
+    paragraphs.forEach((para, i) => {
+        if (!mentionsArtist(para)) return;
+        if (used + para.length > SOURCE_TEXT_BUDGET) return;
+        kept.add(i);
+        used += para.length;
+    });
+    // Pass 2: fill the remainder with surrounding context, still in order.
+    paragraphs.forEach((para, i) => {
+        if (kept.has(i)) return;
+        if (used + para.length > SOURCE_TEXT_BUDGET) return;
+        kept.add(i);
+        used += para.length;
+    });
+    if (kept.size === 0) return text.slice(0, SOURCE_TEXT_BUDGET);
+
+    return paragraphs.filter((_, i) => kept.has(i)).join("\n\n");
+}
+
+const ABOUT_SYSTEM_INSTRUCTION = (artistName: string) => `You are a music writer. Write the public "About" for "${artistName}" from their cited knowledge document.
+
+WHAT THIS IS: a short editorial paragraph a music publication would run. Not a summary, not a changelog, not a list of true facts with verbs attached. A reader should finish it knowing who this artist IS — not merely what they have done.
 - ${ABOUT_LENGTH_RULE} ${ABOUT_STOP_RULE} Plain text only — no markdown, no headers.
 - ${ABOUT_OPENING_RULE}
-- Concrete and specific: names, places, songs, dates. Let specifics do the work, not adjectives.
-- The document quotes the artist's own words. Use what they said as fact, in plain third person — no quotation marks in the About.
+- SELECT — do not inventory. The document holds far more than belongs here. Choose the two or three things that actually say something about this person and leave the rest out. A detail earns its place by revealing something, not by being true. Dates, version numbers and product names are usually the first things to cut.
+- FIND THE THROUGH-LINE. These facts belong to one person; say what connects them. If the material shows someone doing several apparently unrelated things, that IS the story — write it as one, not as a list.
+- VARY THE SENTENCES. A paragraph of identically shaped declaratives reads as a database dump. That is the most common failure here — reread what you wrote and fix it before answering.
+- Concrete over abstract: names, places, songs, scenes. But a specific with no reason to be there is still filler.
+- The document quotes the artist's own words. Use what they said as fact, in plain third person — no quotation marks in the About. Their own framing of their work is usually the best line in the document; prefer it to your own.
 - CITATIONS: the document's claims already carry [n] markers referencing its SOURCES manifest. When you carry a claim over into the About, keep its [n] marker immediately after it. Do not add a marker to a sentence you wrote yourself with no corresponding cited claim in the document, and never invent a marker number that isn't in the document.
 - ANTI-INFLATION: preserve the document's time-scoping — if the document describes something as recent ("on his latest releases", "he's said recently"), keep that framing rather than smoothing it into a general career description.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
@@ -306,6 +457,31 @@ function withGeminiTimeout<T>(p: Promise<T>, ms: number = GEMINI_TIMEOUT_MS): Pr
         p,
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Gemini timeout")), ms)),
     ]);
+}
+
+
+/**
+ * How a source's age is described to the model: "published 2019-01-10, 7 years ago".
+ *
+ * A real artist's profile stated "Parris Pierce is my production partner" in the
+ * present tense. It came from an interview published in January 2019 — true when
+ * written, and presented as a current fact seven years later. The document had an
+ * anti-inflation rule telling it to scope claims in time, and no way to obey it,
+ * because nothing in its material said when anything happened.
+ *
+ * An undated source says so rather than going unmarked, so the model can tell
+ * "we know this is old" apart from "we do not know how old this is" — those call
+ * for different hedging, and conflating them is how a guess becomes a fact.
+ */
+export function sourceAgeLabel(publishedAt: string | null | undefined, now: Date = new Date()): string {
+    if (!publishedAt) return "date unknown";
+    const then = new Date(publishedAt);
+    if (isNaN(then.getTime())) return "date unknown";
+    const years = (now.getTime() - then.getTime()) / (365.25 * 24 * 3600 * 1000);
+    if (years < 0) return `published ${publishedAt}`;
+    if (years < 1) return `published ${publishedAt}, within the last year`;
+    const rounded = Math.round(years);
+    return `published ${publishedAt}, ${rounded} year${rounded === 1 ? "" : "s"} ago`;
 }
 
 /** `presetSources`, when given, is used AS-IS instead of rebuilding the list
@@ -338,15 +514,43 @@ async function buildDocContext(artistId: string, presetSources?: DocSource[]): P
     if (artist.soundcloud) parts.push(`SoundCloud: ${artist.soundcloud}`);
     if (artist.youtube) parts.push(`YouTube: https://youtube.com/@${artist.youtube.replace(/^@/, "")}`);
 
+    // The artist's real catalog, with real release dates. Before this, releases
+    // came from whatever Instagram captions happened to mention and got dated by
+    // the publication year of the article that referenced them — so a placement
+    // read "as of 2019" because an interview from 2019 mentioned it. Spotify is
+    // authoritative for both the title and the date; a webpage is not.
+    if (artist.spotify) {
+        try {
+            const catalog = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders());
+            if (catalog.length > 0) {
+                const lines = catalog.slice(0, CATALOG_LINES).map(r =>
+                    `${(r.releaseDate ?? "date unknown").padEnd(12)} ${(r.kind ?? "release").padEnd(11)} ${r.name}`);
+                parts.push(
+                    `\n--- VERIFIED CATALOG (the artist's own Spotify — authoritative for titles and release dates) ---\n`
+                    + `This is reference data, NOT a numbered source. Never cite it. Never write "[VERIFIED CATALOG]" or any marker for it.\n`
+                    + `${lines.join("\n")}\n--- END CATALOG ---`
+                );
+            }
+        } catch (e) {
+            // Never fail a document build over the catalog: the sources are the
+            // substance, this is grounding.
+            console.error("[buildDocContext] Spotify catalog unavailable:", e);
+        }
+    }
+
     if (material.vaultSources.length > 0) {
         const sourceContext = material.vaultSources.map((s, i) => {
             // `?.id` defends the narrow presetSources-drift window described
             // above: a row with no corresponding preset id gets an
             // "[undefined]" line, which never matches the \[\d+\] marker
             // regex, so Gemini simply can't cite it — never a wrong id.
-            const p = [`[${vaultIds[i]?.id}] Source: ${s.title ?? s.url}`];
+            // The date is the difference between "is" and "was". A source with no
+            // date says so explicitly rather than being silently undated, so the
+            // model can tell "we know it is old" from "we do not know".
+            const age = sourceAgeLabel(s.publishedAt);
+            const p = [`[${vaultIds[i]?.id}] Source (${age}): ${s.title ?? s.url}`];
             if (s.snippet) p.push(s.snippet);
-            if (s.extractedText) p.push(s.extractedText.slice(0, 2000));
+            if (s.extractedText) p.push(selectSourceText(s.extractedText, artist.name ?? ""));
             return p.join(" — ");
         }).join("\n");
         parts.push(`\n--- APPROVED SOURCES (about this exact artist) ---\n${sourceContext}\n--- END SOURCES ---`);
@@ -362,6 +566,20 @@ async function buildDocContext(artistId: string, presetSources?: DocSource[]): P
     if (socialIds.length > 0) {
         const socialContext = socialIds.map(s => `[${s.id}] ${s.label}`).join("\n");
         parts.push(`\n--- SOCIAL SIGNALS (confirmed collaborations / track credits) ---\n${socialContext}\n--- END SOCIAL SIGNALS ---`);
+    }
+
+    // The artist's own corrections, LAST so they are the final word before the
+    // manifest. Everything above is what we read about them; this is what they
+    // told us, and it outranks the lot.
+    const corrections = await getDocCorrections(artistId);
+    if (corrections.length > 0) {
+        const lines = corrections.map(c => c.kind === "fix" && c.correction
+            ? `- WRONG: "${c.claim}"\n  THE ARTIST SAYS: ${c.correction}`
+            : `- REMOVE, the artist says this is not true or not them: "${c.claim}"`);
+        parts.push(
+            `\n--- CORRECTIONS FROM THE ARTIST (these OVERRIDE the sources above) ---\n`
+            + `${lines.join("\n")}\n--- END CORRECTIONS ---`
+        );
     }
 
     parts.push(sourceManifestBlock(sources));
@@ -458,6 +676,40 @@ export async function synthesizeFallbackAbout(artistId: string, artistName: stri
 }
 
 /** Capped doc slice for prompt injection (askArtist / funFacts / bio). Null when no doc. */
+/**
+ * Rebuild the knowledge document from the artist's CURRENT sources.
+ *
+ * The document was written once, at publish, and then never again — while the
+ * sources under it stayed editable. So an artist who removed a bad source kept a
+ * document that cited it forever, and the Ask section kept answering from it.
+ * Removing a marketplace directory from the vault did nothing whatsoever. The
+ * document is invisible in the product (there is no view or edit surface for
+ * it), so there was no way to notice, either.
+ *
+ * Deliberately does NOT touch `artists.bio`. The About belongs to the artist and
+ * may have been hand-edited; the document is ours. Publish stays the only moment
+ * that writes a bio implicitly.
+ *
+ * No-ops when the artist has no document — nothing to refresh, and creating one
+ * outside onboarding would be a different feature. Never throws: this runs
+ * fire-and-forget behind a user action that has already succeeded, so a Gemini
+ * failure must not turn a successful removal into an error.
+ */
+export async function refreshArtistDoc(artistId: string): Promise<boolean> {
+    try {
+        if (!(await getArtistDoc(artistId))) return false;
+        const sources = await buildDocSources(artistId);
+        const doc = await synthesizeArtistDoc(artistId, sources);
+        await upsertArtistDoc(artistId, doc);
+        await upsertArtistDocSources(artistId, sources);
+        console.log(`[refreshArtistDoc] Rebuilt doc for ${artistId} from ${sources.length} sources`);
+        return true;
+    } catch (e) {
+        console.error("[refreshArtistDoc] Failed:", e);
+        return false;
+    }
+}
+
 export async function getArtistDocContext(artistId: string): Promise<string | null> {
     const doc = await getArtistDoc(artistId);
     if (!doc?.content) return null;

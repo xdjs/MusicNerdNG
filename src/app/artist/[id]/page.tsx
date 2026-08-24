@@ -14,13 +14,16 @@ import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
 import VaultSection from "./_components/VaultSection";
+import KnowledgeSection from "./_components/KnowledgeSection";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import OfficialSiteLinks from "./_components/OfficialSiteLinks";
 import OnboardingGate from "./_components/onboarding/OnboardingGate";
+import ProfileTour from "./_components/onboarding/ProfileTour";
 import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 
@@ -130,6 +133,16 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
             <AutoRefresh showLoading={false} />
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
 
+                {/* Gated on onboarding being COMPLETE, which is the only state in
+                    which a post-build tour makes sense. Without this, a stale
+                    "pending" flag from an earlier session started the tour while
+                    the build was still running — the artist watched a card say
+                    "we drafted your About" over an About that did not exist yet.
+                    Note this is the INVERSE of the gate on OnboardingGate below:
+                    once complete it stays complete, so unlike that one this
+                    cannot be unmounted out from under the tour. */}
+                {isClaimedByUser && onboardingState?.complete && <ProfileTour artistId={artist.id} />}
+
                 {onboardingState && !onboardingState.complete && (
                     <OnboardingGate
                         artistId={artist.id}
@@ -169,7 +182,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </div>
 
                 {/* 3. Bio */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-about" className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold">About</h2>
                     <BlurbSection
                         key={artist.bio ?? ""}
@@ -180,13 +193,13 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 4. Ask About Artist (AI Q&A) */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-ask" className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold break-words">Ask About {artist.name}</h2>
                     <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
                 </RevealSection>
 
                 {/* 5. Links (icon grid) */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-links" className="glass p-4 sm:p-5 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <h2 className="text-black dark:text-white text-xl font-bold">Links</h2>
                         <AddArtistData
@@ -200,6 +213,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         />
                     </div>
                     <ArtistLinksGrid isMonetized={false} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
+                    <OfficialSiteLinks sources={approvedSources} />
                 </RevealSection>
 
                 {/* 6. Support the Artist (icon grid) */}
@@ -219,7 +233,18 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 7. Press & Features (vault sources) */}
+                <div id="mn-sources">
                 <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
+                </div>
+
+                {/* 8. What we know — the knowledge document, as correctable claims.
+                    Sits AFTER the sources deliberately, because every claim in it
+                    points back at one of them. The component owns its own gating
+                    (owner AND editing) the way VaultSection does, so it renders
+                    nothing at all the rest of the time. */}
+                <div id="mn-knowledge">
+                    <KnowledgeSection artistId={artist.id} />
+                </div>
 
             </div>
             </EditModeProvider>

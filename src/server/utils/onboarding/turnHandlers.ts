@@ -48,7 +48,9 @@ import { PROFILE_DISPLAY_COLUMNS, buildLinkPresentationMeta } from "@/server/uti
 import { ONBOARDING_QUESTIONS } from "./questions";
 import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
+import { after } from "next/server";
 import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
+import { ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
 
 const MAX_DOC_SOURCES = 200;
 
@@ -87,6 +89,10 @@ const PUBLISH_RETRY_BUDGET_MS = GEMINI_TIMEOUT_MS + 10_000;
  *  propagate) — collapsing them under one group id lets the client render
  *  ONE live line instead of a chip per platform per attempt. */
 const PROFILE_SEARCH_GROUP = "platform-search";
+/** Progress groups for the auto-build's three stages, so each collapses to one
+ *  line that flips to done rather than a stream of separate entries. */
+const VAULT_SEARCH_GROUP = "source-search";
+const DOC_GROUP = "about-write";
 
 export type TurnEvent =
     | { kind: "chat"; text: string }
@@ -120,7 +126,10 @@ export type ClientTurn =
     // tiers on a slow run, so two runs for the same artist can return different numbers
     // of profiles. Re-runs the search with a fresh budget rather than leaving the artist
     // to wonder whether that was everything.
-    | { type: "find_more_profiles" }
+    // Carries the SAME decisions as confirm_profiles. Re-searching must not cost
+    // the artist the confirmations and removals they have already made — see
+    // applyProfileLinkDecisions. Optional so an older client still works.
+    | { type: "find_more_profiles"; addedLinks?: { url: string }[]; removedSiteNames?: string[] }
     | { type: "vault_review"; decisions: { sourceId: string; status: "approved" | "rejected" }[]; addedUrls: string[] }
     // `question` is the stateless round-trip of the question TEXT the client
     // was actually shown (same pattern as `publish`'s doc/about — see
@@ -150,18 +159,61 @@ export type ClientTurn =
  *  turn. The wait is narrated by a progress chip rather than being dead air. */
 const VAULT_DISCOVERY_BUDGET_MS = 45_000;
 
+/** How long the interview step will wait for a background Instagram ingest to
+ *  land before giving up and asking static questions instead.
+ *
+ *  The ingest starts when profiles are confirmed, two steps earlier, so it has
+ *  the whole vault step (45s of discovery plus however long the artist spends
+ *  curating) to finish. This is the last-resort top-up for a run that is nearly
+ *  done — NOT the main mechanism. Kept short because the artist is watching a
+ *  spinner, and a miss costs only the grounded questions, which is exactly what
+ *  happens today. */
+const SOCIAL_INGEST_WAIT_MS = 8_000;
+
+/** Runs work after the response has flushed.
+ *
+ *  Next's `after()` is the only mechanism Vercel guarantees will still execute
+ *  once a serverless response is sent — a bare floating promise can be frozen,
+ *  which is the known gap that makes the About flow's self-heal unreliable
+ *  (see MEMORY.md). Falls back to a floating promise outside a request scope
+ *  (tests, scripts) where `after()` throws.
+ *
+ *  Never let background failure surface to the artist: this is best-effort by
+ *  construction. */
+function runAfterResponse(label: string, work: () => Promise<unknown>): void {
+    const guarded = () => work().catch(e => console.error(`[onboarding] ${label} failed:`, e));
+    try {
+        after(guarded);
+    } catch {
+        void guarded();
+    }
+}
+
 const NARRATION = {
+    building: "Your profile is yours. Building your page now, which takes a moment.",
+    built: "Done. Your page is live below. You can edit anything on it, and take off anything that isn't you.",
+    builtThin: "Done, though I didn't find much about you online yet. Your page is live below. Add a link or two and I'll have more to work with.",
     welcome: "Welcome! Your profile is officially yours — let's get it into shape. This takes about two minutes, and you can pick it back up anytime.",
     welcomeBack: "Welcome back — picking up right where you left off.",
     alreadyDone: "You're all set — your profile is published. You can edit anything from your page whenever you like.",
-    profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a link we missed.",
+    profiles: "First: here's everything we have linked to you. Leaving a card as-is confirms it — remove anything that isn't you, or paste a profile we missed. Press and interviews come next.",
     profilesEmpty: "Let's start with where people can find you. Paste your Spotify, Instagram, or anywhere else you live online — or skip ahead and add them later.",
+    // Says they're already added, because they now are. The old copy — "confirm
+    // the ones that are yours" — described an opt-in list sitting under a card
+    // whose first line promised "leaving a card as-is confirms it". An artist
+    // followed the first line and lost every discovered profile.
     profilesCandidatesFound: (count: number) =>
-        `I also found ${count} more ${pluralize(count, "profile", "profiles")} by searching the web — take a look below and confirm the ones that are yours, then let me know if anything's still missing.`,
+        `I also found ${count} more ${pluralize(count, "profile", "profiles")} by searching the web and added ${pluralize(count, "it", "them")} below — remove anything that isn't you.`,
     profilesDone: "Profiles confirmed. Now let's look at what the internet says about you.",
+    // Names what to ADD, not just what to keep. The empty variant below always
+    // did; this one didn't, so an artist who had sources found was never told
+    // this was the step for press. A real artist read the earlier "paste a link
+    // we missed" as profiles-only (correctly), never realised publications were
+    // wanted, and an article written about him went uncollected — the run then
+    // surfaced no press at all. Also drops "the AI" for what it actually does.
     vault: (count: number) =>
-        `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate — they feed your About page and the AI that answers fan questions.`,
-    vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue.",
+        `We found ${count} ${pluralize(count, "source", "sources")} about you. Keep what's accurate, and add anything we missed — press, interviews, features, your own site. These feed your About and the answers your page gives fans.`,
+    vaultEmpty: "We didn't find much about you on the web yet — no problem. Paste anything written about you below — press, an interview, a feature, your own site — or just continue.",
     vaultDone: "Sources sorted. Now the fun part — three quick questions. Skip any of them.",
     generating: "Okay, I have everything I need — building your knowledge document now from your links, your sources, and your own answers.",
     docReady: "Here's your knowledge document. It's the record everything else is built from — your About, your page's Q&A, your fun facts — so it's worth reading closely. Check the claims against the sources and fix anything I got wrong.",
@@ -200,7 +252,19 @@ interface InterviewQuestionCandidate {
 async function buildInterviewQuestions(artistId: string): Promise<InterviewQuestionCandidate[]> {
     let grounded: GroundedQuestion[] = [];
     try {
+        // The ingest kicked off at confirm_profiles may still be in flight.
+        // Bounded top-up, not the main mechanism — see SOCIAL_INGEST_WAIT_MS.
+        const havePosts = await waitForSocialPosts(artistId, SOCIAL_INGEST_WAIT_MS);
+        if (!havePosts) {
+            // Deliberately loud. An empty grounded-question list used to be
+            // indistinguishable from "we looked and nothing was interesting",
+            // which is how this shipped broken to a real artist.
+            console.warn(`[onboarding] no social posts for ${artistId} — interview falls back to static questions`);
+        }
         grounded = await generateGroundedQuestions(artistId, { max: INTERVIEW_QUESTION_CAP });
+        if (havePosts && grounded.length === 0) {
+            console.warn(`[onboarding] posts exist for ${artistId} but no grounded questions cleared the bar`);
+        }
     } catch (e) {
         console.error("[onboarding] generateGroundedQuestions failed:", e);
     }
@@ -721,6 +785,173 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
     }
 }
 
+/** What applying an artist's profile-card decisions produced, bucketed by what
+ *  went wrong — each bucket gets different copy (see the build*Message helpers). */
+interface ProfileLinkOutcome {
+    unrecognized: string[];
+    writeRejected: string[];
+    routedToVaultApproved: string[];
+    routedToVaultPending: string[];
+    vaultInsertFailed: string[];
+}
+
+/**
+ * Saves the artist's decisions from the profiles card: clear what they removed,
+ * add what they kept or pasted, route a non-platform URL to the vault.
+ *
+ * Shared by `confirm_profiles` AND `find_more_profiles`. That sharing is the
+ * point: "Look for more" used to send NO payload, so every confirmation and
+ * removal the artist had made was discarded, the card re-rendered from server
+ * state, and their own profiles came back as fresh unconfirmed candidates —
+ * seen happening to a real artist. The card's own copy promises "leaving a card
+ * as-is confirms it", so re-searching has to honour that promise too.
+ *
+ * Only `confirm_profiles` advances the step; this function never does.
+ */
+async function applyProfileLinkDecisions(
+    artistId: string,
+    addedLinks: { url: string }[],
+    removedSiteNames: string[],
+): Promise<ProfileLinkOutcome> {
+    for (const siteName of removedSiteNames) {
+        try {
+            await clearArtistLink(artistId, siteName);
+        } catch (e) {
+            console.error(`[onboarding] clearArtistLink failed for ${siteName}:`, e);
+        }
+    }
+
+    // Bug 3: track the two failure causes separately — a URL we couldn't
+    // parse at all (unrecognized) vs. one we parsed fine but whose write
+    // was rejected (e.g. a unique-constraint collision) — they get
+    // different copy below.
+    const unrecognized: string[] = [];
+    const writeRejected: string[] = [];
+    // A URL that doesn't extract to any platform (an artist's own
+    // website, most commonly — urlmap has no generic website platform)
+    // routed to the vault instead of rejected. Split by ownership
+    // confidence — the two get different copy below (buildRoutedToVault*),
+    // since only the approved bucket has any evidence it's the artist's
+    // own page.
+    const routedToVaultApproved: string[] = [];
+    const routedToVaultPending: string[] = [];
+    // The write succeeded (recognized fine) but the vault insert itself
+    // threw — a real DB failure, not an "unrecognized" link. Distinct
+    // bucket so the copy doesn't misreport what actually went wrong.
+    const vaultInsertFailed: string[] = [];
+    // Only needed for the ownership cross-check below, which no
+    // platform-recognized URL ever reaches — fetched at most once, so a
+    // turn with no failed-extraction URLs never pays for it.
+    let artistName: string | undefined;
+    // Idempotency: a reconnect can resubmit the exact same addedLinks
+    // (spec §9 — every handler upserts and continues, never double-acts).
+    // setArtistLink/clearArtistLink are naturally idempotent (same column,
+    // same value); a plain insertVaultSource is not, so URLs already in
+    // the vault (from an earlier attempt at this exact turn, or a
+    // duplicate paste) are looked up once and skipped rather than
+    // re-inserted as a second row.
+    let existingVaultStatusByUrl: Map<string, string> | undefined;
+    for (const raw of addedLinks) {
+        let extracted;
+        try {
+            extracted = await extractArtistId(raw.url);
+        } catch (e) {
+            console.error(`[onboarding] extractArtistId failed for ${raw.url}:`, e);
+            unrecognized.push(raw.url);
+            continue;
+        }
+        if (!extracted?.siteName || !extracted?.id) {
+            // Not a recognized platform profile. Before rejecting it, see
+            // if it's a real page we can route to the vault instead — the
+            // single best About source an artist can hand us (their own
+            // site) has nowhere to go in urlmap and must not be thrown
+            // away just because it isn't a platform profile.
+            if (isUnsafeUrl(raw.url)) {
+                unrecognized.push(raw.url);
+                continue;
+            }
+            if (existingVaultStatusByUrl === undefined) {
+                const existing = await getVaultSourcesByArtistId(artistId);
+                existingVaultStatusByUrl = new Map(existing.map(s => [s.url, s.status]));
+            }
+            const existingStatus = existingVaultStatusByUrl.get(raw.url);
+            if (existingStatus) {
+                // Already routed to the vault (an earlier attempt at this
+                // turn, or a duplicate paste) — idempotent no-op, not a
+                // fresh insert or a fetch.
+                (existingStatus === "approved" ? routedToVaultApproved : routedToVaultPending).push(raw.url);
+                continue;
+            }
+            const preview = await fetchLinkPreview(raw.url);
+            if (!preview.title && !preview.imageUrl) {
+                // Dead link / no metadata to go on — genuinely unrecognized.
+                unrecognized.push(raw.url);
+                continue;
+            }
+            // Resolves to a real page. Confidence on ownership: does the
+            // page's own title carry the artist's name? If so, it's
+            // authoritative and self-authored — the artist just handed it
+            // to us — so approve it outright. Otherwise park it as
+            // `pending` for curation at the vault step, same as any other
+            // web-found source. Reuses the same name cross-check the
+            // handle-probing tier uses (`titleMatchesArtist`) rather than
+            // a second matcher.
+            if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
+            const ownedByArtist = !!preview.title && titleMatchesArtist(preview.title, artistName);
+            try {
+                const source = await insertVaultSource({
+                    artistId,
+                    url: raw.url,
+                    title: preview.title ?? undefined,
+                    // `ownedByArtist` means the artist handed us this URL AND
+                    // the page's own title carries their name — that is the
+                    // artist's official site, so record it as such instead of
+                    // discarding the signal. inferTypeFromUrl can't determine
+                    // this (a URL alone never says who owns it) and would call
+                    // a personal domain an "article", indistinguishable from a
+                    // magazine piece about them. The profile surfaces approved
+                    // "website" sources beside Links rather than burying them.
+                    type: ownedByArtist ? "website" : inferTypeFromUrl(raw.url),
+                    status: ownedByArtist ? "approved" : "pending",
+                });
+                existingVaultStatusByUrl.set(raw.url, ownedByArtist ? "approved" : "pending");
+                // Fire-and-forget content enrichment (snippet/extractedText,
+                // and title too if we don't already have a good one) so doc
+                // synthesis isn't left with a bare URL — mirrors the
+                // vault_review addedUrls background fetch further below.
+                // Title is deliberately left alone when `preview.title` is
+                // already set: fetchPageContent falls back to a generic
+                // "Source from <host>" title on ANY non-ok response, and
+                // must never be allowed to downgrade the real og:title (e.g.
+                // "Pete Rango") we already captured synchronously above.
+                if (source?.id) {
+                    fetchPageContent(raw.url).then(content => {
+                        updateVaultSourceContent(source.id, {
+                            ...(preview.title ? {} : { title: content.title }),
+                            snippet: content.snippet,
+                            extractedText: content.extractedText,
+                            ogImage: content.ogImage,
+                        }).catch(e => console.error("[onboarding] Background content update failed:", e));
+                    }).catch(e => console.error("[onboarding] Background fetch failed:", e));
+                }
+                (ownedByArtist ? routedToVaultApproved : routedToVaultPending).push(raw.url);
+            } catch (e) {
+                console.error(`[onboarding] insertVaultSource failed for ${raw.url}:`, e);
+                vaultInsertFailed.push(raw.url);
+            }
+            continue;
+        }
+        try {
+            await setArtistLink(artistId, extracted.siteName, extracted.id);
+        } catch (e) {
+            console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
+            writeRejected.push(raw.url);
+        }
+    }
+
+    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed };
+}
+
 export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): AsyncGenerator<TurnEvent> {
     const state = await getOnboardingState(artistId);
     // `null` = the confirmed-steps read failed (e.g. migration/grants issue) —
@@ -731,16 +962,133 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         return;
     }
 
+/**
+ * Builds the whole page without asking the artist anything.
+ *
+ * The claim already established who they are — an admin approved this user on
+ * this artist record — so re-asking "is this you?" proves nothing (anyone
+ * claiming falsely clicks yes too) and costs a step. Carl, 2026-08-20:
+ * "ideally we should create the perfect profile for them without them having to
+ * do anything. That's the ideal to strive for."
+ *
+ * Every correction is recoverable on the profile afterwards, and the two things
+ * that could genuinely go wrong are already handled upstream rather than by
+ * asking:
+ *   - a fabricated source can't get in (retrieval is a search API, verified)
+ *   - a namesake can't be cited (requireFullName gates citability)
+ *
+ * Sources are auto-APPROVED, which is safe for a reason worth stating: approval
+ * has never been what makes a source citable. `isCitableSource` reads
+ * extractedText, which is only ever populated by machine verification. So an
+ * un-curated namesake sits in the vault as a lead the artist can remove, and
+ * never reaches their About.
+ *
+ * Failure is partial, not fatal: each stage confirms its own step, so a crash
+ * mid-build leaves the artist resuming at exactly the stage that failed, using
+ * the original step-by-step cards.
+ */
+async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
+    yield { kind: "chat", text: NARRATION.building };
+
+    // 1 — profiles
+    yield { kind: "progress", label: "Finding your profiles", done: false, group: PROFILE_SEARCH_GROUP };
+    const discovered: string[] = [];
+    try {
+        for await (const event of discoverArtistProfilesStream(artistId)) {
+            if (event.kind === "found") {
+                discovered.push(event.profile.profileUrl);
+                yield { kind: "candidate", profile: event.profile };
+            }
+        }
+    } catch (e) {
+        console.error("[onboarding] auto-build discovery failed:", e);
+    }
+    if (discovered.length > 0) {
+        await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
+    }
+    yield {
+        kind: "progress",
+        label: discovered.length > 0 ? `Found ${discovered.length} profile${discovered.length === 1 ? "" : "s"}` : "Checked for your profiles",
+        done: true,
+        group: PROFILE_SEARCH_GROUP,
+    };
+    await confirmOnboardingStep(artistId, "profiles");
+
+    // 2 — sources
+    yield { kind: "progress", label: "Reading what's written about you", done: false, group: VAULT_SEARCH_GROUP };
+    try {
+        // Same budgeted race the vault step uses — a slow search must not hold
+        // the whole build open past the route's turn deadline.
+        await Promise.race([
+            searchAndPopulateVault(artistId),
+            new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
+        ]);
+    } catch (e) {
+        console.error("[onboarding] auto-build source discovery failed:", e);
+    }
+    const pending = await getVaultSourcesByArtistId(artistId, "pending");
+    for (const source of pending) {
+        try {
+            await updateVaultSourceStatus(source.id, "approved");
+        } catch (e) {
+            console.error("[onboarding] auto-approve failed:", source.id, e);
+        }
+    }
+    const citable = pending.filter(isCitableSource).length;
+    yield {
+        kind: "progress",
+        label: pending.length > 0 ? `Read ${pending.length} source${pending.length === 1 ? "" : "s"}` : "Looked for sources about you",
+        done: true,
+        group: VAULT_SEARCH_GROUP,
+    };
+    await confirmOnboardingStep(artistId, "vault");
+
+    // 3 — the About. Interview answers are no longer collected here; questions
+    // move to the follow-up email cadence, where they can actually be timely.
+    yield { kind: "progress", label: "Writing your About", done: false, group: DOC_GROUP };
+    const artist = await getArtistById(artistId);
+    const artistName = artist?.name ?? "this artist";
+    let wrote = false;
+    try {
+        const sources = await buildDocSources(artistId);
+        const doc = await synthesizeArtistDoc(artistId, sources);
+        const about = await generateAboutFromDoc(artistName, doc, sources);
+        const cleanAbout = stripCitationMarkers(about).trim();
+        if (cleanAbout) {
+            const existingBio = artist?.bio;
+            if (isRealBio(existingBio)) await saveBioVersion(artistId, existingBio as string);
+            await upsertArtistDoc(artistId, doc);
+            await upsertArtistDocSources(artistId, sources);
+            await saveBioVersion(artistId, cleanAbout);
+            await db.update(artists).set({ bio: cleanAbout }).where(eq(artists.id, artistId));
+            wrote = true;
+        }
+    } catch (e) {
+        console.error("[onboarding] auto-build About generation failed:", e);
+    }
+    yield { kind: "progress", label: wrote ? "Wrote your About" : "Couldn't write an About yet", done: true, group: DOC_GROUP };
+
+    await confirmOnboardingStep(artistId, "interview");
+    await confirmOnboardingStep(artistId, "publish");
+    yield { kind: "chat", text: citable > 0 && wrote ? NARRATION.built : NARRATION.builtThin };
+    yield { kind: "complete" };
+}
+
     if (turn.type === "open") {
         if (state.complete || state.currentStep === null) {
             yield { kind: "chat", text: NARRATION.alreadyDone };
             yield { kind: "complete" };
             return;
         }
-        yield { kind: "chat", text: state.currentStep === "profiles" ? NARRATION.welcome : NARRATION.welcomeBack };
-        // Discovery only runs on a fresh/resumed entry into the profiles step —
-        // see the `discoverProfiles` doc comment on emitStep.
-        yield* emitStep(artistId, state.currentStep, state.currentStep === "profiles");
+        // A fresh claim builds the page outright. A RESUME does not: the artist
+        // is mid-flow because something failed or they stepped away, and the
+        // step-by-step cards are the right way back in.
+        if (state.currentStep === "profiles") {
+            yield* runAutoBuild(artistId);
+            return;
+        }
+        yield { kind: "chat", text: NARRATION.welcomeBack };
+        yield* emitStep(artistId, state.currentStep);
         return;
     }
 
@@ -755,9 +1103,23 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, state.currentStep);
             return;
         }
-        // Re-emits the whole card. Both of its lists reset to their safe defaults —
-        // found links stay accepted (opt-out), candidates stay unaccepted (opt-in) —
-        // so a re-search can't quietly save something the artist had rejected.
+        // Save what the artist has already decided BEFORE re-searching. This used
+        // to send nothing at all, so every confirmation and removal was discarded
+        // and their own profiles came back as unconfirmed candidates — which is
+        // what a real artist hit in testing. Persisting first also means the
+        // re-emitted card reflects their decisions, because it reads from the
+        // database rather than from client state that no longer exists.
+        const findMore = await applyProfileLinkDecisions(
+            artistId,
+            turn.addedLinks ?? [],
+            turn.removedSiteNames ?? [],
+        );
+        // `blocked: true` — the step is being re-emitted, so the copy should
+        // invite another paste rather than point at a profile page they have
+        // not reached yet.
+        if (findMore.unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(findMore.unrecognized, true) };
+        if (findMore.writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(findMore.writeRejected, true) };
+        if (findMore.vaultInsertFailed.length > 0) yield { kind: "chat", text: buildVaultInsertFailedMessage(findMore.vaultInsertFailed) };
         yield* emitStep(artistId, "profiles", true);
         return;
     }
@@ -776,133 +1138,8 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
             yield* emitStep(artistId, state.currentStep);
             return;
         }
-        for (const siteName of turn.removedSiteNames ?? []) {
-            try {
-                await clearArtistLink(artistId, siteName);
-            } catch (e) {
-                console.error(`[onboarding] clearArtistLink failed for ${siteName}:`, e);
-            }
-        }
-
-        // Bug 3: track the two failure causes separately — a URL we couldn't
-        // parse at all (unrecognized) vs. one we parsed fine but whose write
-        // was rejected (e.g. a unique-constraint collision) — they get
-        // different copy below.
-        const unrecognized: string[] = [];
-        const writeRejected: string[] = [];
-        // A URL that doesn't extract to any platform (an artist's own
-        // website, most commonly — urlmap has no generic website platform)
-        // routed to the vault instead of rejected. Split by ownership
-        // confidence — the two get different copy below (buildRoutedToVault*),
-        // since only the approved bucket has any evidence it's the artist's
-        // own page.
-        const routedToVaultApproved: string[] = [];
-        const routedToVaultPending: string[] = [];
-        // The write succeeded (recognized fine) but the vault insert itself
-        // threw — a real DB failure, not an "unrecognized" link. Distinct
-        // bucket so the copy doesn't misreport what actually went wrong.
-        const vaultInsertFailed: string[] = [];
-        // Only needed for the ownership cross-check below, which no
-        // platform-recognized URL ever reaches — fetched at most once, so a
-        // turn with no failed-extraction URLs never pays for it.
-        let artistName: string | undefined;
-        // Idempotency: a reconnect can resubmit the exact same addedLinks
-        // (spec §9 — every handler upserts and continues, never double-acts).
-        // setArtistLink/clearArtistLink are naturally idempotent (same column,
-        // same value); a plain insertVaultSource is not, so URLs already in
-        // the vault (from an earlier attempt at this exact turn, or a
-        // duplicate paste) are looked up once and skipped rather than
-        // re-inserted as a second row.
-        let existingVaultStatusByUrl: Map<string, string> | undefined;
-        for (const raw of turn.addedLinks ?? []) {
-            let extracted;
-            try {
-                extracted = await extractArtistId(raw.url);
-            } catch (e) {
-                console.error(`[onboarding] extractArtistId failed for ${raw.url}:`, e);
-                unrecognized.push(raw.url);
-                continue;
-            }
-            if (!extracted?.siteName || !extracted?.id) {
-                // Not a recognized platform profile. Before rejecting it, see
-                // if it's a real page we can route to the vault instead — the
-                // single best About source an artist can hand us (their own
-                // site) has nowhere to go in urlmap and must not be thrown
-                // away just because it isn't a platform profile.
-                if (isUnsafeUrl(raw.url)) {
-                    unrecognized.push(raw.url);
-                    continue;
-                }
-                if (existingVaultStatusByUrl === undefined) {
-                    const existing = await getVaultSourcesByArtistId(artistId);
-                    existingVaultStatusByUrl = new Map(existing.map(s => [s.url, s.status]));
-                }
-                const existingStatus = existingVaultStatusByUrl.get(raw.url);
-                if (existingStatus) {
-                    // Already routed to the vault (an earlier attempt at this
-                    // turn, or a duplicate paste) — idempotent no-op, not a
-                    // fresh insert or a fetch.
-                    (existingStatus === "approved" ? routedToVaultApproved : routedToVaultPending).push(raw.url);
-                    continue;
-                }
-                const preview = await fetchLinkPreview(raw.url);
-                if (!preview.title && !preview.imageUrl) {
-                    // Dead link / no metadata to go on — genuinely unrecognized.
-                    unrecognized.push(raw.url);
-                    continue;
-                }
-                // Resolves to a real page. Confidence on ownership: does the
-                // page's own title carry the artist's name? If so, it's
-                // authoritative and self-authored — the artist just handed it
-                // to us — so approve it outright. Otherwise park it as
-                // `pending` for curation at the vault step, same as any other
-                // web-found source. Reuses the same name cross-check the
-                // handle-probing tier uses (`titleMatchesArtist`) rather than
-                // a second matcher.
-                if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
-                const ownedByArtist = !!preview.title && titleMatchesArtist(preview.title, artistName);
-                try {
-                    const source = await insertVaultSource({
-                        artistId,
-                        url: raw.url,
-                        title: preview.title ?? undefined,
-                        type: inferTypeFromUrl(raw.url),
-                        status: ownedByArtist ? "approved" : "pending",
-                    });
-                    existingVaultStatusByUrl.set(raw.url, ownedByArtist ? "approved" : "pending");
-                    // Fire-and-forget content enrichment (snippet/extractedText,
-                    // and title too if we don't already have a good one) so doc
-                    // synthesis isn't left with a bare URL — mirrors the
-                    // vault_review addedUrls background fetch further below.
-                    // Title is deliberately left alone when `preview.title` is
-                    // already set: fetchPageContent falls back to a generic
-                    // "Source from <host>" title on ANY non-ok response, and
-                    // must never be allowed to downgrade the real og:title (e.g.
-                    // "Pete Rango") we already captured synchronously above.
-                    if (source?.id) {
-                        fetchPageContent(raw.url).then(content => {
-                            updateVaultSourceContent(source.id, {
-                                ...(preview.title ? {} : { title: content.title }),
-                                snippet: content.snippet,
-                                extractedText: content.extractedText,
-                                ogImage: content.ogImage,
-                            }).catch(e => console.error("[onboarding] Background content update failed:", e));
-                        }).catch(e => console.error("[onboarding] Background fetch failed:", e));
-                    }
-                    (ownedByArtist ? routedToVaultApproved : routedToVaultPending).push(raw.url);
-                } catch (e) {
-                    console.error(`[onboarding] insertVaultSource failed for ${raw.url}:`, e);
-                    vaultInsertFailed.push(raw.url);
-                }
-                continue;
-            }
-            try {
-                await setArtistLink(artistId, extracted.siteName, extracted.id);
-            } catch (e) {
-                console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
-                writeRejected.push(raw.url);
-            }
-        }
+        const { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed } =
+            await applyProfileLinkDecisions(artistId, turn.addedLinks ?? [], turn.removedSiteNames ?? []);
 
         // Bug 2: never infer success from the request payload — a write can
         // silently fail. Re-read the artist's own link columns (the same set
@@ -932,6 +1169,26 @@ export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): As
         }
 
         await confirmOnboardingStep(artistId, "profiles");
+
+        // Now that the artist's links are saved we know their Instagram handle,
+        // and the interview (two steps later) needs their posts to ask grounded
+        // questions. Kick the scrape off here so it runs during the vault step
+        // instead of stalling the interview: a run takes 1-5 minutes against a
+        // 55s turn deadline, so it can never be awaited inline.
+        //
+        // Until this existed the ingest was only ever run by hand via
+        // scripts/ingest-social.ts, so grounded questions worked solely for
+        // artists whose posts had been seeded manually — see
+        // docs/rnd/research/2026-08-21-artist-test-pharaoh.md.
+        //
+        // `ensureRecentSocialPosts` is idempotent and flow-agnostic on purpose:
+        // when onboarding collapses to a pre-filled profile, this call moves to
+        // claim approval and nothing here needs rewriting.
+        runAfterResponse("social ingest", async () => {
+            const outcome = await ensureRecentSocialPosts(artistId);
+            console.debug(`[onboarding] social ingest for ${artistId}: ${outcome.status}`);
+        });
+
         if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };
         if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, false) };
         if (vaultInsertFailed.length > 0) yield { kind: "chat", text: buildVaultInsertFailedMessage(vaultInsertFailed) };

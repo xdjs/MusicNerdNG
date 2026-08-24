@@ -13,7 +13,7 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
-import { artistSocialPosts } from "@/server/db/schema";
+import { artistSocialPosts, artists } from "@/server/db/schema";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
 import { APIFY_API_TOKEN } from "@/env";
 
@@ -87,6 +87,15 @@ function norm(handle: string): string {
     return handle.trim().toLowerCase().replace(/^@/, "");
 }
 
+/** Compares a DISPLAY NAME against a HANDLE, which `norm` cannot do: it keeps
+ *  spaces and punctuation, so "Pharaoh Sistare" never equals "pharaohsistare".
+ *  Strips everything that isn't alphanumeric so the two forms of the same
+ *  identity collapse together. Handle-to-handle comparisons should keep using
+ *  `norm` — this is deliberately lossy. */
+function normLoose(value: string): string {
+    return value.trim().toLowerCase().replace(/^@/, "").replace(/[^a-z0-9]/g, "");
+}
+
 function stringArray(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return value.filter((v): v is string => typeof v === "string" && v.length > 0);
@@ -119,7 +128,7 @@ function dedupeExcludingSelf(handles: string[], selfNorm: string): string[] {
 /** musicInfo is noisy: most video posts carry it, but it's frequently "the
  *  artist's own original audio" (uninteresting) rather than a real track
  *  credit. Only keep it when it looks like a genuine song reference. */
-function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string): { musicTitle: string | null; musicArtist: string | null } {
+function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string, realArtistName?: string): { musicTitle: string | null; musicArtist: string | null } {
     const info = raw.musicInfo as ApifyMusicInfo | undefined;
     if (!info || typeof info !== "object") return { musicTitle: null, musicArtist: null };
 
@@ -128,8 +137,32 @@ function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string): 
     if (!songName || !artistName) return { musicTitle: null, musicArtist: null };
     if (info.uses_original_audio === true) return { musicTitle: null, musicArtist: null };
     if (songName.toLowerCase() === "original audio") return { musicTitle: null, musicArtist: null };
-    // The music "artist" is just the poster's own handle — not a real credit.
-    if (norm(artistName) === selfNorm || norm(artistName) === norm(ownerUsername)) {
+    // The music "artist" is the poster themselves — not a real third-party
+    // credit. Instagram reports `artist_name` as a DISPLAY NAME ("Pharaoh
+    // Sistare") while ownerUsername is a HANDLE ("pharaohsistare"), so this
+    // must compare loosely; `norm` alone keeps the space and never matches.
+    //
+    // That mismatch is why a real artist was asked "how did that collaboration
+    // and remix come about?" about a track he had no part in — the audio
+    // credit was his own name, we kept it as a third-party track reference,
+    // and the question generator faithfully asked about the collaboration it
+    // implied. See docs/rnd/research/2026-08-21-artist-test-pharaoh.md.
+    //
+    // When the credited artist IS the poster we cannot tell "their own release"
+    // from "Instagram mislabelled the audio", so dropping it is the safe read —
+    // which was always this guard's intent.
+    // Compare against the artist's REAL NAME first, not just their handle. A
+    // handle is not a name: "Black Dave" posts as @worstgeneration, "Pete
+    // Rango" as @p3t3rango. Matching only on the handle would keep working for
+    // artists whose handle happens to be their name with the spaces removed
+    // and silently fail for everyone else — the same shape of near-miss that
+    // caused this bug in the first place.
+    const credited = normLoose(artistName);
+    const isSelfCredit =
+        credited === normLoose(selfNorm)
+        || credited === normLoose(ownerUsername)
+        || (!!realArtistName && credited === normLoose(realArtistName));
+    if (isSelfCredit) {
         return { musicTitle: null, musicArtist: null };
     }
 
@@ -141,7 +174,7 @@ function extractMusic(raw: ApifyPost, ownerUsername: string, selfNorm: string): 
  * item isn't a real post (Apify datasets can contain error placeholders for
  * posts it failed to fetch — those lack `id`/`url`/`ownerUsername`).
  */
-export function mapApifyPost(rawItem: unknown, artistId: string, handle: string): SocialPostInsert | null {
+export function mapApifyPost(rawItem: unknown, artistId: string, handle: string, artistName?: string): SocialPostInsert | null {
     if (!rawItem || typeof rawItem !== "object") return null;
     const raw = rawItem as ApifyPost;
     if (raw.error) return null;
@@ -161,7 +194,7 @@ export function mapApifyPost(rawItem: unknown, artistId: string, handle: string)
         [...stringArray(raw.mentions), ...usernamesFrom(raw.taggedUsers)],
         selfNorm,
     );
-    const { musicTitle, musicArtist } = extractMusic(raw, ownerUsername, selfNorm);
+    const { musicTitle, musicArtist } = extractMusic(raw, ownerUsername, selfNorm, artistName);
 
     const likeCount = typeof raw.likesCount === "number" ? raw.likesCount : null;
     const commentCount = typeof raw.commentsCount === "number" ? raw.commentsCount : null;
@@ -275,8 +308,9 @@ export async function ingestInstagramPosts(
             return EMPTY_RESULT;
         }
 
+        const artistName = await getArtistNameById(artistId);
         const rows = items
-            .map(item => mapApifyPost(item, artistId, handle))
+            .map(item => mapApifyPost(item, artistId, handle, artistName))
             .filter((r): r is SocialPostInsert => r !== null);
 
         return await upsertMappedRows(rows);
@@ -328,12 +362,124 @@ export async function ingestInstagramPostsFromItems(
 ): Promise<IngestResult> {
     if (!artistId || !handle) return EMPTY_RESULT;
     try {
+        const artistName = await getArtistNameById(artistId);
         const rows = items
-            .map(item => mapApifyPost(item, artistId, handle))
+            .map(item => mapApifyPost(item, artistId, handle, artistName))
             .filter((r): r is SocialPostInsert => r !== null);
         return await upsertMappedRows(rows);
     } catch (e) {
         console.error("[ingestInstagramPostsFromItems] Error:", e);
         return EMPTY_RESULT;
+    }
+}
+
+/** Onboarding ingests fewer posts than the CLI default. Signal derivation only
+ *  looks at recent activity, so 200 buys no extra questions — it just makes the
+ *  Apify run longer (1-5 min at 200) and costs more, while the artist is
+ *  actively waiting two steps away. */
+const ONBOARDING_INGEST_LIMIT = 60;
+
+export type EnsureSocialPostsOutcome =
+    | { status: "disabled" }
+    | { status: "no_handle" }
+    // No count: the check behind this is a cheap existence probe, and a
+    // number that says "1" when 60 rows exist is worse than no number in a
+    // log line whose whole job is telling you what happened.
+    | { status: "already_present" }
+    | { status: "ingested"; count: number }
+    | { status: "found_nothing" }
+    | { status: "error" };
+
+/** The artist's stored name, for the self-credit check in `extractMusic`.
+ *  Looked up here rather than pushed onto every caller so the CLI script and
+ *  the onboarding path get the same protection without signature churn. */
+async function getArtistNameById(artistId: string): Promise<string | undefined> {
+    try {
+        const row = await db.query.artists.findFirst({
+            where: eq(artists.id, artistId),
+            columns: { name: true },
+        });
+        return row?.name ?? undefined;
+    } catch (e) {
+        console.error("[getArtistNameById] Error:", e);
+        return undefined;
+    }
+}
+
+/** Cheap existence probe — avoids hydrating every row just to ask "any?".
+ *  Deliberately a boolean, not a count: `LIMIT 1` can't produce a real total,
+ *  and a "count" that maxes out at 1 invites exactly the misleading log line
+ *  this module exists to prevent. Callers that need a total should read the
+ *  rows. Fails closed (false) so an error can't be mistaken for "we have
+ *  posts" and skip an ingest. */
+export async function hasSocialPosts(artistId: string): Promise<boolean> {
+    try {
+        const rows = await db
+            .select({ id: artistSocialPosts.id })
+            .from(artistSocialPosts)
+            .where(eq(artistSocialPosts.artistId, artistId))
+            .limit(1);
+        return rows.length > 0;
+    } catch (e) {
+        console.error("[hasSocialPosts] Error:", e);
+        return false;
+    }
+}
+
+/**
+ * Idempotent entry point for "make sure we have this artist's posts".
+ *
+ * Deliberately knows nothing about onboarding steps. The trigger point is
+ * expected to move — today it fires when profiles are confirmed; under a
+ * pre-filled-profile flow it would fire at claim approval instead — and that
+ * should be a one-line change at the call site, not a rewrite here.
+ *
+ * MUST be called as background work (Next.js `after()`), never awaited in a
+ * chat turn: a scrape runs 1-5 minutes against a 55s turn deadline.
+ *
+ * Returns a discriminated outcome rather than a bare count so callers can log
+ * *why* nothing happened. "No Instagram handle", "Apify returned nothing", and
+ * "Apify errored" are three different problems that previously all looked like
+ * silence — which is how the missing-questions bug reached a real artist
+ * (see docs/rnd/research/2026-08-21-artist-test-pharaoh.md).
+ */
+export async function ensureRecentSocialPosts(
+    artistId: string,
+    opts?: { limit?: number },
+): Promise<EnsureSocialPostsOutcome> {
+    if (!APIFY_API_TOKEN) return { status: "disabled" };
+    if (!artistId) return { status: "no_handle" };
+
+    try {
+        if (await hasSocialPosts(artistId)) return { status: "already_present" };
+
+        const artist = await db.query.artists.findFirst({
+            where: eq(artists.id, artistId),
+            columns: { instagram: true },
+        });
+        const handle = artist?.instagram?.trim();
+        if (!handle) return { status: "no_handle" };
+
+        const result = await ingestInstagramPosts(artistId, handle, {
+            limit: opts?.limit ?? ONBOARDING_INGEST_LIMIT,
+        });
+        if (result.ingested === 0) return { status: "found_nothing" };
+        return { status: "ingested", count: result.ingested };
+    } catch (e) {
+        console.error("[ensureRecentSocialPosts] Error:", e);
+        return { status: "error" };
+    }
+}
+
+/** Waits for a background ingest to land, up to `timeoutMs`, polling cheaply.
+ *  Returns as soon as any post exists. Used by the interview step so a scrape
+ *  that is nearly done still produces grounded questions instead of silently
+ *  falling back — but bounded, because the artist is waiting. */
+export async function waitForSocialPosts(artistId: string, timeoutMs: number, pollMs = 1000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        if (await hasSocialPosts(artistId)) return true;
+        if (Date.now() >= deadline) return false;
+        await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
     }
 }

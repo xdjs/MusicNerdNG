@@ -31,6 +31,11 @@ jest.mock('@/server/utils/fetchPageContent', () => ({
 jest.mock('@/server/utils/linkPreview', () => ({
     fetchLinkPreview: jest.fn().mockResolvedValue({ imageUrl: null, title: null }),
 }));
+jest.mock('@/server/utils/socialIngest', () => ({
+    ensureRecentSocialPosts: jest.fn().mockResolvedValue({ status: 'ingested', count: 12 }),
+    waitForSocialPosts: jest.fn().mockResolvedValue(true),
+    hasSocialPosts: jest.fn().mockResolvedValue(true),
+}));
 jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnValue('article') }));
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
@@ -80,6 +85,13 @@ async function collect(gen) {
     return events;
 }
 
+// NOTE: the profiles-step tests below drive the step via `find_more_profiles`
+// rather than `open`. A fresh `open` now runs the auto-build (claim approved ->
+// build the page, no questions), so it no longer emits the profiles card. The
+// card itself is unchanged and still reached on resume and via re-search, and
+// `find_more_profiles` runs the identical emitStep(profiles, discover) path —
+// so this keeps the payload/enrichment/discovery coverage intact rather than
+// deleting it.
 describe('runOnboardingTurn', () => {
     beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
@@ -87,8 +99,51 @@ describe('runOnboardingTurn', () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(events.find(e => e.kind === 'step')?.step).toBe('vault');
+    });
+
+    it('a fresh claim builds the whole page without asking anything, and asks no question first', async () => {
+        // The claim already established who this is — an admin approved this
+        // user on this artist record. Re-asking "is this you?" proves nothing
+        // (anyone claiming falsely clicks yes too) and costs a step. Carl,
+        // 2026-08-20: "ideally we should create the perfect profile for them
+        // without them having to do anything."
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        oq.confirmOnboardingStep.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        // No card is put in front of the artist at all.
+        expect(events.some(e => e.kind === 'step')).toBe(false);
+        expect(events.some(e => e.kind === 'complete')).toBe(true);
+        expect(events.some(e => e.kind === 'error')).toBe(false);
+
+        // Every stage confirms its own step, so a crash mid-build leaves the
+        // artist resuming at exactly the stage that failed.
+        const confirmed = oq.confirmOnboardingStep.mock.calls.map(c => c[1]);
+        expect(confirmed).toEqual(['profiles', 'vault', 'interview', 'publish']);
+
+        // And it narrates what it's doing rather than sitting silent for a minute.
+        const labels = events.filter(e => e.kind === 'progress').map(e => e.label);
+        expect(labels.some(l => /profiles/i.test(l))).toBe(true);
+        expect(labels.some(l => /written about you|sources/i.test(l))).toBe(true);
+        expect(labels.some(l => /About/i.test(l))).toBe(true);
+    });
+
+    it('a RESUME does not auto-build — it hands back the step the artist stopped on', async () => {
+        // Mid-flow means something failed or they stepped away; the
+        // step-by-step cards are the right way back in, not a silent rebuild.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
+        oq.confirmOnboardingStep.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(events.some(e => e.kind === 'step' && e.step === 'vault')).toBe(true);
+        expect(oq.confirmOnboardingStep).not.toHaveBeenCalled();
     });
 
     it('profiles step enriches links with urlmap metadata (display name, logo, trimmed color, profile URL)', async () => {
@@ -100,7 +155,7 @@ describe('runOnboardingTurn', () => {
             { siteName: 'instagram', cardPlatformName: 'Instagram', siteImage: null, colorHex: '#E1306C\r', appStringFormat: 'https://instagram.com/%@' },
         ]);
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.links).toEqual(expect.arrayContaining([
             expect.objectContaining({
@@ -131,7 +186,7 @@ describe('runOnboardingTurn', () => {
                 : { imageUrl: null, title: null }
         ));
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(fetchLinkPreview).toHaveBeenCalledWith('https://open.spotify.com/artist/spot1');
         expect(fetchLinkPreview).toHaveBeenCalledWith('https://instagram.com/nova');
@@ -149,7 +204,7 @@ describe('runOnboardingTurn', () => {
             { siteName: 'spotify', cardPlatformName: 'Spotify', siteImage: null, colorHex: '#000000', appStringFormat: 'https://open.spotify.com/artist/%@' },
         ]);
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         const spotifyLink = step.payload.links.find(l => l.siteName === 'spotify');
         expect(spotifyLink.colorHex).toBeNull();
@@ -161,7 +216,7 @@ describe('runOnboardingTurn', () => {
         const artistQ = await import('@/server/utils/queries/artistQueries');
         artistQ.getAllLinks.mockRejectedValueOnce(new Error('urlmap down'));
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.links).toEqual([
             { siteName: 'spotify', value: 'spot1' },
@@ -176,7 +231,7 @@ describe('runOnboardingTurn', () => {
         const artistQ = await import('@/server/utils/queries/artistQueries');
         artistQ.getArtistById.mockResolvedValueOnce({ id: 'a1', name: 'Nova Reyes' }); // no link columns set
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes('Paste your Spotify'))).toBe(true);
         expect(chats.some(t => t.includes("Leaving a card as-is confirms it"))).toBe(false);
@@ -197,7 +252,7 @@ describe('runOnboardingTurn', () => {
             yield { kind: 'checked', platform: 'tiktok', displayName: 'TikTok' };
         });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(discoverArtistProfilesStream).toHaveBeenCalledWith('a1');
         // The incremental `candidate` event fires as its own frame, ahead of
         // the terminal `step` event — additive live feedback, not the only
@@ -230,7 +285,7 @@ describe('runOnboardingTurn', () => {
             yield { kind: 'checked', platform: 'instagram', displayName: 'Instagram' };
         });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
 
         const groupEvents = events.filter(e => e.kind === 'progress' && e.group === 'platform-search');
         // 3 DISTINCT platforms (spotify, instagram, tiktok) → exactly 3
@@ -270,7 +325,7 @@ describe('runOnboardingTurn', () => {
         // Default mock (from the top-level jest.mock) is an empty generator —
         // no "searching" events at all.
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(events.some(e => e.kind === 'progress' && e.group === 'platform-search')).toBe(false);
     });
 
@@ -278,7 +333,7 @@ describe('runOnboardingTurn', () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
         const { runOnboardingTurn } = await import('../turnHandlers');
-        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        const events = await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         const step = events.find(e => e.kind === 'step');
         expect(step.payload.candidates).toEqual([]);
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
@@ -290,7 +345,7 @@ describe('runOnboardingTurn', () => {
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'vault' });
         const { discoverArtistProfiles } = await import('@/server/utils/profileDiscovery');
         const { runOnboardingTurn } = await import('../turnHandlers');
-        await collect(runOnboardingTurn('a1', { type: 'open' }));
+        await collect(runOnboardingTurn('a1', { type: 'find_more_profiles', addedLinks: [], removedSiteNames: [] }));
         expect(discoverArtistProfiles).not.toHaveBeenCalled();
     });
 
@@ -469,7 +524,7 @@ describe('runOnboardingTurn', () => {
         }));
         expect(dq.insertVaultSource).toHaveBeenCalledWith({
             artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
-            type: 'article', status: 'approved',
+            type: 'website', status: 'approved',
         });
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
@@ -594,6 +649,80 @@ describe('runOnboardingTurn', () => {
         expect(chats.some(t => t.includes('it looks like your site'))).toBe(false);
     });
 
+    it("confirm_profiles: the artist's own site is typed 'website' while a third-party page stays 'article' — the ownership signal is recorded, not discarded", async () => {
+        // inferTypeFromUrl is mocked to ALWAYS return 'article' (see the module
+        // mock at the top of this file), so a 'website' result can only come
+        // from the ownedByArtist override — that's what this pins.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview
+            .mockResolvedValueOnce({ imageUrl: null, title: 'Nova Reyes — Official Site' })
+            .mockResolvedValueOnce({ imageUrl: null, title: 'Totally Unrelated Blog' });
+        const dq = await import('@/server/utils/queries/dashboardQueries');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://novareyesmusic.com/' }, { url: 'https://example.com/blog' }],
+            removedSiteNames: [],
+        }));
+        // Title carries the artist's name -> their official site.
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
+            type: 'website', status: 'approved',
+        });
+        // No ownership evidence -> unchanged behaviour, still a pending article.
+        expect(dq.insertVaultSource).toHaveBeenCalledWith({
+            artistId: 'a1', url: 'https://example.com/blog', title: 'Totally Unrelated Blog',
+            type: 'article', status: 'pending',
+        });
+    });
+
+    it('confirm_profiles: kicks off the Instagram ingest as background work once the step is confirmed', async () => {
+        // Regression guard for the bug found with a real artist: ingestion was
+        // only ever run by a manual CLI script, so grounded interview questions
+        // fired solely for artists whose posts had been hand-seeded.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce({ siteName: 'instagram', id: 'nova' });
+        const { ensureRecentSocialPosts } = await import('@/server/utils/socialIngest');
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://instagram.com/nova' }],
+            removedSiteNames: [],
+        }));
+        await new Promise(r => setTimeout(r, 0)); // flush the after()/floating-promise fallback
+        expect(ensureRecentSocialPosts).toHaveBeenCalledWith('a1');
+    });
+
+    it('confirm_profiles: does NOT start an ingest when every addition failed and the step is re-emitted', async () => {
+        // The early return means the artist is still on the profiles step with
+        // no saved links — there is no confirmed handle to scrape, and paying
+        // for an Apify run here would be wasted.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const aq = await import('@/server/utils/queries/artistQueries');
+        aq.getArtistById.mockResolvedValueOnce({ id: 'a1', name: 'Nova Reyes' }); // no link columns set
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce(undefined);
+        const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
+        fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: null }); // dead link -> unrecognized
+        const { ensureRecentSocialPosts } = await import('@/server/utils/socialIngest');
+        ensureRecentSocialPosts.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://deadsite.example/gone' }],
+            removedSiteNames: [],
+        }));
+        await new Promise(r => setTimeout(r, 0));
+        expect(ensureRecentSocialPosts).not.toHaveBeenCalled();
+    });
+
     it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Links support', async () => {
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
@@ -663,7 +792,7 @@ describe('runOnboardingTurn', () => {
         // Non-platform link: routed to the vault, approved (name match).
         expect(dq.insertVaultSource).toHaveBeenCalledWith({
             artistId: 'a1', url: 'https://novareyesmusic.com/', title: 'Nova Reyes — Official Site',
-            type: 'article', status: 'approved',
+            type: 'website', status: 'approved',
         });
         const chats = events.filter(e => e.kind === 'chat').map(e => e.text);
         expect(chats.some(t => t.includes("couldn't recognize"))).toBe(false);
@@ -735,8 +864,12 @@ describe('runOnboardingTurn', () => {
             await jest.advanceTimersByTimeAsync(45_000);
             const events = await eventsPromise;
 
+            // Substring, not the exact sentence: this test is about WHEN the
+            // empty-state narration fires (after the discovery cap, not before),
+            // and pinning the full prose made a copy edit look like a
+            // behavioural regression.
             expect(events.some(e =>
-                e.kind === 'chat' && e.text === "We didn't find much about you on the web yet — no problem. Paste a link to press, an interview, or your own site below, or just continue."
+                e.kind === 'chat' && e.text.includes("didn't find much about you on the web")
             )).toBe(true);
             expect(events.some(e => e.kind === 'step' && e.step === 'vault' && e.payload.sources.length === 0)).toBe(true);
         } finally {
@@ -1253,6 +1386,32 @@ describe('runOnboardingTurn', () => {
 
         expect(discoverArtistProfilesStream).toHaveBeenCalledWith('a1');
         expect(events.find(e => e.kind === 'step')?.step).toBe('profiles');
+    });
+
+    it('find_more_profiles SAVES the artist\'s decisions before re-searching, without advancing', async () => {
+        // The leak a real artist hit: re-searching sent no payload, so his four
+        // confirmed profiles were discarded and came back as unconfirmed
+        // candidates. The card's own copy promises "leaving a card as-is
+        // confirms it" — re-searching has to honour that too.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        extractArtistId.mockResolvedValueOnce({ siteName: 'tiktok', id: 'nova' });
+        const { setArtistLink, clearArtistLink } = await import('@/server/utils/artistLinkService');
+        setArtistLink.mockClear(); clearArtistLink.mockClear();
+        const { runOnboardingTurn } = await import('../turnHandlers');
+
+        const events = await collect(runOnboardingTurn('a1', {
+            type: 'find_more_profiles',
+            addedLinks: [{ url: 'https://tiktok.com/@nova' }],
+            removedSiteNames: ['facebook'],
+        }));
+
+        expect(setArtistLink).toHaveBeenCalledWith('a1', 'tiktok', 'nova');
+        expect(clearArtistLink).toHaveBeenCalledWith('a1', 'facebook');
+        // Re-searching is not confirming: the step must NOT advance.
+        expect(oq.confirmOnboardingStep).not.toHaveBeenCalled();
+        expect(events.some(e => e.kind === 'error')).toBe(false);
     });
 
     it('find_more_profiles refuses once the artist has moved past the profiles step', async () => {

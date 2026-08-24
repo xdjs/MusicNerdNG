@@ -23,10 +23,95 @@ describe('ProfilesCard — accepted-by-default', () => {
         expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: ['instagram'] });
     });
 
+    it('sends the artist\'s decisions to "Look for more", not just to "continue"', () => {
+        // The bug a real artist hit: "Look for more" took no arguments, so every
+        // confirmation and removal was discarded, the card re-rendered from
+        // server state, and his own profiles came back as unconfirmed
+        // candidates. Both buttons must report the same decisions.
+        const onConfirm = jest.fn();
+        const onFindMore = jest.fn();
+        render(<ProfilesCard payload={payload} onConfirm={onConfirm} onFindMore={onFindMore} disabled={false} />);
+
+        fireEvent.click(screen.getByLabelText(/remove instagram/i));
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://tiktok.com/@nova' } });
+        fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+        fireEvent.click(screen.getByRole('button', { name: /look for more/i }));
+        expect(onFindMore).toHaveBeenCalledWith({
+            addedLinks: [{ url: 'https://tiktok.com/@nova' }],
+            removedSiteNames: ['instagram'],
+        });
+
+        // …and identical to what continuing would have sent.
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm.mock.calls[0][0]).toEqual(onFindMore.mock.calls[0][0]);
+    });
+
+    it('stops listing a platform as missing once the artist has pasted its link', () => {
+        // Seen live: the hint read "Still missing: TikTok" on the line directly
+        // below the TikTok link he had just added, because the covered-set was
+        // built from server payload + candidates and ignored local state.
+        render(<ProfilesCard payload={payload} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getByText(/still missing/i).textContent).toMatch(/TikTok/);
+
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://www.tiktok.com/@nova' } });
+        fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+        expect(screen.getByText(/still missing/i).textContent).not.toMatch(/TikTok/);
+    });
+
+    it('pre-accepts a discovered profile so continuing actually saves it', () => {
+        // The bug this exists for: candidates were opt-in while the card's first
+        // line said "Leaving a card as-is confirms it". A real artist read that,
+        // left the card alone, completed all four onboarding steps, and finished
+        // with only the one link he started with — every discovered profile lost.
+        const onConfirm = jest.fn();
+        const withCandidates = {
+            ...payload,
+            candidates: [
+                { siteName: 'spotify', displayName: 'Spotify', value: 'sp1', profileUrl: 'https://open.spotify.com/artist/sp1' },
+                { siteName: 'bandcamp', displayName: 'Bandcamp', value: 'nova', profileUrl: 'https://nova.bandcamp.com' },
+            ],
+        };
+        render(<ProfilesCard payload={withCandidates} onConfirm={onConfirm} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        expect(onConfirm).toHaveBeenCalledWith({
+            addedLinks: [
+                { url: 'https://open.spotify.com/artist/sp1' },
+                { url: 'https://nova.bandcamp.com' },
+            ],
+            removedSiteNames: [],
+        });
+    });
+
+    it('does not offer several candidates for the same platform at all', () => {
+        // CY, 2026-08-20: unchecking your own old profiles feels worse than
+        // adding the right one. Ambiguous platforms drop through to "Still
+        // missing" so the artist pastes the correct one instead.
+        const onConfirm = jest.fn();
+        const ambiguous = {
+            ...payload,
+            candidates: [
+                { siteName: 'facebook', displayName: 'Facebook', value: 'a', profileUrl: 'https://facebook.com/a' },
+                { siteName: 'facebook', displayName: 'Facebook', value: 'b', profileUrl: 'https://facebook.com/b' },
+                { siteName: 'bandcamp', displayName: 'Bandcamp', value: 'nova', profileUrl: 'https://nova.bandcamp.com' },
+            ],
+        };
+        render(<ProfilesCard payload={ambiguous} onConfirm={onConfirm} disabled={false} />);
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+        // Only the unambiguous one is saved; neither Facebook is.
+        expect(onConfirm).toHaveBeenCalledWith({
+            addedLinks: [{ url: 'https://nova.bandcamp.com' }],
+            removedSiteNames: [],
+        });
+        // …and the artist is told Facebook is still missing.
+        expect(screen.getByText(/still missing/i).textContent).toMatch(/Facebook/);
+    });
+
     it('collects pasted links as additions', () => {
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payload} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://tiktok.com/@nova' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://tiktok.com/@nova' } });
         fireEvent.click(screen.getByRole('button', { name: /add/i }));
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
         expect(onConfirm).toHaveBeenCalledWith({
@@ -148,7 +233,7 @@ describe('ProfilesCard — accepted-by-default', () => {
         expect(list.className).toEqual(expect.stringContaining('overflow-y-auto'));
         expect(list.className).toEqual(expect.stringContaining('max-h-'));
         // The paste-a-link input and confirm button stay reachable outside the capped region.
-        expect(screen.getByPlaceholderText(/paste a link/i)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/paste a profile/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /looks good/i })).toBeInTheDocument();
     });
 
@@ -202,21 +287,14 @@ describe('ProfilesCard — discovered candidates (opt-in, never auto-saved)', ()
         expect(container.querySelectorAll('img').length).toBe(0);
     });
 
-    it('does NOT include an unaccepted candidate in the submitted payload — a guess is never auto-saved', () => {
+    it('DOES include a confident single-match candidate left untouched — the card says leaving it confirms it', () => {
+        // Reversal of the previous "a guess is never auto-saved" rule, decided
+        // 2026-08-20 (Carl: quickest path to a created profile) and forced by a
+        // real artist who lost every discovered profile to the old behaviour
+        // while following the card's own instruction. Safety now lives in the
+        // ambiguity rule below and in "Not me", not in silence.
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
-        expect(onConfirm).toHaveBeenCalledWith({
-            addedLinks: [],
-            removedSiteNames: [],
-        });
-    });
-
-    it('accepting a candidate (explicit "Add" click) includes its profileUrl in addedLinks on submit', () => {
-        const onConfirm = jest.fn();
-        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.click(screen.getByLabelText('add tiktok profile'));
-        expect(screen.getByText(/added/i)).toBeInTheDocument(); // visual accepted state
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
         expect(onConfirm).toHaveBeenCalledWith({
             addedLinks: [{ url: 'https://tiktok.com/@novareyes' }],
@@ -224,12 +302,17 @@ describe('ProfilesCard — discovered candidates (opt-in, never auto-saved)', ()
         });
     });
 
-    it('clicking Add again un-accepts the candidate (toggle)', () => {
+    it('renders a pre-accepted candidate in its accepted visual state', () => {
+        render(<ProfilesCard payload={payloadWithCandidate} onConfirm={jest.fn()} disabled={false} />);
+        expect(screen.getByText(/added/i)).toBeInTheDocument();
+    });
+
+    it('toggling a pre-accepted candidate off excludes it from submission', () => {
+        // The artist can still say no — it just takes an action now, which is
+        // the right way round: doing nothing keeps what we found.
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
-        const addButton = screen.getByLabelText('add tiktok profile');
-        fireEvent.click(addButton);
-        fireEvent.click(addButton);
+        fireEvent.click(screen.getByLabelText('add tiktok profile'));
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
         expect(onConfirm).toHaveBeenCalledWith({ addedLinks: [], removedSiteNames: [] });
     });
@@ -237,8 +320,7 @@ describe('ProfilesCard — discovered candidates (opt-in, never auto-saved)', ()
     it('dismissing a candidate ("Not me") hides it and excludes it from submission even if it had been accepted first', () => {
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.click(screen.getByLabelText('add tiktok profile')); // accept first
-        fireEvent.click(screen.getByLabelText('dismiss tiktok suggestion')); // then dismiss
+        fireEvent.click(screen.getByLabelText('dismiss tiktok suggestion')); // pre-accepted, then dismissed
         expect(screen.queryByText('TikTok')).not.toBeInTheDocument();
         expect(screen.queryByTestId('profiles-candidate-list')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
@@ -255,11 +337,11 @@ describe('ProfilesCard — discovered candidates (opt-in, never auto-saved)', ()
         expect(hint.textContent).not.toContain('TikTok');
     });
 
-    it('a pasted link plus an accepted candidate both land in addedLinks together', () => {
+    it('a pasted link plus a pre-accepted candidate both land in addedLinks together', () => {
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payloadWithCandidate} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.click(screen.getByLabelText('add tiktok profile'));
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://bandcamp.com/novareyes' } });
+        // No click needed — a confident single match is accepted already.
+        fireEvent.change(screen.getByPlaceholderText(/paste a profile/i), { target: { value: 'https://bandcamp.com/novareyes' } });
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
         expect(onConfirm).toHaveBeenCalledWith({
@@ -297,7 +379,7 @@ describe('VaultCard — keep-by-default', () => {
     it('collects pasted URLs as artist-added sources (spec §9 paste-a-link degrade)', () => {
         const onConfirm = jest.fn();
         render(<VaultCard payload={{ sources: [] }} onConfirm={onConfirm} disabled={false} />);
-        fireEvent.change(screen.getByPlaceholderText(/paste a link/i), { target: { value: 'https://press.example/nova' } });
+        fireEvent.change(screen.getByPlaceholderText(/paste press/i), { target: { value: 'https://press.example/nova' } });
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
         fireEvent.click(screen.getByRole('button', { name: /continue/i }));
         expect(onConfirm).toHaveBeenCalledWith({ decisions: [], addedUrls: ['https://press.example/nova'] });
@@ -378,7 +460,7 @@ describe('VaultCard — keep-by-default', () => {
         expect(list.className).toEqual(expect.stringContaining('overflow-y-auto'));
         expect(list.className).toEqual(expect.stringContaining('max-h-'));
         // The paste-a-link input and confirm button stay reachable outside the capped region.
-        expect(screen.getByPlaceholderText(/paste a link/i)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/paste press/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /keep these/i })).toBeInTheDocument();
     });
 

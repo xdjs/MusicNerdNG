@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import BuildStatus from "./BuildStatus";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
 import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
 import MusicNerdLoader from "@/app/_components/MusicNerdLoader";
@@ -194,7 +195,7 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 );
             case "step": {
                 if (item.step === "profiles") return <ProfilesCard payload={item.payload as never} disabled={!interactive}
-                        onFindMore={() => void sendTurn({ type: "find_more_profiles" })} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
+                        onFindMore={r => void sendTurn({ type: "find_more_profiles", ...r })} onConfirm={r => void sendTurn({ type: "confirm_profiles", ...r })} />;
                 if (item.step === "vault") return <VaultCard payload={item.payload as never} disabled={!interactive} onConfirm={r => void sendTurn({ type: "vault_review", ...r })} />;
                 if (item.step === "interview") {
                     const payload = item.payload as InterviewPayload;
@@ -265,6 +266,33 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 return null;
         }
     };
+
+    // While the build runs, this is a LOADING state, not a conversation — it asks
+    // nothing and the artist answers nothing. A step card appearing is what makes
+    // it a conversation again (the resume path, where they really are answering),
+    // so that is the discriminator rather than a mode flag that could drift.
+    // An ERROR always falls back to the chat surface. The build card has no way
+    // to show a failure or offer "Try again", so inferring build-mode from "no
+    // step card yet" would strand an artist on a frozen card after a failed
+    // build — with no error and no recovery.
+    const isBuild = !items.some(i => i.kind === "step" || i.kind === "draft" || i.kind === "error");
+    if (isBuild) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                <BuildStatus
+                    artistName={artistName}
+                    items={items}
+                    complete={complete}
+                    onSkip={onSkip}
+                    onFinish={() => {
+                        window.scrollTo({ top: 0, behavior: "auto" });
+                        router.refresh();
+                        onFinish();
+                    }}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">

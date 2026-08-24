@@ -97,11 +97,22 @@ function fold(text: string): string {
  *  Namesake risk is real but is not this function's job: discovery already
  *  passes the artist's verified profile IDs as identity context, and the artist
  *  themselves reviews every source in the vault step before anything is cited. */
-export function nameAppearsIn(text: string, artistName: string): boolean {
+export function nameAppearsIn(text: string, artistName: string, opts?: { requireFullName?: boolean }): boolean {
     const haystack = fold(text);
     const name = fold(artistName);
     if (!name) return false;
     if (haystack.includes(name)) return true;
+
+    // Search-retrieved candidates must clear the higher bar. The distinctive-token
+    // fallback below is calibrated for pages we already believe belong to the
+    // artist (their own site, a link they handed us), where an unusual wordmark
+    // is the risk. It is far too loose for anything a keyword search returned:
+    // "Black Dave"'s distinctive token is "black", which matches a large fraction
+    // of the web — including the Guardian interview with Dave the UK rapper about
+    // his song "Black". Passing that would make a namesake article citable in the
+    // artist's About, which is worse than the invented URLs this path replaced.
+    if (opts?.requireFullName) return false;
+
     // Longest token = most distinctive. A 4-char floor keeps "the"/"dj"/"lil"
     // and similar from matching half the web on their own.
     const distinctive = name.split(" ")
@@ -118,7 +129,20 @@ export function nameAppearsIn(text: string, artistName: string): boolean {
  * are opposite facts about whether the URL is real, and both arrive with no
  * usable text.
  */
-export function classifyFetchedSource(page: PageContent, artistName: string): SourceVerification {
+export function classifyFetchedSource(
+    page: PageContent,
+    artistName: string,
+    opts?: {
+        requireFullName?: boolean;
+        /** An external check has already READ this page and confirmed it is
+         *  about this artist (see sourceRelevance). That is strictly stronger
+         *  evidence than any string match, so the name test is skipped rather
+         *  than allowed to veto it — genuine press written under an artist's
+         *  earlier name ("Black Dave" for "Black Dave MK2") contains neither
+         *  the full name nor, necessarily, its distinctive token. */
+        identityConfirmed?: boolean;
+    },
+): SourceVerification {
     const { status, extractedText } = page;
 
     // Never completed. Only a nonexistent hostname is proof of a bad URL — a
@@ -146,7 +170,7 @@ export function classifyFetchedSource(page: PageContent, artistName: string): So
 
     // Fetched and readable, but not about this artist — a stale URL that now
     // points somewhere else, or a namesake. Not evidence for a claim about them.
-    if (!nameAppearsIn(body, artistName)) return "lead";
+    if (!opts?.identityConfirmed && !nameAppearsIn(body, artistName, opts)) return "lead";
 
     return "verified";
 }

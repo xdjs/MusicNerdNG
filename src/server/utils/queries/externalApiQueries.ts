@@ -89,6 +89,13 @@ const cachedSpotifyToken = unstable_cache(refreshSpotifyToken, ["spotify-headers
     revalidate: 3300 // 55 minutes - refresh slightly before the token expires
 });
 
+/** Next's `unstable_cache` outside a request context. The message is the only
+ *  signal it gives — there is no typed error class to match on. */
+function isMissingCacheContext(e: unknown): boolean {
+    const msg = (e as Error)?.message ?? "";
+    return /incrementalCache missing|static generation store missing|Invariant: (?:cache|incremental)/i.test(msg);
+}
+
 /**
  * Returns Spotify client-credentials auth headers.
  *
@@ -106,7 +113,25 @@ const cachedSpotifyToken = unstable_cache(refreshSpotifyToken, ["spotify-headers
  * to die mid-request.
  */
 export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
-    const cached = await cachedSpotifyToken();
+    let cached: SpotifyHeaderType;
+    try {
+        cached = await cachedSpotifyToken();
+    } catch (e) {
+        // ONLY the missing-request-context case. `unstable_cache` throws
+        // "Invariant: incrementalCache missing" when called outside a Next
+        // request, which is exactly where our background work runs:
+        // `refreshArtistDoc` is fired detached after a server action returns,
+        // and CLI scripts have no context at all. Those callers were getting an
+        // exception instead of a token.
+        //
+        // Every OTHER failure rethrows. Catching them all would retry a token
+        // fetch that just failed for a real reason (bad credentials, network),
+        // masking the original error behind a second identical one — which is
+        // what the credential tests caught when this was written too broadly.
+        if (!isMissingCacheContext(e)) throw e;
+        console.warn("[getSpotifyHeaders] No request context for the token cache, fetching directly");
+        return refreshSpotifyToken();
+    }
     if (!isTokenExpired(cached)) return cached;
     return refreshSpotifyToken();
 }
@@ -323,6 +348,61 @@ export const getArtistTopTrackName = unstable_cache(async (id: string | null, he
  * writes from the real discography instead of guessing from an open-web namesake.
  * Best-effort: returns empty arrays on any failure.
  */
+export type SpotifyRelease = {
+    name: string;
+    /** Spotify's `release_date`: "2025-03-01", "2025-03" or "2025". */
+    releaseDate: string | null;
+    /** "album" | "single" | "compilation" | "appears_on" */
+    kind: string | null;
+};
+
+/**
+ * The artist's catalog WITH release dates, for grounding the knowledge document.
+ *
+ * `getSpotifyCatalogNames` returns titles only, which is all the relevance judge
+ * needs. The document needs dates: it was naming releases scraped out of
+ * Instagram captions and dating them by the publication year of whatever article
+ * mentioned them — so a 2019 interview made a placement "as of 2019", and the
+ * one release that did carry a date got it from a webpage rather than from the
+ * catalog.
+ *
+ * Deliberately NOT a discography for the page. The artist's Spotify and Deezer
+ * links already carry the full catalog and stay current, where a generated copy
+ * goes stale the day they release something. This exists so the document can
+ * name real titles with real dates when it has something to say about them.
+ */
+export async function getSpotifyCatalogDetail(
+    id: string | null,
+    headers: SpotifyHeaderType
+): Promise<SpotifyRelease[]> {
+    // Deliberately NOT wrapped in `unstable_cache`: the knowledge document is
+    // rebuilt from detached background work where there is no Next request
+    // context, and unstable_cache throws outright there. Document rebuilds are
+    // rare and debounced, so one uncached Spotify call is the cheaper trade.
+    if (!id) return [];
+    try {
+        const res = await axios.get(
+            `https://api.spotify.com/v1/artists/${id}/albums?include_groups=album%2Csingle%2Cappears_on&limit=50&market=US`,
+            headers,
+        );
+        const seen = new Set<string>();
+        const out: SpotifyRelease[] = [];
+        for (const a of ((res.data.items ?? []) as Array<{ name?: string; release_date?: string; album_group?: string }>)) {
+            if (!a.name) continue;
+            const key = a.name.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ name: a.name, releaseDate: a.release_date ?? null, kind: a.album_group ?? null });
+        }
+        // Newest first: what an artist is asked about is usually recent.
+        out.sort((x, y) => (y.releaseDate ?? "").localeCompare(x.releaseDate ?? ""));
+        return out;
+    } catch (e) {
+        console.error("Error fetching Spotify catalog detail for artist", e);
+        return [];
+    }
+}
+
 export const getSpotifyCatalogNames = unstable_cache(async (
     id: string | null,
     headers: SpotifyHeaderType

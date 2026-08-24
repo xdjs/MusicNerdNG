@@ -4,7 +4,7 @@
 # Puts an artist into a known starting state so the onboarding chat can be
 # replayed from the top without hand-writing SQL each time.
 #
-#   npm run onboarding -- <artist-name-or-uuid> [scenario] [--keep-progress]
+#   npm run onboarding -- <artist-name-or-uuid> [scenario] [--keep-progress] [--fresh]
 #   npm run onboarding -- restore <artist-name-or-uuid>
 #
 # Scenarios (what the artist's platform links look like when the chat opens):
@@ -13,10 +13,17 @@
 #   blank        clear every link — exercises the empty-state path
 #
 # Unless --keep-progress, this also clears onboarding step confirmations,
-# interview answers, and the generated artist doc, and returns EVERY vault
-# source to pending — approved ones too, since a source already approved is one
-# the vault step won't ask about, and the point is to replay the step from the
-# top.
+# interview answers, the generated artist doc, and the artist's doc corrections,
+# and returns EVERY vault source to pending — approved ones too, since a source
+# already approved is one the vault step won't ask about, and the point is to
+# replay the step from the top.
+#
+# --fresh DELETES the vault sources instead of resetting them, so discovery
+# genuinely runs again. Resetting to pending keeps the stored rows, and the
+# unique index on (artist_id, url) means re-discovery quietly skips every URL it
+# already has — so the scrape, the relevance judge and the publication dates all
+# keep whatever they produced the first time. Use --fresh when the thing under
+# test is discovery itself; the plain reset is for iterating on the chat.
 #
 # Links are backed up before any clearing; `restore` puts them back.
 set -euo pipefail
@@ -65,11 +72,12 @@ if [ "$MODE" = "restore" ]; then
   exit 0
 fi
 
-SCENARIO="full"; KEEP_PROGRESS=0
+SCENARIO="full"; KEEP_PROGRESS=0; FRESH=0
 for arg in "$@"; do
   case "$arg" in
     full|deezer-only|blank) SCENARIO="$arg" ;;
     --keep-progress) KEEP_PROGRESS=1 ;;
+    --fresh) FRESH=1 ;;
     *) echo "Unknown argument: $arg" >&2; usage ;;
   esac
 done
@@ -96,10 +104,19 @@ if [ "$SCENARIO" != "full" ]; then
 fi
 
 if [ "$KEEP_PROGRESS" -eq 0 ]; then
+  # Corrections are progress too: they are the artist's answers about a document
+  # that is about to be thrown away, and carrying them into a fresh run would
+  # apply them to claims that no longer exist.
   psql "$CONN" -q -c "DELETE FROM artist_onboarding_steps WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_interview_answers WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_docs WHERE artist_id='$ARTIST_ID';
-                      UPDATE artist_vault_sources SET status='pending' WHERE artist_id='$ARTIST_ID';"
+                      DELETE FROM artist_doc_corrections WHERE artist_id='$ARTIST_ID';"
+  if [ "$FRESH" -eq 1 ]; then
+    GONE="$(q "WITH d AS (DELETE FROM artist_vault_sources WHERE artist_id='$ARTIST_ID' RETURNING 1) SELECT count(*) FROM d;")"
+    echo "  --fresh: deleted $GONE vault source(s); discovery will run again"
+  else
+    psql "$CONN" -q -c "UPDATE artist_vault_sources SET status='pending' WHERE artist_id='$ARTIST_ID';"
+  fi
 fi
 
 # Pre-run vault discovery, mirroring production's approval-time discovery. The

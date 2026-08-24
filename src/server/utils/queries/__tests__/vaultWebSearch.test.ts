@@ -1,20 +1,23 @@
 // @ts-nocheck
 import { jest } from "@jest/globals";
 
-const mockGenerate = jest.fn();
-jest.mock("@/server/lib/gemini", () => ({
-  getGemini: jest.fn(() => ({ models: { generateContent: mockGenerate } })),
-  GEMINI_MODEL_FLASH: "gemini-2.5-flash",
+const mockWebSearch = jest.fn();
+jest.mock("@/server/utils/webSearch", () => ({
+  webSearch: (...a) => mockWebSearch(...a),
 }));
 
+const mockGetArtist = jest.fn().mockResolvedValue({
+  id: "a1", name: "Grimes", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+});
 jest.mock("@/server/utils/queries/artistQueries", () => ({
-  getArtistById: jest.fn().mockResolvedValue({ id: "a1", name: "Grimes", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null }),
+  getArtistById: (...a) => mockGetArtist(...a),
 }));
 
 const mockInsert = jest.fn().mockResolvedValue({ id: "src-1", url: "https://example.com/a", title: "A", status: "pending" });
+const mockGetSources = jest.fn().mockResolvedValue([]);
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
   insertVaultSource: (...a) => mockInsert(...a),
-  getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]),
+  getVaultSourcesByArtistId: (...a) => mockGetSources(...a),
   updateVaultSourceContent: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -28,133 +31,346 @@ jest.mock("@/server/utils/fetchPageContent", () => ({
   isUnsafeUrl: jest.fn().mockReturnValue(false),
 }));
 
-describe("searchAndPopulateVault — retry on empty/unparseable response", () => {
+// Hermetic by default: the judge abstains unless a test says otherwise, so
+// every existing expectation still exercises the name-check path.
+const mockJudge = jest.fn(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
+jest.mock("@/server/utils/sourceRelevance", () => ({ judgeSourceRelevance: (...a) => mockJudge(...a) }));
+
+const mockExtract = jest.fn(async () => undefined);
+jest.mock("@/server/utils/services", () => ({ extractArtistId: (...a) => mockExtract(...a) }));
+const mockSetLink = jest.fn(async () => ({}));
+jest.mock("@/server/utils/artistLinkService", () => ({ setArtistLink: (...a) => mockSetLink(...a) }));
+
+const hit = (url, title = "A Grimes Interview") => ({ url, title, snippet: "s" });
+
+describe("searchAndPopulateVault", () => {
   beforeEach(() => {
     jest.resetModules();
-    mockGenerate.mockReset();
+    mockWebSearch.mockReset();
+    mockWebSearch.mockResolvedValue([]);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Grimes", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
     mockInsert.mockClear();
     mockInsert.mockResolvedValue({ id: "src-1", url: "https://example.com/a", title: "A", status: "pending" });
     mockFetchPage.mockReset();
     mockFetchPage.mockResolvedValue(goodPage);
+    mockGetSources.mockReset();
+    mockGetSources.mockResolvedValue([]);
+    mockExtract.mockReset(); mockExtract.mockResolvedValue(undefined);
+    mockSetLink.mockReset(); mockSetLink.mockResolvedValue({});
+    mockJudge.mockReset();
+    mockJudge.mockImplementation(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
   });
 
-  it("retries when Gemini returns empty responses, then succeeds (the Grimes bug)", async () => {
-    // 2 transient empties, then a valid list — mirrors real Gemini flakiness.
-    mockGenerate
-      .mockResolvedValueOnce({ text: "" })
-      .mockResolvedValueOnce({ text: "" })
-      .mockResolvedValueOnce({ text: '[{"url":"https://example.com/a","title":"A Grimes Interview","snippet":"s","type":"interview"}]' });
+  // ---- Retrieval ---------------------------------------------------------
+  // Retrieval must be a search API, never a model. The previous implementation
+  // enabled googleSearch grounding and then asked Gemini to "return ONLY a JSON
+  // array", so the model AUTHORED the URLs — nothing bound its output to what
+  // search actually returned. A real artist's vault filled with a YouTube video
+  // whose ID 404s and a channel page that never mentions him.
 
+  it("retrieves candidates from the search API, quoting the artist name", async () => {
+    mockWebSearch.mockResolvedValue([hit("https://example.com/a")]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockWebSearch).toHaveBeenCalledTimes(3);
+    for (const [query] of mockWebSearch.mock.calls) {
+      // Unquoted, a multi-word name matches each token independently — which is
+      // exactly how "Black Dave" returns Dave the UK rapper.
+      expect(query).toContain('"Grimes"');
+    }
+  });
+
+  it("dedupes the same URL returned by more than one query", async () => {
+    mockWebSearch.mockResolvedValue([hit("https://example.com/a"), hit("https://example.com/a")]);
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
     const result = await searchAndPopulateVault("a1");
-
-    expect(mockGenerate).toHaveBeenCalledTimes(3);   // retried past the 2 empties
-    expect(mockInsert).toHaveBeenCalledTimes(1);      // inserted the recovered source
+    expect(mockInsert).toHaveBeenCalledTimes(1);
     expect(result).toHaveLength(1);
-  }, 15000);
+  });
+
+  it("returns [] when the search API finds nothing, without inserting", async () => {
+    mockWebSearch.mockResolvedValue([]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    const result = await searchAndPopulateVault("a1");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it("never re-offers a source the artist has already rejected", async () => {
+    // A rejection is the most reliable signal we have about who an artist is
+    // NOT, and it used to be discarded — discovery deduped against pending and
+    // approved only, so Black Dave could reject the Chord DAVE amplifier
+    // reviews and get them straight back on the next run.
+    mockGetSources.mockImplementation(async (_id, status) =>
+      status === "rejected" ? [{ id: "old", url: "https://example.com/not-me", status: "rejected" }] : []);
+    mockWebSearch.mockResolvedValue([hit("https://example.com/not-me"), hit("https://example.com/new")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const inserted = mockInsert.mock.calls.map(c => c[0].url);
+    expect(inserted).not.toContain("https://example.com/not-me");
+    expect(inserted).toContain("https://example.com/new");
+    // Rejected URLs are dropped BEFORE the verification pass, so a rejection
+    // also saves the fetch it would otherwise have cost.
+    expect(mockFetchPage).not.toHaveBeenCalledWith("https://example.com/not-me", expect.anything());
+  });
+
+  it("still re-discovers a URL that was deleted rather than rejected", async () => {
+    // A deleted row is gone from the table entirely, so it appears in none of
+    // the three status sets — deletion must stay a way to get a fresh look.
+    mockGetSources.mockResolvedValue([]);
+    mockWebSearch.mockResolvedValue([hit("https://example.com/deleted-before")]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls.map(c => c[0].url)).toContain("https://example.com/deleted-before");
+  });
+
+  it("skips a profile we already hold as a link, but keeps other content on the same host", async () => {
+    // Discovery kept offering an artist their own Spotify and X pages as
+    // "sources about you". They are identity we already have, not research.
+    // Matched on the stored VALUE appearing in the URL, not the host — host
+    // matching would have discarded the Shockoe Sessions interview, the best
+    // source found for another artist, purely because he has a YouTube link.
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pete Rango", spotify: "3DmaZbBPnKSGnxYRpHobss",
+      instagram: null, x: null, youtube: "p3t3rango", soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([
+      hit("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss", "Pete Rango - Spotify"),
+      hit("https://www.youtube.com/watch?v=GvqK4m2i9Mc", "Live session"),
+    ]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const inserted = mockInsert.mock.calls.map(c => c[0].url);
+    expect(inserted).not.toContain("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
+    expect(inserted).toContain("https://www.youtube.com/watch?v=GvqK4m2i9Mc");
+  });
+
+  it("never stores a feed, and does not even fetch it", async () => {
+    // A real artist's vault held rvamag.com/tags/<tag> AND
+    // rvamag.com/tags/<tag>/feed. They looked like duplicates because an RSS
+    // channel carries the same <title> as its page, but the second was raw XML
+    // — clicking it hands a fan an XML document.
+    mockWebSearch.mockResolvedValue([
+      hit("https://rvamag.com/tags/pete-rango-kevin-carroll/feed", "Pete Rango Kevin Carroll Archives - RVA Mag"),
+      hit("https://example.com/press.rss", "Press"),
+      hit("https://example.com/real-article", "A real article"),
+    ]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const stored = mockInsert.mock.calls.map(c => c[0].url);
+    expect(stored).not.toContain("https://rvamag.com/tags/pete-rango-kevin-carroll/feed");
+    expect(stored).not.toContain("https://example.com/press.rss");
+    expect(stored).toContain("https://example.com/real-article");
+    // Filtered before the fetch, so it costs nothing.
+    expect(mockFetchPage).not.toHaveBeenCalledWith("https://rvamag.com/tags/pete-rango-kevin-carroll/feed", expect.anything());
+  });
+
+  it("drops an XML document served from an ordinary-looking URL", async () => {
+    mockWebSearch.mockResolvedValue([hit("https://example.com/press", "Press")]);
+    mockFetchPage.mockResolvedValue({
+      title: "Press", snippet: "s", status: 200,
+      extractedText: '<?xml version="1.0"?><rss><channel><title>Press</title></channel></rss>',
+      fullText: '<?xml version="1.0"?><rss><channel><title>Press</title></channel></rss>',
+      ogImage: null,
+    });
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
 
   // ---- Verification gate -------------------------------------------------
-  // Gemini is asked to TYPE urls and descriptions, so it produces plausible ones:
-  // a real run stored five Apple Music IDs of which one existed, two invented
-  // slugs for one real article, and a domain one letter off from the real site.
-  // Nothing may become a source until we have fetched it ourselves.
+  // A search API cannot invent a URL, but a search hit is a claim about a page,
+  // not the page: it can be dead, paywalled, repurposed, or about a namesake.
+  // Nothing becomes a source until we have fetched it ourselves.
 
   it("verifies a candidate BEFORE storing it, and keeps the page's own content", async () => {
-    mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://example.com/a","title":"Model Title","snippet":"model description","type":"article"}]',
-    });
-
+    mockWebSearch.mockResolvedValue([hit("https://example.com/a")]);
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
-    const result = await searchAndPopulateVault("a1");
+    await searchAndPopulateVault("a1");
 
-    // Awaited, not fire-and-forget: the fetch must happen before the row exists.
-    expect(mockFetchPage).toHaveBeenCalledWith("https://example.com/a", { timeoutMs: 8000 });
-    expect(result).toHaveLength(1);
-    const stored = mockInsert.mock.calls[0][0];
-    // The page is the authority on itself — not the model's guess about it.
-    expect(stored.title).toBe("A");
-    expect(stored.snippet).toBe("s");
-    expect(stored.extractedText).toBe(GOOD_BODY);
-  }, 15000);
+    expect(mockFetchPage).toHaveBeenCalledWith("https://example.com/a", expect.objectContaining({ timeoutMs: expect.any(Number) }));
+    const row = mockInsert.mock.calls[0][0];
+    expect(row.extractedText).toBe(GOOD_BODY); // the verification record
+    expect(row.title).toBe("A");               // the PAGE's title, not the search hit's
+  });
 
   it("drops a candidate whose URL does not exist (404)", async () => {
-    mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://example.com/invented","title":"A","snippet":"s","type":"article"}]',
-    });
-    mockFetchPage.mockResolvedValue({ title: "t", extractedText: null, status: 404 });
-
+    mockWebSearch.mockResolvedValue([hit("https://example.com/gone")]);
+    mockFetchPage.mockResolvedValue({ title: null, snippet: null, extractedText: null, fullText: null, ogImage: null, status: 404 });
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
     const result = await searchAndPopulateVault("a1");
-
     expect(mockInsert).not.toHaveBeenCalled();
     expect(result).toEqual([]);
-  }, 15000);
-
-  it("drops a candidate whose hostname does not resolve", async () => {
-    mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://exampl.com/typo","title":"A","snippet":"s","type":"article"}]',
-    });
-    mockFetchPage.mockResolvedValue({ title: "t", extractedText: null, status: null, failure: "dns" });
-
-    const { searchAndPopulateVault } = await import("../vaultWebSearch");
-    expect(await searchAndPopulateVault("a1")).toEqual([]);
-    expect(mockInsert).not.toHaveBeenCalled();
-  }, 15000);
+  });
 
   it("keeps a bot-blocked page as an UNCITABLE lead rather than deleting a real source", async () => {
-    mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://example.com/walled","title":"Walled","snippet":"model description","type":"article"}]',
-    });
-    mockFetchPage.mockResolvedValue({ title: "t", extractedText: null, status: 403 });
+    mockWebSearch.mockResolvedValue([hit("https://example.com/blocked")]);
+    mockFetchPage.mockResolvedValue({ title: null, snippet: null, extractedText: null, fullText: null, ogImage: null, status: 403 });
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    const row = mockInsert.mock.calls[0][0];
+    expect(row.extractedText).toBeNull(); // stored, but never citable
+  });
 
+  // ---- Relevance judgement ------------------------------------------------
+
+  it("drops a page the judge says is about someone else, rather than keeping it as a lead", async () => {
+    // We READ it and it isn't them. Leads exist for pages we could not read,
+    // not for pages we read and rejected — a Chord DAVE amplifier review has no
+    // business sitting in an artist's vault waiting to be dismissed by hand.
+    mockJudge.mockImplementation(async () => new Map([["https://head-fi.org/chord-dave", "not-about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://head-fi.org/chord-dave", "Chord DAVE review")]);
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
     const result = await searchAndPopulateVault("a1");
-
-    expect(result).toHaveLength(1);
-    const stored = mockInsert.mock.calls[0][0];
-    // Empty extractedText IS the "not verified" record that isCitableSource reads.
-    expect(stored.extractedText).toBeNull();
-    // The model's description survives only as something to recognize the link
-    // by while curating; it never reaches synthesis.
-    expect(stored.snippet).toBe("model description");
-  }, 15000);
-
-  it("keeps a page we fetched but that never mentions the artist as a lead, not a source", async () => {
-    mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://example.com/parked","title":"Parked","snippet":"s","type":"article"}]',
-    });
-    const unrelated = "This domain is registered but may still be available. ".repeat(20);
-    mockFetchPage.mockResolvedValue({ title: "t", extractedText: unrelated, fullText: unrelated, status: 200 });
-
-    const { searchAndPopulateVault } = await import("../vaultWebSearch");
-    const result = await searchAndPopulateVault("a1");
-
-    // A parked/soft-404 page is dead, not a lead — it is not a real page about anyone.
-    expect(result).toEqual([]);
-    expect(mockInsert).not.toHaveBeenCalled();
-  }, 15000);
-
-  it("never stores a Google grounding-redirect URL when it cannot be resolved", async () => {
-    mockGenerate.mockResolvedValueOnce({
-      text: '[{"url":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/TOKEN","title":"A","snippet":"s","type":"article"}]',
-    });
-    // Resolution attempt fails — these tokens expire and then 404, so storing the
-    // redirect itself (the old fallback) put a guaranteed-broken link in the vault.
-    global.fetch = jest.fn().mockRejectedValue(new Error("expired"));
-
-    const { searchAndPopulateVault } = await import("../vaultWebSearch");
-    expect(await searchAndPopulateVault("a1")).toEqual([]);
-    expect(mockInsert).not.toHaveBeenCalled();
-  }, 15000);
-
-  it("returns [] after exhausting attempts if every response is empty", async () => {
-    mockGenerate.mockResolvedValue({ text: "" });
-
-    const { searchAndPopulateVault } = await import("../vaultWebSearch");
-    const result = await searchAndPopulateVault("a1");
-
-    expect(mockGenerate).toHaveBeenCalledTimes(4);   // MAX_ATTEMPTS
     expect(mockInsert).not.toHaveBeenCalled();
     expect(result).toEqual([]);
-  }, 15000);
+  });
+
+  it("lets an affirmed page be citable even when it never spells the full name", async () => {
+    // Black Dave's press is written under "Black Dave", which can never satisfy
+    // requireFullName against "Black Dave MK2". The judge is stronger evidence
+    // than a string match, so it lifts that constraint.
+    const PRESS = "Dave has been putting out anime-inflected rap out of Charleston for years. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave MK2", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockJudge.mockImplementation(async () => new Map([["https://example.com/press", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://example.com/press", "An interview")]);
+    mockFetchPage.mockResolvedValue({ title: "T", snippet: "s", extractedText: PRESS, fullText: PRESS, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls[0][0].extractedText).toBe(PRESS);
+  });
+
+  it("falls back to the name check when the judge abstains", async () => {
+    // An unavailable judge must not delete real press.
+    const RAPPER = "Dave talks about his song Black and growing up in south London. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockJudge.mockImplementation(async (_a, c) => new Map(c.map(x => [x.url, "undecided"])));
+    mockWebSearch.mockResolvedValue([hit("https://theguardian.com/dave", "Dave")]);
+    mockFetchPage.mockResolvedValue({ title: "Dave", snippet: "s", extractedText: RAPPER, fullText: RAPPER, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    // Stored, but demoted — exactly the pre-judge behaviour.
+    expect(mockInsert.mock.calls[0][0].extractedText).toBeNull();
+  });
+
+  it("never writes a link from a URL pattern alone, before the page is judged", async () => {
+    // This shipped: en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture
+    // was saved as a real artist's Wikipedia link, because the URL matched the
+    // wikipedia pattern. Matching a platform's URL shape says nothing about
+    // whose page it is.
+    mockExtract.mockResolvedValue({ siteName: "wikipedia", id: "Rango:_Music_from_the_Motion_Picture" });
+    mockJudge.mockImplementation(async () => new Map([["https://en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture", "not-about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://en.wikipedia.org/wiki/Rango:_Music_from_the_Motion_Picture", "Rango soundtrack")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockSetLink).not.toHaveBeenCalled();
+  });
+
+  it("does not infer an encyclopedia entry is the artist's account, even when affirmed", async () => {
+    // A wikipedia or imdb identifier is an article title ABOUT a subject. An
+    // article being about someone does not make it their account.
+    mockExtract.mockResolvedValue({ siteName: "wikipedia", id: "Pete_Rango" });
+    mockJudge.mockImplementation(async () => new Map([["https://en.wikipedia.org/wiki/Pete_Rango", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://en.wikipedia.org/wiki/Pete_Rango", "Pete Rango")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockSetLink).not.toHaveBeenCalled();
+  });
+
+  it("routes an AFFIRMED social account to links instead of filing it as press", async () => {
+    // The bug this exists for: a real artist finished onboarding with
+    // x.com/<handle> in his vault as a "source" and no X link on his profile.
+    mockExtract.mockResolvedValue({ siteName: "x", id: "p3t3rango" });
+    mockJudge.mockImplementation(async () => new Map([["https://x.com/p3t3rango", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://x.com/p3t3rango", "Pete Rango")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockSetLink).toHaveBeenCalledWith("a1", "x", "p3t3rango");
+    expect(mockInsert).not.toHaveBeenCalled(); // and not stored as a source
+  });
+
+  // ---- Namesakes ---------------------------------------------------------
+
+  it("does not let a namesake article become citable (the Black Dave case)", async () => {
+    // Real, working, readable page — about Dave the UK rapper and his song
+    // "Black". `nameAppearsIn`'s distinctive-token fallback reduces "Black Dave"
+    // to "black", which this page contains, so without requireFullName it would
+    // classify as `verified`, gain extractedText, and be cited in the artist's
+    // About. A plausible wrong-artist source is worse than an obvious fake.
+    const RAPPER = "Dave talks about his song Black and growing up in south London. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://theguardian.com/dave", "Dave: 'Black is confusing'")]);
+    mockFetchPage.mockResolvedValue({ title: "Dave", snippet: "s", extractedText: RAPPER, fullText: RAPPER, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const row = mockInsert.mock.calls[0][0];
+    expect(row.extractedText).toBeNull(); // demoted to an unverified lead
+  });
+
+  it("verifies the artist's OWN domain even when the page never spells the full name", async () => {
+    // Regression I introduced with requireFullName: peterango.com reads fine and
+    // is unambiguously his, but renders the two words apart so a full-name text
+    // match fails. Measured on the real site — strict said lead, loose said
+    // verified. A hostname that IS the artist's name outranks body text.
+    const SITE = "RANGO. Producer, artist, and builder. Selected work below. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pete Rango", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://peterango.com", "Pete Rango")]);
+    mockFetchPage.mockResolvedValue({ title: "Pete Rango", snippet: "s", extractedText: SITE, fullText: SITE, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls[0][0].extractedText).toBe(SITE);
+  });
+
+  it("does not extend that exemption to a third-party domain", async () => {
+    // The namesake gate must still hold everywhere else.
+    const RAPPER = "Dave talks about his song Black and growing up in south London. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://theguardian.com/dave", "Dave")]);
+    mockFetchPage.mockResolvedValue({ title: "Dave", snippet: "s", extractedText: RAPPER, fullText: RAPPER, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    expect(mockInsert.mock.calls[0][0].extractedText).toBeNull();
+  });
+
+  it("still verifies a page that names the artist in full", async () => {
+    const REAL = "Black Dave released a new project this week in Charleston. ".repeat(20);
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Black Dave", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://example.com/real", "Black Dave interview")]);
+    mockFetchPage.mockResolvedValue({ title: "T", snippet: "s", extractedText: REAL, fullText: REAL, ogImage: null, status: 200 });
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const row = mockInsert.mock.calls[0][0];
+    expect(row.extractedText).toBe(REAL);
+  });
 });

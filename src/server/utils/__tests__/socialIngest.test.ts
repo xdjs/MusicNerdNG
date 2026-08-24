@@ -71,6 +71,62 @@ describe('mapApifyPost (pure)', () => {
         expect(shapeB.musicArtist).toBeNull();
     });
 
+    it('drops a self-credit written as a DISPLAY NAME, not just a handle', () => {
+        // Regression: the guard compared a display name against a handle using
+        // a normaliser that keeps spaces, so "Pharaoh Sistare" never matched
+        // "pharaohsistare" and the audio was kept as a third-party credit.
+        // A real artist was then asked how a "collaboration and remix" he had
+        // no part in came about. The old test only covered the handle-shaped
+        // case ('P3T3RANGO'), which is why this survived.
+        const displayNameSelfCredit = mapApifyPost({
+            id: '9', url: 'https://x/9', ownerUsername: 'pharaohsistare',
+            musicInfo: {
+                artist_name: 'Pharaoh Sistare',
+                song_name: "Don't Let Me Go Alone (feat. Jameir Thompson) (Yamumoto Remix)",
+                uses_original_audio: false,
+            },
+        }, ARTIST_ID, 'pharaohsistare');
+        expect(displayNameSelfCredit.musicTitle).toBeNull();
+        expect(displayNameSelfCredit.musicArtist).toBeNull();
+
+        // Punctuation and casing in the display name shouldn't rescue it either.
+        const punctuated = mapApifyPost({
+            id: '10', url: 'https://x/10', ownerUsername: 'p3t3rango',
+            musicInfo: { artist_name: 'P3T3.RANGO', song_name: 'Some Track', uses_original_audio: false },
+        }, ARTIST_ID, HANDLE);
+        expect(punctuated.musicTitle).toBeNull();
+    });
+
+    it('drops a self-credit when the handle looks nothing like the artist name', () => {
+        // The case that matters most: a handle is NOT a name. "Black Dave"
+        // posts as @worstgeneration, "Pete Rango" as @p3t3rango. Matching only
+        // on the handle would keep working for artists whose handle happens to
+        // be their name minus the spaces, and silently fail for everyone else.
+        const unrelatedHandle = mapApifyPost({
+            id: '12', url: 'https://x/12', ownerUsername: 'worstgeneration',
+            musicInfo: { artist_name: 'Black Dave', song_name: 'Some Track', uses_original_audio: false },
+        }, ARTIST_ID, 'worstgeneration', 'Black Dave');
+        expect(unrelatedHandle.musicTitle).toBeNull();
+        expect(unrelatedHandle.musicArtist).toBeNull();
+
+        // Leetspeak handle, real name credited.
+        const leet = mapApifyPost({
+            id: '13', url: 'https://x/13', ownerUsername: 'p3t3rango',
+            musicInfo: { artist_name: 'Pete Rango', song_name: 'Some Track', uses_original_audio: false },
+        }, ARTIST_ID, 'p3t3rango', 'Pete Rango');
+        expect(leet.musicTitle).toBeNull();
+    });
+
+    it('still keeps a genuine third-party credit whose name merely resembles the artist', () => {
+        // The loose comparison must not become so lossy it eats real credits.
+        const realCredit = mapApifyPost({
+            id: '11', url: 'https://x/11', ownerUsername: 'pharaohsistare',
+            musicInfo: { artist_name: 'Pharaoh Sistare & The Others', song_name: 'A Real Track', uses_original_audio: false },
+        }, ARTIST_ID, 'pharaohsistare', 'Pharaoh Sistare');
+        expect(realCredit.musicTitle).toBe('A Real Track');
+        expect(realCredit.musicArtist).toBe('Pharaoh Sistare & The Others');
+    });
+
     it('preserves the full raw item for provenance', () => {
         const raw = { id: '8', url: 'https://x/8', ownerUsername: 'p3t3rango', caption: 'hi' };
         const row = mapApifyPost(raw, ARTIST_ID, HANDLE);

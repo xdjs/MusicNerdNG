@@ -335,8 +335,14 @@ export async function insertVaultSource(data: {
     contentType?: string;
     extractedText?: string | null;
     ogImage?: string | null;
+    /** ISO date (YYYY-MM-DD) the source says it was published, or null. */
+    publishedAt?: string | null;
 }) {
     try {
+        // onConflictDoNothing pairs with the unique index on (artist_id, url)
+        // added in 0014. Dedup used to be a read-then-write with nothing
+        // underneath, so two overlapping discovery runs both read "absent" and
+        // both inserted — a real artist's vault held the same interview twice.
         const [source] = await db
             .insert(artistVaultSources)
             .values({
@@ -352,8 +358,13 @@ export async function insertVaultSource(data: {
                 contentType: data.contentType,
                 extractedText: data.extractedText,
                 ogImage: data.ogImage,
+                publishedAt: data.publishedAt ?? null,
             })
+            .onConflictDoNothing({ target: [artistVaultSources.artistId, artistVaultSources.url] })
             .returning();
+        // Undefined when the row already existed — a concurrent run won the
+        // race. Callers treat a missing row as "nothing new to enrich", which is
+        // correct: the source is present either way.
         return source;
     } catch (e) {
         console.error("[insertVaultSource] Error:", e);
@@ -411,6 +422,7 @@ export async function updateVaultSourceContent(sourceId: string, data: {
     snippet?: string;
     extractedText?: string | null;
     ogImage?: string;
+    publishedAt?: string | null;
 }) {
     try {
         const [updated] = await db
@@ -420,6 +432,7 @@ export async function updateVaultSourceContent(sourceId: string, data: {
                 ...(data.snippet !== undefined ? { snippet: data.snippet } : {}),
                 ...(data.extractedText !== undefined ? { extractedText: data.extractedText } : {}),
                 ...(data.ogImage !== undefined ? { ogImage: data.ogImage } : {}),
+                ...(data.publishedAt !== undefined ? { publishedAt: data.publishedAt } : {}),
                 updatedAt: sql`(now() AT TIME ZONE 'utc'::text)`,
             })
             .where(eq(artistVaultSources.id, sourceId))

@@ -370,8 +370,53 @@ function deriveMusicReferences(posts: SocialPostRow[], artistNameTokens: Set<str
     return Array.from(byKey.values()).sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length || a.title.localeCompare(b.title));
 }
 
-export function deriveSocialSignals(posts: SocialPostRow[], handle: string, artistName?: string): SocialSignals {
+/** How far back a post can be and still be worth asking about.
+ *
+ *  `postedAt` was stored from the start and then used by nothing — no sort, no
+ *  window, no weighting — so a 2020 post competed on equal footing with last
+ *  week's. Two different artists were asked to reflect on posts from years ago;
+ *  the second time, the artist's reaction was "how is it relevant now?".
+ *
+ *  Eighteen months is deliberately generous: an album cycle is long, and a
+ *  release from last year is still live for an independent artist. */
+const RECENT_WINDOW_DAYS = 548;
+
+/** How much recent activity counts as "enough to work from". Below this we fall
+ *  back to the artist's whole history rather than an arbitrary slice of it: the
+ *  window exists to stop old posts crowding out new ones, not to throw data away
+ *  from someone who simply posts rarely. A stale question beats silence. */
+const MIN_POSTS_FOR_SIGNALS = 30;
+
+/** Most recent first; undated posts sort last rather than being dropped. */
+function byRecency(a: SocialPostRow, b: SocialPostRow): number {
+    return (Date.parse(b.postedAt || "") || 0) - (Date.parse(a.postedAt || "") || 0);
+}
+
+/**
+ * The posts worth deriving signals from: everything inside the recency window,
+ * or the most recent `MIN_POSTS_FOR_SIGNALS` if the window is thinner than that.
+ *
+ * Exported for testing — the selection rule is the part that decides whether an
+ * artist gets asked about this year or about 2020.
+ */
+export function selectRecentPosts(posts: SocialPostRow[], now: number = Date.now()): SocialPostRow[] {
+    const sorted = [...posts].sort(byRecency);
+    const cutoff = now - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const inWindow = sorted.filter(p => {
+        const t = Date.parse(p.postedAt || "");
+        return Number.isFinite(t) && t >= cutoff;
+    });
+    // Fall back to EVERYTHING, not to the most recent N — truncating a sparse
+    // artist's history to an arbitrary count loses real signal and buys nothing.
+    return inWindow.length >= MIN_POSTS_FOR_SIGNALS ? inWindow : sorted;
+}
+
+export function deriveSocialSignals(allPosts: SocialPostRow[], handle: string, artistName?: string): SocialSignals {
     const artistNameTokens = nameTokens(artistName ?? "");
+    // Signals come from RECENT activity. Engagement medians are computed over
+    // the same subset on purpose: a standout post should stand out against what
+    // the artist does now, not against a five-year average.
+    const posts = selectRecentPosts(allPosts);
     return {
         collaborators: deriveCollaborators(posts, handle),
         mentionedAccounts: deriveMentionedAccounts(posts, handle),

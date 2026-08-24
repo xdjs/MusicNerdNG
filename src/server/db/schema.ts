@@ -1,4 +1,4 @@
-import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, jsonb, numeric, index, uniqueIndex, foreignKey, integer, pgEnum, unique } from "drizzle-orm/pg-core"
+import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, date, jsonb, numeric, index, uniqueIndex, foreignKey, integer, pgEnum, unique } from "drizzle-orm/pg-core"
 import { relations, sql } from "drizzle-orm"
 
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
@@ -376,6 +376,11 @@ export const artistVaultSources = pgTable("artist_vault_sources", {
 	contentType: text("content_type"),
 	extractedText: text("extracted_text"),
 	ogImage: text("og_image"),
+	// When the SOURCE says it was published — not when we scraped it. Nullable:
+	// many pages never say, and a guessed date is worse than none, because it
+	// would let the knowledge doc confidently scope a claim to the wrong era.
+	// See migration 0015.
+	publishedAt: date("published_at"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [
@@ -389,6 +394,42 @@ export const artistVaultSources = pgTable("artist_vault_sources", {
 	pgPolicy("mnweb_insert_artist_vault_sources", { as: "permissive", for: "insert", to: ["mnweb"] }),
 	pgPolicy("mnweb_select_artist_vault_sources", { as: "permissive", for: "select", to: ["mnweb"] }),
 	pgPolicy("mnweb_update_artist_vault_sources", { as: "permissive", for: "update", to: ["mnweb"] }),
+]);
+
+/**
+ * What the artist has told us directly, which outranks anything we read.
+ *
+ * The knowledge document is regenerated whenever their sources change, so a
+ * correction typed into the document would be destroyed the next time they
+ * added one. These live outside it and are re-injected into every rebuild —
+ * the same durability the source rejections already have.
+ */
+export const artistDocCorrections = pgTable("artist_doc_corrections", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	/** The claim as it appeared. Keyed by TEXT, not position: a rebuild reorders
+	 *  and renumbers everything, but the wording largely survives. */
+	claim: text().notNull(),
+	/** The artist's replacement. Null for `kind: 'wrong'`. */
+	correction: text(),
+	/** 'wrong' — not true / not them. 'fix' — replaced with their own wording. */
+	kind: text().default('wrong').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("idx_artist_doc_corrections_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("artist_doc_corrections_artist_claim_uniq").on(table.artistId, table.claim),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_doc_corrections_artist_id_fkey"
+	}).onDelete("cascade"),
+	// Real expressions, not empty ones — see migration 0016 and the cautionary
+	// precedent in 0010.
+	pgPolicy("mnweb_select_artist_doc_corrections", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_doc_corrections", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_doc_corrections", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_doc_corrections", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
 ]);
 
 export const artistBioVersions = pgTable("artist_bio_versions", {

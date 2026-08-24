@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { deriveSocialSignals } from "@/server/utils/socialSignals";
+import { deriveSocialSignals, selectRecentPosts } from "@/server/utils/socialSignals";
 import { IG_FIXTURE_POSTS } from "@/server/utils/__fixtures__/socialPosts.fixture";
 
 const HANDLE = "p3t3rango";
@@ -253,3 +253,43 @@ describe("deriveThemes — distinctiveness (word-frequency artifacts vs. real si
     });
 });
 
+
+
+describe("selectRecentPosts — the 2020 bug", () => {
+    const NOW = Date.parse("2026-08-21T00:00:00Z");
+    const post = (iso, id) => ({
+        platform: "instagram", platformPostId: id, ownerUsername: "p3t3rango", isOwnPost: true,
+        caption: `post ${id}`, url: `https://instagram.com/p/${id}`, postedAt: iso,
+        likeCount: 10, commentCount: 1, playCount: null, hashtags: [], mentions: [],
+        coauthors: [], musicTitle: null, musicArtist: null,
+    });
+
+    it("drops posts outside the window when there is plenty of recent activity", () => {
+        // postedAt was stored from the start and used by nothing — no sort, no
+        // window — so a 2020 post competed with last week's. Two different
+        // artists were asked to reflect on years-old posts; the second one's
+        // reaction was "how is it relevant now?".
+        const recent = Array.from({ length: 40 }, (_, i) => post(`2026-06-${String(i % 28 + 1).padStart(2, "0")}T00:00:00Z`, `r${i}`));
+        const ancient = Array.from({ length: 40 }, (_, i) => post("2020-03-01T00:00:00Z", `a${i}`));
+        const picked = selectRecentPosts([...ancient, ...recent], NOW);
+        expect(picked).toHaveLength(40);
+        expect(picked.every(p => p.postedAt.startsWith("2026"))).toBe(true);
+    });
+
+    it("falls back to the FULL history when recent activity is thin, not an arbitrary slice", () => {
+        // An artist who posts rarely must still get questions, and truncating
+        // their history to a fixed count would lose real signal for nothing.
+        const old = Array.from({ length: 5 }, (_, i) => post(`201${i + 4}-01-01T00:00:00Z`, `o${i}`));
+        const picked = selectRecentPosts(old, NOW);
+        expect(picked).toHaveLength(5);
+        expect(picked[0].postedAt.startsWith("2018")).toBe(true); // newest first
+    });
+
+    it("sorts undated posts last without discarding them", () => {
+        const dated = post("2026-01-01T00:00:00Z", "d");
+        const undated = { ...post("", "u"), postedAt: "" };
+        const picked = selectRecentPosts([undated, dated], NOW);
+        expect(picked[0].platformPostId).toBe("d");
+        expect(picked).toHaveLength(2);
+    });
+});

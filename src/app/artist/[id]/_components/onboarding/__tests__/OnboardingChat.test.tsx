@@ -124,7 +124,10 @@ describe('OnboardingChat', () => {
         setChat({ items: [{ id: 'c1', kind: 'complete' }] });
         render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={onSkip} onFinish={onFinish} />);
 
-        expect(screen.getByText(/you're live/i)).toBeInTheDocument();
+        // The build surface replaced the chat's "You're live!" card — the flow
+        // asks nothing now, so the finish lives on the build status. What this
+        // test is about is the BEHAVIOUR of "See my page", which is unchanged.
+        expect(screen.getByText(/your page is ready/i)).toBeInTheDocument();
         const router = useRouter();
         fireEvent.click(screen.getByRole('button', { name: /see my page/i }));
         expect(router.refresh).toHaveBeenCalledTimes(1);
@@ -212,7 +215,10 @@ describe('OnboardingChat', () => {
         }
 
         it('branch 3: shows the "New messages" pill for non-action items while scrolled away from the bottom, and clicking it dismisses the pill', () => {
-            setChat({ items: [{ id: 'b1', kind: 'bot', text: 'Hi' }] });
+            // A step card puts the component on the CHAT surface. Scroll anchoring
+            // is a property of that surface only: the build view is a compact
+            // status card with nothing to scroll.
+            setChat({ items: [{ id: 's0', kind: 'step', step: 'profiles', payload: { artistName: 'Nova Reyes', links: [] } }, { id: 'b1', kind: 'bot', text: 'Hi' }] });
             const { rerender } = render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
             const scrollEl = screen.getByTestId('onboarding-scroll');
             scrollFarFromBottom(scrollEl);
@@ -224,6 +230,7 @@ describe('OnboardingChat', () => {
             expect(screen.queryByText('↓ New messages')).not.toBeInTheDocument();
 
             setChat({ items: [
+                { id: 's0', kind: 'step', step: 'profiles', payload: { artistName: 'Nova Reyes', links: [] } },
                 { id: 'b1', kind: 'bot', text: 'Hi' },
                 { id: 'b2', kind: 'bot', text: 'Still working on it' },
             ] });
@@ -241,12 +248,16 @@ describe('OnboardingChat', () => {
         });
 
         it('branch 1: force-scrolls (no pill) when a draft arrives even while scrolled away from the bottom', () => {
-            setChat({ items: [{ id: 'b1', kind: 'bot', text: 'Hi' }] });
+            // A step card puts the component on the CHAT surface. Scroll anchoring
+            // is a property of that surface only: the build view is a compact
+            // status card with nothing to scroll.
+            setChat({ items: [{ id: 's0', kind: 'step', step: 'profiles', payload: { artistName: 'Nova Reyes', links: [] } }, { id: 'b1', kind: 'bot', text: 'Hi' }] });
             const { rerender } = render(<OnboardingChat artistId="a1" artistName="Nova Reyes" onSkip={jest.fn()} />);
             const scrollEl = screen.getByTestId('onboarding-scroll');
             scrollFarFromBottom(scrollEl);
 
             setChat({ items: [
+                { id: 's0', kind: 'step', step: 'profiles', payload: { artistName: 'Nova Reyes', links: [] } },
                 { id: 'b1', kind: 'bot', text: 'Hi' },
                 { id: 'd1', kind: 'draft', doc: '## Overview', about: 'An About.' },
             ] });

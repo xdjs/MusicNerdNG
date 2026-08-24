@@ -137,6 +137,13 @@ async function main() {
 
     console.log(`\n${dryRun ? "[dry run] " : ""}verified ${totals.verified} · leads ${totals.lead} · dead ${totals.dead}`);
     await client.end();
+    // The work is done in seconds; without this the process hangs forever.
+    // Anything importing an app module also pulls in `@/server/db/drizzle`,
+    // whose module-level connection pool nothing closes, so the event loop
+    // never drains. Three orphaned discovery runs were still resident after
+    // "finishing" in 4.2 seconds, which is where "discovery takes 10 minutes"
+    // came from — it does not, it just never exits.
+    process.exit(0);
 }
 
 main().catch(async (e) => { console.error(e); await client.end(); process.exit(1); });

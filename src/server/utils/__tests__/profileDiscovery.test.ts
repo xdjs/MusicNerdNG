@@ -980,16 +980,18 @@ describe('discoverArtistProfiles', () => {
                 // Instagram is OG-reliable, so the tier-4 (web search) candidate
                 // needs an og:image to clear gate (e) — same as any other search hit.
                 if (url === 'https://instagram.com/p3t3rango') return { imageUrl: 'https://cdn/instagram-pic.jpg', title: null };
-                // TikTok's urlmap appStringFormat is 'https://tiktok.com/@%@' — the
+                // YouTube's urlmap appStringFormat is 'https://youtube.com/@%@' — the
                 // propagation probe hits THIS url, confirmed by image alone (no
                 // title to cross-check), which is only trusted for a `confirmed`
                 // handle — exactly the case a search-confirmed handle is.
-                if (url === 'https://tiktok.com/@p3t3rango') return { imageUrl: 'https://cdn/tiktok-pic.jpg', title: null };
+                // (Deliberately NOT TikTok: it serves nothing to a server-side
+                // fetch, so it is in PROBE_UNVERIFIABLE_PLATFORMS and never probed.)
+                if (url === 'https://youtube.com/@p3t3rango') return { imageUrl: 'https://cdn/youtube-pic.jpg', title: null };
                 return { imageUrl: null, title: null }; // every OTHER probe (seed pass, other platforms) misses
             });
             extractArtistId.mockImplementation(async (url: string) => {
                 if (url === 'https://instagram.com/p3t3rango') return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'p3t3rango' };
-                if (url === 'https://tiktok.com/@p3t3rango') return { siteName: 'tiktok', cardPlatformName: 'TikTok', id: 'p3t3rango' };
+                if (url === 'https://youtube.com/@p3t3rango') return { siteName: 'youtube', cardPlatformName: 'YouTube', id: 'p3t3rango' };
                 return null;
             });
             // Only Instagram's search turns anything up.
@@ -1001,19 +1003,19 @@ describe('discoverArtistProfiles', () => {
 
             const result = await discoverArtistProfiles('a1');
 
-            expect(result.map(r => r.siteName).sort()).toEqual(['instagram', 'tiktok']);
-            expect(result.find(r => r.siteName === 'tiktok')?.value).toBe('p3t3rango');
-            // TikTok was resolved by PROPAGATING the search-confirmed handle
-            // through a probe fetch, not a second search — tiktok.com's search
+            expect(result.map(r => r.siteName).sort()).toEqual(['instagram', 'youtube']);
+            expect(result.find(r => r.siteName === 'youtube')?.value).toBe('p3t3rango');
+            // YouTube was resolved by PROPAGATING the search-confirmed handle
+            // through a probe fetch, not a second search — youtube.com's search
             // was only ever called once (the normal per-platform tier-4 sweep),
             // and it returned nothing.
             const tiktokSearchCalls = webSearch.mock.calls.filter(
-                (call: unknown[]) => (call[1] as { includeDomains?: string[] })?.includeDomains?.[0] === 'tiktok.com',
+                (call: unknown[]) => (call[1] as { includeDomains?: string[] })?.includeDomains?.[0] === 'youtube.com',
             );
             expect(tiktokSearchCalls).toHaveLength(1);
         });
 
-        it('never probes X — a platform known to block server-side OG scraping — so a miss there can never produce a false "found"', async () => {
+        it('never probes TikTok, which serves a server-side fetch nothing at all', async () => {
             const { artistQ, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
             artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
@@ -1021,8 +1023,33 @@ describe('discoverArtistProfiles', () => {
 
             await discoverArtistProfiles('a1');
 
+            // Measured 2026-08-21 against two real handles: tiktok.com/@p3t3rango
+            // and tiktok.com/@peterango both return `title=null img=none`, while
+            // an Instagram control on the same run returns a real title and image.
+            // A probe therefore cannot distinguish "no such account" from "TikTok
+            // blocked us", so a miss here is not evidence of absence and must not
+            // be reported as one. See PROBE_UNVERIFIABLE_PLATFORMS.
+            const tiktokProbes = fetchLinkPreview.mock.calls.filter(
+                (call: unknown[]) => String(call[0]).includes('tiktok.com'),
+            );
+            expect(tiktokProbes).toHaveLength(0);
+        });
+
+        it('DOES probe X now that it returns og data again (re-measured 2026-08-21)', async () => {
+            const { artistQ, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+
+            await discoverArtistProfiles('a1');
+
+            // X was excluded from probing on the grounds that it returns no
+            // og:title/og:image to a bot. Re-measuring showed it now returns
+            // both ("Pete Rango ... (@p3t3rango) on X", image present). While
+            // excluded, X could never be found AT ALL: probing skipped it, and
+            // tier 4 could not rescue it either.
             const probedUrls = fetchLinkPreview.mock.calls.map((call: unknown[]) => call[0]);
-            expect(probedUrls.some((u: unknown) => typeof u === 'string' && u.includes('x.com'))).toBe(false);
+            expect(probedUrls.some((u: unknown) => typeof u === 'string' && u.includes('x.com'))).toBe(true);
         });
 
         it('never throws and still resolves to [] when every probe attempt rejects outright', async () => {
@@ -1035,5 +1062,23 @@ describe('discoverArtistProfiles', () => {
 
             await expect(discoverArtistProfiles('a1')).resolves.toEqual([]);
         });
+    });
+});
+
+describe("stripUrlQuery — tracking params are not part of a handle", () => {
+    it("drops the query string a search result carries", async () => {
+        // Tavily returns instagram.com/p3t3rango?hl=en as the top hit for the
+        // artist's name. extractArtistId captures the first path segment
+        // verbatim, so without this the artist's stored handle becomes
+        // "p3t3rango?hl=en" — which then fails to round-trip through urlmap.
+        const { stripUrlQuery } = await import("@/server/utils/profileDiscovery");
+        expect(stripUrlQuery("https://www.instagram.com/p3t3rango?hl=en")).toBe("https://www.instagram.com/p3t3rango");
+        expect(stripUrlQuery("https://x.com/p3t3rango?s=20&t=abc")).toBe("https://x.com/p3t3rango");
+    });
+
+    it("leaves a clean URL alone and never throws on a malformed one", async () => {
+        const { stripUrlQuery } = await import("@/server/utils/profileDiscovery");
+        expect(stripUrlQuery("https://x.com/p3t3rango")).toBe("https://x.com/p3t3rango");
+        expect(stripUrlQuery("not a url?x=1")).toBe("not a url");
     });
 });

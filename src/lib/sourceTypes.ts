@@ -9,6 +9,7 @@ export const SOURCE_TYPES = [
     "video",
     "data",
     "social",
+    "website",
 ] as const;
 
 export type SourceType = (typeof SOURCE_TYPES)[number];
@@ -24,6 +25,7 @@ export const SOURCE_TYPE_COLORS: Record<SourceType, { bg: string; text: string; 
     video:     { bg: "bg-red-100 dark:bg-red-900/40",       text: "text-red-700 dark:text-red-300",       border: "border-red-300 dark:border-red-700" },
     data:      { bg: "bg-slate-100 dark:bg-slate-900/40",   text: "text-slate-700 dark:text-slate-300",   border: "border-slate-300 dark:border-slate-700" },
     social:    { bg: "bg-indigo-100 dark:bg-indigo-900/40", text: "text-indigo-700 dark:text-indigo-300", border: "border-indigo-300 dark:border-indigo-700" },
+    website:   { bg: "bg-teal-100 dark:bg-teal-900/40",     text: "text-teal-700 dark:text-teal-300",     border: "border-teal-300 dark:border-teal-700" },
 };
 
 const DOMAIN_TYPE_MAP: Record<string, SourceType> = {
@@ -70,6 +72,11 @@ const PATH_KEYWORD_MAP: Record<string, SourceType> = {
     "videos": "video",
 };
 
+/** Note: this never returns "website". A URL alone can't tell you whether a
+ *  site belongs to the artist — only the caller knows that. The onboarding
+ *  confirm_profiles handler sets "website" explicitly when the artist hands us
+ *  a URL whose page title carries their name; everything else falls through to
+ *  "article" as before. */
 export function inferTypeFromUrl(url: string): SourceType {
     try {
         const parsed = new URL(url);

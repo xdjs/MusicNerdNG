@@ -96,3 +96,6 @@ docs/rnd/research/_scratch/*
 
 # R&D agenda recipients (contact data — public repo)
 docs/rnd/recipients.md
+
+# Throwaway debug scripts — never committed.
+scripts/_tmp-*

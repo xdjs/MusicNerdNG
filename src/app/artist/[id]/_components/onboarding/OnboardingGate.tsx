@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import OnboardingChat from "./OnboardingChat";
 import OnboardingBanner from "./OnboardingBanner";
+import { armTour, tourFlagKey } from "./ProfileTour";
 
 export function skipFlagKey(artistId: string): string {
     return `mn-onboarding-skip-${artistId}`;
@@ -41,7 +42,19 @@ export default function OnboardingGate({ artistId, artistName, currentStep }: Pr
                 // "See my page" after a real finish: close the takeover WITHOUT the
                 // skip flag, so a later visit (onboarding now complete) never shows
                 // the "Finish setting up" banner it would flash before refresh.
-                onFinish={() => setMode("closed")}
+                //
+                // Arms the tour rather than rendering it. This component is only
+                // rendered while onboarding is INCOMPLETE, and the build's last
+                // act is completing it — so a tour owned here is unmounted by the
+                // next server re-fetch, which is exactly what happened. The flag
+                // outlives both. Skipping the chat arms nothing: someone who
+                // dismissed the setup does not want a guided pass either.
+                onFinish={() => {
+                    let alreadyDone = false;
+                    try { alreadyDone = sessionStorage.getItem(tourFlagKey(artistId)) === "1"; } catch { /* private mode */ }
+                    if (!alreadyDone) armTour(artistId);
+                    setMode("closed");
+                }}
             />
         );
     }
