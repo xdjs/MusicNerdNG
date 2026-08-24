@@ -264,11 +264,15 @@ async function propagateVerifiedHandles(artistId: string, verified: Set<string>)
         // fixes itself later. Measured at 1.4s and 3.0s on a real artist, so
         // this is generous; giving up is the correct outcome, since everything
         // adopted from the artist's own page is already saved.
+        let budgetTimer: ReturnType<typeof setTimeout> | undefined;
         const candidates = await Promise.race([
             discoverArtistProfiles(artistId),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("propagation budget exhausted")), PROPAGATION_BUDGET_MS)),
-        ]);
+            new Promise<never>((_, reject) => {
+                budgetTimer = setTimeout(() => reject(new Error("propagation budget exhausted")), PROPAGATION_BUDGET_MS);
+            }),
+        // Cleared either way: left dangling, the timer holds the event loop open
+        // for the full budget after the winner has already settled.
+        ]).finally(() => clearTimeout(budgetTimer));
         for (const c of candidates) {
             const value = String(c.value ?? "");
             if (!verified.has(normalizeHandle(value))) continue;
