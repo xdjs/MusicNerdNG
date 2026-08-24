@@ -172,7 +172,7 @@ async function adoptHandlesFromOwnPage(
     artistId: string,
     outboundLinks: string[],
     artist: Record<string, unknown>,
-): Promise<number> {
+): Promise<{ adopted: number; handles: Set<string> }> {
     const resolved: { siteName: string; id: string }[] = [];
     for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
         const match = await extractArtistId(stripQuery(link)).catch(() => undefined);
@@ -188,7 +188,7 @@ async function adoptHandlesFromOwnPage(
         // that artist, with no error anywhere.
         return typeof held === "string" && !!held && normalizeHandle(held) === r.id;
     });
-    if (!corroborator) return 0;
+    if (!corroborator) return { adopted: 0, handles: new Set<string>() };
     console.log(`[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`);
 
     // A page naming TWO different handles for one platform is ambiguous — an
@@ -227,18 +227,12 @@ async function adoptHandlesFromOwnPage(
         }
     }
 
-    // The handle is now VERIFIED — the artist published it on their own site,
-    // on a page corroborated by an id we already held. Carrying it to the
-    // platforms we still have nothing for is not guessing, which is the whole
-    // difference from deriving a slug out of someone's name.
-    //
-    // Sherwinn Brice is the case: profile discovery, given only "Sherwinn Dupes
-    // Brice", offered `youtube/dupes` (wrong — it is dupesdidit) and missed
-    // everything else. Given the real handle it finds soundcloud/dupesdidit
-    // immediately. The old order guessed first and learned the truth afterwards,
-    // then never revisited the guesses.
-    if (adoptedHandles.size > 0) adopted += await propagateVerifiedHandles(artistId, adoptedHandles);
-    return adopted;
+    // Propagation is NOT triggered here. This function runs once per hub page,
+    // and discoverArtistProfiles carries its own 35s budget against a caller
+    // that races the whole search at 38s — so propagating per page would let an
+    // artist with two corroborating pages blow the budget outright. The handles
+    // go back to the caller, which propagates once for the run.
+    return { adopted, handles: adoptedHandles };
 }
 
 /**
@@ -629,7 +623,14 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // deezer ids an artist actually arrives with, the corroborator
             // showed up minutes after the page that needed it, and nothing was
             // adopted at all.
-            if ((page.outboundLinks?.length ?? 0) > 0) {
+            // An INDEX page is excluded from this outright. Corroboration proves
+            // a page is CONNECTED to the artist, not that it is about them
+            // alone — and a label roster linking this artist's real Spotify
+            // beside a labelmate's Instagram would corroborate and then adopt
+            // the labelmate. `lists-artist` is precisely that page, so the
+            // judge's verdict is worth honouring here even though adoption is
+            // otherwise independent of it.
+            if ((page.outboundLinks?.length ?? 0) > 0 && relevance.get(result.url) !== "lists-artist") {
                 hubCandidates.push(page.outboundLinks!);
             }
 
@@ -745,14 +746,24 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             const current = await getArtistById(artistId);
             if (current) {
                 const seen = new Set<string>();
+                const verified = new Set<string>();
                 for (const outbound of hubCandidates) {
-                    const key = outbound.slice(0, 3).join("|");
+                    // Keyed on the WHOLE link set. Keying on the first few
+                    // collided across pages from one site template, whose
+                    // header links are identical and whose later links — the
+                    // ones that would actually corroborate — are not.
+                    const key = outbound.join("|");
                     if (seen.has(key)) continue;
                     seen.add(key);
-                    const gained = await adoptHandlesFromOwnPage(artistId, outbound, current as unknown as Record<string, unknown>);
+                    const { adopted, handles } = await adoptHandlesFromOwnPage(
+                        artistId, outbound, current as unknown as Record<string, unknown>);
+                    for (const h of handles) verified.add(h);
                     // One adoption can corroborate the next page, so refresh.
-                    if (gained > 0) Object.assign(current, await getArtistById(artistId) ?? {});
+                    if (adopted > 0) Object.assign(current, await getArtistById(artistId) ?? {});
                 }
+                // ONCE for the run, not once per page — see the note in
+                // adoptHandlesFromOwnPage about the 35s discovery budget.
+                if (verified.size > 0) await propagateVerifiedHandles(artistId, verified);
             }
         }
 

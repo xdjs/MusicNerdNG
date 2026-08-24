@@ -38,6 +38,11 @@ jest.mock("@/server/utils/sourceRelevance", () => ({ judgeSourceRelevance: (...a
 
 const mockExtract = jest.fn(async () => undefined);
 jest.mock("@/server/utils/services", () => ({ extractArtistId: (...a) => mockExtract(...a) }));
+const mockDiscover = jest.fn(async () => []);
+jest.mock("@/server/utils/profileDiscovery", () => ({
+  discoverArtistProfiles: (...a) => mockDiscover(...a),
+}));
+
 const mockSetLink = jest.fn(async () => ({}));
 jest.mock("@/server/utils/artistLinkService", () => ({ setArtistLink: (...a) => mockSetLink(...a) }));
 
@@ -58,6 +63,7 @@ describe("searchAndPopulateVault", () => {
     mockGetSources.mockReset();
     mockGetSources.mockResolvedValue([]);
     mockExtract.mockReset(); mockExtract.mockResolvedValue(undefined);
+    mockDiscover.mockReset(); mockDiscover.mockResolvedValue([]);
     mockSetLink.mockReset(); mockSetLink.mockResolvedValue({});
     mockJudge.mockReset();
     mockJudge.mockImplementation(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
@@ -518,6 +524,89 @@ describe("searchAndPopulateVault", () => {
 
       expect(live.bandcamp).toBe("dupes");           // picked up mid-run
       expect(live.instagram).toBe("dupesdidit");     // adopted after, via that
+    });
+
+    it("propagates a verified handle to a platform we had nothing for", async () => {
+      // Profile discovery's propagation tier always knew how to carry a handle
+      // across platforms; what it lacked was a handle worth carrying. Given his
+      // NAME it produced `dupes` — wrong — and missed his SoundCloud entirely.
+      // Given `dupesdidit`, verified off his own site, it finds it at once.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      mockDiscover.mockResolvedValue([
+        { siteName: "soundcloud", value: "dupesdidit", confirmed: false },
+        // A different spelling is still a guess, and still goes to the artist.
+        { siteName: "tiktok", value: "dupes", confirmed: false },
+      ]);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const written = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(written).toContain("soundcloud=dupesdidit");
+      expect(written).not.toContain("tiktok=dupes");
+    });
+
+    it("propagates ONCE for the run, not once per corroborating page", async () => {
+      // discoverArtistProfiles carries its own 35s budget and the caller races
+      // the whole search at 38s, so propagating per page would let an artist
+      // with two corroborating pages blow the budget outright.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes"), hit("https://dupes.rocks/press", "Press")]);
+      mockFetchPage.mockImplementation(async (url) => ({
+        ...goodPage,
+        // Two DISTINCT corroborating pages — different link sets, so the dedup
+        // key must not collapse them either.
+        outboundLinks: String(url).includes("/press")
+          ? [...OUTBOUND, "https://www.youtube.com/dupesdidit"]
+          : OUTBOUND,
+      }));
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("youtube") ? { siteName: "youtube", cardPlatformName: "YouTube", id: "dupesdidit" } : resolve(url));
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockDiscover).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not adopt from a roster page that merely lists the artist", async () => {
+      // The compounding risk: a label page can legitimately link this artist's
+      // real Spotify — corroborating — while also linking a LABELMATE's
+      // Instagram in the same footer. Corroboration proves a page is connected
+      // to the artist, not that it is about them alone. `lists-artist` is
+      // exactly that page, so it is excluded from hub candidacy outright.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit("https://somelabel.com/roster", "Roster")]);
+      mockFetchPage.mockResolvedValue({
+        ...goodPage,
+        outboundLinks: [
+          "https://dupes.bandcamp.com/album/convergence",   // really his
+          "https://www.instagram.com/somelabelmate",        // NOT his
+        ],
+      });
+      mockJudge.mockImplementation(async (_a, candidates) =>
+        new Map(candidates.map(c => [c.url, "lists-artist"])));
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("bandcamp") ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" }
+        : url.includes("instagram") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "somelabelmate" }
+        : undefined);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=somelabelmate");
     });
 
     it("will not adopt a platform route mistaken for a handle", async () => {
