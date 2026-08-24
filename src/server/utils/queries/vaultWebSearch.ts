@@ -49,6 +49,14 @@ const MAX_INDEX_FOLLOWS = 3;
  *  urlmap, so this is a real cost on a latency-bounded step. */
 const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
 
+/** Ceiling on hub pages examined for ownership. Every adoption costs another
+ *  getArtistById round trip and every page costs up to MAX_CORROBORATION_CHECKS
+ *  urlmap reads, and this is the one pass in this file with no explicit budget
+ *  of its own — implicitly bounded only by the caller's outer race. An artist
+ *  with more corroborating pages than this has already been identified several
+ *  times over. */
+const MAX_HUB_PAGES = 5;
+
 /** Ceiling on the propagation pass — see propagateVerifiedHandles. */
 const PROPAGATION_BUDGET_MS = 10_000;
 
@@ -251,7 +259,11 @@ async function adoptHandlesFromOwnPage(
  * artist published on their own corroborated page is taken. A candidate on some
  * other spelling is still a guess and still goes to the artist to confirm.
  */
-async function propagateVerifiedHandles(artistId: string, verified: Set<string>): Promise<number> {
+async function propagateVerifiedHandles(
+    artistId: string,
+    verified: Set<string>,
+    artist: Record<string, unknown>,
+): Promise<number> {
     let adopted = 0;
     try {
         const { discoverArtistProfiles } = await import("@/server/utils/profileDiscovery");
@@ -278,6 +290,13 @@ async function propagateVerifiedHandles(artistId: string, verified: Set<string>)
             if (!verified.has(normalizeHandle(value))) continue;
             if (!ACCOUNT_PLATFORMS.has(c.siteName)) continue;
             if (isReservedHandle(c.siteName, value)) continue;
+            // setArtistLink is an unconditional upsert, and until now nothing
+            // here stopped it overwriting a value the artist already has —
+            // safe only because discoverArtistProfiles happens to gate on the
+            // same thing internally. That is a load-bearing assumption about
+            // another module's internals; adoptHandlesFromOwnPage guards for
+            // itself and so should this.
+            if (artist[c.siteName]) continue;
             try {
                 await setArtistLink(artistId, c.siteName, value);
                 console.log(`[vaultWebSearch] Propagated verified handle -> ${c.siteName}=${value}`);
@@ -776,12 +795,14 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             if (current) {
                 const seen = new Set<string>();
                 const verified = new Set<string>();
-                for (const outbound of hubCandidates) {
+                for (const outbound of hubCandidates.slice(0, MAX_HUB_PAGES)) {
                     // Keyed on the WHOLE link set. Keying on the first few
                     // collided across pages from one site template, whose
                     // header links are identical and whose later links — the
                     // ones that would actually corroborate — are not.
-                    const key = outbound.join("|");
+                    // Sorted: the same link set fetched in a different order is
+                    // the same page as far as corroboration is concerned.
+                    const key = [...outbound].sort().join("|");
                     if (seen.has(key)) continue;
                     seen.add(key);
                     const { adopted, handles } = await adoptHandlesFromOwnPage(
@@ -797,7 +818,9 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 }
                 // ONCE for the run, not once per page — see the note in
                 // adoptHandlesFromOwnPage about the 35s discovery budget.
-                if (verified.size > 0) await propagateVerifiedHandles(artistId, verified);
+                if (verified.size > 0) {
+                    await propagateVerifiedHandles(artistId, verified, current as unknown as Record<string, unknown>);
+                }
             }
         }
 

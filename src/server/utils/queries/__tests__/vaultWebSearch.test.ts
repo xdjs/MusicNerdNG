@@ -657,6 +657,26 @@ describe("searchAndPopulateVault", () => {
       expect(result.length).toBeGreaterThan(0);
     });
 
+    it("never overwrites a platform the artist already has", async () => {
+      // setArtistLink is an unconditional upsert, and propagation was safe only
+      // because discoverArtistProfiles gates on the same thing internally — a
+      // load-bearing assumption about another module's internals.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        soundcloud: "his-real-soundcloud",   // already known, must survive
+        instagram: null, x: null, youtube: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      mockDiscover.mockResolvedValue([{ siteName: "soundcloud", value: "dupesdidit", confirmed: false }]);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("soundcloud=dupesdidit");
+    });
+
     it("will not adopt a platform route mistaken for a handle", async () => {
       // instagram.com/p/<id> resolves to the "handle" p — one adoption away
       // from writing that onto an artist row.
