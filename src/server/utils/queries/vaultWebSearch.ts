@@ -49,6 +49,9 @@ const MAX_INDEX_FOLLOWS = 3;
  *  urlmap, so this is a real cost on a latency-bounded step. */
 const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
 
+/** Ceiling on the propagation pass — see propagateVerifiedHandles. */
+const PROPAGATION_BUDGET_MS = 10_000;
+
 /** One spelling of a handle. Stored values are inconsistently "@"-prefixed. */
 function normalizeHandle(v: string): string {
     return v.trim().toLowerCase().replace(/^@/, "");
@@ -252,7 +255,20 @@ async function propagateVerifiedHandles(artistId: string, verified: Set<string>)
     let adopted = 0;
     try {
         const { discoverArtistProfiles } = await import("@/server/utils/profileDiscovery");
-        const candidates = await discoverArtistProfiles(artistId);
+        // Bounded well under discoverArtistProfiles' own 35s budget. This runs
+        // at the TAIL of a pipeline the caller already races (38s in
+        // artistBioQuery, 45s in turnHandlers) after search, fetch, judge and
+        // hub adoption have each taken their share — so borrowing the full
+        // budget here means the propagated writes land after the turn has
+        // rendered and the artist sees an incomplete profile that silently
+        // fixes itself later. Measured at 1.4s and 3.0s on a real artist, so
+        // this is generous; giving up is the correct outcome, since everything
+        // adopted from the artist's own page is already saved.
+        const candidates = await Promise.race([
+            discoverArtistProfiles(artistId),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("propagation budget exhausted")), PROPAGATION_BUDGET_MS)),
+        ]);
         for (const c of candidates) {
             const value = String(c.value ?? "");
             if (!verified.has(normalizeHandle(value))) continue;
@@ -743,7 +759,16 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         // about-artist page, say) are exactly the corroborators the earlier
         // pages needed, and the snapshot taken before the loop cannot see them.
         if (hubCandidates.length > 0) {
-            const current = await getArtistById(artistId);
+            // getArtistById rethrows on a DB error, and this block sits inside
+            // the function's one try/catch, which returns []. A transient hiccup
+            // here would therefore discard `insertedSources` — every source we
+            // just persisted would still be in the database, but every caller
+            // keying off the return value would be told the run found nothing.
+            // Same discipline propagateVerifiedHandles already applies to itself.
+            const current = await getArtistById(artistId).catch(e => {
+                console.error("[vaultWebSearch] Could not re-read artist for hub adoption:", e);
+                return undefined;
+            });
             if (current) {
                 const seen = new Set<string>();
                 const verified = new Set<string>();
@@ -759,7 +784,12 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                         artistId, outbound, current as unknown as Record<string, unknown>);
                     for (const h of handles) verified.add(h);
                     // One adoption can corroborate the next page, so refresh.
-                    if (adopted > 0) Object.assign(current, await getArtistById(artistId) ?? {});
+                    // Falls back to what we already hold rather than throwing:
+                    // a stale record costs us one missed adoption, an exception
+                    // costs the caller the whole run's results.
+                    if (adopted > 0) {
+                        Object.assign(current, await getArtistById(artistId).catch(() => undefined) ?? {});
+                    }
                 }
                 // ONCE for the run, not once per page — see the note in
                 // adoptHandlesFromOwnPage about the 35s discovery budget.

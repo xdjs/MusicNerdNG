@@ -609,6 +609,51 @@ describe("searchAndPopulateVault", () => {
       expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=somelabelmate");
     });
 
+    it("still returns the run's sources when the artist re-read fails", async () => {
+      // getArtistById rethrows on a DB error, and the hub block sits inside the
+      // function's one try/catch, which returns []. A transient hiccup there
+      // would tell every caller the run found nothing — while the sources it
+      // found sat persisted in the database.
+      let call = 0;
+      mockGetArtist.mockImplementation(async () => {
+        // First read (start of the run) succeeds; the post-loop re-read blows up.
+        if (++call > 1) throw new Error("connection terminated unexpectedly");
+        return { id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+                 instagram: null, x: null, youtube: null, soundcloud: null, facebook: null };
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      const result = await searchAndPopulateVault("a1");
+
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("gives up on propagation rather than overrunning the turn", async () => {
+      // Propagation runs at the tail of a pipeline the caller already races
+      // (38s in artistBioQuery, 45s in turnHandlers). Borrowing
+      // discoverArtistProfiles' full 35s means the writes land after the turn
+      // has rendered and the artist sees an incomplete profile. Everything
+      // adopted from their own page is already saved, so giving up is correct.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      mockDiscover.mockImplementation(() => new Promise(() => {})); // never settles
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      const result = await searchAndPopulateVault("a1");
+
+      // The hub adoptions still stand, and the run still returns its sources.
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).toContain("instagram=dupesdidit");
+      expect(result.length).toBeGreaterThan(0);
+    }, 20000);
+
     it("will not adopt a platform route mistaken for a handle", async () => {
       // instagram.com/p/<id> resolves to the "handle" p — one adoption away
       // from writing that onto an artist row.
