@@ -38,6 +38,11 @@ jest.mock("@/server/utils/sourceRelevance", () => ({ judgeSourceRelevance: (...a
 
 const mockExtract = jest.fn(async () => undefined);
 jest.mock("@/server/utils/services", () => ({ extractArtistId: (...a) => mockExtract(...a) }));
+const mockDiscover = jest.fn(async () => []);
+jest.mock("@/server/utils/profileDiscovery", () => ({
+  discoverArtistProfiles: (...a) => mockDiscover(...a),
+}));
+
 const mockSetLink = jest.fn(async () => ({}));
 jest.mock("@/server/utils/artistLinkService", () => ({ setArtistLink: (...a) => mockSetLink(...a) }));
 
@@ -58,6 +63,7 @@ describe("searchAndPopulateVault", () => {
     mockGetSources.mockReset();
     mockGetSources.mockResolvedValue([]);
     mockExtract.mockReset(); mockExtract.mockResolvedValue(undefined);
+    mockDiscover.mockReset(); mockDiscover.mockResolvedValue([]);
     mockSetLink.mockReset(); mockSetLink.mockResolvedValue({});
     mockJudge.mockReset();
     mockJudge.mockImplementation(async (_anchor, candidates) => new Map(candidates.map(c => [c.url, "undecided"])));
@@ -483,6 +489,192 @@ describe("searchAndPopulateVault", () => {
       const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
       expect(adopted).not.toContain("instagram=dupesdidit");
       expect(adopted).not.toContain("instagram=hislabelrecords");
+    });
+
+    it("adopts even when the corroborator only arrives partway through the run", async () => {
+      // The realistic start. An artist arrives from a claim holding the DSP ids
+      // MusicNerd creates them with — spotify and deezer — and nothing else.
+      // Sherwinn Brice's site corroborates through his BANDCAMP, and his
+      // bandcamp is itself only picked up later in the same run, from a
+      // different page. Adopting inline meant deciding whose a page was before
+      // the run had finished learning who the artist is, so nothing was
+      // adopted at all and he finished with no socials.
+      const live = {
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", deezer: "dz1",
+        bandcamp: null, instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      };
+      mockGetArtist.mockImplementation(async () => ({ ...live }));
+      // Writes land on the record the way they do in production, so the
+      // post-loop re-read can see them.
+      mockSetLink.mockImplementation(async (_id, site, value) => { live[site] = value; return {}; });
+
+      mockWebSearch.mockResolvedValue([hit("https://dupes.bandcamp.com/album/convergence", "Convergence"), hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockImplementation(async (url) => ({
+        ...goodPage,
+        outboundLinks: String(url).includes("dupes.rocks") ? OUTBOUND : [],
+      }));
+      // The bandcamp page is judged as the artist's, which is what routes it
+      // into links mid-loop and makes it available as a corroborator after.
+      mockJudge.mockImplementation(async (_a, candidates) =>
+        new Map(candidates.map(c => [c.url, c.url.includes("bandcamp") ? "about-artist" : "undecided"])));
+      mockExtract.mockImplementation(resolve);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(live.bandcamp).toBe("dupes");           // picked up mid-run
+      expect(live.instagram).toBe("dupesdidit");     // adopted after, via that
+    });
+
+    it("propagates a verified handle to a platform we had nothing for", async () => {
+      // Profile discovery's propagation tier always knew how to carry a handle
+      // across platforms; what it lacked was a handle worth carrying. Given his
+      // NAME it produced `dupes` — wrong — and missed his SoundCloud entirely.
+      // Given `dupesdidit`, verified off his own site, it finds it at once.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      mockDiscover.mockResolvedValue([
+        { siteName: "soundcloud", value: "dupesdidit", confirmed: false },
+        // A different spelling is still a guess, and still goes to the artist.
+        { siteName: "tiktok", value: "dupes", confirmed: false },
+      ]);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const written = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(written).toContain("soundcloud=dupesdidit");
+      expect(written).not.toContain("tiktok=dupes");
+    });
+
+    it("propagates ONCE for the run, not once per corroborating page", async () => {
+      // discoverArtistProfiles carries its own 35s budget and the caller races
+      // the whole search at 38s, so propagating per page would let an artist
+      // with two corroborating pages blow the budget outright.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes"), hit("https://dupes.rocks/press", "Press")]);
+      mockFetchPage.mockImplementation(async (url) => ({
+        ...goodPage,
+        // Two DISTINCT corroborating pages — different link sets, so the dedup
+        // key must not collapse them either.
+        outboundLinks: String(url).includes("/press")
+          ? [...OUTBOUND, "https://www.youtube.com/dupesdidit"]
+          : OUTBOUND,
+      }));
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("youtube") ? { siteName: "youtube", cardPlatformName: "YouTube", id: "dupesdidit" } : resolve(url));
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockDiscover).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not adopt from a roster page that merely lists the artist", async () => {
+      // The compounding risk: a label page can legitimately link this artist's
+      // real Spotify — corroborating — while also linking a LABELMATE's
+      // Instagram in the same footer. Corroboration proves a page is connected
+      // to the artist, not that it is about them alone. `lists-artist` is
+      // exactly that page, so it is excluded from hub candidacy outright.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit("https://somelabel.com/roster", "Roster")]);
+      mockFetchPage.mockResolvedValue({
+        ...goodPage,
+        outboundLinks: [
+          "https://dupes.bandcamp.com/album/convergence",   // really his
+          "https://www.instagram.com/somelabelmate",        // NOT his
+        ],
+      });
+      mockJudge.mockImplementation(async (_a, candidates) =>
+        new Map(candidates.map(c => [c.url, "lists-artist"])));
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("bandcamp") ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" }
+        : url.includes("instagram") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "somelabelmate" }
+        : undefined);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=somelabelmate");
+    });
+
+    it("still returns the run's sources when the artist re-read fails", async () => {
+      // getArtistById rethrows on a DB error, and the hub block sits inside the
+      // function's one try/catch, which returns []. A transient hiccup there
+      // would tell every caller the run found nothing — while the sources it
+      // found sat persisted in the database.
+      let call = 0;
+      mockGetArtist.mockImplementation(async () => {
+        // First read (start of the run) succeeds; the post-loop re-read blows up.
+        if (++call > 1) throw new Error("connection terminated unexpectedly");
+        return { id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+                 instagram: null, x: null, youtube: null, soundcloud: null, facebook: null };
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      const result = await searchAndPopulateVault("a1");
+
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("survives propagation failing, however it fails", async () => {
+      // Propagation runs at the tail of a pipeline the caller already races
+      // (38s in artistBioQuery, 45s in turnHandlers), so it is bounded and
+      // allowed to give up — everything adopted from the artist's own page is
+      // already saved by then, and the run must still return its sources.
+      //
+      // Deliberately NOT a real wait on the 10s budget: that put ten seconds of
+      // wall clock into every CI run for one assertion, and sat close enough to
+      // the suite's ceiling to flake on a slow box. A rejection exercises the
+      // same path the timeout takes.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      mockDiscover.mockRejectedValue(new Error("propagation budget exhausted"));
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      const result = await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).toContain("instagram=dupesdidit");
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("never overwrites a platform the artist already has", async () => {
+      // setArtistLink is an unconditional upsert, and propagation was safe only
+      // because discoverArtistProfiles gates on the same thing internally — a
+      // load-bearing assumption about another module's internals.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        soundcloud: "his-real-soundcloud",   // already known, must survive
+        instagram: null, x: null, youtube: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      mockDiscover.mockResolvedValue([{ siteName: "soundcloud", value: "dupesdidit", confirmed: false }]);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("soundcloud=dupesdidit");
     });
 
     it("will not adopt a platform route mistaken for a handle", async () => {

@@ -49,6 +49,17 @@ const MAX_INDEX_FOLLOWS = 3;
  *  urlmap, so this is a real cost on a latency-bounded step. */
 const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
 
+/** Ceiling on hub pages examined for ownership. Every adoption costs another
+ *  getArtistById round trip and every page costs up to MAX_CORROBORATION_CHECKS
+ *  urlmap reads, and this is the one pass in this file with no explicit budget
+ *  of its own — implicitly bounded only by the caller's outer race. An artist
+ *  with more corroborating pages than this has already been identified several
+ *  times over. */
+const MAX_HUB_PAGES = 5;
+
+/** Ceiling on the propagation pass — see propagateVerifiedHandles. */
+const PROPAGATION_BUDGET_MS = 10_000;
+
 /** One spelling of a handle. Stored values are inconsistently "@"-prefixed. */
 function normalizeHandle(v: string): string {
     return v.trim().toLowerCase().replace(/^@/, "");
@@ -172,7 +183,7 @@ async function adoptHandlesFromOwnPage(
     artistId: string,
     outboundLinks: string[],
     artist: Record<string, unknown>,
-): Promise<number> {
+): Promise<{ adopted: number; handles: Set<string> }> {
     const resolved: { siteName: string; id: string }[] = [];
     for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
         const match = await extractArtistId(stripQuery(link)).catch(() => undefined);
@@ -188,7 +199,7 @@ async function adoptHandlesFromOwnPage(
         // that artist, with no error anywhere.
         return typeof held === "string" && !!held && normalizeHandle(held) === r.id;
     });
-    if (!corroborator) return 0;
+    if (!corroborator) return { adopted: 0, handles: new Set<string>() };
     console.log(`[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`);
 
     // A page naming TWO different handles for one platform is ambiguous — an
@@ -207,6 +218,7 @@ async function adoptHandlesFromOwnPage(
 
     let adopted = 0;
     const done = new Set<string>();
+    const adoptedHandles = new Set<string>();
     for (const r of resolved) {
         if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
         // instagram.com/p/<id> resolves to the "handle" p — one adoption away
@@ -219,10 +231,83 @@ async function adoptHandlesFromOwnPage(
             await setArtistLink(artistId, r.siteName, r.id);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
             done.add(r.siteName);
+            adoptedHandles.add(r.id);
             adopted++;
         } catch (e) {
             console.warn(`[vaultWebSearch] Could not save ${r.siteName} from own page:`, e);
         }
+    }
+
+    // Propagation is NOT triggered here. This function runs once per hub page,
+    // and discoverArtistProfiles carries its own 35s budget against a caller
+    // that races the whole search at 38s — so propagating per page would let an
+    // artist with two corroborating pages blow the budget outright. The handles
+    // go back to the caller, which propagates once for the run.
+    return { adopted, handles: adoptedHandles };
+}
+
+/**
+ * Carry a handle we just verified to the platforms we still have nothing for.
+ *
+ * Profile discovery's propagation tier already knows how to probe a handle
+ * across platforms; what it never had was a handle worth propagating. Working
+ * from the artist's NAME it produced `dupes` for Sherwinn Brice — wrong, his
+ * handle is `dupesdidit` — and missed his SoundCloud entirely. Given the real
+ * handle it finds soundcloud/dupesdidit on the next pass.
+ *
+ * Deliberately narrow: only a candidate whose value EXACTLY matches a handle the
+ * artist published on their own corroborated page is taken. A candidate on some
+ * other spelling is still a guess and still goes to the artist to confirm.
+ */
+async function propagateVerifiedHandles(
+    artistId: string,
+    verified: Set<string>,
+    artist: Record<string, unknown>,
+): Promise<number> {
+    let adopted = 0;
+    try {
+        const { discoverArtistProfiles } = await import("@/server/utils/profileDiscovery");
+        // Bounded well under discoverArtistProfiles' own 35s budget. This runs
+        // at the TAIL of a pipeline the caller already races (38s in
+        // artistBioQuery, 45s in turnHandlers) after search, fetch, judge and
+        // hub adoption have each taken their share — so borrowing the full
+        // budget here means the propagated writes land after the turn has
+        // rendered and the artist sees an incomplete profile that silently
+        // fixes itself later. Measured at 1.4s and 3.0s on a real artist, so
+        // this is generous; giving up is the correct outcome, since everything
+        // adopted from the artist's own page is already saved.
+        let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+        const candidates = await Promise.race([
+            discoverArtistProfiles(artistId),
+            new Promise<never>((_, reject) => {
+                budgetTimer = setTimeout(() => reject(new Error("propagation budget exhausted")), PROPAGATION_BUDGET_MS);
+            }),
+        // Cleared either way: left dangling, the timer holds the event loop open
+        // for the full budget after the winner has already settled.
+        ]).finally(() => clearTimeout(budgetTimer));
+        for (const c of candidates) {
+            const value = String(c.value ?? "");
+            if (!verified.has(normalizeHandle(value))) continue;
+            if (!ACCOUNT_PLATFORMS.has(c.siteName)) continue;
+            if (isReservedHandle(c.siteName, value)) continue;
+            // setArtistLink is an unconditional upsert, and until now nothing
+            // here stopped it overwriting a value the artist already has —
+            // safe only because discoverArtistProfiles happens to gate on the
+            // same thing internally. That is a load-bearing assumption about
+            // another module's internals; adoptHandlesFromOwnPage guards for
+            // itself and so should this.
+            if (artist[c.siteName]) continue;
+            try {
+                await setArtistLink(artistId, c.siteName, value);
+                console.log(`[vaultWebSearch] Propagated verified handle -> ${c.siteName}=${value}`);
+                adopted++;
+            } catch (e) {
+                console.warn(`[vaultWebSearch] Could not propagate ${c.siteName}:`, e);
+            }
+        }
+    } catch (e) {
+        // Never fail the vault step over this — the handles already adopted stand.
+        console.error("[vaultWebSearch] Propagation pass failed:", e);
     }
     return adopted;
 }
@@ -522,6 +607,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         const insertedSources: ArtistVaultSource[] = [];
         /** Article URLs harvested from index pages, followed after the main pass. */
         const indexLinks = new Set<string>();
+        /** Outbound links per page, examined for ownership once the loop is done. */
+        const hubCandidates: string[][] = [];
         let dropped = 0;
         for (const { result, page } of verified) {
             // requireFullName: a keyword search returns REAL pages about the wrong
@@ -567,13 +654,23 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 continue;
             }
 
-            // A page that proves it is the artist's own gets its account links
-            // adopted. This is the only first-party statement of their handles
-            // that exists: Sherwinn Brice's Instagram is `dupesdidit`, published
-            // on his own site, while profile discovery guessed `dupes` from his
-            // name. No slug derived from a name would ever reach it.
-            if ((page.outboundLinks?.length ?? 0) > 0) {
-                await adoptHandlesFromOwnPage(artistId, page.outboundLinks!, artist as Record<string, unknown>);
+            // Held for a pass AFTER the loop. Adopting inline meant deciding
+            // whose page this is before the run had finished learning who the
+            // artist is: Sherwinn Brice's site corroborates through his
+            // Bandcamp, and his Bandcamp was itself only adopted LATER in the
+            // same loop, from a different page. Starting from the spotify and
+            // deezer ids an artist actually arrives with, the corroborator
+            // showed up minutes after the page that needed it, and nothing was
+            // adopted at all.
+            // An INDEX page is excluded from this outright. Corroboration proves
+            // a page is CONNECTED to the artist, not that it is about them
+            // alone — and a label roster linking this artist's real Spotify
+            // beside a labelmate's Instagram would corroborate and then adopt
+            // the labelmate. `lists-artist` is precisely that page, so the
+            // judge's verdict is worth honouring here even though adoption is
+            // otherwise independent of it.
+            if ((page.outboundLinks?.length ?? 0) > 0 && relevance.get(result.url) !== "lists-artist") {
+                hubCandidates.push(page.outboundLinks!);
             }
 
             // An account page is IDENTITY, never coverage — so it is not a vault
@@ -676,6 +773,54 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 if (source) insertedSources.push(source);
             } catch (e) {
                 console.error("[vaultWebSearch] Failed to insert source:", result.url, e);
+            }
+        }
+
+        // Now that the run has finished learning what it can about this artist,
+        // work out which of the pages we read are theirs. Re-read the record
+        // first: links adopted during the loop (a Bandcamp routed out of an
+        // about-artist page, say) are exactly the corroborators the earlier
+        // pages needed, and the snapshot taken before the loop cannot see them.
+        if (hubCandidates.length > 0) {
+            // getArtistById rethrows on a DB error, and this block sits inside
+            // the function's one try/catch, which returns []. A transient hiccup
+            // here would therefore discard `insertedSources` — every source we
+            // just persisted would still be in the database, but every caller
+            // keying off the return value would be told the run found nothing.
+            // Same discipline propagateVerifiedHandles already applies to itself.
+            const current = await getArtistById(artistId).catch(e => {
+                console.error("[vaultWebSearch] Could not re-read artist for hub adoption:", e);
+                return undefined;
+            });
+            if (current) {
+                const seen = new Set<string>();
+                const verified = new Set<string>();
+                for (const outbound of hubCandidates.slice(0, MAX_HUB_PAGES)) {
+                    // Keyed on the WHOLE link set. Keying on the first few
+                    // collided across pages from one site template, whose
+                    // header links are identical and whose later links — the
+                    // ones that would actually corroborate — are not.
+                    // Sorted: the same link set fetched in a different order is
+                    // the same page as far as corroboration is concerned.
+                    const key = [...outbound].sort().join("|");
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    const { adopted, handles } = await adoptHandlesFromOwnPage(
+                        artistId, outbound, current as unknown as Record<string, unknown>);
+                    for (const h of handles) verified.add(h);
+                    // One adoption can corroborate the next page, so refresh.
+                    // Falls back to what we already hold rather than throwing:
+                    // a stale record costs us one missed adoption, an exception
+                    // costs the caller the whole run's results.
+                    if (adopted > 0) {
+                        Object.assign(current, await getArtistById(artistId).catch(() => undefined) ?? {});
+                    }
+                }
+                // ONCE for the run, not once per page — see the note in
+                // adoptHandlesFromOwnPage about the 35s discovery budget.
+                if (verified.size > 0) {
+                    await propagateVerifiedHandles(artistId, verified, current as unknown as Record<string, unknown>);
+                }
             }
         }
 
