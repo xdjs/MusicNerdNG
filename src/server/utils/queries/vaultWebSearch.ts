@@ -207,6 +207,7 @@ async function adoptHandlesFromOwnPage(
 
     let adopted = 0;
     const done = new Set<string>();
+    const adoptedHandles = new Set<string>();
     for (const r of resolved) {
         if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
         // instagram.com/p/<id> resolves to the "handle" p — one adoption away
@@ -219,10 +220,61 @@ async function adoptHandlesFromOwnPage(
             await setArtistLink(artistId, r.siteName, r.id);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
             done.add(r.siteName);
+            adoptedHandles.add(r.id);
             adopted++;
         } catch (e) {
             console.warn(`[vaultWebSearch] Could not save ${r.siteName} from own page:`, e);
         }
+    }
+
+    // The handle is now VERIFIED — the artist published it on their own site,
+    // on a page corroborated by an id we already held. Carrying it to the
+    // platforms we still have nothing for is not guessing, which is the whole
+    // difference from deriving a slug out of someone's name.
+    //
+    // Sherwinn Brice is the case: profile discovery, given only "Sherwinn Dupes
+    // Brice", offered `youtube/dupes` (wrong — it is dupesdidit) and missed
+    // everything else. Given the real handle it finds soundcloud/dupesdidit
+    // immediately. The old order guessed first and learned the truth afterwards,
+    // then never revisited the guesses.
+    if (adoptedHandles.size > 0) adopted += await propagateVerifiedHandles(artistId, adoptedHandles);
+    return adopted;
+}
+
+/**
+ * Carry a handle we just verified to the platforms we still have nothing for.
+ *
+ * Profile discovery's propagation tier already knows how to probe a handle
+ * across platforms; what it never had was a handle worth propagating. Working
+ * from the artist's NAME it produced `dupes` for Sherwinn Brice — wrong, his
+ * handle is `dupesdidit` — and missed his SoundCloud entirely. Given the real
+ * handle it finds soundcloud/dupesdidit on the next pass.
+ *
+ * Deliberately narrow: only a candidate whose value EXACTLY matches a handle the
+ * artist published on their own corroborated page is taken. A candidate on some
+ * other spelling is still a guess and still goes to the artist to confirm.
+ */
+async function propagateVerifiedHandles(artistId: string, verified: Set<string>): Promise<number> {
+    let adopted = 0;
+    try {
+        const { discoverArtistProfiles } = await import("@/server/utils/profileDiscovery");
+        const candidates = await discoverArtistProfiles(artistId);
+        for (const c of candidates) {
+            const value = String(c.value ?? "");
+            if (!verified.has(normalizeHandle(value))) continue;
+            if (!ACCOUNT_PLATFORMS.has(c.siteName)) continue;
+            if (isReservedHandle(c.siteName, value)) continue;
+            try {
+                await setArtistLink(artistId, c.siteName, value);
+                console.log(`[vaultWebSearch] Propagated verified handle -> ${c.siteName}=${value}`);
+                adopted++;
+            } catch (e) {
+                console.warn(`[vaultWebSearch] Could not propagate ${c.siteName}:`, e);
+            }
+        }
+    } catch (e) {
+        // Never fail the vault step over this — the handles already adopted stand.
+        console.error("[vaultWebSearch] Propagation pass failed:", e);
     }
     return adopted;
 }
@@ -522,6 +574,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         const insertedSources: ArtistVaultSource[] = [];
         /** Article URLs harvested from index pages, followed after the main pass. */
         const indexLinks = new Set<string>();
+        /** Outbound links per page, examined for ownership once the loop is done. */
+        const hubCandidates: string[][] = [];
         let dropped = 0;
         for (const { result, page } of verified) {
             // requireFullName: a keyword search returns REAL pages about the wrong
@@ -567,13 +621,16 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 continue;
             }
 
-            // A page that proves it is the artist's own gets its account links
-            // adopted. This is the only first-party statement of their handles
-            // that exists: Sherwinn Brice's Instagram is `dupesdidit`, published
-            // on his own site, while profile discovery guessed `dupes` from his
-            // name. No slug derived from a name would ever reach it.
+            // Held for a pass AFTER the loop. Adopting inline meant deciding
+            // whose page this is before the run had finished learning who the
+            // artist is: Sherwinn Brice's site corroborates through his
+            // Bandcamp, and his Bandcamp was itself only adopted LATER in the
+            // same loop, from a different page. Starting from the spotify and
+            // deezer ids an artist actually arrives with, the corroborator
+            // showed up minutes after the page that needed it, and nothing was
+            // adopted at all.
             if ((page.outboundLinks?.length ?? 0) > 0) {
-                await adoptHandlesFromOwnPage(artistId, page.outboundLinks!, artist as Record<string, unknown>);
+                hubCandidates.push(page.outboundLinks!);
             }
 
             // An account page is IDENTITY, never coverage — so it is not a vault
@@ -676,6 +733,26 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 if (source) insertedSources.push(source);
             } catch (e) {
                 console.error("[vaultWebSearch] Failed to insert source:", result.url, e);
+            }
+        }
+
+        // Now that the run has finished learning what it can about this artist,
+        // work out which of the pages we read are theirs. Re-read the record
+        // first: links adopted during the loop (a Bandcamp routed out of an
+        // about-artist page, say) are exactly the corroborators the earlier
+        // pages needed, and the snapshot taken before the loop cannot see them.
+        if (hubCandidates.length > 0) {
+            const current = await getArtistById(artistId);
+            if (current) {
+                const seen = new Set<string>();
+                for (const outbound of hubCandidates) {
+                    const key = outbound.slice(0, 3).join("|");
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    const gained = await adoptHandlesFromOwnPage(artistId, outbound, current as unknown as Record<string, unknown>);
+                    // One adoption can corroborate the next page, so refresh.
+                    if (gained > 0) Object.assign(current, await getArtistById(artistId) ?? {});
+                }
             }
         }
 

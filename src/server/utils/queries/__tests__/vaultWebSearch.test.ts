@@ -485,6 +485,41 @@ describe("searchAndPopulateVault", () => {
       expect(adopted).not.toContain("instagram=hislabelrecords");
     });
 
+    it("adopts even when the corroborator only arrives partway through the run", async () => {
+      // The realistic start. An artist arrives from a claim holding the DSP ids
+      // MusicNerd creates them with — spotify and deezer — and nothing else.
+      // Sherwinn Brice's site corroborates through his BANDCAMP, and his
+      // bandcamp is itself only picked up later in the same run, from a
+      // different page. Adopting inline meant deciding whose a page was before
+      // the run had finished learning who the artist is, so nothing was
+      // adopted at all and he finished with no socials.
+      const live = {
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", deezer: "dz1",
+        bandcamp: null, instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      };
+      mockGetArtist.mockImplementation(async () => ({ ...live }));
+      // Writes land on the record the way they do in production, so the
+      // post-loop re-read can see them.
+      mockSetLink.mockImplementation(async (_id, site, value) => { live[site] = value; return {}; });
+
+      mockWebSearch.mockResolvedValue([hit("https://dupes.bandcamp.com/album/convergence", "Convergence"), hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockImplementation(async (url) => ({
+        ...goodPage,
+        outboundLinks: String(url).includes("dupes.rocks") ? OUTBOUND : [],
+      }));
+      // The bandcamp page is judged as the artist's, which is what routes it
+      // into links mid-loop and makes it available as a corroborator after.
+      mockJudge.mockImplementation(async (_a, candidates) =>
+        new Map(candidates.map(c => [c.url, c.url.includes("bandcamp") ? "about-artist" : "undecided"])));
+      mockExtract.mockImplementation(resolve);
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(live.bandcamp).toBe("dupes");           // picked up mid-run
+      expect(live.instagram).toBe("dupesdidit");     // adopted after, via that
+    });
+
     it("will not adopt a platform route mistaken for a handle", async () => {
       // instagram.com/p/<id> resolves to the "handle" p — one adoption away
       // from writing that onto an artist row.
