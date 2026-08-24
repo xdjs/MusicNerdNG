@@ -48,6 +48,26 @@ const SECTIONS: Record<string, { label: string; whole?: boolean }> = {
     "Audience & Fanbase": { label: "Your audience" },
 };
 
+/** How much claim text identifies a correction.
+ *
+ *  A correction is keyed by the claim's TEXT, so both sides must agree on the
+ *  same string or the key silently stops matching. The server used to truncate
+ *  to this while the client compared against the untruncated display text —
+ *  fine for every sentence-split section, and broken for the `whole` Overview,
+ *  which keeps a paragraph as one claim. An over-long Overview correction would
+ *  save, never render as applied, and invite the artist to submit it again
+ *  forever. Caught in review of #1176.
+ *
+ *  Also keeps the value clear of Postgres's btree entry limit on the unique
+ *  index over (artist_id, claim). */
+export const MAX_CLAIM_CHARS = 1000;
+
+/** The exact string a correction is stored and looked up by. Use on BOTH sides
+ *  of the wire; never compare raw claim text. */
+export function claimKey(text: string): string {
+    return text.trim().slice(0, MAX_CLAIM_CHARS);
+}
+
 export type DocClaim = {
     /** Stable within a rebuild: section + index. Used as a React key only —
      *  corrections are keyed by the claim TEXT, which survives regeneration far

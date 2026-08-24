@@ -5,7 +5,7 @@ import { Check, Pencil, X, ExternalLink, Undo2, Loader2 } from "lucide-react";
 import { EditModeContext } from "@/app/_components/EditModeContext";
 import RevealSection from "./RevealSection";
 import { getKnowledgeDoc, correctDocClaim, undoDocCorrection } from "@/app/actions/dashboardActions";
-import { parseDocClaims, countClaims, type DocSection } from "@/lib/docClaims";
+import { parseDocClaims, countClaims, claimKey, type DocSection } from "@/lib/docClaims";
 
 type DocSource = { id: number; kind: string; label?: string; url?: string; publishedAt?: string | null };
 type Correction = { id: string; claim: string; correction: string | null; kind: string };
@@ -213,15 +213,18 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
         if (canEdit && isEditing) void load();
     }, [load, canEdit, isEditing]);
 
-    const correctionFor = (claim: string) => corrections.find(c => c.claim === claim);
+    // Keyed through claimKey, matching what the server stored. Comparing raw
+    // display text desynced silently for any claim past MAX_CLAIM_CHARS.
+    const correctionFor = (claim: string) => corrections.find(c => c.claim === claimKey(claim));
 
     const handleCorrect = async (claim: string, kind: "wrong" | "fix", fix?: string) => {
         setBusy(true);
         setError(null);
         // Optimistic: the rebuild behind this takes a few seconds, and an artist
         // who clicks "not me" should not sit watching an unchanged page.
-        const optimistic: Correction = { id: `pending-${claim}`, claim, kind, correction: fix ?? null };
-        setCorrections(prev => [...prev.filter(c => c.claim !== claim), optimistic]);
+        const key = claimKey(claim);
+        const optimistic: Correction = { id: `pending-${key}`, claim: key, kind, correction: fix ?? null };
+        setCorrections(prev => [...prev.filter(c => c.claim !== key), optimistic]);
         const res = await correctDocClaim(artistId, claim, kind, fix);
         if (!res.success) {
             setCorrections(prev => prev.filter(c => c.id !== optimistic.id));

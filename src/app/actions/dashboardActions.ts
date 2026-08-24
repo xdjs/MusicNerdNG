@@ -24,6 +24,7 @@ import { searchAndPopulateVault } from "@/server/utils/queries/vaultWebSearch";
 import { generateArtistBio } from "@/server/utils/queries/artistBioQuery";
 import { refreshArtistDoc } from "@/server/utils/artistDocService";
 import { getDocCorrections, upsertDocCorrection, deleteDocCorrection } from "@/server/utils/queries/docCorrectionQueries";
+import { claimKey } from "@/lib/docClaims";
 import { getArtistDoc } from "@/server/utils/queries/onboardingQueries";
 import { fetchPageContent, isUnsafeUrl } from "@/server/utils/fetchPageContent";
 import { updateVaultSourceContent } from "@/server/utils/queries/dashboardQueries";
@@ -326,10 +327,6 @@ export async function removeVaultSources(
 
 // ------ Knowledge document ------
 
-/** How much claim text we key a correction on. Claims are sentences or bullets;
- *  this is a guard against a pathological document, and keeps the unique index
- *  well clear of Postgres's btree entry limit. */
-const MAX_CLAIM_CHARS = 1000;
 const MAX_CORRECTION_CHARS = 2000;
 
 /** The document plus the artist's corrections, for their own review surface.
@@ -381,7 +378,9 @@ export async function correctDocClaim(
         const auth = await verifyArtistEditable(session.user.id, artistId);
         if (!auth.ok) return { success: false, error: auth.error };
 
-        const trimmedClaim = claim.trim().slice(0, MAX_CLAIM_CHARS);
+        // Shared with the client via claimKey — both sides must key on the same
+        // string or a correction saves and then never renders as applied.
+        const trimmedClaim = claimKey(claim);
         if (!trimmedClaim) return { success: false, error: "No claim given" };
         const trimmedFix = kind === "fix" ? (correction ?? "").trim().slice(0, MAX_CORRECTION_CHARS) : null;
         // A "fix" with nothing in it is a no-op that would silently teach the

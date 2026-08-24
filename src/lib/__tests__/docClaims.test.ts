@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { parseDocClaims, countClaims } from "@/lib/docClaims";
+import { parseDocClaims, countClaims, claimKey, MAX_CLAIM_CHARS } from "@/lib/docClaims";
 
 const DOC = `# PETE RANGO - Artist Knowledge Document
 
@@ -108,5 +108,23 @@ describe("parseDocClaims", () => {
 
     it("counts claims across sections", () => {
         expect(countClaims(parseDocClaims(DOC))).toBe(4); // + the Overview, as one
+    });
+
+    it("keys a long claim identically on both sides of the wire", () => {
+        // The server truncated to MAX_CLAIM_CHARS before storing while the client
+        // compared against the untruncated display text. Every sentence-split
+        // section is far shorter than the cap, but the `whole` Overview keeps a
+        // paragraph as one claim — so an over-long Overview correction would
+        // save, never render as applied, and invite the artist to submit it
+        // again forever. Both sides go through claimKey now. (Review of #1176.)
+        const long = "Pete Rango is a producer. ".repeat(80);
+        expect(long.length).toBeGreaterThan(MAX_CLAIM_CHARS);
+        expect(claimKey(long)).toHaveLength(MAX_CLAIM_CHARS);
+        expect(claimKey(claimKey(long))).toBe(claimKey(long));
+    });
+
+    it("leaves an ordinary claim untouched, and trims incidental whitespace", () => {
+        expect(claimKey("Won the i-Standard competition.")).toBe("Won the i-Standard competition.");
+        expect(claimKey("  padded claim  ")).toBe("padded claim");
     });
 });
