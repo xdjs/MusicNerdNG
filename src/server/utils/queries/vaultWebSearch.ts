@@ -1,7 +1,7 @@
 import { insertVaultSource, getVaultSourcesByArtistId } from "./dashboardQueries";
 import { getArtistById } from "./artistQueries";
 import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTypes";
-import { fetchPageContent, isUnsafeUrl, type PageContent } from "@/server/utils/fetchPageContent";
+import { fetchPageContent, isUnsafeUrl, OUTBOUND_LINK_CAP, type PageContent } from "@/server/utils/fetchPageContent";
 import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
@@ -43,9 +43,11 @@ const TAVILY_RESULTS_PER_QUERY = 5;
  *  yields links the judge then rejects, costing three fetches and nothing else. */
 const MAX_INDEX_FOLLOWS = 3;
 
-/** How many of a page's outbound links we resolve when checking whether it is
- *  the artist's own. Each is a urlmap regex match, no network. */
-const MAX_CORROBORATION_CHECKS = 25;
+/** How many of a page's outbound links we resolve when deciding whether it is
+ *  the artist's own. Matches the cap `extractOutboundLinks` collects, so the two
+ *  do not silently disagree about which links matter. Each resolution reads the
+ *  urlmap, so this is a real cost on a latency-bounded step. */
+const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
 
 const ACCOUNT_PLATFORMS = new Set([
     "instagram", "x", "tiktok", "youtube", "youtubechannel",
@@ -131,68 +133,67 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
 }
 
 /**
- * Does this page prove it belongs to the artist, by linking to an id we already
- * hold for them?
+ * Adopt the account handles an artist published on their own page.
  *
- * The problem: an artist's own website is the only first-party statement of
- * their handles, and it lives in href attributes we throw away. But we cannot
- * simply trust every account link on every page — a press article's footer
- * links to the PUBLICATION's Instagram, and adopting that would put a magazine's
- * social account on an artist's profile.
+ * An artist's own site is the only first-party statement of their handles that
+ * exists, and it lives entirely in href attributes: the text extractor strips
+ * them and `extractArticleLinks` is same-host so it never sees them. Sherwinn
+ * Brice's Instagram is `dupesdidit`, published on dupes.rocks, while profile
+ * discovery guessed `dupes` from his name. No name-derived slug reaches it.
  *
- * The corroboration: Sherwinn Brice's site links to dupes.bandcamp.com, and we
- * already hold `bandcamp: dupes` for him, confirmed. A page that links to an
- * identifier we have independently verified is his hub. RVA Mag's footer does
- * not link to his Bandcamp.
+ * But we cannot trust every account link on every page — a magazine's footer
+ * links to the MAGAZINE's Instagram, and adopting that would put a publication's
+ * account on an artist's profile.
  *
- * This is identity through a matched ID, never through a name — the same
- * discipline that keeps a film soundtrack's Wikipedia page off an artist's
- * profile. Comparison is on (platform, id) pairs resolved by extractArtistId,
- * not on substrings, so a URL that merely contains the handle as a word
- * ("songfinch.com/artists/dupes") does not count.
+ * CORROBORATION: his site links to dupes.bandcamp.com and we already hold
+ * `bandcamp: dupes` for him, confirmed. A page linking to an identifier we have
+ * independently verified is his hub. RVA Mag's footer does not link to his
+ * Bandcamp. Identity through a matched (platform, id) pair, never through a
+ * name — the discipline that keeps a film soundtrack's Wikipedia page off an
+ * artist's profile.
+ *
+ * DELIBERATELY INDEPENDENT OF THE RELEVANCE JUDGE below. The judge decides
+ * whether a page is worth citing as coverage; this decides whose page it is,
+ * from a verified id rather than from text. A page can legitimately fail the
+ * judge (an artist's own site is not "coverage") and still be authoritative
+ * about its owner's handles.
+ *
+ * Links are resolved ONCE. `extractArtistId` reads the whole urlmap from the
+ * database with no memoisation, so corroborating and adopting in two separate
+ * passes cost twice the round trips on a latency-bounded step — invisible in
+ * tests, where it is mocked, and only visible in production.
  */
-async function pageCorroboratesArtist(
-    outboundLinks: string[],
-    artist: Record<string, unknown>,
-): Promise<boolean> {
-    for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
-        const match = await extractArtistId(stripQuery(link)).catch(() => undefined);
-        if (!match?.siteName || !match?.id) continue;
-        const held = artist[match.siteName];
-        if (typeof held !== "string" || !held) continue;
-        if (held.toLowerCase() === String(match.id).toLowerCase()) {
-            console.log(`[vaultWebSearch] Page corroborated by known ${match.siteName}=${held}`);
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
- * Adopt the account links an artist published on their own page.
- *
- * Only ever called for a page that already corroborated itself. Skips anything
- * we already hold, and anything whose "handle" is really a platform route (see
- * isReservedHandle).
- */
-async function adoptLinksFromOwnPage(
+async function adoptHandlesFromOwnPage(
     artistId: string,
     outboundLinks: string[],
     artist: Record<string, unknown>,
 ): Promise<number> {
-    let adopted = 0;
+    const resolved: { siteName: string; id: string }[] = [];
     for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
         const match = await extractArtistId(stripQuery(link)).catch(() => undefined);
-        if (!match?.siteName || !match?.id) continue;
-        if (!ACCOUNT_PLATFORMS.has(match.siteName)) continue;
-        if (isReservedHandle(match.siteName, match.id)) continue;
-        if (artist[match.siteName]) continue; // already have it
+        if (match?.siteName && match?.id) resolved.push({ siteName: match.siteName, id: String(match.id) });
+    }
+
+    const corroborator = resolved.find(r => {
+        const held = artist[r.siteName];
+        return typeof held === "string" && !!held && held.toLowerCase() === r.id.toLowerCase();
+    });
+    if (!corroborator) return 0;
+    console.log(`[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`);
+
+    let adopted = 0;
+    for (const r of resolved) {
+        if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
+        // instagram.com/p/<id> resolves to the "handle" p — one adoption away
+        // from writing that onto an artist row.
+        if (isReservedHandle(r.siteName, r.id)) continue;
+        if (artist[r.siteName]) continue; // already have it
         try {
-            await setArtistLink(artistId, match.siteName, match.id);
-            console.log(`[vaultWebSearch] Adopted ${match.siteName}=${match.id} from the artist's own page`);
+            await setArtistLink(artistId, r.siteName, r.id);
+            console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
             adopted++;
         } catch (e) {
-            console.warn(`[vaultWebSearch] Could not save ${match.siteName} from own page:`, e);
+            console.warn(`[vaultWebSearch] Could not save ${r.siteName} from own page:`, e);
         }
     }
     return adopted;
@@ -543,8 +544,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // that exists: Sherwinn Brice's Instagram is `dupesdidit`, published
             // on his own site, while profile discovery guessed `dupes` from his
             // name. No slug derived from a name would ever reach it.
-            if ((page.outboundLinks?.length ?? 0) > 0 && await pageCorroboratesArtist(page.outboundLinks!, artist as Record<string, unknown>)) {
-                await adoptLinksFromOwnPage(artistId, page.outboundLinks!, artist as Record<string, unknown>);
+            if ((page.outboundLinks?.length ?? 0) > 0) {
+                await adoptHandlesFromOwnPage(artistId, page.outboundLinks!, artist as Record<string, unknown>);
             }
 
             // An account page is IDENTITY, never coverage — so it is not a vault

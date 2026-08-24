@@ -364,7 +364,9 @@ export function extractArticleLinks(html: string, baseUrl: string, max = 25): st
  * page must first be corroborated as the artist's own before any of this is
  * treated as identity. See `pageCorroboratesArtist` in vaultWebSearch.
  */
-export function extractOutboundLinks(html: string, baseUrl: string, max = 40): string[] {
+export const OUTBOUND_LINK_CAP = 25;
+
+export function extractOutboundLinks(html: string, baseUrl: string, max = OUTBOUND_LINK_CAP): string[] {
     let origin: string;
     try { origin = new URL(baseUrl).origin; } catch { return []; }
 
