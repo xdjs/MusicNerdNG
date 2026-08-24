@@ -1,7 +1,7 @@
 import { SPOTIFY_WEB_CLIENT_ID, SPOTIFY_WEB_CLIENT_SECRET } from "@/env"
 import axios from "axios";
 import queryString from 'querystring';
-import { unstable_cache } from 'next/cache';
+import { cachedOrDirect } from '@/server/lib/cachedOrDirect';
 
 
 type SpotifyHeaderType = {
@@ -84,17 +84,10 @@ export async function refreshSpotifyToken(): Promise<SpotifyHeaderType> {
     }
 }
 
-const cachedSpotifyToken = unstable_cache(refreshSpotifyToken, ["spotify-headers"], {
+const cachedSpotifyToken = cachedOrDirect(refreshSpotifyToken, ["spotify-headers"], {
     tags: ["spotify-headers"],
     revalidate: 3300 // 55 minutes - refresh slightly before the token expires
 });
-
-/** Next's `unstable_cache` outside a request context. The message is the only
- *  signal it gives — there is no typed error class to match on. */
-function isMissingCacheContext(e: unknown): boolean {
-    const msg = (e as Error)?.message ?? "";
-    return /incrementalCache missing|static generation store missing|Invariant: (?:cache|incremental)/i.test(msg);
-}
 
 /**
  * Returns Spotify client-credentials auth headers.
@@ -113,25 +106,10 @@ function isMissingCacheContext(e: unknown): boolean {
  * to die mid-request.
  */
 export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
-    let cached: SpotifyHeaderType;
-    try {
-        cached = await cachedSpotifyToken();
-    } catch (e) {
-        // ONLY the missing-request-context case. `unstable_cache` throws
-        // "Invariant: incrementalCache missing" when called outside a Next
-        // request, which is exactly where our background work runs:
-        // `refreshArtistDoc` is fired detached after a server action returns,
-        // and CLI scripts have no context at all. Those callers were getting an
-        // exception instead of a token.
-        //
-        // Every OTHER failure rethrows. Catching them all would retry a token
-        // fetch that just failed for a real reason (bad credentials, network),
-        // masking the original error behind a second identical one — which is
-        // what the credential tests caught when this was written too broadly.
-        if (!isMissingCacheContext(e)) throw e;
-        console.warn("[getSpotifyHeaders] No request context for the token cache, fetching directly");
-        return refreshSpotifyToken();
-    }
+    // cachedOrDirect handles the no-request-context case for us: it falls back
+    // to a direct call rather than throwing, and still rethrows anything that
+    // is not that invariant. See src/server/lib/cachedOrDirect.ts.
+    const cached = await cachedSpotifyToken();
     if (!isTokenExpired(cached)) return cached;
     return refreshSpotifyToken();
 }
@@ -160,7 +138,7 @@ export type SpotifyArtist = {
     };
 }
 
-export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
+export const getSpotifyArtist = cachedOrDirect(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
         console.debug("Fetching Spotify artist with ID:", artistId);
         
@@ -242,7 +220,7 @@ export const getSpotifyArtists = async (artistIds: string[], headers: SpotifyHea
     return allArtists;
   };
 
-export const getSpotifyImage = unstable_cache(async (artistSpotifyId: string | null, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> => {
+export const getSpotifyImage = cachedOrDirect(async (artistSpotifyId: string | null, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> => {
     if(!artistSpotifyId) return { artistImage: "", artistId };
     try {
         const artistData = await axios.get(
@@ -256,7 +234,7 @@ export const getSpotifyImage = unstable_cache(async (artistSpotifyId: string | n
     }
 }, ["spotify-image"], { tags: ["spotify-image"], revalidate: 60 * 60 * 24 });
 
-export const getArtistWiki = unstable_cache(async (wikiId: string) => {
+export const getArtistWiki = cachedOrDirect(async (wikiId: string) => {
     // Decode any percent-encoded characters (e.g. Yun%C3%A8_Pinku → Yunè_Pinku)
     let decodedId = wikiId;
     try {
@@ -290,7 +268,7 @@ export const getArtistWiki = unstable_cache(async (wikiId: string) => {
     }
 }, ["wiki"], { tags: ["wiki"], revalidate: 60 * 60 * 24 });
 
-export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | null, headers: SpotifyHeaderType) => {  
+export const getNumberOfSpotifyReleases = cachedOrDirect(async (id: string | null, headers: SpotifyHeaderType) => {  
     if(!id) return 0;
     try {
       const albumData = await axios.get(
@@ -306,7 +284,7 @@ export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | nul
     }
 }, ["spotify-releases"], { tags: ["spotify-releases"], revalidate: 60 * 60 * 24 });
 
-export const getArtistTopTrack = unstable_cache(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
+export const getArtistTopTrack = cachedOrDirect(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
     if(!id) return null;
     try {
         const response = await axios.get(
@@ -324,7 +302,7 @@ export const getArtistTopTrack = unstable_cache(async (id: string | null, header
     }
 }, ["spotify-top-track"], { tags: ["spotify-top-track"], revalidate: 60 * 60 * 24 });
 
-export const getArtistTopTrackName = unstable_cache(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
+export const getArtistTopTrackName = cachedOrDirect(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
     if(!id) return null;
     try {
         const response = await axios.get(
@@ -403,7 +381,7 @@ export async function getSpotifyCatalogDetail(
     }
 }
 
-export const getSpotifyCatalogNames = unstable_cache(async (
+export const getSpotifyCatalogNames = cachedOrDirect(async (
     id: string | null,
     headers: SpotifyHeaderType
 ): Promise<{ releases: string[]; topTracks: string[] }> => {

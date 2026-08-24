@@ -1,6 +1,6 @@
 import type { MusicPlatformArtist, MusicPlatformProvider } from './types';
 import axios from 'axios';
-import { unstable_cache } from 'next/cache';
+import { cachedOrDirect } from '@/server/lib/cachedOrDirect';
 import pLimit from 'p-limit';
 
 const DEEZER_API = 'https://api.deezer.com';
@@ -54,7 +54,7 @@ function isValidDeezerId(id: string): boolean {
     return /^\d+$/.test(id);
 }
 
-const fetchDeezerArtist = unstable_cache(
+const fetchDeezerArtist = cachedOrDirect(
     async (id: string): Promise<DeezerArtistResponse | null> => {
         if (!isValidDeezerId(id)) return null;
         try {
@@ -73,7 +73,7 @@ const fetchDeezerArtist = unstable_cache(
     { revalidate: CACHE_TTL },
 );
 
-const fetchDeezerTopTrack = unstable_cache(
+const fetchDeezerTopTrack = cachedOrDirect(
     async (id: string): Promise<string | null> => {
         if (!isValidDeezerId(id)) return null;
         try {
