@@ -43,6 +43,15 @@ export interface PageContent {
      *  "Pete Rango Kevin Carroll" tag lists a real piece he is credited on, and
      *  both storing the index and discarding it lose that piece. */
     links?: string[];
+    /** Absolute links pointing OFF this host, deduped and capped.
+     *
+     *  An artist's own site is the only first-party statement of their handles
+     *  that exists, and it lives entirely in href attributes — so the text
+     *  extractor strips it and `links` (same-host, for index-following) excludes
+     *  it. Sherwinn Brice's Instagram is `dupesdidit`, published on dupes.rocks,
+     *  and profile discovery guessed `dupes` from his name and missed it. No
+     *  name-derived slug would ever produce it. */
+    outboundLinks?: string[];
 }
 
 /** Decode HTML entities (&#8217; → ', &amp; → &, etc.) */
@@ -343,6 +352,45 @@ export function extractArticleLinks(html: string, baseUrl: string, max = 25): st
 }
 
 /**
+ * Absolute links pointing off this host.
+ *
+ * The counterpart to `extractArticleLinks`, which is deliberately same-host so
+ * that following an index cannot walk the open web. This is the other half: an
+ * artist's own site states their handles ONLY in href attributes, and both the
+ * text extractor and the same-host rule throw that away.
+ *
+ * Returning them is safe; ACTING on them is not, and is gated hard at the call
+ * site — a press article's footer links to the publication's own socials, so a
+ * page must first be corroborated as the artist's own before any of this is
+ * treated as identity. See `pageCorroboratesArtist` in vaultWebSearch.
+ */
+export const OUTBOUND_LINK_CAP = 25;
+
+export function extractOutboundLinks(html: string, baseUrl: string, max = OUTBOUND_LINK_CAP): string[] {
+    let origin: string;
+    try { origin = new URL(baseUrl).origin; } catch { return []; }
+
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const m of html.matchAll(/<a[^>]+href=["']([^"'\s>]+)["']/gi)) {
+        const href = m[1];
+        if (/^(mailto:|tel:|javascript:|#)/i.test(href)) continue;
+        try {
+            const abs = new URL(href, baseUrl);
+            if (abs.origin === origin) continue;
+            if (!/^https?:$/.test(abs.protocol)) continue;
+            abs.hash = "";
+            const clean = abs.toString();
+            if (seen.has(clean)) continue;
+            seen.add(clean);
+            out.push(clean);
+            if (out.length >= max) break;
+        } catch { /* unparseable href */ }
+    }
+    return out;
+}
+
+/**
  * Fetch a URL and extract title, meta description, and body text.
  * Returns a domain-based fallback title on failure, and always reports
  * `status` so the caller can tell a dead URL from a bot-blocked one.
@@ -360,6 +408,7 @@ export async function fetchPageContent(
     let fullText: string | undefined;
     let publishedAt: string | null = null;
     let links: string[] | undefined;
+    let outboundLinks: string[] | undefined;
 
     if (isUnsafeUrl(url)) {
         return { title, extractedText: null, status: null, failure: "network", publishedAt: null };
@@ -400,6 +449,7 @@ export async function fetchPageContent(
             // interview can be scoped in time rather than stated as current.
             publishedAt = extractPublishedDate(html);
             links = extractArticleLinks(html, url);
+            outboundLinks = extractOutboundLinks(html, url);
 
             // Extract body text: the article, not the page furniture.
             const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -423,5 +473,5 @@ export async function fetchPageContent(
         else failure = "network";
     }
 
-    return { title, snippet, extractedText, ogImage, status, failure, fullText, publishedAt, links };
+    return { title, snippet, extractedText, ogImage, status, failure, fullText, publishedAt, links, outboundLinks };
 }

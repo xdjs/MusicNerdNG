@@ -1,7 +1,7 @@
 import { insertVaultSource, getVaultSourcesByArtistId } from "./dashboardQueries";
 import { getArtistById } from "./artistQueries";
 import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTypes";
-import { fetchPageContent, isUnsafeUrl, type PageContent } from "@/server/utils/fetchPageContent";
+import { fetchPageContent, isUnsafeUrl, OUTBOUND_LINK_CAP, type PageContent } from "@/server/utils/fetchPageContent";
 import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
@@ -42,6 +42,17 @@ const TAVILY_RESULTS_PER_QUERY = 5;
  *  own coverage, which is the case this exists for; a directory of OTHER people
  *  yields links the judge then rejects, costing three fetches and nothing else. */
 const MAX_INDEX_FOLLOWS = 3;
+
+/** How many of a page's outbound links we resolve when deciding whether it is
+ *  the artist's own. Matches the cap `extractOutboundLinks` collects, so the two
+ *  do not silently disagree about which links matter. Each resolution reads the
+ *  urlmap, so this is a real cost on a latency-bounded step. */
+const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
+
+/** One spelling of a handle. Stored values are inconsistently "@"-prefixed. */
+function normalizeHandle(v: string): string {
+    return v.trim().toLowerCase().replace(/^@/, "");
+}
 
 const ACCOUNT_PLATFORMS = new Set([
     "instagram", "x", "tiktok", "youtube", "youtubechannel",
@@ -127,6 +138,96 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
 }
 
 /**
+ * Adopt the account handles an artist published on their own page.
+ *
+ * An artist's own site is the only first-party statement of their handles that
+ * exists, and it lives entirely in href attributes: the text extractor strips
+ * them and `extractArticleLinks` is same-host so it never sees them. Sherwinn
+ * Brice's Instagram is `dupesdidit`, published on dupes.rocks, while profile
+ * discovery guessed `dupes` from his name. No name-derived slug reaches it.
+ *
+ * But we cannot trust every account link on every page — a magazine's footer
+ * links to the MAGAZINE's Instagram, and adopting that would put a publication's
+ * account on an artist's profile.
+ *
+ * CORROBORATION: his site links to dupes.bandcamp.com and we already hold
+ * `bandcamp: dupes` for him, confirmed. A page linking to an identifier we have
+ * independently verified is his hub. RVA Mag's footer does not link to his
+ * Bandcamp. Identity through a matched (platform, id) pair, never through a
+ * name — the discipline that keeps a film soundtrack's Wikipedia page off an
+ * artist's profile.
+ *
+ * DELIBERATELY INDEPENDENT OF THE RELEVANCE JUDGE below. The judge decides
+ * whether a page is worth citing as coverage; this decides whose page it is,
+ * from a verified id rather than from text. A page can legitimately fail the
+ * judge (an artist's own site is not "coverage") and still be authoritative
+ * about its owner's handles.
+ *
+ * Links are resolved ONCE. `extractArtistId` reads the whole urlmap from the
+ * database with no memoisation, so corroborating and adopting in two separate
+ * passes cost twice the round trips on a latency-bounded step — invisible in
+ * tests, where it is mocked, and only visible in production.
+ */
+async function adoptHandlesFromOwnPage(
+    artistId: string,
+    outboundLinks: string[],
+    artist: Record<string, unknown>,
+): Promise<number> {
+    const resolved: { siteName: string; id: string }[] = [];
+    for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
+        const match = await extractArtistId(stripQuery(link)).catch(() => undefined);
+        if (match?.siteName && match?.id) resolved.push({ siteName: match.siteName, id: normalizeHandle(String(match.id)) });
+    }
+
+    const corroborator = resolved.find(r => {
+        const held = artist[r.siteName];
+        // Normalised on BOTH sides. isKnownProfileUrl in this file already
+        // strips a leading "@", as do profileDiscovery, socialIngest and
+        // socialSignals — a stored "@dupesdidit" comparing unequal to a
+        // resolved "dupesdidit" would silently disable this whole feature for
+        // that artist, with no error anywhere.
+        return typeof held === "string" && !!held && normalizeHandle(held) === r.id;
+    });
+    if (!corroborator) return 0;
+    console.log(`[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`);
+
+    // A page naming TWO different handles for one platform is ambiguous — an
+    // artist's footer can carry their own Instagram beside their label's. The
+    // pre-loop `artist` snapshot never sees what this loop just wrote, so
+    // without this the second silently overwrites the first and the result is
+    // decided by link order. Abstain instead of guessing.
+    const ambiguous = new Set(
+        resolved
+            .filter(r => resolved.some(o => o.siteName === r.siteName && o.id !== r.id))
+            .map(r => r.siteName),
+    );
+    for (const platform of ambiguous) {
+        console.log(`[vaultWebSearch] Own page names more than one ${platform} handle — adopting none`);
+    }
+
+    let adopted = 0;
+    const done = new Set<string>();
+    for (const r of resolved) {
+        if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
+        // instagram.com/p/<id> resolves to the "handle" p — one adoption away
+        // from writing that onto an artist row.
+        if (isReservedHandle(r.siteName, r.id)) continue;
+        if (ambiguous.has(r.siteName)) continue;
+        if (done.has(r.siteName)) continue;
+        if (artist[r.siteName]) continue; // already have it
+        try {
+            await setArtistLink(artistId, r.siteName, r.id);
+            console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
+            done.add(r.siteName);
+            adopted++;
+        } catch (e) {
+            console.warn(`[vaultWebSearch] Could not save ${r.siteName} from own page:`, e);
+        }
+    }
+    return adopted;
+}
+
+/**
  * URLs that are just a profile we ALREADY have linked.
  *
  * Discovery kept offering an artist their own Spotify and X pages as "sources
@@ -141,13 +242,43 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
  */
 const IDENTITY_MATCH_MIN_LENGTH = 4; // shorter values match far too much
 
+/** Where each stored handle actually lives. A handle only identifies a profile
+ *  on its OWN platform. */
+const PLATFORM_DOMAINS: Record<string, string[]> = {
+    spotify: ["spotify.com"],
+    deezer: ["deezer.com"],
+    instagram: ["instagram.com"],
+    tiktok: ["tiktok.com"],
+    x: ["x.com", "twitter.com"],
+    youtube: ["youtube.com", "youtu.be"],
+    youtubechannel: ["youtube.com"],
+    soundcloud: ["soundcloud.com"],
+    bandcamp: ["bandcamp.com"],
+    twitch: ["twitch.tv"],
+    facebook: ["facebook.com", "fb.com"],
+};
+
 function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolean {
+    let host: string;
+    try {
+        host = new URL(url).hostname.toLowerCase();
+    } catch {
+        return false;
+    }
     const haystack = url.toLowerCase();
     return PROFILE_LINK_COLUMNS.some(col => {
         const value = artist[col];
         if (typeof value !== "string") return false;
         const v = value.trim().toLowerCase().replace(/^@/, "");
         if (v.length < IDENTITY_MATCH_MIN_LENGTH) return false;
+        // The handle must appear ON ITS OWN PLATFORM. Without this the check is
+        // a bare substring test: an artist whose Bandcamp handle is "dupes" had
+        // his own website, dupes.rocks, discarded as "a profile we already
+        // have" — so the one page that states his real Instagram never reached
+        // the loop. Same substring-for-identity mistake as every other one this
+        // pipeline has made.
+        const domains = PLATFORM_DOMAINS[col];
+        if (!domains?.some(d => host === d || host.endsWith(`.${d}`))) return false;
         return haystack.includes(v);
     });
 }
@@ -434,6 +565,15 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 }
                 skipped++;
                 continue;
+            }
+
+            // A page that proves it is the artist's own gets its account links
+            // adopted. This is the only first-party statement of their handles
+            // that exists: Sherwinn Brice's Instagram is `dupesdidit`, published
+            // on his own site, while profile discovery guessed `dupes` from his
+            // name. No slug derived from a name would ever reach it.
+            if ((page.outboundLinks?.length ?? 0) > 0) {
+                await adoptHandlesFromOwnPage(artistId, page.outboundLinks!, artist as Record<string, unknown>);
             }
 
             // An account page is IDENTITY, never coverage — so it is not a vault

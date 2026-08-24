@@ -373,4 +373,138 @@ describe("searchAndPopulateVault", () => {
     const row = mockInsert.mock.calls[0][0];
     expect(row.extractedText).toBe(REAL);
   });
+
+  describe("adopting handles from the artist's own page", () => {
+    // An artist's own site is the only first-party statement of their handles,
+    // and it lives entirely in href attributes — so the text extractor strips it
+    // and the same-host `links` rule excludes it. Sherwinn Brice's Instagram is
+    // `dupesdidit`, published on dupes.rocks; profile discovery guessed `dupes`
+    // from his name and missed it. No name-derived slug reaches `dupesdidit`.
+    const OWN_SITE = "https://www.dupes.rocks";
+    const OUTBOUND = [
+      "https://dupes.bandcamp.com/album/convergence",
+      "https://www.instagram.com/dupesdidit",
+      "https://www.facebook.com/dupesdidit/",
+    ];
+    const resolve = async (url) => {
+      if (url.includes("bandcamp")) return { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" };
+      if (url.includes("instagram")) return { siteName: "instagram", cardPlatformName: "Instagram", id: "dupesdidit" };
+      if (url.includes("facebook")) return { siteName: "facebook", cardPlatformName: "Facebook", id: "dupesdidit" };
+      return undefined;
+    };
+
+    it("adopts them when the page links to an id we already hold", async () => {
+      // bandcamp=dupes is already confirmed for this artist, so a page linking
+      // to it is his hub. That is identity through a matched ID, never a name.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(adopted).toContain("instagram=dupesdidit");
+      expect(adopted).toContain("facebook=dupesdidit");
+      // Already held — re-writing it is pointless churn.
+      expect(adopted).not.toContain("bandcamp=dupes");
+    });
+
+    it("adopts NOTHING from a page that proves no connection to the artist", async () => {
+      // The dangerous case: a magazine's footer links to the MAGAZINE's
+      // Instagram. Without corroboration we would put a publication's social
+      // account on an artist's profile.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit("https://somemagazine.com/review", "Review")]);
+      mockFetchPage.mockResolvedValue({
+        ...goodPage,
+        outboundLinks: ["https://www.instagram.com/somemagazine", "https://www.facebook.com/somemagazine"],
+      });
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("instagram") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "somemagazine" }
+        : url.includes("facebook") ? { siteName: "facebook", cardPlatformName: "Facebook", id: "somemagazine" }
+        : undefined);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=somemagazine");
+    });
+
+    it("corroborates against an @-prefixed stored handle", async () => {
+      // isKnownProfileUrl in the same file already strips a leading "@", as do
+      // profileDiscovery, socialIngest and socialSignals. A stored
+      // "@dupes" comparing unequal to a resolved "dupes" would silently
+      // disable this whole feature for that artist, with no error anywhere.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "@dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).toContain("instagram=dupesdidit");
+    });
+
+    it("adopts NEITHER when the page names two handles for one platform", async () => {
+      // An artist's footer can carry their own Instagram beside their label's.
+      // The pre-loop artist snapshot never sees what the loop just wrote, so
+      // without a guard the second silently overwrites the first and link order
+      // decides which handle an artist ends up with.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({
+        ...goodPage,
+        outboundLinks: [
+          "https://dupes.bandcamp.com/album/convergence",
+          "https://www.instagram.com/dupesdidit",
+          "https://www.instagram.com/hislabelrecords",
+        ],
+      });
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("bandcamp") ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" }
+        : url.includes("dupesdidit") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "dupesdidit" }
+        : url.includes("hislabelrecords") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "hislabelrecords" }
+        : undefined);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(adopted).not.toContain("instagram=dupesdidit");
+      expect(adopted).not.toContain("instagram=hislabelrecords");
+    });
+
+    it("will not adopt a platform route mistaken for a handle", async () => {
+      // instagram.com/p/<id> resolves to the "handle" p — one adoption away
+      // from writing that onto an artist row.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({
+        ...goodPage,
+        outboundLinks: ["https://dupes.bandcamp.com/album/convergence", "https://www.instagram.com/p/DN3G"],
+      });
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("bandcamp") ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" }
+        : url.includes("instagram") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "p" }
+        : undefined);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=p");
+    });
+  });
 });
