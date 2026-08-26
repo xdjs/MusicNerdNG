@@ -58,14 +58,33 @@ async function mb(path: string): Promise<Record<string, unknown> | null> {
     }
 }
 
-const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+const wait = (ms: number): Promise<void> => new Promise<void>(r => setTimeout(() => r(), ms));
 
-/** Paces every call in this process, not just the ones inside a single lookup. */
-let lastCallAt = 0;
+/**
+ * Paces every call in this process, not just the ones inside a single lookup.
+ *
+ * A bare timestamp did not actually do this, as a review pointed out: two
+ * callers arriving together both read the same `lastCallAt`, both compute the
+ * same delay, both wake at the same moment and both fire — which is precisely
+ * the burst the limit exists to prevent. Two concurrent claim approvals were
+ * enough. MusicBrainz answers a throttled request with an entry and no
+ * relations, which reads exactly like an artist it has never heard of, so the
+ * failure was silent and looked like missing data.
+ *
+ * Each caller now chains onto the previous one and reserves its own slot
+ * before waiting, so N callers take N intervals rather than one.
+ */
+let paceQueue: Promise<void> = Promise.resolve();
+/** Set once the first request goes out, so an idle process does not pay the
+ *  interval before its very first call. */
+let hasCalled = false;
 async function sinceLastCall(): Promise<void> {
-    const gap = Date.now() - lastCallAt;
-    if (gap < RATE_LIMIT_MS) await wait(RATE_LIMIT_MS - gap);
-    lastCallAt = Date.now();
+    const first = !hasCalled;
+    hasCalled = true;
+    const mine: Promise<void> = paceQueue.then(() => (first ? Promise.resolve() : wait(RATE_LIMIT_MS)));
+    // Swallow rejections so one failure cannot poison the queue for everyone.
+    paceQueue = mine.then(() => undefined, () => undefined);
+    await mine;
 }
 
 /**

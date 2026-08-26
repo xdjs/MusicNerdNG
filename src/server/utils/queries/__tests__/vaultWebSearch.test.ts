@@ -388,6 +388,33 @@ describe("searchAndPopulateVault", () => {
     expect(mockSetLink).toHaveBeenCalledWith("a1", "x", "p3t3rango");
   });
 
+  it("will not treat a lookalike domain as the artist's own site", async () => {
+    // Flagged by a security review. The check was a substring test on a
+    // hostname, so anyone could register <artistname>-fans.example, publish
+    // their own handles on it, and have the relevance judge affirm the page —
+    // a fan site genuinely IS about the artist. Those handles then became the
+    // artist's public profile links.
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pete Rango", spotify: null, deezer: null,
+      instagram: null, x: null, youtube: null, soundcloud: null,
+      bandcamp: null, facebook: null, twitch: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://peterango-fans.example/links", "Pete Rango")]);
+    mockFetchPage.mockResolvedValue({
+      ...goodPage,
+      url: "https://peterango-fans.example/links",
+      aboutArtist: true,
+      outboundLinks: ["https://www.instagram.com/not_his_account/"],
+    });
+    mockExtract.mockImplementation(async (u) =>
+      String(u).includes("instagram") ? { siteName: "instagram", id: "not_his_account" } : null);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=not_his_account");
+  });
+
   // ---- Namesakes ---------------------------------------------------------
 
   it("does not let a namesake article become citable (the Black Dave case)", async () => {

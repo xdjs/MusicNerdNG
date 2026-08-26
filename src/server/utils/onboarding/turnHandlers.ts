@@ -662,7 +662,7 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                     yield { kind: "progress", label: "Searching the web for sources about you", done: false };
                     try {
                         await Promise.race([
-                            searchAndPopulateVault(artistId),
+                            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS }),
                             new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
                         ]);
                         pending = await getVaultSourcesByArtistId(artistId, "pending");
@@ -1020,7 +1020,7 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // Same budgeted race the vault step uses — a slow search must not hold
         // the whole build open past the route's turn deadline.
         await Promise.race([
-            searchAndPopulateVault(artistId),
+            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS }),
             new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
         ]);
     } catch (e) {

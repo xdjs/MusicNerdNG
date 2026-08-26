@@ -573,7 +573,10 @@ describe('runOnboardingTurn', () => {
         // discovery entirely — the artist's own site would be mistaken for
         // "the vault has already been searched" and every OTHER source about
         // them (press, interviews, reviews) would silently never be found.
-        expect(searchAndPopulateVault).toHaveBeenCalledWith('a1');
+        // Matched on the artist, not the whole argument list: the second
+        // argument is the caller's deadline, which is a timestamp and would
+        // pin this test to an implementation detail it does not care about.
+        expect((searchAndPopulateVault as jest.Mock).mock.calls[0]?.[0]).toBe('a1');
     });
 
     it('confirm_profiles: resubmitting the same website URL (e.g. a reconnect) is idempotent — no duplicate vault source', async () => {

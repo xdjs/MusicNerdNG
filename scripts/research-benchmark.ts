@@ -206,12 +206,23 @@ async function main() {
             else if (String(got).toLowerCase() === want.toLowerCase()) linksCorrect.push(`${platform}=${got}`);
             else linksWrong.push(`${platform}=${got} (want ${want})`);
         }
-        // Somebody else's handle is worse than a missing one.
+        // Somebody else's handle is worse than a missing one — and it is ONE
+        // wrong platform, not two. A handle that both differs from the expected
+        // value and appears in forbidHandles was already recorded by the loop
+        // above, and pushing it again double-counted exactly the namesake case
+        // this benchmark exists to measure, inflating every total it reported.
+        const wrongPlatforms = new Set(linksWrong.map(w => w.split("=")[0]));
         for (const [platform, bad] of Object.entries(c.forbidHandles ?? {})) {
             const got = links[platform];
-            if (got && bad.some(b => b.toLowerCase() === String(got).toLowerCase())) {
-                linksWrong.push(`${platform}=${got} (belongs to another artist)`);
+            if (!got || !bad.some(b => b.toLowerCase() === String(got).toLowerCase())) continue;
+            if (wrongPlatforms.has(platform)) {
+                // Already counted; say WHY it is wrong rather than counting twice.
+                const at = linksWrong.findIndex(w => w.startsWith(`${platform}=`));
+                linksWrong[at] += " — belongs to another artist";
+                continue;
             }
+            linksWrong.push(`${platform}=${got} (belongs to another artist)`);
+            wrongPlatforms.add(platform);
         }
 
         const srcs: any = await db.execute(sql`

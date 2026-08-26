@@ -167,12 +167,34 @@ async function resolveRedirectUrl(url: string): Promise<string | null> {
  * the namesake hole this gate exists to close: "Black Dave MK2" matches none of
  * theguardian.com, head-fi.org or soundnews.net.
  */
+/** Suffixes a musician actually appends to their own name in a domain. Kept
+ *  short and specific on purpose: every entry widens what counts as "theirs". */
+const OWN_DOMAIN_SUFFIXES = ["", "music", "official", "band", "sound", "sounds", "hq", "live", "tv"];
+
+/**
+ * Is this the artist's OWN site, rather than a site with their name in it?
+ *
+ * This used to be `fold(hostname).includes(name)`, which a security review
+ * pointed out is a substring test on a string anybody can register. Publish
+ * artistname-fans.example, fill it with your own handles, and the relevance
+ * judge affirms the page because a fan site genuinely IS about the artist —
+ * and this branch treats affirmation plus a name-shaped hostname as proof of
+ * ownership. Those handles then become the artist's public profile links.
+ *
+ * The registrable label must now BE the artist's name, optionally with one of
+ * a short list of suffixes a musician actually uses. peterango.com passes;
+ * peterango-fans.example does not, and neither does anything else that merely
+ * contains the name.
+ */
 function isArtistOwnDomain(url: string, artistName: string): boolean {
     const fold = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
     const name = fold(artistName);
     if (name.length < 5) return false; // too short to be distinctive in a domain
     try {
-        return fold(new URL(url).hostname).includes(name);
+        const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+        // The label before the public suffix. Compared whole, never searched.
+        const label = fold(host.split(".")[0] ?? "");
+        return OWN_DOMAIN_SUFFIXES.some(s => label === name + s);
     } catch {
         return false;
     }
@@ -457,9 +479,14 @@ async function adoptHandlesFromOwnPage(
     // a name in a domain is weaker: three artists called Black Dave are in this
     // directory, and a blackdave.com would fold identically for all of them. An
     // id cannot be ambiguous that way, so it stands alone.
+    // A shared name in a domain is no better than a shared name anywhere else:
+    // a blackdave.com would fold identically for all three artists here called
+    // Black Dave. The other adoption paths abstain on an ambiguous name and so
+    // does this one.
     const ownDomain = !corroborator
         && !!page?.aboutArtist
-        && isArtistOwnDomain(page.url, String(artist.name ?? ""));
+        && isArtistOwnDomain(page.url, String(artist.name ?? ""))
+        && !(await nameIsAmbiguousInDirectory(artistId, String(artist.name ?? "")));
 
     if (!corroborator && !ownDomain) return { adopted: 0, handles: new Set<string>() };
     console.log(corroborator
@@ -555,6 +582,7 @@ async function propagateVerifiedHandles(
     verified: Set<string>,
     artist: Record<string, unknown>,
     artistName: string,
+    callerDeadline: number = Number.POSITIVE_INFINITY,
 ): Promise<number> {
     const handles = [...verified].filter(h => h.length >= 3);
     if (handles.length === 0) return 0;
@@ -564,7 +592,10 @@ async function propagateVerifiedHandles(
     // race is never cancelled, so the loop kept probing and kept WRITING long
     // after the caller had given up and the HTTP response had gone out. A
     // deadline checked between probes stops the work itself.
-    const deadline = Date.now() + PROPAGATION_BUDGET_MS;
+    // Its own ceiling OR whatever the caller has left, whichever comes first.
+    // A fixed budget added on top of every earlier phase is how the phases
+    // came to sum past the caller's cap.
+    const deadline = Math.min(Date.now() + PROPAGATION_BUDGET_MS, callerDeadline);
     const outOfTime = () => Date.now() > deadline;
 
     let adopted = 0;
@@ -749,7 +780,32 @@ function normalizeUrl(raw: string): string {
  * A search API cannot invent a URL. It CAN return the wrong person, so the
  * verification pass below runs with `requireFullName` — see the comment there.
  */
-export async function searchAndPopulateVault(artistId: string): Promise<ArtistVaultSource[]> {
+export async function searchAndPopulateVault(
+    artistId: string,
+    opts?: { deadline?: number },
+): Promise<ArtistVaultSource[]> {
+    // A DEADLINE THE CALLER OWNS, rather than per-phase budgets that happen to
+    // add up to less than it.
+    //
+    // A review made the arithmetic explicit: the onboarding vault step races
+    // this whole call against 45 seconds, while inside it MusicBrainz can spend
+    // three 8-second detail timeouts plus pacing, Tavily six, relevance judging
+    // twenty, page verification eight, and propagation ten. On slow-but-allowed
+    // responses the outer race wins first, the step re-reads a half-written
+    // vault and shows the artist that, and the losing side of the race — which
+    // Promise.race never cancels — keeps writing sources after the step has
+    // moved on.
+    //
+    // Checking between phases does not cancel work already in flight, but it
+    // does stop us STARTING a phase that cannot finish, which is what turns an
+    // overrun into writes landing behind the artist's back.
+    const deadline = opts?.deadline ?? Number.POSITIVE_INFINITY;
+    const outOfBudget = (phase: string): boolean => {
+        if (Date.now() < deadline) return false;
+        console.log(`[vaultWebSearch] Out of time before ${phase} — stopping rather than writing behind the caller`);
+        return true;
+    };
+
     const artist = await getArtistById(artistId);
     if (!artist) return [];
 
@@ -761,7 +817,11 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
     // Before inferring anything: ask a database that already knows. Its handles
     // are curated rather than probed, and its homepage is the hub the search
     // pass would otherwise spend a round hunting for.
-    const fromMusicBrainz = await adoptFromMusicBrainz(artistId, artistName, artist as unknown as Record<string, unknown>);
+    const fromMusicBrainz = outOfBudget("MusicBrainz")
+        ? { handles: new Set<string>(), homepage: null, authoritative: false }
+        : await adoptFromMusicBrainz(artistId, artistName, artist as unknown as Record<string, unknown>);
+
+    if (outOfBudget("web search")) return [];
 
     const queries = [
         `"${artistName}" music artist interview`,
@@ -784,9 +844,26 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             queries.map(q => webSearch(q, { maxResults: TAVILY_RESULTS_PER_QUERY })),
         );
 
+        // MusicBrainz names the artist's official homepage, and until a review
+        // pointed it out we returned that field and never read it. That page is
+        // the hub the search pass spends a whole round hunting for — the one
+        // that lists their real accounts — and whenever search failed to return
+        // the site independently we threw away a curated answer to a question we
+        // were about to ask. Seeded first so it survives the dedupe below.
+        const seeded: WebSearchResult[] = [];
+        if (fromMusicBrainz.homepage) {
+            seeded.push({
+                url: fromMusicBrainz.homepage,
+                title: artistName,
+                snippet: "",
+                type: inferTypeFromUrl(fromMusicBrainz.homepage),
+            });
+            console.log(`[vaultWebSearch] Seeding MusicBrainz homepage into discovery: ${fromMusicBrainz.homepage.slice(0, 70)}`);
+        }
+
         // Dedupe across queries by URL; the three angles overlap heavily.
         const byUrl = new Map<string, WebSearchResult>();
-        for (const hit of perQuery.flat()) {
+        for (const hit of [...seeded, ...perQuery.flat()]) {
             if (!hit.url || !hit.title) continue;
             const key = normalizeUrl(hit.url);
             if (byUrl.has(key)) continue;
@@ -1306,7 +1383,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         } else if (verifiedHandles.size > 0) {
             const latest = await getArtistById(artistId).catch(() => undefined);
             if (latest) {
-                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>, artistName);
+                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>, artistName, deadline);
             }
         }
 
