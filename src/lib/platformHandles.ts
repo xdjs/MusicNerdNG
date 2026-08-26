@@ -13,9 +13,13 @@
 const RESERVED_HANDLES: Record<string, Set<string>> = {
     instagram: new Set(["p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct"]),
     facebook: new Set(["photo", "photos", "groups", "events", "pages", "watch", "story.php", "permalink.php", "sharer"]),
-    x: new Set(["i", "status", "intent", "search", "hashtag", "home", "explore", "notifications"]),
+    x: new Set(["i", "status", "intent", "search", "hashtag", "home", "explore", "notifications",
+                // x.com/artists is a platform section, and it was adopted as
+                // Lianne La Havas's X handle.
+                "artists", "settings", "messages", "compose", "share", "login", "signup", "about"]),
     tiktok: new Set(["video", "tag", "search", "discover", "music", "effect"]),
-    youtube: new Set(["watch", "shorts", "playlist", "results", "feed", "channel", "embed"]),
+    youtube: new Set(["watch", "shorts", "playlist", "results", "feed", "channel", "embed",
+                      "user", "c", "live", "gaming", "music", "movies", "premium", "about"]),
     youtubechannel: new Set(["watch", "shorts", "playlist", "results", "feed", "embed"]),
     soundcloud: new Set(["search", "discover", "stream", "you", "tags", "charts"]),
     twitch: new Set(["videos", "directory", "settings", "downloads"]),

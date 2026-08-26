@@ -69,6 +69,22 @@ const MAX_HUB_PAGES = 5;
 /** Ceiling on the propagation pass — see propagateVerifiedHandles. */
 const PROPAGATION_BUDGET_MS = 10_000;
 
+/** How much of a handle must look like the artist's name before a page merely
+ *  mentioning them counts as theirs. Four characters is short enough for
+ *  "dupesdidit" against "Sherwinn Dupes Brice" to fail on prefix and long enough
+ *  that "insomniac" against "hardwell" cannot pass. */
+const HANDLE_STEM_MIN = 4;
+
+/** Length of the common opening run between a handle and an artist's name,
+ *  both folded. Prefix rather than substring: a handle that merely CONTAINS a
+ *  common word is not evidence, while one that starts the same way is. */
+function sharedPrefix(handle: string, artistName: string): number {
+    const a = folded(handle), b = folded(artistName);
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    return i;
+}
+
 /** Letters and digits only, for comparing a name against page text. */
 function folded(v: string): string {
     return (v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -247,6 +263,7 @@ async function adoptHandlesFromOwnPage(
     artistId: string,
     outboundLinks: string[],
     artist: Record<string, unknown>,
+    artistName: string,
     /** The page these links came from, and what the judge made of it. */
     page?: { url: string; aboutArtist: boolean },
 ): Promise<{ adopted: number; handles: Set<string> }> {
@@ -302,11 +319,28 @@ async function adoptHandlesFromOwnPage(
         console.log(`[vaultWebSearch] Own page names more than one ${platform} handle — adopting none`);
     }
 
+    // A genuine hub links the artist's OWN accounts and only those: dupes.rocks
+    // gives dupesdidit throughout, peterango.com gives p3t3rango throughout. A
+    // third party gives a MIX — an Insomniac page linking Hardwell's SoundCloud
+    // corroborates as his, then offers youtube/insomniac, tiktok/insomniacevents
+    // and x/hardwell side by side.
+    //
+    // So when some handles on a page resemble the artist and others do not, keep
+    // only the ones that do. When NONE resemble, keep them all: that is the
+    // normal case for a hub whose owner's handle is nothing like their name, and
+    // it is how Sherwinn Brice's `dupesdidit` is found at all.
+    const accountHandles = resolved.filter(r => ACCOUNT_PLATFORMS.has(r.siteName));
+    const anyResembles = accountHandles.some(r => sharedPrefix(r.id, artistName) >= HANDLE_STEM_MIN);
+
     let adopted = 0;
     const done = new Set<string>();
     const adoptedHandles = new Set<string>();
     for (const r of resolved) {
         if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
+        if (anyResembles && sharedPrefix(r.id, artistName) < HANDLE_STEM_MIN) {
+            console.log(`[vaultWebSearch] Page mixes "${artistName}" accounts with ${r.siteName}=${r.id}; keeping only theirs`);
+            continue;
+        }
         // instagram.com/p/<id> resolves to the "handle" p — one adoption away
         // from writing that onto an artist row.
         if (isReservedHandle(r.siteName, r.id)) continue;
@@ -415,8 +449,14 @@ async function propagateVerifiedHandles(
  *  ("peterango - Twitch") and never the display name, so it can tell us an
  *  account exists and never whose it is. Pete Rango holds two verified handles
  *  and twitch answers for both; his real Twitch stays empty rather than being
- *  guessed. */
-const PROBE_BLIND_PLATFORMS = new Set(["tiktok", "twitch"]);
+ *  guessed.
+ *
+ *  `bandcamp` is the third shape: it returns 200 with a plausible title for a
+ *  subdomain nobody owns — kaskade.bandcamp.com answers "Music | Kaskade" — so
+ *  a constructed probe cannot distinguish a real page from a fabricated one. A
+ *  bandcamp URL that came back from SEARCH is still adopted, because being
+ *  indexed means it exists; only guessing at the URL is blocked. */
+const PROBE_BLIND_PLATFORMS = new Set(["tiktok", "twitch", "bandcamp"]);
 
 const IDENTITY_MATCH_MIN_LENGTH = 4; // shorter values match far too much
 
@@ -711,7 +751,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         /** Article URLs harvested from index pages, followed after the main pass. */
         const indexLinks = new Set<string>();
         /** Account URLs the search returned — candidate handles, verified below. */
-        const accountCandidates: { siteName: string; id: string; url: string; identity: string }[] = [];
+        const accountCandidates: { siteName: string; id: string; url: string; title: string; description: string }[] = [];
         /** Handles proven to be this artist's, however we proved it. Both the
          *  account-title check and the own-page adoption contribute, and the
          *  propagation pass runs once over the union — a handle confirmed by a
@@ -821,7 +861,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                         siteName: profileMatch.siteName,
                         id: String(profileMatch.id),
                         url: result.url,
-                        identity: `${page.title ?? ""} ${page.snippet ?? ""}`.trim(),
+                        title: page.title ?? "",
+                        description: page.snippet ?? "",
                     });
                 }
                 skipped++;
@@ -961,16 +1002,39 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 }
                 // The page we already read, falling back to a preview for one we
                 // could not.
-                let identity = cand.identity;
-                if (!identity) {
+                let title = cand.title;
+                if (!title && !cand.description) {
                     const preview = await fetchLinkPreview(stripQuery(cand.url)).catch(() => null);
-                    identity = preview?.title ?? "";
+                    title = preview?.title ?? "";
                 }
+                const identity = `${title} ${cand.description}`.trim();
                 if (!identity) continue;
 
-                if (!titleMatchesArtist(identity, artistName)) {
-                    console.log(`[vaultWebSearch] Account page did not name "${artistName}", ignoring: ${cand.url.slice(0, 70)}`);
-                    continue;
+                // A profile page's TITLE is the account holder's own name:
+                // "Pete Rango (@p3t3rango) • Instagram photos". That is the
+                // strong signal and it stands alone — it has to, because a real
+                // handle often looks nothing like the name (`p3t3rango` shares
+                // one character with "Pete Rango", `dupesdidit` shares none with
+                // "Sherwinn Dupes Brice").
+                //
+                // A DESCRIPTION naming the artist is far weaker: Insomniac is an
+                // EDM promoter whose YouTube bio lists everyone it books,
+                // Hardwell included, and that alone gave him youtube=insomniac.
+                // So a description-only match additionally needs the handle to
+                // resemble the name — which is exactly Black Dave MK2's case,
+                // where the title says "Black Dave!" and only the bio says
+                // "blackdave.mk2", and `blackdave.xyz` shares nine characters
+                // with `blackdavemk2` while `insomniac` shares none with
+                // `hardwell`.
+                if (!titleMatchesArtist(title, artistName)) {
+                    if (!titleMatchesArtist(identity, artistName)) {
+                        console.log(`[vaultWebSearch] Account page did not name "${artistName}", ignoring: ${cand.url.slice(0, 70)}`);
+                        continue;
+                    }
+                    if (sharedPrefix(cand.id, artistName) < HANDLE_STEM_MIN) {
+                        console.log(`[vaultWebSearch] Only ${cand.siteName}=${cand.id}'s bio mentions "${artistName}" and the handle is unlike it, ignoring`);
+                        continue;
+                    }
                 }
                 try {
                     await setArtistLink(artistId, cand.siteName, cand.id);
@@ -1020,7 +1084,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                     if (seen.has(key)) continue;
                     seen.add(key);
                     const { adopted, handles } = await adoptHandlesFromOwnPage(
-                        artistId, outbound, current as unknown as Record<string, unknown>,
+                        artistId, outbound, current as unknown as Record<string, unknown>, artistName,
                         { url: hub.url, aboutArtist: hub.aboutArtist });
                     for (const h of handles) verifiedHandles.add(h);
                     // One adoption can corroborate the next page, so refresh.
