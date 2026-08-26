@@ -101,15 +101,17 @@ weaker. The ordering is backwards.
 
 ## Why onboarding asked him nothing: two separate defects
 
-**1. The posts were not there yet.** His claim was approved 2026-08-21 at 11:46
-and his feed was not ingested until 12:30, forty-four minutes later.
-`generateGroundedQuestions` returns immediately on `posts.length === 0`, so the
-interview ran against an empty table. `turnHandlers.ts` kicks the ingest as a
-background job at claim time and a 200-post scrape takes one to five minutes,
-while onboarding continues straight into the interview. **Every artist going
-through onboarding for the first time hits this.** Pete Rango only got
-Instagram-derived questions because his posts were ingested on 08-19 and he did
-not confirm his interview step until 08-22, three days later.
+**1. The posts were not there yet, and that part is already fixed.** His claim
+was approved 2026-08-21 at 11:46 and his feed was not ingested until 12:30, by
+hand via `scripts/ingest-social.ts`. `generateGroundedQuestions` returns
+immediately on `posts.length === 0`, so his interview ran against an empty table.
+That was a real defect and it was diagnosed the same day: commit `9baf4d54`,
+"actually ingest Instagram posts, so grounded questions fire", now kicks
+`ensureRecentSocialPosts` when the profiles step is confirmed, two steps ahead of
+the interview, with an 8s last-resort wait at the interview itself
+(`SOCIAL_INGEST_WAIT_MS`). Before that commit the ingest only ever ran manually,
+which is why grounded questions worked for artists whose posts had been seeded
+by hand and for nobody else.
 
 **2. Even with the posts present, the good material is not eligible.** Running
 the real pipeline against his sixty stored posts today produces four candidates:
