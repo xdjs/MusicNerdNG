@@ -173,13 +173,21 @@ async function main() {
     for (const c of cases) {
         // Reset to the state an artist actually arrives in: the DSP ids and
         // nothing else. Anything the pipeline ends up holding, it found.
-        const clear = blank
-            ? [...ALL, "spotify", "deezer"]
-            : ALL.filter(p => !c.seed.includes(p));
+        // Every column a seed can name, so `seed` actually means what it says.
+        // ALL held only the social platforms, and spotify/deezer are never in
+        // it — so filtering ALL by the seed never cleared either DSP id, and a
+        // case declared "deezer only" ran with its Spotify id still present.
+        // MusicBrainz's identifier path then used evidence the scenario says is
+        // absent, and every such case scored better than the situation it was
+        // supposed to be measuring.
+        const RESETTABLE = [...ALL, "spotify", "deezer"];
+        const clear = blank ? RESETTABLE : RESETTABLE.filter(p => !c.seed.includes(p));
         // The DSP ids are the artist's real identifiers and are not ours to
-        // lose. Captured before clearing and put back after, so --blank
-        // measures the hard case without being destructive.
-        const dsp: any = blank
+        // lose. Captured before clearing and put back after, whenever either is
+        // being cleared — not only in --blank, now that a normal run can clear
+        // them too.
+        const clearsDsp = clear.includes("spotify") || clear.includes("deezer");
+        const dsp: any = clearsDsp
             ? await db.execute(sql.raw(`select spotify, deezer from artists where id = '${c.id}'`))
             : null;
         const dspRow = dsp ? ((dsp.rows ?? dsp)[0] ?? {}) : null;

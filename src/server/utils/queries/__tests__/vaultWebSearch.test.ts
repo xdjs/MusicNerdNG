@@ -415,6 +415,32 @@ describe("searchAndPopulateVault", () => {
     expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=not_his_account");
   });
 
+  it("will not treat an artist-named subdomain of someone else's domain as theirs", async () => {
+    // Second security finding, on the fix for the first. Matching the leftmost
+    // label was still bypassable: anyone who controls attacker.example can
+    // serve an artist-themed page at peterango.attacker.example. Ownership
+    // lives at the REGISTRABLE domain.
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pete Rango", spotify: null, deezer: null,
+      instagram: null, x: null, youtube: null, soundcloud: null,
+      bandcamp: null, facebook: null, twitch: null,
+    });
+    mockWebSearch.mockResolvedValue([hit("https://peterango.attacker.example/", "Pete Rango")]);
+    mockFetchPage.mockResolvedValue({
+      ...goodPage,
+      url: "https://peterango.attacker.example/",
+      aboutArtist: true,
+      outboundLinks: ["https://www.instagram.com/not_his_account/"],
+    });
+    mockExtract.mockImplementation(async (u) =>
+      String(u).includes("instagram") ? { siteName: "instagram", id: "not_his_account" } : null);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=not_his_account");
+  });
+
   // ---- Namesakes ---------------------------------------------------------
 
   it("does not let a namesake article become citable (the Black Dave case)", async () => {

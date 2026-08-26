@@ -1006,6 +1006,28 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     if (discovered.length > 0) {
         await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
     }
+
+    // The Instagram ingest and the caption extraction, on the path most artists
+    // actually take.
+    //
+    // Both used to hang off the confirm_profiles turn only. This auto-build
+    // path confirms the profiles step itself and goes straight on to build the
+    // document, so a fresh claim following the primary flow never scraped a
+    // feed, never populated artist_social_credits, and produced a document
+    // with none of the credits or statements in it. The same class of miss as
+    // the original "grounded questions only worked for hand-seeded artists",
+    // one flow over.
+    //
+    // Fired after the response, exactly as the other path does it: a scrape
+    // takes one to five minutes against a 55s turn deadline and can never be
+    // awaited inline.
+    runAfterResponse("social ingest (auto-build)", async () => {
+        const outcome = await ensureRecentSocialPosts(artistId);
+        console.debug(`[onboarding] auto-build social ingest for ${artistId}: ${outcome.status}`);
+        if (outcome.status === "ingested" || outcome.status === "already_present") {
+            await ensureSocialCredits(artistId);
+        }
+    });
     yield {
         kind: "progress",
         label: discovered.length > 0 ? `Found ${discovered.length} profile${discovered.length === 1 ? "" : "s"}` : "Checked for your profiles",

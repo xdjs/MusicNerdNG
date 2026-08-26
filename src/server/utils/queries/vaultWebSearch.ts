@@ -169,6 +169,15 @@ async function resolveRedirectUrl(url: string): Promise<string | null> {
  */
 /** Suffixes a musician actually appends to their own name in a domain. Kept
  *  short and specific on purpose: every entry widens what counts as "theirs". */
+/** Public suffixes that occupy two labels, so the registrable domain is three.
+ *  Not exhaustive — a full public-suffix list is a dependency this file does not
+ *  need. Anything missing here is treated as a plain TLD, which makes the check
+ *  STRICTER (it rejects) rather than looser. */
+const TWO_PART_TLDS = new Set([
+    "co.uk", "org.uk", "me.uk", "ac.uk", "com.au", "net.au", "org.au",
+    "co.nz", "co.za", "com.br", "co.jp", "or.jp", "co.kr", "com.mx",
+]);
+
 const OWN_DOMAIN_SUFFIXES = ["", "music", "official", "band", "sound", "sounds", "hq", "live", "tv"];
 
 /**
@@ -192,8 +201,20 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
     if (name.length < 5) return false; // too short to be distinctive in a domain
     try {
         const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-        // The label before the public suffix. Compared whole, never searched.
-        const label = fold(host.split(".")[0] ?? "");
+        const parts = host.split(".").filter(Boolean);
+        if (parts.length < 2) return false;
+        // The REGISTRABLE domain, not the leftmost label. Taking parts[0] was
+        // still bypassable: an attacker who controls attacker.example can serve
+        // an artist-themed page at peterango.attacker.example, whose leftmost
+        // label is the artist's name. Ownership lives at the registrable
+        // domain, so that is what has to match.
+        const twoPartTld = TWO_PART_TLDS.has(parts.slice(-2).join("."));
+        const registrable = parts.slice(twoPartTld ? -3 : -2);
+        if (registrable.length < (twoPartTld ? 3 : 2)) return false;
+        // Anything to the left of the registrable domain is a subdomain the
+        // registrant chose, and says nothing about who they are.
+        if (parts.length > registrable.length) return false;
+        const label = fold(registrable[0] ?? "");
         return OWN_DOMAIN_SUFFIXES.some(s => label === name + s);
     } catch {
         return false;
@@ -269,7 +290,15 @@ async function handleBelongsToAnotherArtist(artistId: string, siteName: string, 
         // results and page content, so hand-escaping them is not a thing we get
         // to be right about forever.
         const rows = await db.execute(
-            sql`select 1 from artists where lower(${sql.raw(siteName)}) = lower(${handle}) and id::text <> ${artistId} limit 1`);
+            // ltrim the stored value as well as the candidate. Some rows carry
+            // the legacy "@handle" form, and comparing "@dupes" against "dupes"
+            // reported the handle as unclaimed — handing a second artist an
+            // account the directory already knew belonged to someone else,
+            // which is the one thing this guard exists to prevent.
+            sql`select 1 from artists
+                where lower(ltrim(${sql.raw(siteName)}, '@')) = lower(ltrim(${handle}, '@'))
+                  and id::text <> ${artistId}
+                limit 1`);
         return rowsOf(rows).length > 0;
     } catch (e) {
         // Fail CLOSED. This used to return false — "not claimed by anyone" —
@@ -973,6 +1002,11 @@ export async function searchAndPopulateVault(
         // deliberately tight: this runs inside the onboarding/About budget alongside a
         // 12-33s grounded discovery call, and a slow-but-real site being demoted to an
         // unverified lead is a much better outcome than blowing the turn's deadline.
+        // The deadline was checked before MusicBrainz and before search and
+        // then never again, so once search returned, verification, judging,
+        // insertion, hub adoption and index following all ran regardless — the
+        // exact phases that WRITE. Rechecked before each of them now.
+        if (outOfBudget("page verification")) return [];
         const verified = await Promise.all(
             candidates.map(async (result) => ({
                 result,
@@ -1006,6 +1040,7 @@ export async function searchAndPopulateVault(
             const v = (artist as unknown as Record<string, unknown>)[col];
             return typeof v === "string" && v ? [`${col}: ${v}`] : [];
         });
+        if (outOfBudget("relevance judging")) return [];
         const relevance = await judgeSourceRelevance(
             { name: artistName, catalog: [...catalog.topTracks, ...catalog.releases], identifiers },
             verified.map(({ result, page }) => ({
@@ -1193,6 +1228,7 @@ export async function searchAndPopulateVault(
 
             const isVerified = verdict === "verified";
             try {
+                if (outOfBudget("source insertion")) break;
                 const source = await insertVaultSource({
                     artistId,
                     url: result.url,
@@ -1358,6 +1394,7 @@ export async function searchAndPopulateVault(
                     const key = [...outbound].sort().join("|");
                     if (seen.has(key)) continue;
                     seen.add(key);
+                    if (outOfBudget("hub adoption")) break;
                     const { adopted, handles } = await adoptHandlesFromOwnPage(
                         artistId, outbound, current as unknown as Record<string, unknown>, artistName,
                         { url: hub.url, aboutArtist: hub.aboutArtist });

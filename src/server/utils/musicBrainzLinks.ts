@@ -131,9 +131,23 @@ export async function fetchMusicBrainzLinks(
 
         // An id we already hold settles it — this is certainly the same artist,
         // whoever else shares the name.
+        // WHOLE path segment, not a substring. `includes("deezer.com/artist/123")`
+        // also matches .../1234, so a different artist whose id merely starts
+        // with ours was promoted to an IDENTIFIER match — the strongest verdict
+        // this module can return, which skips exact-name verification entirely
+        // and trusts every link on the wrong entry.
+        const idFrom = (u: string, host: string): string | null => {
+            try {
+                const parsed = new URL(u);
+                if (!parsed.hostname.endsWith(host)) return null;
+                const seg = parsed.pathname.split("/").filter(Boolean);
+                const at = seg.indexOf("artist");
+                return at >= 0 ? (seg[at + 1] ?? null) : null;
+            } catch { return null; }
+        };
         const identifies = urls.some(u =>
-            (held.spotify && u.includes(`open.spotify.com/artist/${held.spotify}`))
-            || (held.deezer && u.includes(`deezer.com/artist/${held.deezer}`)));
+            (held.spotify && idFrom(u, "spotify.com") === held.spotify)
+            || (held.deezer && idFrom(u, "deezer.com") === held.deezer));
         if (identifies) return { matchedBy: "identifier", urls, homepage };
 
         // Otherwise remember the first exact-name match and keep looking for an
