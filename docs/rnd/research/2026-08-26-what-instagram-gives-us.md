@@ -149,3 +149,38 @@ document), and `vaultWebSearch.ts` (discovery).
 
 Nothing renders it. The richest thing we hold about an artist is currently
 visible only as its own second-order effects.
+
+## Result, measured end to end 2026-08-26
+
+`socialCredits.ts` now reads own-post captions and stores what it finds. Against
+Pharaoh Sistare's sixty posts, on dev, through the real ingest path:
+
+- 29 verified credits and 30 verified statements stored
+- 16 credited collaborators, including `@p3t3rango` as "engineered by / Mixed by
+  / Mixing & Mastering Engineer" across three posts, plus his bassist, harpist,
+  Rhodes player and assistant mixing engineer
+- 5 self-credits kept as facts and drawn as edges to nobody
+- Industry Connections is no longer empty: four social sources, where before
+  there were none
+
+The three interview questions generated from it:
+
+> You've credited @p3t3rango as your mixing and mastering engineer on several
+> tracks; what's that collaborative process typically like when you're working
+> together?
+
+> You described a new single as "needing one more twirl in the mirror — a
+> princess rehearsing her waltz," and giving "romance, nostalgia, yearning, and
+> a touch of magic" — can you tell us a bit more about the story or feeling
+> behind that track?
+
+> You wrote such a vivid description for "Hourglass & The Flame," talking about
+> "a silhouette in flickering light" and "sand storms abound" — what inspired
+> that powerful imagery for the track?
+
+Not one theme question survived. Given better material the interviewer stopped
+reaching for counted words, which is what the ranking change was for.
+
+Migrations 0017 and 0018 are applied to dev. The app role was verified able to
+insert, select and delete on the new table rather than assumed able to, because
+an RLS policy that grants nothing is invisible until production.
