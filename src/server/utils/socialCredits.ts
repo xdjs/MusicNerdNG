@@ -94,11 +94,29 @@ const BATCH_CONCURRENCY = 3;
  *  exists to skip emoji and hashtag dumps, not to judge whether a caption is
  *  interesting; that judgement belongs to the model and to verification. */
 const MIN_CAPTION_CHARS = 12;
-/** Generous: this runs in a background ingest, not in a chat turn. */
-const TIMEOUT_MS = 45_000;
+/** Generous: this runs in a background ingest, not in a chat turn.
+ *
+ *  45s was not enough. An artist with many tagged accounts produces far more
+ *  candidate credits per batch, and the time goes into WRITING the answer, not
+ *  reading the captions — Pete Rango's feed has 467 mentions against Pharaoh
+ *  Sistare's 29 and lost two whole batches to this. */
+const TIMEOUT_MS = 90_000;
 /** Per batch. Well above what a real feed produces; a backstop on a model that
  *  decides every sentence is a credit. */
 const MAX_CLAIMS_PER_BATCH = 60;
+
+/** A role is a job, and a job is a few words: "Bass", "Mastered by",
+ *  "Mixing & Mastering Engineer", "on guitar". Given no bound the model writes
+ *  clauses instead — "helping artists like myself explore ways to reward our
+ *  communities that are supporting us on-chain" came back as somebody's role.
+ *  Those are sentences about a relationship, not a credit, and as a label on a
+ *  graph edge they are useless. */
+const MAX_ROLE_WORDS = 6;
+
+/** A role written in the first person is the artist narrating, not crediting:
+ *  "inspired by her commitment", "a platform I joined as a founding member".
+ *  Real credits are stated from the outside. */
+const FIRST_PERSON = /\b(i|me|my|myself|we|us|our|ours)\b/i;
 
 /** First-person stand-ins an artist uses to credit themselves. Pharaoh Sistare
  *  writes "Produced/directed/edited by moi", which is a self-credit that folds
@@ -142,7 +160,11 @@ A CREDIT is a person given a role in making something. Examples of the form:
 Each credit: {"subject", "isHandle", "role", "quote", "url"}
   subject  - the @handle WITHOUT the @, or the person's name if no handle was used
   isHandle - true if you took it from an @handle, false if it is a bare name
-  role     - the role in ${artistName}'s OWN WORDS, as short as it can be while staying theirs
+  role     - the job, in ${artistName}'s OWN WORDS. AT MOST SIX WORDS. A role is
+             "Bass", "Mastered by", "Mixing & Mastering Engineer", "on guitar".
+             It is NOT a sentence about a relationship. If the caption only says
+             how ${artistName} feels about somebody, or what they talked about,
+             or that they admire them, that is NOT a credit — leave it out.
   quote    - the sentence or line you read it from, copied EXACTLY from the caption
   url      - the url of the post the caption belongs to
 
@@ -209,6 +231,8 @@ export function verifyClaims(
         // once it is a label on a graph edge.
         if (!/\p{L}{2}/u.test(role)) continue;
         if (EMPTY_ROLES.has(role.toLowerCase().replace(/[^a-z]/g, ""))) continue;
+        if (role.split(/\s+/).filter(Boolean).length > MAX_ROLE_WORDS) continue;
+        if (FIRST_PERSON.test(role)) continue;
         const quote = typeof c.quote === "string" ? c.quote.trim() : "";
         if (!url || !subject || !role || !quote) continue;
 
@@ -287,6 +311,19 @@ async function runBatch(
         if (!text) return EMPTY_EXTRACTION;
         return verifyClaims(parse(text), batch, artistName, artistHandle);
     } catch (e) {
+        // A timeout costs the whole batch, and the batch is fifteen posts of an
+        // artist's history. Splitting in half and retrying recovers most of it:
+        // the cost is roughly proportional to how much the model has to write,
+        // so half the captions is well under half the time.
+        if (batch.length > 2 && String(e).includes("timed out")) {
+            const mid = Math.ceil(batch.length / 2);
+            console.warn(`[socialCredits] Batch ${index} timed out for ${artistName}, retrying as two halves`);
+            const [a, b] = await Promise.all([
+                runBatch(batch.slice(0, mid), artistName, artistHandle, index),
+                runBatch(batch.slice(mid), artistName, artistHandle, index),
+            ]);
+            return { credits: [...a.credits, ...b.credits], statements: [...a.statements, ...b.statements] };
+        }
         console.error(`[socialCredits] Batch ${index} failed for ${artistName}:`, e);
         return EMPTY_EXTRACTION;
     }
@@ -364,5 +401,14 @@ export function creditedCollaborators(extraction: CaptionExtraction): CreditedCo
 /** What the artist says they do themselves. "Recording Engineer: Pharaoh
  *  Sistare" is worth knowing and is not a collaboration. */
 export function selfCredits(extraction: CaptionExtraction): CaptionCredit[] {
-    return extraction.credits.filter(c => c.isSelf);
+    // Deduped by role: an artist who signs off "Producer" on thirty posts has
+    // told us one thing about themselves, not thirty.
+    const seen = new Set<string>();
+    return extraction.credits.filter(c => {
+        if (!c.isSelf) return false;
+        const key = c.role.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }

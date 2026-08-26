@@ -133,6 +133,40 @@ describe("verifyClaims", () => {
             expect(out.credits).toHaveLength(0);
         });
 
+        it("drops a role that is a clause rather than a job", () => {
+            // Real output from a real feed. A role is a job; this is a sentence
+            // about a relationship, and as a label on a graph edge it says
+            // nothing.
+            const caption = "Thank you @p00ls_ for helping artists explore ways to reward communities on-chain.";
+            const p = post({ caption, mentions: ["p00ls_"] });
+            const out = verifyClaims(
+                { credits: [credit({ subject: "p00ls_", role: "helping artists explore ways to reward communities on-chain", quote: caption })], statements: [] },
+                [p], ARTIST, HANDLE);
+            expect(out.credits).toHaveLength(0);
+        });
+
+        it("drops a role written in the first person, which is narration not a credit", () => {
+            const caption = "@subvertworld is a co-op music platform I joined as a founding member";
+            const p = post({ caption, mentions: ["subvertworld"] });
+            const out = verifyClaims(
+                { credits: [credit({ subject: "subvertworld", role: "platform I joined", quote: caption })], statements: [] },
+                [p], ARTIST, HANDLE);
+            expect(out.credits).toHaveLength(0);
+        });
+
+        it("keeps the real credits that motivated the bound", () => {
+            for (const [role, caption] of [
+                ["Mixing & Mastering Engineer", "Mixing & Mastering Engineer: @p3t3rango"],
+                ["Mastered by", "Mastered by @p3t3rango"],
+                ["on guitar", "on guitar @p3t3rango"],
+                ["Bass", "Bass @p3t3rango"],
+            ] as const) {
+                const p = post({ caption, mentions: ["p3t3rango"] });
+                const out = verifyClaims({ credits: [credit({ role, quote: caption })], statements: [] }, [p], ARTIST, HANDLE);
+                expect(out.credits.map(c => c.role)).toEqual([role]);
+            }
+        });
+
         it("drops a role that is only a preposition", () => {
             const p = post({ caption: "for @ap0cene", mentions: ["ap0cene"] });
             const out = verifyClaims(
@@ -180,6 +214,21 @@ describe("creditedCollaborators", () => {
 
         expect(creditedCollaborators(extraction).map(c => c.subject)).toEqual(["p3t3rango"]);
         expect(selfCredits(extraction).map(c => c.role)).toEqual(["Written & Produced by"]);
+    });
+
+    it("reports each self-credit once, however often the artist signs off with it", () => {
+        const p2 = post({ url: OTHER_URL, platformPostId: "2", caption: "Producer: Pharaoh Sistare" });
+        const p3 = post({ url: "https://www.instagram.com/p/THIRD/", platformPostId: "3", caption: "Producer: Pharaoh Sistare" });
+        const extraction = verifyClaims(
+            {
+                credits: [
+                    credit({ url: OTHER_URL, subject: "Pharaoh Sistare", isHandle: false, role: "Producer", quote: "Producer: Pharaoh Sistare" }),
+                    credit({ url: "https://www.instagram.com/p/THIRD/", subject: "Pharaoh Sistare", isHandle: false, role: "producer", quote: "Producer: Pharaoh Sistare" }),
+                ],
+                statements: [],
+            },
+            [p2, p3], ARTIST, HANDLE);
+        expect(selfCredits(extraction)).toHaveLength(1);
     });
 
     it("merges every role a person has been given, across posts", () => {

@@ -13,8 +13,9 @@
 #   blank        clear every link — exercises the empty-state path
 #
 # Unless --keep-progress, this also clears onboarding step confirmations,
-# interview answers, the generated artist doc, and the artist's doc corrections,
-# and returns EVERY vault source to pending — approved ones too, since a source
+# interview answers, the generated artist doc, the artist's doc corrections, the
+# credits and statements read out of their captions, and returns EVERY vault
+# source to pending — approved ones too, since a source
 # already approved is one the vault step won't ask about, and the point is to
 # replay the step from the top.
 #
@@ -107,10 +108,16 @@ if [ "$KEEP_PROGRESS" -eq 0 ]; then
   # Corrections are progress too: they are the artist's answers about a document
   # that is about to be thrown away, and carrying them into a fresh run would
   # apply them to claims that no longer exist.
+  # Caption credits are progress too. They are extracted once per ingest and
+  # skipped if already present, so leaving them behind means a replayed run
+  # silently reuses the last run's extraction instead of doing it again.
+  # The scraped POSTS are deliberately kept: re-scraping costs an Apify run and
+  # one to five minutes, and the extraction reads the stored posts anyway.
   psql "$CONN" -q -c "DELETE FROM artist_onboarding_steps WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_interview_answers WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_docs WHERE artist_id='$ARTIST_ID';
-                      DELETE FROM artist_doc_corrections WHERE artist_id='$ARTIST_ID';"
+                      DELETE FROM artist_doc_corrections WHERE artist_id='$ARTIST_ID';
+                      DELETE FROM artist_social_credits WHERE artist_id='$ARTIST_ID';"
   if [ "$FRESH" -eq 1 ]; then
     GONE="$(q "WITH d AS (DELETE FROM artist_vault_sources WHERE artist_id='$ARTIST_ID' RETURNING 1) SELECT count(*) FROM d;")"
     echo "  --fresh: deleted $GONE vault source(s); discovery will run again"
