@@ -148,6 +148,12 @@ type Score = {
 async function main() {
     const args = process.argv.slice(2);
     const write = !args.includes("--no-write");
+    // --blank also clears the DSP ids, which the normal run seeds. It is the
+    // hardest configuration the pipeline can face: no identifier to match
+    // MusicBrainz on, no Spotify catalogue to corroborate against, nothing but
+    // a name. It is also exactly what an onboarding demo reset to "blank"
+    // leaves behind, so it is worth being able to measure rather than hope.
+    const blank = args.includes("--blank");
     const wanted = args.filter(a => !a.startsWith("--"));
     const cases = wanted.length ? CASES.filter(c => wanted.includes(c.key)) : CASES;
     if (!cases.length) { console.error(`No case matched. Known: ${CASES.map(c => c.key).join(", ")}`); process.exit(1); }
@@ -167,7 +173,16 @@ async function main() {
     for (const c of cases) {
         // Reset to the state an artist actually arrives in: the DSP ids and
         // nothing else. Anything the pipeline ends up holding, it found.
-        const clear = ALL.filter(p => !c.seed.includes(p));
+        const clear = blank
+            ? [...ALL, "spotify", "deezer"]
+            : ALL.filter(p => !c.seed.includes(p));
+        // The DSP ids are the artist's real identifiers and are not ours to
+        // lose. Captured before clearing and put back after, so --blank
+        // measures the hard case without being destructive.
+        const dsp: any = blank
+            ? await db.execute(sql.raw(`select spotify, deezer from artists where id = '${c.id}'`))
+            : null;
+        const dspRow = dsp ? ((dsp.rows ?? dsp)[0] ?? {}) : null;
         await db.execute(sql.raw(
             `update artists set ${clear.map(p => `${p} = null`).join(", ")} where id = '${c.id}'`));
         await db.execute(sql`delete from artist_vault_sources where artist_id = ${c.id}::uuid`);
@@ -178,6 +193,10 @@ async function main() {
 
         const after: any = await db.execute(sql.raw(
             `select ${ALL.join(", ")} from artists where id = '${c.id}'`));
+
+        if (dspRow) {
+            await db.execute(sql`update artists set spotify = ${dspRow.spotify ?? null}, deezer = ${dspRow.deezer ?? null} where id = ${c.id}::uuid`);
+        }
         const links = (after.rows ?? after)[0] ?? {};
 
         const linksCorrect: string[] = [], linksWrong: string[] = [], linksMissed: string[] = [];
