@@ -1019,9 +1019,20 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     // the original "grounded questions only worked for hand-seeded artists",
     // one flow over.
     //
-    // Fired after the response, exactly as the other path does it: a scrape
-    // takes one to five minutes against a 55s turn deadline and can never be
-    // awaited inline.
+    // KNOWN INCOMPLETE, and worth stating rather than implying otherwise.
+    //
+    // after() work is bounded by the route's maxDuration, so this whole
+    // callback shares the request's ~60s. An Instagram scrape takes one to five
+    // minutes and caption extraction takes about seventy seconds for a
+    // sixty-post feed and several minutes for a large one. For an artist whose
+    // posts are ALREADY stored and whose feed is small, this completes and the
+    // document rebuild lands. For a genuinely fresh artist it will not: the
+    // platform stops the invocation partway and the credits never arrive.
+    //
+    // The correct fix is a durable job rather than a request callback, which is
+    // a piece of infrastructure this repo does not have yet. Until then this is
+    // best-effort and should not be described as the mechanism — see
+    // docs/rnd/onboarding-fixes.md.
     runAfterResponse("social ingest (auto-build)", async () => {
         const outcome = await ensureRecentSocialPosts(artistId);
         console.debug(`[onboarding] auto-build social ingest for ${artistId}: ${outcome.status}`);

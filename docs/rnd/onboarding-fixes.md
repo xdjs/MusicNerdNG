@@ -787,3 +787,27 @@ land: an artist who releases something new has new posts, and therefore new
 questions, without us having to email them.
 
 Not yet decided: whether there is ever an email path. Return visits come first.
+
+## 6. Caption extraction needs a durable job, not a request callback
+
+Found by review, 2026-08-26, and NOT fixed.
+
+The Instagram ingest and the caption extraction are scheduled with `after()`
+from the onboarding turn. `after()` work is bounded by the route's
+`maxDuration`, so the whole callback shares the request's ~60 seconds. A scrape
+takes one to five minutes. Extraction takes about seventy seconds for a
+sixty-post feed and roughly seven minutes for a three-hundred-post one.
+
+So for a genuinely fresh artist the platform stops the invocation partway and
+the credits never arrive — which means the primary onboarding flow still
+produces a document with none of this work in it, even after the hook was added
+to `runAutoBuild`.
+
+It works today only where the posts are already stored and the feed is small,
+or where they were pre-warmed by hand.
+
+The fix is a durable job: enqueue the ingest and the extraction, run them
+outside the request lifecycle, and rebuild the document when they finish. That
+is infrastructure this repo does not have, and it should not be improvised at
+the end of a long night. Until it exists, treat pre-warming as the mechanism
+and the hook as best-effort.

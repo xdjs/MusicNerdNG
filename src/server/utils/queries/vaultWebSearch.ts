@@ -1109,8 +1109,21 @@ export async function searchAndPopulateVault(
             if (alreadyHave) {
                 console.log(`[vaultWebSearch] Already have ${profileMatch!.siteName}; not replacing it with ${result.url.slice(0, 60)}`);
             }
-            if (isAccountUrl && !alreadyHave && relevance.get(result.url) === "about-artist"
-                && !(await contradictsScrapedPosts(artistId, profileMatch!.siteName, profileMatch!.id))) {
+            // THE SAME IDENTITY CHECKS EVERY OTHER PATH APPLIES. This branch
+            // wrote on "the judge says this page is about the artist" plus a
+            // platform we lack, then `continue`d — skipping the ambiguity and
+            // collision checks entirely. For a shared name that is not enough:
+            // a page genuinely about a DIFFERENT Black Dave is genuinely about
+            // an artist called Black Dave, and the judge is right to affirm it.
+            const accountBlocked = isAccountUrl && !alreadyHave && (
+                await nameIsAmbiguousInDirectory(artistId, artistName)
+                || await handleBelongsToAnotherArtist(artistId, profileMatch!.siteName, profileMatch!.id)
+                || await contradictsScrapedPosts(artistId, profileMatch!.siteName, profileMatch!.id)
+            );
+            if (accountBlocked) {
+                console.log(`[vaultWebSearch] Not adopting ${profileMatch!.siteName}=${profileMatch!.id} — identity checks did not clear it`);
+            }
+            if (isAccountUrl && !alreadyHave && !accountBlocked && relevance.get(result.url) === "about-artist") {
                 try {
                     await setArtistLink(artistId, profileMatch!.siteName, profileMatch!.id);
                     console.log(`[vaultWebSearch] ${profileMatch!.siteName} profile -> links: ${result.url.slice(0, 80)}`);
