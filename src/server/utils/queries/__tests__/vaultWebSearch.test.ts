@@ -94,17 +94,24 @@ describe("searchAndPopulateVault", () => {
   // search actually returned. A real artist's vault filled with a YouTube video
   // whose ID 404s and a channel page that never mentions him.
 
-  it("retrieves candidates from the search API, quoting the artist name", async () => {
+  it("asks in exact phrases AND the way a person would type it", async () => {
     mockWebSearch.mockResolvedValue([hit("https://example.com/a")]);
     const { searchAndPopulateVault } = await import("../vaultWebSearch");
     await searchAndPopulateVault("a1");
 
-    expect(mockWebSearch).toHaveBeenCalledTimes(3);
-    for (const [query] of mockWebSearch.mock.calls) {
-      // Unquoted, a multi-word name matches each token independently — which is
-      // exactly how "Black Dave" returns Dave the UK rapper.
-      expect(query).toContain('"Grimes"');
-    }
+    const queries = mockWebSearch.mock.calls.map(c => c[0]);
+    expect(queries).toHaveLength(4);
+
+    // Three quoted. Unquoted, a multi-word name matches each token
+    // independently — which is exactly how "Black Dave" returns Dave the UK
+    // rapper.
+    expect(queries.filter(q => q.includes('"Grimes"'))).toHaveLength(3);
+
+    // And one bare. All three quoted queries demand the exact phrase AND an
+    // editorial word, so they systematically miss the artist's OWN pages: Black
+    // Dave MK2's instagram is titled "Black Dave! (@blackdave.xyz)" and never
+    // contains "Black Dave MK2", and his website appears only for the bare name.
+    expect(queries).toContain("Grimes");
   });
 
   it("dedupes the same URL returned by more than one query", async () => {
