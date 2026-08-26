@@ -229,6 +229,86 @@ async function nameIsAmbiguousInDirectory(artistId: string, artistName: string):
 }
 
 /**
+ * Take an artist's links from MusicBrainz before inferring any from search.
+ *
+ * This is the step that should have existed first. Everything else in this file
+ * infers identity from pages: judge whether one is about the right person, probe
+ * a handle, abstain when two answer. MusicBrainz simply holds the answer, curated
+ * by people, for six of the seven artists we test against.
+ *
+ * An IDENTIFIER match — their entry links a Spotify or Deezer id we already hold
+ * — is stronger than anything the rest of this file can establish, so those links
+ * are adopted directly. An EXACT-NAME match is not, so those go through
+ * setArtistLink the same way but only after the same reserved-handle and
+ * already-taken checks, and never for a name another artist here shares.
+ *
+ * Returns the handles it adopted so propagation can carry them onward, and the
+ * artist's homepage, which is the hub the search pass otherwise spends a whole
+ * round hunting for.
+ */
+async function adoptFromMusicBrainz(
+    artistId: string,
+    artistName: string,
+    artist: Record<string, unknown>,
+): Promise<{ handles: Set<string>; homepage: string | null; authoritative: boolean }> {
+    const handles = new Set<string>();
+    try {
+        const { fetchMusicBrainzLinks } = await import("@/server/utils/musicBrainzLinks");
+        const found = await fetchMusicBrainzLinks(artistName, {
+            spotify: artist.spotify as string | null,
+            deezer: artist.deezer as string | null,
+        });
+        if (!found) return { handles, homepage: null, authoritative: false };
+
+        console.log(`[vaultWebSearch] MusicBrainz matched "${artistName}" by ${found.matchedBy}, ${found.urls.length} link(s)`);
+        for (const url of found.urls) {
+            const match = await extractArtistId(stripQuery(url)).catch(() => undefined);
+            if (!match?.siteName || !match?.id) continue;
+            if (!ACCOUNT_PLATFORMS.has(match.siteName)) continue;
+            const id = String(match.id);
+            if (isReservedHandle(match.siteName, id)) continue;
+            if (artist[match.siteName]) continue;
+            if (await handleBelongsToAnotherArtist(artistId, match.siteName, id)) continue;
+
+            // An IDENTIFIER match is pinned to a DSP id we already hold, so its
+            // links are this artist's by construction. An EXACT-NAME match is
+            // not, and MusicBrainz curates entities rather than people:
+            // Sherwinn Brice's entry lists instagram/dupesdiditmusic, which is
+            // "Dupes Did It Music Inc", his COMPANY, while the artist himself is
+            // instagram/dupesdidit. Both are live and only one belongs on his
+            // profile — so a name match gets the same page check a search result
+            // would.
+            if (found.matchedBy === "exact-name") {
+                const page = await fetchPageContent(stripQuery(url), { timeoutMs: VERIFY_TIMEOUT_MS }).catch(() => null);
+                const { titleMatchesArtist } = await import("@/server/utils/profileDiscovery");
+                if (!page?.title || !titleMatchesArtist(page.title, artistName)) {
+                    console.log(`[vaultWebSearch] MusicBrainz lists ${match.siteName}=${id} but the page is not "${artistName}", ignoring`);
+                    continue;
+                }
+            }
+            try {
+                await setArtistLink(artistId, match.siteName, id);
+                console.log(`[vaultWebSearch] MusicBrainz -> ${match.siteName}=${id}`);
+                artist[match.siteName] = id; // so the search pass does not re-add it
+                handles.add(normalizeHandle(id));
+            } catch (e) {
+                console.warn(`[vaultWebSearch] Could not save ${match.siteName} from MusicBrainz:`, e);
+            }
+        }
+        // An identifier match is the strongest thing this pipeline can
+        // establish, and the list is curated. Guessing at the platforms it did
+        // not name only adds mistakes: Hardwell's youtube is `robberthardwell`
+        // and TroyBoi's is `TroyBoiOfficial`, and probing their names produces
+        // `hardwell` and `troyboi` — plausible, wrong, and worse than a gap.
+        return { handles, homepage: found.homepage, authoritative: found.matchedBy === "identifier" };
+    } catch (e) {
+        // An enrichment. Losing it costs a few links, not the run.
+        console.error("[vaultWebSearch] MusicBrainz lookup failed:", e);
+        return { handles, homepage: null, authoritative: false };
+    }
+}
+
+/**
  * Adopt the account handles an artist published on their own page.
  *
  * An artist's own site is the only first-party statement of their handles that
@@ -572,6 +652,11 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
     // Exact-phrase queries: an unquoted multi-word name matches each token
     // independently, which is how "Black Dave" returns Dave the UK rapper. The
     // three angles mirror the categories the vault actually wants.
+    // Before inferring anything: ask a database that already knows. Its handles
+    // are curated rather than probed, and its homepage is the hub the search
+    // pass would otherwise spend a round hunting for.
+    const fromMusicBrainz = await adoptFromMusicBrainz(artistId, artistName, artist as unknown as Record<string, unknown>);
+
     const queries = [
         `"${artistName}" music artist interview`,
         `"${artistName}" music review`,
@@ -752,11 +837,13 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         const indexLinks = new Set<string>();
         /** Account URLs the search returned — candidate handles, verified below. */
         const accountCandidates: { siteName: string; id: string; url: string; title: string; description: string }[] = [];
+        /** Seeded with whatever MusicBrainz gave us — curated handles are at
+         *  least as trustworthy as ones we read off a page. */
         /** Handles proven to be this artist's, however we proved it. Both the
          *  account-title check and the own-page adoption contribute, and the
          *  propagation pass runs once over the union — a handle confirmed by a
          *  page title is exactly as good as one read off the artist's website. */
-        const verifiedHandles = new Set<string>();
+        const verifiedHandles = new Set<string>(fromMusicBrainz.handles);
         /** Outbound links per page, examined for ownership once the loop is done. */
         const hubCandidates: { links: string[]; url: string; aboutArtist: boolean }[] = [];
         let dropped = 0;
@@ -1103,7 +1190,9 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         // reaches this with p3t3rango and peterango confirmed by page titles and
         // nothing found on a hub at all, which is why it cannot live inside the
         // hub branch.
-        if (verifiedHandles.size > 0) {
+        if (fromMusicBrainz.authoritative) {
+            console.log(`[vaultWebSearch] MusicBrainz identified "${artistName}" outright — not guessing at the platforms it did not name`);
+        } else if (verifiedHandles.size > 0) {
             const latest = await getArtistById(artistId).catch(() => undefined);
             if (latest) {
                 await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>, artistName);
