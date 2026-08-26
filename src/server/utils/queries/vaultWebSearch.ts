@@ -186,9 +186,14 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
 async function handleBelongsToAnotherArtist(artistId: string, siteName: string, handle: string): Promise<boolean> {
     if (!PLATFORM_DOMAINS[siteName]) return false; // not a column we store
     try {
-        const rows = await db.execute(sql.raw(
-            `select 1 from artists where lower(${siteName}) = lower('${handle.replace(/'/g, "''")}')`
-            + ` and id <> '${artistId}' limit 1`));
+        // `siteName` is a COLUMN NAME and cannot be a bind parameter, so it is
+        // interpolated — safe only because the PLATFORM_DOMAINS guard above
+        // restricts it to a fixed set of known columns. `handle` and `artistId`
+        // are VALUES and are bound, never interpolated: both arrive from search
+        // results and page content, so hand-escaping them is not a thing we get
+        // to be right about forever.
+        const rows = await db.execute(
+            sql`select 1 from artists where lower(${sql.raw(siteName)}) = lower(${handle}) and id::text <> ${artistId} limit 1`);
         return ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])).length > 0;
     } catch (e) {
         // Never block an adoption because this check failed; fall back to the
@@ -474,6 +479,14 @@ async function propagateVerifiedHandles(
     const handles = [...verified].filter(h => h.length >= 3);
     if (handles.length === 0) return 0;
 
+    // Bounding the WORK, not just the wait. This used to be a Promise.race
+    // against the same budget, which is weaker than it looks: the loser of a
+    // race is never cancelled, so the loop kept probing and kept WRITING long
+    // after the caller had given up and the HTTP response had gone out. A
+    // deadline checked between probes stops the work itself.
+    const deadline = Date.now() + PROPAGATION_BUDGET_MS;
+    const outOfTime = () => Date.now() > deadline;
+
     let adopted = 0;
     try {
         const { fetchLinkPreview } = await import("@/server/utils/linkPreview");
@@ -482,6 +495,7 @@ async function propagateVerifiedHandles(
         const urlmap = await getAllLinks();
 
         for (const platform of ACCOUNT_PLATFORMS) {
+            if (outOfTime()) { console.log("[vaultWebSearch] Propagation budget spent, stopping"); break; }
             if (artist[platform]) continue;                       // already have it
             if (PROBE_BLIND_PLATFORMS.has(platform)) continue;    // serves a bot nothing
             const row = urlmap.find(u => u.siteName === platform);
@@ -490,6 +504,7 @@ async function propagateVerifiedHandles(
 
             const resolved: string[] = [];
             for (const handle of handles) {
+                if (outOfTime()) break;
                 if (isReservedHandle(platform, handle)) continue;
                 if (await handleBelongsToAnotherArtist(artistId, platform, handle)) continue;
                 const preview = await fetchLinkPreview(pattern.replace("%@", handle)).catch(() => null);
