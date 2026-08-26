@@ -273,7 +273,13 @@ export function verifyClaims(
         // name counts only when it is written in the caption.
         const folded = fold(subject);
         const inMentions = post.mentions.some(m => fold(m) === folded);
-        const inCaption = fold(caption).includes(folded) && folded.length >= 3;
+        // The length floor stops a two-character fragment matching half the
+        // alphabet, but SELF_WORDS deliberately contains "me" and "i" — so
+        // "Shot by me" folded to "me", failed the floor, and the credit was
+        // dropped before isSelf could ever see it. A first-person stand-in is
+        // exact by definition and needs no floor.
+        const isSelfWord = SELF_WORDS.has(folded);
+        const inCaption = fold(caption).includes(folded) && (folded.length >= 3 || isSelfWord);
         if (!inMentions && !inCaption) continue;
 
         credits.push({

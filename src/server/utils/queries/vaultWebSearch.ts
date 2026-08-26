@@ -183,6 +183,19 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
  *  Names collide and page titles cannot resolve the collision — three artists
  *  called Black Dave sit in this directory. What the directory already knows can:
  *  a handle assigned to somebody else is not evidence about this artist. */
+/** Rows out of a `db.execute` result, whatever shape the driver hands back.
+ *
+ *  A result that carries no rows means the query ran and matched nothing, which
+ *  is an ANSWER. Only a thrown exception means we could not ask. The two must
+ *  stay distinguishable, because the guards below fail closed on the second and
+ *  conflating them would turn every empty result into a blocked adoption. */
+function rowsOf(result: unknown): unknown[] {
+    if (!result) return [];
+    const r = result as { rows?: unknown[] };
+    if (Array.isArray(r.rows)) return r.rows;
+    return Array.isArray(result) ? result : [];
+}
+
 async function handleBelongsToAnotherArtist(artistId: string, siteName: string, handle: string): Promise<boolean> {
     if (!PLATFORM_DOMAINS[siteName]) return false; // not a column we store
     try {
@@ -194,12 +207,16 @@ async function handleBelongsToAnotherArtist(artistId: string, siteName: string, 
         // to be right about forever.
         const rows = await db.execute(
             sql`select 1 from artists where lower(${sql.raw(siteName)}) = lower(${handle}) and id::text <> ${artistId} limit 1`);
-        return ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])).length > 0;
+        return rowsOf(rows).length > 0;
     } catch (e) {
-        // Never block an adoption because this check failed; fall back to the
-        // title cross-check below, which is what we had before.
-        console.error("[vaultWebSearch] Ownership check failed:", e);
-        return false;
+        // Fail CLOSED. This used to return false — "not claimed by anyone" —
+        // so a transient database error silently switched off the exact
+        // protection this function exists to provide, and did it at the moment
+        // things were already going wrong. A gap beats a wrong link, so an
+        // unanswerable ownership question is treated as "somebody else may
+        // own this" and the candidate is skipped.
+        console.error("[vaultWebSearch] Ownership check failed, treating handle as claimed:", e);
+        return true;
     }
 }
 
@@ -226,10 +243,14 @@ async function nameIsAmbiguousInDirectory(artistId: string, artistName: string):
             where regexp_replace(lower(name), '[^a-z0-9]', '', 'g') like ${folded + "%"}
               and id <> ${artistId}::uuid
             limit 1`);
-        return (((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])) ?? []).length > 0;
+        return rowsOf(rows).length > 0;
     } catch (e) {
-        console.error("[vaultWebSearch] Ambiguity check failed:", e);
-        return false;
+        // Fail CLOSED, for the same reason as handleBelongsToAnotherArtist: a
+        // database error is not evidence that a name is unique, and answering
+        // "not ambiguous" turns the guard off exactly when the system is
+        // already unhealthy.
+        console.error("[vaultWebSearch] Ambiguity check failed, treating name as ambiguous:", e);
+        return true;
     }
 }
 
@@ -284,6 +305,16 @@ async function adoptFromMusicBrainz(
             // profile — so a name match gets the same page check a search result
             // would.
             if (found.matchedBy === "exact-name") {
+                // The account-candidate pass refuses to resolve a name that
+                // several artists in this directory share, and a MusicBrainz
+                // name match is no better evidence than a search result — it
+                // is the SAME claim, made by a different source. Three artists
+                // here are called Black Dave; a page titled "Black Dave" does
+                // not say which one, whoever pointed us at it.
+                if (await nameIsAmbiguousInDirectory(artistId, artistName)) {
+                    console.log(`[vaultWebSearch] MusicBrainz matched "${artistName}" by name only, but that name is shared in this directory — not adopting`);
+                    break;
+                }
                 const page = await fetchPageContent(stripQuery(url), { timeoutMs: VERIFY_TIMEOUT_MS }).catch(() => null);
                 const { titleMatchesArtist } = await import("@/server/utils/profileDiscovery");
                 if (!page?.title || !titleMatchesArtist(page.title, artistName)) {
@@ -503,8 +534,14 @@ async function propagateVerifiedHandles(
             if (!pattern?.includes("%@")) continue;
 
             const resolved: string[] = [];
+            // Whether every candidate actually got looked at. Running out of
+            // time after checking one handle leaves resolved.length === 1,
+            // which is indistinguishable from "exactly one of them answered" —
+            // and that is the tie-blindness this whole function exists to
+            // avoid. A scan that did not finish cannot conclude anything.
+            let scannedAll = true;
             for (const handle of handles) {
-                if (outOfTime()) break;
+                if (outOfTime()) { scannedAll = false; break; }
                 if (isReservedHandle(platform, handle)) continue;
                 if (await handleBelongsToAnotherArtist(artistId, platform, handle)) continue;
                 const preview = await fetchLinkPreview(pattern.replace("%@", handle)).catch(() => null);
@@ -516,6 +553,10 @@ async function propagateVerifiedHandles(
                 if (preview?.title && titleMatchesArtist(preview.title, artistName)) resolved.push(handle);
             }
 
+            if (!scannedAll) {
+                console.log(`[vaultWebSearch] ${platform} scan ran out of time before checking every handle — leaving empty rather than guessing`);
+                continue;
+            }
             if (resolved.length !== 1) {
                 if (resolved.length > 1) {
                     console.log(`[vaultWebSearch] ${platform} answers for ${resolved.join(" and ")} — cannot tell which is theirs, leaving empty`);

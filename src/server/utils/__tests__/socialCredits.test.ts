@@ -113,6 +113,18 @@ describe("verifyClaims", () => {
             expect(out.credits[0].isSelf).toBe(true);
         });
 
+        it("keeps a two-letter first-person credit, which the length floor used to eat", () => {
+            // "me" folds to two characters and failed the >= 3 floor, so the
+            // credit was dropped before isSelf could see it — SELF_WORDS
+            // contained an entry nothing could ever reach.
+            const p = post({ caption: "Shot by me", mentions: [] });
+            const out = verifyClaims(
+                { credits: [credit({ subject: "me", isHandle: false, role: "Shot by", quote: "Shot by me" })], statements: [] },
+                [p], ARTIST, HANDLE);
+            expect(out.credits).toHaveLength(1);
+            expect(out.credits[0].isSelf).toBe(true);
+        });
+
         it("marks first-person stand-ins like 'moi' as self", () => {
             // Real caption: "Produced/directed/edited by moi". Without this,
             // the artist becomes a collaborator of a person named Moi.

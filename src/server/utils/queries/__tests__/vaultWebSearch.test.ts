@@ -574,6 +574,63 @@ describe("searchAndPopulateVault", () => {
       expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).toContain("soundcloud=dupesdidit");
     });
 
+    it("never overwrites a platform the artist already has", async () => {
+      // Restored after a code review noticed it had been dropped in the
+      // rewrite. setArtistLink is an unconditional upsert, so nothing below it
+      // protects a link the artist already had — the guard is the
+      // `if (artist[platform]) continue` at the top of the propagation loop,
+      // and it needs pinning against the three adoption paths that now exist.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        soundcloud: "his-real-soundcloud",   // already known, must survive
+        instagram: null, x: null, youtube: null, facebook: null, twitch: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      // Everything answers, so only the already-have guard can stop the write.
+      mockPreview.mockImplementation(async () => ({ title: "Sherwinn Dupes Brice", imageUrl: null }));
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const written = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(written.filter(w => w.startsWith("soundcloud="))).toEqual([]);
+    });
+
+    it("abstains when the scan runs out of time before checking every handle", async () => {
+      // A deadline check inside the handle loop used to `break` and leave
+      // resolved.length === 1, which is indistinguishable from "exactly one
+      // answered" — so a partial scan was adopted as a confirmed match. A scan
+      // that did not finish cannot conclude anything.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Pete Rango", spotify: "sp1", bandcamp: "peterango",
+        instagram: null, x: null, youtube: null, soundcloud: null, facebook: null, twitch: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Pete Rango")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+
+      // Every probe burns real time, so the budget is gone partway through.
+      const realNow = Date.now;
+      let clock = realNow();
+      jest.spyOn(Date, "now").mockImplementation(() => clock);
+      mockPreview.mockImplementation(async (url) => {
+        clock += 6000; // six seconds a probe, against a 10s propagation budget
+        return String(url).includes("p3t3rango")
+          ? { title: "Pete Rango", imageUrl: null }
+          : { title: null, imageUrl: null };
+      });
+
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+      (Date.now as jest.Mock).mockRestore?.();
+
+      // Whatever it managed to probe, a cut-short platform scan writes nothing.
+      const written = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(written.filter(w => w.startsWith("twitch="))).toEqual([]);
+    });
+
     it("abstains when two verified handles both answer on one platform", async () => {
       // Pete Rango is p3t3rango on Instagram and X, peterango on SoundCloud.
       // twitch.tv answers for BOTH, with titles that only echo the handle back,
