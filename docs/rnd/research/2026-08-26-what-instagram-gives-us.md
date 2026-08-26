@@ -73,17 +73,70 @@ Co-authored posts by year: 0 through 2021, then 3 (2022), 8 (2023), 10 (2024),
 early zeros are a platform artifact and not a career one. The shape after that
 is real and is the kind of thing a profile could show.
 
-## Where it does not work
+## Correction: Pharaoh Sistare does not "post alone"
 
-Pharaoh Sistare: 60 posts, **zero** collaborators. He posts alone, so the
-strongest signal is empty and only the 29 one-way mentions remain, of which
-exactly one (Pete Rango) is an artist we already have. Any feature built on the
-collaborator graph has to degrade to something useful for an artist like this
-rather than render an empty panel.
+An earlier version of this note recorded Pharaoh Sistare as having zero
+collaborators and inferred that this was why onboarding asked him no
+Instagram-derived questions. Both halves were wrong, and the product owner
+caught it by linking a single post.
 
-This is also the likely explanation for the earlier finding that onboarding
-generated no Instagram-derived interview questions for him: there was no
-collaboration to ask about.
+What is true is that he has zero Instagram **coauthor tags**. What that measured
+was a feature of the platform, not a fact about the artist. His collaborators are
+named in the captions, in prose, with their roles stated:
+
+| post | credit, in his own words |
+| --- | --- |
+| `/p/DScwWGzkYcJ/` | Mixing & Mastering Engineer: @p3t3rango |
+| `/p/DIT-FmFRvK7/` | Mixed by @p3t3rango / Shot by @shesjasminmarie |
+| `/p/DH9lnTWskPB/` | "my first single engineered by someone other than myself (the wonderful @p3t3rango)" |
+| `/p/DL-vh9kS8Hh/` | @mickey_cheese_123 "playing the chord progression I had in my head", @gradylisiousness "my first bassist for all of my shows thus far" |
+| `/p/DB9yRm6S_JN/` | feat. @jameir_thompson |
+| `/p/DJU3-5OS4pu/` | Shot by @moneaofthemoon |
+
+Twelve of his sixty captions carry a role credit next to a handle. We store every
+one of them and reduce them to a flat `mentions` array that
+`socialSignals.ts` then classifies as "weaker than a collaboration". A stated
+role in the artist's own caption is stronger evidence than a coauthor tag, not
+weaker. The ordering is backwards.
+
+## Why onboarding asked him nothing: two separate defects
+
+**1. The posts were not there yet.** His claim was approved 2026-08-21 at 11:46
+and his feed was not ingested until 12:30, forty-four minutes later.
+`generateGroundedQuestions` returns immediately on `posts.length === 0`, so the
+interview ran against an empty table. `turnHandlers.ts` kicks the ingest as a
+background job at claim time and a 200-post scrape takes one to five minutes,
+while onboarding continues straight into the interview. **Every artist going
+through onboarding for the first time hits this.** Pete Rango only got
+Instagram-derived questions because his posts were ingested on 08-19 and he did
+not confirm his interview step until 08-22, three days later.
+
+**2. Even with the posts present, the good material is not eligible.** Running
+the real pipeline against his sixty stored posts today produces four candidates:
+themes `single (11)`, `time (7)`, `song (6)`, and one standout post whose entire
+caption is "I know you've got that somethin'" followed by twenty periods and
+eleven hashtags. `GroundedQuestionKind` is `collaborator | theme | standout |
+music`; `mentionedAccounts` is derived and then never becomes a question. The
+prompt tells the model that returning zero questions is acceptable when nothing
+clears the bar, and given that input, zero is the correct answer.
+
+The full "My Dear" caption explains that he wrote a Christmas record about
+spending the holidays without someone who has died, and who he wrote it for.
+That is a complete artist statement. Our representation of it is the word
+`single`, counted eleven times.
+
+## The shape of the problem
+
+`socialSignals.ts` is a word-frequency counter placed in front of a corpus that
+is actually prose. It tokenizes captions and ranks terms, when the captions are
+written statements containing named people, stated roles, and reasons. That was
+the right design when reading ten thousand captions meant counting them. We have
+a model that can read them.
+
+This is the same defect recorded in
+`2026-08-24-we-are-summarising-before-we-think.md`, one layer down: we compress
+the source into a thin representation before anything capable of understanding
+it gets a look.
 
 ## Where the signal currently goes
 
