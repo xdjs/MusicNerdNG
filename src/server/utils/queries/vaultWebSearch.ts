@@ -528,6 +528,16 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         `"${artistName}" music artist interview`,
         `"${artistName}" music review`,
         `"${artistName}" artist profile`,
+        // The bare name, unquoted and unqualified — the way a person searches.
+        // The three above all demand the exact phrase AND an editorial word, so
+        // they systematically miss the artist's OWN pages: Black Dave MK2's
+        // instagram is titled "Black Dave! (@blackdave.xyz)" and never contains
+        // the string "Black Dave MK2", and his website blackdave.xyz appears
+        // for `black dave mk2` and for nothing we were asking.
+        //
+        // This is the query that loses the exact-phrase protection, so it is the
+        // one the judge and the corroboration rules exist to clean up after.
+        artistName,
     ];
 
     try {
@@ -900,8 +910,22 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             const current = await getArtistById(artistId).catch(() => undefined);
             const { fetchLinkPreview } = await import("@/server/utils/linkPreview");
             const { titleMatchesArtist } = await import("@/server/utils/profileDiscovery");
+            // Order matters now that a bare-name query is in the mix: it returns
+            // more, including near-misses. Pharaoh Sistare's search surfaces both
+            // instagram/pharaohsistare and instagram/pherosistar, and whichever
+            // was checked first won — which handed her the wrong one and then
+            // blocked the right one under "already have it".
+            //
+            // A handle that IS the artist's name, folded, is the strongest claim
+            // available and goes first. Everything else keeps its original order.
+            const foldedName = artistName.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const ranked = [...accountCandidates].sort((a, b) => {
+                const score = (c: { id: string }) => c.id.toLowerCase().replace(/[^a-z0-9]/g, "") === foldedName ? 0 : 1;
+                return score(a) - score(b);
+            });
+
             const done = new Set<string>();
-            for (const cand of accountCandidates.slice(0, MAX_ACCOUNT_CHECKS)) {
+            for (const cand of ranked.slice(0, MAX_ACCOUNT_CHECKS)) {
                 if (done.has(cand.siteName)) continue;
                 if (current && (current as Record<string, unknown>)[cand.siteName]) continue;
                 // A title cannot tell three artists of the same name apart. Our
