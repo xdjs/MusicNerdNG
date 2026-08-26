@@ -76,6 +76,17 @@ describe("verifyClaims", () => {
         expect(out.credits).toHaveLength(0);
     });
 
+    it("will not accept a subject that is only a fragment of another word", () => {
+        // Folded containment accepted the subject "Art" because the caption
+        // contains "started". A model that invents a collaborator should not
+        // clear the verification boundary on a coincidence of letters.
+        const p = post({ caption: "started this one in a hotel room", mentions: [] });
+        const out = verifyClaims(
+            { credits: [credit({ subject: "Art", isHandle: false, role: "Cover art by", quote: "started this one in a hotel room" })], statements: [] },
+            [p], ARTIST, HANDLE);
+        expect(out.credits).toHaveLength(0);
+    });
+
     it("accepts a bare name written in the caption even with no @mention", () => {
         const p = post({ caption: "Strings by Elizabeth Owens, recorded live.", mentions: [] });
         const out = verifyClaims(

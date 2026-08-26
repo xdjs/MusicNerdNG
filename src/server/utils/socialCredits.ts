@@ -279,7 +279,18 @@ export function verifyClaims(
         // dropped before isSelf could ever see it. A first-person stand-in is
         // exact by definition and needs no floor.
         const isSelfWord = SELF_WORDS.has(folded);
-        const inCaption = fold(caption).includes(folded) && (folded.length >= 3 || isSelfWord);
+        // A NAME, not any run of letters. Folded containment accepted the
+        // subject "Art" because the caption contained "started", so a model
+        // could invent a collaborator and have this boundary wave it through on
+        // a coincidence. A handle has to appear with its @; a bare name has to
+        // appear as whole words, in order.
+        const words = (s: string) => s.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(w => w.toLowerCase());
+        const nameWords = words(subject);
+        const captionWords = words(caption);
+        const nameInCaption = nameWords.length > 0
+            && captionWords.some((_, i) => nameWords.every((w, k) => captionWords[i + k] === w));
+        const handleInCaption = caption.toLowerCase().includes(`@${subject.toLowerCase()}`);
+        const inCaption = handleInCaption || nameInCaption || (isSelfWord && captionWords.includes(folded));
         if (!inMentions && !inCaption) continue;
 
         credits.push({

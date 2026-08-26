@@ -568,6 +568,15 @@ async function adoptHandlesFromOwnPage(
             console.log(`[vaultWebSearch] ${r.siteName}=${r.id} contradicts the handle their own posts are authored by, ignoring`);
             continue;
         }
+        // A corroborated page can still list somebody else's account — a label,
+        // a collaborator, a support act. The MusicBrainz, account-candidate and
+        // propagation paths all check this and this one did not, so a handle
+        // the directory already assigns to its real owner could be written onto
+        // a second artist as well.
+        if (await handleBelongsToAnotherArtist(artistId, r.siteName, r.id)) {
+            console.log(`[vaultWebSearch] ${r.siteName}=${r.id} is already another artist's, not adopting from the hub page`);
+            continue;
+        }
         try {
             await setArtistLink(artistId, r.siteName, r.id);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
