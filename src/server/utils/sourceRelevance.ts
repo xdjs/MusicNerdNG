@@ -32,7 +32,13 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 /** Per-page text handed to the judge. Enough to tell who a page is about —
  *  a page that hasn't said whose it is in 1,500 characters is not a source. */
 const EXCERPT_CHARS = 1_500;
-const JUDGE_TIMEOUT_MS = 8_000;
+/** Generous on purpose. A timeout here does not degrade gracefully — every
+ *  candidate comes back `undecided` and the caller falls through to a substring
+ *  name check, which is the exact path that lets "Pharaoh Overlord" through for
+ *  Pharaoh Sistare. Measured 1.5-4s for a full batch; the benchmark caught this
+ *  blowing at 8s once verification made runs longer. Judging slowly beats not
+ *  judging. */
+const JUDGE_TIMEOUT_MS = 20_000;
 /** Above this, judging costs more than the sources are worth; the extras keep
  *  the name-check behaviour rather than being dropped. */
 export const MAX_JUDGED_CANDIDATES = 12;

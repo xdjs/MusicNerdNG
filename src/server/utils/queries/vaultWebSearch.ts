@@ -6,6 +6,8 @@ import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourc
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
 import { extractArtistId } from "@/server/utils/services";
+import { db } from "@/server/db/drizzle";
+import { sql } from "drizzle-orm";
 import { isReservedHandle } from "@/lib/platformHandles";
 import { setArtistLink } from "@/server/utils/artistLinkService";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
@@ -48,6 +50,9 @@ const MAX_INDEX_FOLLOWS = 3;
  *  do not silently disagree about which links matter. Each resolution reads the
  *  urlmap, so this is a real cost on a latency-bounded step. */
 const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
+
+/** Ceiling on account pages verified per run. Each is one link-preview fetch. */
+const MAX_ACCOUNT_CHECKS = 10;
 
 /** Ceiling on hub pages examined for ownership. Every adoption costs another
  *  getArtistById round trip and every page costs up to MAX_CORROBORATION_CHECKS
@@ -148,6 +153,26 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
     }
 }
 
+/** Is this (platform, handle) already recorded against a DIFFERENT artist?
+ *
+ *  Names collide and page titles cannot resolve the collision — three artists
+ *  called Black Dave sit in this directory. What the directory already knows can:
+ *  a handle assigned to somebody else is not evidence about this artist. */
+async function handleBelongsToAnotherArtist(artistId: string, siteName: string, handle: string): Promise<boolean> {
+    if (!PLATFORM_DOMAINS[siteName]) return false; // not a column we store
+    try {
+        const rows = await db.execute(sql.raw(
+            `select 1 from artists where lower(${siteName}) = lower('${handle.replace(/'/g, "''")}')`
+            + ` and id <> '${artistId}' limit 1`));
+        return ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])).length > 0;
+    } catch (e) {
+        // Never block an adoption because this check failed; fall back to the
+        // title cross-check below, which is what we had before.
+        console.error("[vaultWebSearch] Ownership check failed:", e);
+        return false;
+    }
+}
+
 /**
  * Adopt the account handles an artist published on their own page.
  *
@@ -183,6 +208,8 @@ async function adoptHandlesFromOwnPage(
     artistId: string,
     outboundLinks: string[],
     artist: Record<string, unknown>,
+    /** The page these links came from, and what the judge made of it. */
+    page?: { url: string; aboutArtist: boolean },
 ): Promise<{ adopted: number; handles: Set<string> }> {
     const resolved: { siteName: string; id: string }[] = [];
     for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
@@ -199,8 +226,28 @@ async function adoptHandlesFromOwnPage(
         // that artist, with no error anywhere.
         return typeof held === "string" && !!held && normalizeHandle(held) === r.id;
     });
-    if (!corroborator) return { adopted: 0, handles: new Set<string>() };
-    console.log(`[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`);
+    // Failing that: the page IS the artist's domain, and the judge — reading it
+    // against their verified catalog — says it is about them.
+    //
+    // Pete Rango's site links his real Instagram and X and NOTHING we already
+    // hold: no spotify, no deezer, no bandcamp, just imdb, wikipedia and an HBO
+    // credit. Under id-corroboration alone he scored 0 of 7 known handles while
+    // Sherwinn Brice scored 5 of 5, because Brice's site happens to link his
+    // Bandcamp. A hostname that folds to the artist's own name is the other
+    // honest way to know whose page this is.
+    //
+    // The judge's affirmation is required HERE and not for an id match, because
+    // a name in a domain is weaker: three artists called Black Dave are in this
+    // directory, and a blackdave.com would fold identically for all of them. An
+    // id cannot be ambiguous that way, so it stands alone.
+    const ownDomain = !corroborator
+        && !!page?.aboutArtist
+        && isArtistOwnDomain(page.url, String(artist.name ?? ""));
+
+    if (!corroborator && !ownDomain) return { adopted: 0, handles: new Set<string>() };
+    console.log(corroborator
+        ? `[vaultWebSearch] Page corroborated by known ${corroborator.siteName}=${corroborator.id}`
+        : `[vaultWebSearch] Page corroborated as the artist's own domain: ${page!.url.slice(0, 70)}`);
 
     // A page naming TWO different handles for one platform is ambiguous — an
     // artist's footer can carry their own Instagram beside their label's. The
@@ -247,84 +294,79 @@ async function adoptHandlesFromOwnPage(
 }
 
 /**
- * Carry a handle we just verified to the platforms we still have nothing for.
+ * Carry the handles we verified to the platforms we still have nothing for.
  *
- * Profile discovery's propagation tier already knows how to probe a handle
- * across platforms; what it never had was a handle worth propagating. Working
- * from the artist's NAME it produced `dupes` for Sherwinn Brice — wrong, his
- * handle is `dupesdidit` — and missed his SoundCloud entirely. Given the real
- * handle it finds soundcloud/dupesdidit on the next pass.
+ * Profile discovery's propagation tier always knew how to do this; what it
+ * lacked was a handle worth carrying. Given only the NAME "Sherwinn Dupes
+ * Brice" it produced `dupes` — wrong, his handle is `dupesdidit` — and missed
+ * his SoundCloud entirely.
  *
- * Deliberately narrow: only a candidate whose value EXACTLY matches a handle the
- * artist published on their own corroborated page is taken. A candidate on some
- * other spelling is still a guess and still goes to the artist to confirm.
+ * PROBES EVERY VERIFIED HANDLE AND ABSTAINS ON A TIE. An artist can hold more
+ * than one: Pete Rango is `p3t3rango` on Instagram and X, `peterango` on
+ * SoundCloud. Taking whichever candidate came back first gave him
+ * twitch=peterango when his Twitch is p3t3rango — a wrong link, which is worse
+ * than the gap it replaced.
+ *
+ * Probing separates them where the platform lets it. Only one YouTube resolves
+ * ("Pete Rango"); only one Bandcamp resolves ("rush, by PETE RANGO"). But
+ * twitch.tv answers for BOTH, with titles that merely echo the handle back —
+ * so there we genuinely cannot tell from outside, and we leave it empty.
  */
 async function propagateVerifiedHandles(
     artistId: string,
     verified: Set<string>,
     artist: Record<string, unknown>,
 ): Promise<number> {
+    const handles = [...verified].filter(h => h.length >= 3);
+    if (handles.length === 0) return 0;
+
     let adopted = 0;
     try {
-        const { discoverArtistProfiles } = await import("@/server/utils/profileDiscovery");
-        // Bounded well under discoverArtistProfiles' own 35s budget. This runs
-        // at the TAIL of a pipeline the caller already races (38s in
-        // artistBioQuery, 45s in turnHandlers) after search, fetch, judge and
-        // hub adoption have each taken their share — so borrowing the full
-        // budget here means the propagated writes land after the turn has
-        // rendered and the artist sees an incomplete profile that silently
-        // fixes itself later. Measured at 1.4s and 3.0s on a real artist, so
-        // this is generous; giving up is the correct outcome, since everything
-        // adopted from the artist's own page is already saved.
-        let budgetTimer: ReturnType<typeof setTimeout> | undefined;
-        const candidates = await Promise.race([
-            discoverArtistProfiles(artistId),
-            new Promise<never>((_, reject) => {
-                budgetTimer = setTimeout(() => reject(new Error("propagation budget exhausted")), PROPAGATION_BUDGET_MS);
-            }),
-        // Cleared either way: left dangling, the timer holds the event loop open
-        // for the full budget after the winner has already settled.
-        ]).finally(() => clearTimeout(budgetTimer));
-        for (const c of candidates) {
-            const value = String(c.value ?? "");
-            if (!verified.has(normalizeHandle(value))) continue;
-            if (!ACCOUNT_PLATFORMS.has(c.siteName)) continue;
-            if (isReservedHandle(c.siteName, value)) continue;
-            // setArtistLink is an unconditional upsert, and until now nothing
-            // here stopped it overwriting a value the artist already has —
-            // safe only because discoverArtistProfiles happens to gate on the
-            // same thing internally. That is a load-bearing assumption about
-            // another module's internals; adoptHandlesFromOwnPage guards for
-            // itself and so should this.
-            if (artist[c.siteName]) continue;
+        const { fetchLinkPreview } = await import("@/server/utils/linkPreview");
+        const { getAllLinks } = await import("./artistQueries");
+        const urlmap = await getAllLinks();
+
+        for (const platform of ACCOUNT_PLATFORMS) {
+            if (artist[platform]) continue;                       // already have it
+            if (PROBE_BLIND_PLATFORMS.has(platform)) continue;    // serves a bot nothing
+            const row = urlmap.find(u => u.siteName === platform);
+            const pattern = row?.appStringFormat;
+            if (!pattern?.includes("%@")) continue;
+
+            const resolved: string[] = [];
+            for (const handle of handles) {
+                if (isReservedHandle(platform, handle)) continue;
+                if (await handleBelongsToAnotherArtist(artistId, platform, handle)) continue;
+                const preview = await fetchLinkPreview(pattern.replace("%@", handle)).catch(() => null);
+                // A real profile answers with something. A missing one is blank.
+                if (preview?.title || preview?.imageUrl) resolved.push(handle);
+            }
+
+            if (resolved.length !== 1) {
+                if (resolved.length > 1) {
+                    console.log(`[vaultWebSearch] ${platform} answers for ${resolved.join(" and ")} — cannot tell which is theirs, leaving empty`);
+                }
+                continue;
+            }
             try {
-                await setArtistLink(artistId, c.siteName, value);
-                console.log(`[vaultWebSearch] Propagated verified handle -> ${c.siteName}=${value}`);
+                await setArtistLink(artistId, platform, resolved[0]);
+                console.log(`[vaultWebSearch] Propagated verified handle -> ${platform}=${resolved[0]}`);
                 adopted++;
             } catch (e) {
-                console.warn(`[vaultWebSearch] Could not propagate ${c.siteName}:`, e);
+                console.warn(`[vaultWebSearch] Could not propagate ${platform}:`, e);
             }
         }
     } catch (e) {
-        // Never fail the vault step over this — the handles already adopted stand.
+        // Never fail the vault step over this — everything already adopted stands.
         console.error("[vaultWebSearch] Propagation pass failed:", e);
     }
     return adopted;
 }
 
-/**
- * URLs that are just a profile we ALREADY have linked.
- *
- * Discovery kept offering an artist their own Spotify and X pages as "sources
- * about you". They aren't research — they're identity we already hold, and
- * re-presenting them costs the artist a decision for nothing.
- *
- * Matched on the stored platform VALUE appearing in the URL, not on the host.
- * Host matching would be wrong: an artist with a YouTube channel would lose
- * every youtube.com result, including the Shockoe Sessions interview that is
- * the best source we found for one of them. A URL containing their actual
- * Spotify ID or handle is their profile; a video about them is not.
- */
+/** Platforms that answer a server-side fetch with nothing, so a probe proves
+ *  neither presence nor absence. Measured, not assumed. */
+const PROBE_BLIND_PLATFORMS = new Set(["tiktok"]);
+
 const IDENTITY_MATCH_MIN_LENGTH = 4; // shorter values match far too much
 
 /** Where each stored handle actually lives. A handle only identifies a profile
@@ -607,8 +649,15 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         const insertedSources: ArtistVaultSource[] = [];
         /** Article URLs harvested from index pages, followed after the main pass. */
         const indexLinks = new Set<string>();
+        /** Account URLs the search returned — candidate handles, verified below. */
+        const accountCandidates: { siteName: string; id: string; url: string }[] = [];
+        /** Handles proven to be this artist's, however we proved it. Both the
+         *  account-title check and the own-page adoption contribute, and the
+         *  propagation pass runs once over the union — a handle confirmed by a
+         *  page title is exactly as good as one read off the artist's website. */
+        const verifiedHandles = new Set<string>();
         /** Outbound links per page, examined for ownership once the loop is done. */
-        const hubCandidates: string[][] = [];
+        const hubCandidates: { links: string[]; url: string; aboutArtist: boolean }[] = [];
         let dropped = 0;
         for (const { result, page } of verified) {
             // requireFullName: a keyword search returns REAL pages about the wrong
@@ -670,7 +719,11 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // judge's verdict is worth honouring here even though adoption is
             // otherwise independent of it.
             if ((page.outboundLinks?.length ?? 0) > 0 && relevance.get(result.url) !== "lists-artist") {
-                hubCandidates.push(page.outboundLinks!);
+                hubCandidates.push({
+                    links: page.outboundLinks!,
+                    url: result.url,
+                    aboutArtist: relevance.get(result.url) === "about-artist",
+                });
             }
 
             // An account page is IDENTITY, never coverage — so it is not a vault
@@ -686,7 +739,18 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // press carries no such risk. Profile discovery owns finding these
             // properly — it can probe and verify, which this path cannot.
             if (profileMatch?.siteName && ACCOUNT_PLATFORMS.has(profileMatch.siteName)) {
-                console.log(`[vaultWebSearch] Account page, not coverage — leaving to profile discovery: ${result.url.slice(0, 90)}`);
+                // Not a source — but not nothing either. Searching an artist's
+                // NAME and getting back an account page is real evidence about
+                // whose account it is, and until now we discarded it: the log
+                // said "leaving to profile discovery" while profile discovery,
+                // a separate step working only from the name, never received it.
+                //
+                // Pete Rango's own instagram, x and soundcloud were all returned
+                // by his search and all three were thrown away on the same run
+                // that scored him 0 of 7 known handles. Verified after the loop.
+                if (profileMatch.id && !isReservedHandle(profileMatch.siteName, String(profileMatch.id))) {
+                    accountCandidates.push({ siteName: profileMatch.siteName, id: String(profileMatch.id), url: result.url });
+                }
                 skipped++;
                 continue;
             }
@@ -776,6 +840,54 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             }
         }
 
+        // Verify the account pages search handed us. These platforms serve a bot
+        // no readable body, so the relevance judge can never affirm them — but
+        // their og:title names the account holder, and that IS checkable:
+        // instagram.com/p3t3rango returns "Pete Rango (@p3t3rango) • Instagram
+        // photos and videos". Same cross-check profile discovery uses on a
+        // handle it guessed; the difference is that this handle was not guessed,
+        // it was returned by a search for the artist's name.
+        if (accountCandidates.length > 0) try {
+            const current = await getArtistById(artistId).catch(() => undefined);
+            const { fetchLinkPreview } = await import("@/server/utils/linkPreview");
+            const { titleMatchesArtist } = await import("@/server/utils/profileDiscovery");
+            const done = new Set<string>();
+            for (const cand of accountCandidates.slice(0, MAX_ACCOUNT_CHECKS)) {
+                if (done.has(cand.siteName)) continue;
+                if (current && (current as Record<string, unknown>)[cand.siteName]) continue;
+                // A title cannot tell three artists of the same name apart. Our
+                // own directory holds Black Dave, Black Dave MK2 and Black Dave
+                // NYC; instagram.com/blackdave is NYC's, and its title says
+                // "Black Dave", so the check below passes and we would hand one
+                // artist another's account. If the directory already assigns
+                // this handle to somebody else, it is not evidence about this
+                // artist — leave it alone.
+                if (await handleBelongsToAnotherArtist(artistId, cand.siteName, cand.id)) {
+                    console.log(`[vaultWebSearch] ${cand.siteName}=${cand.id} is already another artist's, ignoring`);
+                    continue;
+                }
+                const preview = await fetchLinkPreview(stripQuery(cand.url)).catch(() => null);
+                const title = preview?.title ?? "";
+                if (!title || !titleMatchesArtist(title, artistName)) {
+                    console.log(`[vaultWebSearch] Account page did not name "${artistName}", ignoring: ${cand.url.slice(0, 70)}`);
+                    continue;
+                }
+                try {
+                    await setArtistLink(artistId, cand.siteName, cand.id);
+                    console.log(`[vaultWebSearch] Search found ${cand.siteName}=${cand.id}, title confirms it: "${title.slice(0, 46)}"`);
+                    done.add(cand.siteName);
+                    verifiedHandles.add(normalizeHandle(cand.id));
+                } catch (e) {
+                    console.warn(`[vaultWebSearch] Could not save ${cand.siteName} from search:`, e);
+                }
+            }
+        } catch (e) {
+            // Everything found so far stands. This pass is an enrichment, and an
+            // exception here previously reached the function's outer catch and
+            // returned [] — telling the caller a successful run found nothing.
+            console.error("[vaultWebSearch] Account verification pass failed:", e);
+        }
+
         // Now that the run has finished learning what it can about this artist,
         // work out which of the pages we read are theirs. Re-read the record
         // first: links adopted during the loop (a Bandcamp routed out of an
@@ -794,8 +906,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             });
             if (current) {
                 const seen = new Set<string>();
-                const verified = new Set<string>();
-                for (const outbound of hubCandidates.slice(0, MAX_HUB_PAGES)) {
+                for (const hub of hubCandidates.slice(0, MAX_HUB_PAGES)) {
+                    const outbound = hub.links;
                     // Keyed on the WHOLE link set. Keying on the first few
                     // collided across pages from one site template, whose
                     // header links are identical and whose later links — the
@@ -806,8 +918,9 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                     if (seen.has(key)) continue;
                     seen.add(key);
                     const { adopted, handles } = await adoptHandlesFromOwnPage(
-                        artistId, outbound, current as unknown as Record<string, unknown>);
-                    for (const h of handles) verified.add(h);
+                        artistId, outbound, current as unknown as Record<string, unknown>,
+                        { url: hub.url, aboutArtist: hub.aboutArtist });
+                    for (const h of handles) verifiedHandles.add(h);
                     // One adoption can corroborate the next page, so refresh.
                     // Falls back to what we already hold rather than throwing:
                     // a stale record costs us one missed adoption, an exception
@@ -816,11 +929,18 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                         Object.assign(current, await getArtistById(artistId).catch(() => undefined) ?? {});
                     }
                 }
-                // ONCE for the run, not once per page — see the note in
-                // adoptHandlesFromOwnPage about the 35s discovery budget.
-                if (verified.size > 0) {
-                    await propagateVerifiedHandles(artistId, verified, current as unknown as Record<string, unknown>);
-                }
+            }
+        }
+
+        // ONCE for the run, over every handle either path proved — see the note
+        // in adoptHandlesFromOwnPage about the 35s discovery budget. Pete Rango
+        // reaches this with p3t3rango and peterango confirmed by page titles and
+        // nothing found on a hub at all, which is why it cannot live inside the
+        // hub branch.
+        if (verifiedHandles.size > 0) {
+            const latest = await getArtistById(artistId).catch(() => undefined);
+            if (latest) {
+                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>);
             }
         }
 
