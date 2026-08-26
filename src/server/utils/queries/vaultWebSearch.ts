@@ -51,6 +51,10 @@ const MAX_INDEX_FOLLOWS = 3;
  *  urlmap, so this is a real cost on a latency-bounded step. */
 const MAX_CORROBORATION_CHECKS = OUTBOUND_LINK_CAP;
 
+/** Bails out of the account-verification pass without touching the run's
+ *  results — the name is shared, so a page title proves nothing. */
+class SkipAccountPass extends Error {}
+
 /** Ceiling on account pages verified per run. Each is one link-preview fetch. */
 const MAX_ACCOUNT_CHECKS = 10;
 
@@ -169,6 +173,33 @@ async function handleBelongsToAnotherArtist(artistId: string, siteName: string, 
         // Never block an adoption because this check failed; fall back to the
         // title cross-check below, which is what we had before.
         console.error("[vaultWebSearch] Ownership check failed:", e);
+        return false;
+    }
+}
+
+/** Do several artists in this directory share this name?
+ *
+ *  If so, a page title that merely repeats the name proves nothing about WHICH
+ *  of them it belongs to. Three Black Daves are here, and a fourth account
+ *  titled "Black Dave (@black_davem)" is indistinguishable from all of them
+ *  from outside — so we decline rather than assign one artist another's
+ *  account. Stronger evidence still counts: a page corroborated by an id we
+ *  already hold is unambiguous no matter how common the name.
+ *
+ *  Prefix rather than equality, because that is the shape the collision takes:
+ *  "Black Dave", "Black Dave MK2", "Black Dave NYC". */
+async function nameIsAmbiguousInDirectory(artistId: string, artistName: string): Promise<boolean> {
+    const folded = artistName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (folded.length < 4) return true; // too short to identify anyone
+    try {
+        const rows = await db.execute(sql`
+            select 1 from artists
+            where regexp_replace(lower(name), '[^a-z0-9]', '', 'g') like ${folded + "%"}
+              and id <> ${artistId}::uuid
+            limit 1`);
+        return (((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])) ?? []).length > 0;
+    } catch (e) {
+        console.error("[vaultWebSearch] Ambiguity check failed:", e);
         return false;
     }
 }
@@ -316,6 +347,7 @@ async function propagateVerifiedHandles(
     artistId: string,
     verified: Set<string>,
     artist: Record<string, unknown>,
+    artistName: string,
 ): Promise<number> {
     const handles = [...verified].filter(h => h.length >= 3);
     if (handles.length === 0) return 0;
@@ -323,6 +355,7 @@ async function propagateVerifiedHandles(
     let adopted = 0;
     try {
         const { fetchLinkPreview } = await import("@/server/utils/linkPreview");
+        const { titleMatchesArtist } = await import("@/server/utils/profileDiscovery");
         const { getAllLinks } = await import("./artistQueries");
         const urlmap = await getAllLinks();
 
@@ -338,8 +371,12 @@ async function propagateVerifiedHandles(
                 if (isReservedHandle(platform, handle)) continue;
                 if (await handleBelongsToAnotherArtist(artistId, platform, handle)) continue;
                 const preview = await fetchLinkPreview(pattern.replace("%@", handle)).catch(() => null);
-                // A real profile answers with something. A missing one is blank.
-                if (preview?.title || preview?.imageUrl) resolved.push(handle);
+                // The title must NAME the artist, not merely exist. Bandcamp and
+                // Twitch answer for handles nobody owns: probing
+                // twitch.tv/pharaohsistare returns the bare string "Twitch", and
+                // taking that as proof gave Pharaoh Sistare six identical
+                // handles, one of which is an account that does not exist.
+                if (preview?.title && titleMatchesArtist(preview.title, artistName)) resolved.push(handle);
             }
 
             if (resolved.length !== 1) {
@@ -363,9 +400,15 @@ async function propagateVerifiedHandles(
     return adopted;
 }
 
-/** Platforms that answer a server-side fetch with nothing, so a probe proves
- *  neither presence nor absence. Measured, not assumed. */
-const PROBE_BLIND_PLATFORMS = new Set(["tiktok"]);
+/** Platforms a probe cannot settle, for two different reasons — both measured.
+ *
+ *  `tiktok` serves a server-side fetch nothing at all, so a miss is not evidence
+ *  of absence. `twitch` answers, but its title only ever echoes the handle back
+ *  ("peterango - Twitch") and never the display name, so it can tell us an
+ *  account exists and never whose it is. Pete Rango holds two verified handles
+ *  and twitch answers for both; his real Twitch stays empty rather than being
+ *  guessed. */
+const PROBE_BLIND_PLATFORMS = new Set(["tiktok", "twitch"]);
 
 const IDENTITY_MATCH_MIN_LENGTH = 4; // shorter values match far too much
 
@@ -848,6 +891,12 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         // handle it guessed; the difference is that this handle was not guessed,
         // it was returned by a search for the artist's name.
         if (accountCandidates.length > 0) try {
+            // A title cross-check identifies an artist only if the name does.
+            const ambiguous = await nameIsAmbiguousInDirectory(artistId, artistName);
+            if (ambiguous) {
+                console.log(`[vaultWebSearch] "${artistName}" is shared by another artist here — a page title cannot say which, skipping ${accountCandidates.length} account candidate(s)`);
+            }
+            if (ambiguous) throw new SkipAccountPass();
             const current = await getArtistById(artistId).catch(() => undefined);
             const { fetchLinkPreview } = await import("@/server/utils/linkPreview");
             const { titleMatchesArtist } = await import("@/server/utils/profileDiscovery");
@@ -885,7 +934,9 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // Everything found so far stands. This pass is an enrichment, and an
             // exception here previously reached the function's outer catch and
             // returned [] — telling the caller a successful run found nothing.
-            console.error("[vaultWebSearch] Account verification pass failed:", e);
+            if (!(e instanceof SkipAccountPass)) {
+                console.error("[vaultWebSearch] Account verification pass failed:", e);
+            }
         }
 
         // Now that the run has finished learning what it can about this artist,
@@ -940,7 +991,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         if (verifiedHandles.size > 0) {
             const latest = await getArtistById(artistId).catch(() => undefined);
             if (latest) {
-                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>);
+                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>, artistName);
             }
         }
 

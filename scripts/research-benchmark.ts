@@ -75,7 +75,15 @@ const CASES: Case[] = [
         id: "baa7dd84-772b-480a-83e7-114ae183eaf7",
         name: "Pharaoh Sistare",
         seed: ["deezer"],
-        expect: {},
+        // Each verified against a live page title: "Pharaoh Sistare | Pop
+        // Knight", "Pharaoh Sistare (@PharaohSistare) on X", "Strobe Light, by
+        // Pharaoh Sistare". She has NO Twitch — twitch.tv/pharaohsistare returns
+        // the bare string "Twitch" — and a run that gives her one is wrong.
+        expect: {
+            instagram: "pharaohsistare", x: "pharaohsistare", youtube: "pharaohsistare",
+            soundcloud: "pharaohsistare", bandcamp: "pharaohsistare",
+        },
+        forbidHandles: { twitch: ["pharaohsistare"] },
         // A Finnish band, an unrelated "Pharaoh", and a different artist called Pharaoh Jo.
         forbidHosts: ["echoesanddust.com", "teethofthedivine.com", "medium.com"],
         note: "Thin coverage. The test is that thin does not become wrong.",
@@ -91,11 +99,33 @@ const CASES: Case[] = [
         forbidHosts: ["head-fi.org", "theguardian.com", "chordelectronics.co.uk", "whathifi.com"],
         // Two OTHER Black Daves are in our own directory. Their handles are not his.
         forbidHandles: {
-            instagram: ["blackdave.xyz", "blackdave"],
+            // Two OTHER Black Daves in this directory, plus black_davem — a
+            // fourth account whose title also reads "Black Dave" and which is
+            // not the one our records hold for him (blackdaveblackdave, whose
+            // own title reads "blackdave"). On a cold start these are not
+            // separable from outside, so taking any of them is a wrong link.
+            instagram: ["blackdave.xyz", "blackdave", "black_davem"],
             youtube: ["blackdavemk2"], facebook: ["blackdavemk2", "blackdavenyc"],
             soundcloud: ["blackdavemk2", "blackdavenyc"], bandcamp: ["blackdavemk2"],
+            twitch: ["black_davem"],
         },
         note: "Three Black Daves exist in this directory. Cross-contamination is the failure.",
+    },
+    {
+        key: "mk2",
+        id: "011645a7-a9c2-494c-a81f-2c10cdf1b756",
+        name: "Black Dave MK2",
+        seed: ["spotify", "deezer"],
+        expect: {},
+        forbidHosts: ["head-fi.org", "theguardian.com", "chordelectronics.co.uk", "whathifi.com",
+                      "thrashermagazine.com", "quartersnacks.com"], // the OTHER Black Dave's skate press
+        // The sharpest case in the set: same name as two other artists we hold.
+        forbidHandles: {
+            instagram: ["blackdaveblackdave", "blackdave", "black_davem"],
+            x: ["blackdavenyc"], soundcloud: ["blackdaveblackdave", "blackdavenyc"],
+            bandcamp: ["black-dave"], twitch: ["black_davem"],
+        },
+        note: "Must not inherit the skater-rapper Black Dave's press or handles.",
     },
 ];
 
