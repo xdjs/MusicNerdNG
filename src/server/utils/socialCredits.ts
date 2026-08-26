@@ -202,7 +202,14 @@ function parse(text: string): { credits: RawCredit[]; statements: RawStatement[]
             credits: Array.isArray(obj.credits) ? (obj.credits as RawCredit[]) : [],
             statements: Array.isArray(obj.statements) ? (obj.statements as RawStatement[]) : [],
         };
-    } catch {
+    } catch (e) {
+        // Silence here used to be indistinguishable from an artist with nothing
+        // in their captions, and it was not the same thing at all. A model that
+        // writes long clause-shaped roles produces long output, long output
+        // gets truncated at the token ceiling, truncated JSON fails to parse,
+        // and a whole batch of an artist's history disappeared without a word.
+        // Bounding the role made this rare; logging it makes it visible.
+        console.error(`[socialCredits] Could not parse a batch response (${text.length} chars, ends "${text.slice(-60).replace(/\s+/g, " ")}"):`, e);
         return { credits: [], statements: [] };
     }
 }
