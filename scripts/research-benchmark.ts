@@ -116,7 +116,16 @@ const CASES: Case[] = [
         id: "011645a7-a9c2-494c-a81f-2c10cdf1b756",
         name: "Black Dave MK2",
         seed: ["spotify", "deezer"],
-        expect: {},
+        // Confirmed by Pete, 8/26. Currently UNREACHABLE from outside, and kept
+        // here deliberately as a standing miss: searching his name never returns
+        // it, his metalabel page links METALABEL's socials rather than his own,
+        // blackdavemk2.bandcamp.com exposes none, readdork 403s, and three Black
+        // Daves share the name so a page title cannot disambiguate.
+        //
+        // The boundary is real. For a heavily-namesaked artist with no site of
+        // their own, the artist is the only reliable source — an argument for
+        // ASKING during the claim, not for a cleverer probe.
+        expect: { instagram: "blackdave.xyz" },
         forbidHosts: ["head-fi.org", "theguardian.com", "chordelectronics.co.uk", "whathifi.com",
                       "thrashermagazine.com", "quartersnacks.com"], // the OTHER Black Dave's skate press
         // The sharpest case in the set: same name as two other artists we hold.
