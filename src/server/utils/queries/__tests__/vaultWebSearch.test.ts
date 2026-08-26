@@ -441,6 +441,51 @@ describe("searchAndPopulateVault", () => {
     expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=not_his_account");
   });
 
+  it("drops an unreadable page whose title is about a different musician", async () => {
+    // Real regression, seen by the product owner on his own profile:
+    // blogcritics.org answers our fetch with 403, so the body is unreadable and
+    // the page classifies as a "lead" — a real URL, filed as a non-citable
+    // source. The only evidence we ever had was the search title, "Music
+    // Review: Pete Seeger - Pete Seeger At 89", which is about somebody else.
+    // We filed it against Pete Rango and made him look at it.
+    mockWebSearch.mockResolvedValue([
+      hit("https://blogcritics.org/music-review-pete-seeger-pete-seeger",
+          "Music Review: Pete Seeger - Pete Seeger At 89 | Blogcritics"),
+    ]);
+    mockFetchPage.mockResolvedValue({
+      title: "Source from blogcritics.org", snippet: "", extractedText: "",
+      fullText: "", ogImage: null, status: 403,
+      url: "https://blogcritics.org/music-review-pete-seeger-pete-seeger",
+    });
+    mockExtract.mockResolvedValue(null);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("still keeps an unreadable page whose title IS about the artist", async () => {
+    // The rule must not throw away a real interview behind a paywall. (This
+    // block's artist is Grimes; an earlier version of this test named a
+    // different artist in the title and was correctly rejected, which is the
+    // guard working rather than failing.)
+    mockWebSearch.mockResolvedValue([
+      hit("https://example.com/interview", "An interview with Grimes on making records"),
+    ]);
+    mockFetchPage.mockResolvedValue({
+      title: "Source from example.com", snippet: "", extractedText: "",
+      fullText: "", ogImage: null, status: 403,
+      url: "https://example.com/interview",
+    });
+    mockExtract.mockResolvedValue(null);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockInsert).toHaveBeenCalled();
+  });
+
   // ---- Namesakes ---------------------------------------------------------
 
   it("does not let a namesake article become citable (the Black Dave case)", async () => {

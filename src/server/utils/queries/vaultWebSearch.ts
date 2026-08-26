@@ -2,7 +2,7 @@ import { insertVaultSource, getVaultSourcesByArtistId } from "./dashboardQueries
 import { getArtistById } from "./artistQueries";
 import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl, OUTBOUND_LINK_CAP, type PageContent } from "@/server/utils/fetchPageContent";
-import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
+import { classifyFetchedSource, isGroundingRedirect, nameAppearsIn } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
 import { extractArtistId } from "@/server/utils/services";
@@ -1253,6 +1253,36 @@ export async function searchAndPopulateVault(
                 // from ever becoming citable.
                 identityConfirmed: relevance.get(result.url) === "about-artist",
             });
+            // AN UNREADABLE PAGE IS ONLY AS GOOD AS ITS TITLE.
+            //
+            // A 403, a 5xx or a JS-only page classifies as "lead": real URL,
+            // unread body, filed as a non-citable source. That is right when the
+            // page is plausibly about the artist and wrong when it is plainly
+            // not — blogcritics.org answers our fetch with 403, so the only
+            // evidence we ever had about "Music Review: Pete Seeger - Pete
+            // Seeger At 89" was that title, which names a different musician.
+            // We filed it against Pete Rango anyway and made him look at it.
+            //
+            // So when the body is unreadable, the SEARCH TITLE has to name the
+            // artist in full. The distinctive-token fallback is not allowed
+            // here: it exists for pages we already believe are theirs, and this
+            // is the opposite case. A page we cannot read, whose title is about
+            // somebody else, is not a lead. It is a search result.
+            // Only when we genuinely could not READ it. A readable page that
+            // simply does not name the artist is a different case and keeps its
+            // existing treatment; this is about pages where the search title is
+            // the only evidence that will ever exist.
+            const unreadable = verdict === "lead"
+                && (!page.extractedText || page.extractedText.trim().length < 200);
+            if (unreadable) {
+                const evidence = `${result.title ?? ""} ${result.snippet ?? ""}`;
+                if (!nameAppearsIn(evidence, artistName, { requireFullName: true })) {
+                    console.log(`[vaultWebSearch] Unreadable and its title is not about "${artistName}", dropping: ${String(result.title ?? result.url).slice(0, 70)}`);
+                    dropped++;
+                    continue;
+                }
+            }
+
             if (verdict === "dead") {
                 console.warn(`[vaultWebSearch] Dropping unreachable/irrelevant URL (status ${page.status}): ${result.url.slice(0, 120)}`);
                 dropped++;
