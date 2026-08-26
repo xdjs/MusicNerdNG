@@ -763,3 +763,27 @@ artist has one, let alone read their posts.
 4. **2.1 + 2.2** — investigate together.
 5. **3.1** — structural, and it should land before 4.1 rebuilds the flow around it.
 6. **4.x** — take to Carl and CY on Thursday first.
+
+## 5. The interview should be opt-in, and repeatable
+
+Decided 2026-08-26 with the product owner. Today the interview is three
+questions, asked once, at claim time, and never again; the "follow-up bank" the
+spec describes exists only as a `source: "onboarding" | "followup"` string union.
+
+The shape we want instead:
+
+1. **An invitation, not a step.** Once a profile has generated, offer it:
+   "Want to be interviewed by Music Nerd?" Yes or no. The offer has to say what
+   the answers are used for and what the artist gets out of answering, because
+   right now we ask three questions and the answers vanish into synthesized
+   prose with a citation number on them.
+2. **An "Interview me" button in edit mode**, so an artist can start one
+   whenever they want rather than only in the minutes after claiming. Questions
+   are generated from the posts we think are currently relevant.
+
+This replaces "three questions, once, forever" with something the artist opts
+into and can return to. It also gives the grounded-question work somewhere to
+land: an artist who releases something new has new posts, and therefore new
+questions, without us having to email them.
+
+Not yet decided: whether there is ever an email path. Return visits come first.

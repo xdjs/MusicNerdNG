@@ -120,6 +120,13 @@
       "when": 1787405976261,
       "tag": "0016_artist_doc_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787492376261,
+      "tag": "0017_artist_handle_lookup_indexes",
+      "breakpoints": true
     }
   ]
 }
