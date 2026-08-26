@@ -290,6 +290,26 @@ function parseModelAnswers(text: string): ModelAnswer[] {
  * interview step calls this on every turn it re-enters) reuse the first
  * result instead of paying another ~12s Gemini round trip.
  */
+/**
+ * Forget the cached questions for one artist.
+ *
+ * The cache holds for fifteen minutes, and caption extraction takes minutes on
+ * a large feed. Onboarding waits for the POSTS to land before generating
+ * questions, but not for the CREDITS read out of them — so a fresh run could
+ * generate against an empty credits table, cache that answer, and go on asking
+ * the three generic questions for the rest of the session even though the
+ * credits arrived moments later. The artist gets one interview; it should not
+ * be the worse one by a few seconds of timing.
+ *
+ * Called by ensureSocialCredits once the extraction is stored.
+ */
+export function forgetGroundedQuestions(artistId: string): void {
+    if (!artistId) return;
+    for (const key of [...groundedQuestionsCache.keys()]) {
+        if (key.startsWith(`${artistId}::`)) groundedQuestionsCache.delete(key);
+    }
+}
+
 export async function generateGroundedQuestions(
     artistId: string,
     opts?: { max?: number },

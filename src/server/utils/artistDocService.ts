@@ -24,7 +24,7 @@ import { getInterviewAnswers, getArtistDoc, upsertArtistDoc, upsertArtistDocSour
 import { getDocCorrections } from "@/server/utils/queries/docCorrectionQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
-import { creditedCollaborators } from "@/server/utils/socialCredits";
+import { creditedCollaborators, selfCredits } from "@/server/utils/socialCredits";
 import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
 import { isCitableSource } from "@/server/utils/sourceVerification";
@@ -78,6 +78,15 @@ export type DocSource = {
 // to be a real, explainable collaborator) handles.
 const MAX_COLLABORATOR_SOURCES = 4;
 const MAX_MUSIC_REF_SOURCES = 8;
+/** An artist signing off "Producer" tells us one thing about how they work;
+ *  a handful covers the range without turning the manifest into a credits roll. */
+const MAX_SELF_CREDIT_SOURCES = 6;
+/** Their own words, and the only place in the document where an artist gets to
+ *  be a person rather than a discography. Deliberately the largest social
+ *  allowance: Pete Rango's feed yields 147 of these and Pharaoh Sistare's 46,
+ *  and a document that cites four collaborators and nothing they ever said is
+ *  the flattening this whole line of work exists to undo. */
+const MAX_STATEMENT_SOURCES = 12;
 
 type VaultSourceRow = Awaited<ReturnType<typeof getVaultSourcesByArtistId>>[number];
 type InterviewAnswerRow = Awaited<ReturnType<typeof getInterviewAnswers>>[number];
@@ -96,6 +105,14 @@ type DocMaterial = {
     /** People the artist credited by role in their own captions. A different,
      *  stronger object than a coauthor tag — see socialCredits.ts. */
     creditedCollaborators: { subject: string; isHandle: boolean; roles: string[]; url: string }[];
+    /** What the artist says they do themselves ("Recording Engineer: <name>").
+     *  A fact about how they work, not a relationship. */
+    selfCredits: { role: string; url: string }[];
+    /** The artist in their own words, about their work AND about their life.
+     *  This is where "Mom taught us how to make empanadas" lives, and without
+     *  it the document knows an artist's collaborators and nothing about who
+     *  they are. */
+    artistStatements: { topic: string; quote: string; url: string }[];
     socialMusicRefs: { title: string; artist: string; url: string }[];
 };
 
@@ -132,6 +149,8 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
     // their own) — this stays scoped to what Industry Connections needs.
     const socialCollaborators: { handle: string; url: string }[] = [];
     const credited: DocMaterial["creditedCollaborators"] = [];
+    const selfRoles: DocMaterial["selfCredits"] = [];
+    const statements: DocMaterial["artistStatements"] = [];
     const socialMusicRefs: { title: string; artist: string; url: string }[] = [];
     try {
         const posts = await getSocialPostsForArtist(artistId);
@@ -167,11 +186,17 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
             const url = c.evidenceUrls[0];
             if (url) credited.push({ subject: c.subject, isHandle: c.isHandle, roles: c.roles, url });
         }
+        for (const c of selfCredits(extraction).slice(0, MAX_SELF_CREDIT_SOURCES)) {
+            selfRoles.push({ role: c.role, url: c.url });
+        }
+        for (const s of extraction.statements.slice(0, MAX_STATEMENT_SOURCES)) {
+            statements.push({ topic: s.topic, quote: s.quote, url: s.url });
+        }
     } catch (e) {
         console.error("[gatherDocMaterial] caption credits error:", e);
     }
 
-    return { artist, artistName, vaultSources, answers, socialCollaborators, creditedCollaborators: credited, socialMusicRefs };
+    return { artist, artistName, vaultSources, answers, socialCollaborators, creditedCollaborators: credited, selfCredits: selfRoles, artistStatements: statements, socialMusicRefs };
 }
 
 /** The single numbered manifest both Gemini calls cite into and the client
@@ -184,6 +209,8 @@ function toSourceList(m: DocMaterial): DocSource[] {
     for (const a of m.answers) sources.push({ id: nextId++, kind: "interview", label: `Their own words — "${a.question}"`, url: null });
     for (const c of m.socialCollaborators) sources.push({ id: nextId++, kind: "social", label: `Instagram collaboration with @${c.handle}`, url: c.url });
     for (const c of m.creditedCollaborators) sources.push({ id: nextId++, kind: "social", label: `${m.artistName} credits ${c.isHandle ? "@" : ""}${c.subject} — ${c.roles.join("; ")}`, url: c.url });
+    for (const c of m.selfCredits) sources.push({ id: nextId++, kind: "social", label: `${m.artistName} on their own role — ${c.role}`, url: c.url });
+    for (const s of m.artistStatements) sources.push({ id: nextId++, kind: "social", label: `Their own words — ${s.topic}: "${s.quote.slice(0, 180)}"`, url: s.url });
     for (const r of m.socialMusicRefs) sources.push({ id: nextId++, kind: "social", label: `Track credit — "${r.title}" (${r.artist})`, url: r.url });
     return sources;
 }

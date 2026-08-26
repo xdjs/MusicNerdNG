@@ -46,6 +46,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS artist_social_credits_uniq
 CREATE INDEX IF NOT EXISTS idx_artist_social_credits_artist
     ON artist_social_credits (artist_id, kind);
 
+-- Table-level privileges FIRST. RLS policies filter rows only AFTER Postgres
+-- has checked that the role may touch the table at all, so a policy without a
+-- grant permits nothing. Dev has default privileges configured, which granted
+-- these automatically at CREATE TABLE and made a hand-run write test pass — so
+-- the omission was invisible exactly where it was tested. 0016 gets this right;
+-- this migration did not until a review caught it.
+GRANT SELECT, INSERT, UPDATE, DELETE ON artist_social_credits TO mnweb;
+
 ALTER TABLE artist_social_credits ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY mnweb_select_artist_social_credits ON artist_social_credits
