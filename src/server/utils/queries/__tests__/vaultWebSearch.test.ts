@@ -337,6 +337,57 @@ describe("searchAndPopulateVault", () => {
     expect(mockInsert).not.toHaveBeenCalled(); // and not stored as a source
   });
 
+  it("will not adopt an instagram handle their own posts contradict", async () => {
+    // An Instagram display name is free text, so an account can call itself
+    // anything. A blank-slate run adopted instagram=pherosistar because the
+    // page title read "Pharaoh Sistare (@pherosistar)" — the verification
+    // asking "does this page name the artist" was satisfied by an account
+    // merely CLAIMING to be him. His real handle is pharaohsistare, which we
+    // already know because we scraped his feed and every post carries it.
+    //
+    // Requiring the handle to resemble the name would also catch this, and
+    // would also reject p3t3rango for Pete Rango, which is his real account.
+    const { db } = await import("@/server/db/drizzle");
+    const chunkText = (q: any) => ((q?.queryChunks ?? []) as any[])
+      .map(c => (Array.isArray(c?.value) ? c.value.join("") : "")).join(" ");
+    (db.execute as jest.Mock).mockImplementation(async (q: any) =>
+      chunkText(q).includes("artist_social_posts")
+        ? { rows: [{ owner_username: "pharaohsistare" }] }
+        : { rows: [] });
+
+    mockGetArtist.mockResolvedValue({
+      id: "a1", name: "Pharaoh Sistare", spotify: null, deezer: null,
+      instagram: null, x: null, youtube: null, soundcloud: null,
+      bandcamp: null, facebook: null, twitch: null,
+    });
+    mockExtract.mockResolvedValue({ siteName: "instagram", id: "pherosistar" });
+    mockJudge.mockImplementation(async () => new Map([["https://www.instagram.com/pherosistar/", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([
+      hit("https://www.instagram.com/pherosistar/", "Pharaoh Sistare (@pherosistar) • Instagram photos and videos"),
+    ]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`)).not.toContain("instagram=pherosistar");
+  });
+
+  it("has no opinion about a handle when nothing has been scraped", async () => {
+    // The guard above must stay silent for an artist we have never scraped,
+    // or a genuinely cold start adopts nothing at all.
+    const { db } = await import("@/server/db/drizzle");
+    (db.execute as jest.Mock).mockImplementation(async () => ({ rows: [] }));
+
+    mockExtract.mockResolvedValue({ siteName: "x", id: "p3t3rango" });
+    mockJudge.mockImplementation(async () => new Map([["https://x.com/p3t3rango", "about-artist"]]));
+    mockWebSearch.mockResolvedValue([hit("https://x.com/p3t3rango", "Pete Rango")]);
+
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    expect(mockSetLink).toHaveBeenCalledWith("a1", "x", "p3t3rango");
+  });
+
   // ---- Namesakes ---------------------------------------------------------
 
   it("does not let a namesake article become citable (the Black Dave case)", async () => {

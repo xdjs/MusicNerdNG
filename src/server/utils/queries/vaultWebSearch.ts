@@ -183,6 +183,47 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
  *  Names collide and page titles cannot resolve the collision — three artists
  *  called Black Dave sit in this directory. What the directory already knows can:
  *  a handle assigned to somebody else is not evidence about this artist. */
+/**
+ * Does this candidate contradict the artist's own scraped posts?
+ *
+ * Instagram display names are free text, so an account can call itself anything.
+ * A blank-slate run for Pharaoh Sistare adopted instagram=pherosistar because
+ * the page title read "Pharaoh Sistare (@pherosistar)" — our verification
+ * asking "does the page name the artist" was satisfied by an account that
+ * merely CLAIMS to be him. His real handle is pharaohsistare.
+ *
+ * Requiring the handle to resemble the name would catch that and would also
+ * reject p3t3rango for Pete Rango, which is his actual account. But we are not
+ * short of evidence here: we have scraped his feed, and every post in it is
+ * authored by pharaohsistare. That handle was established when the posts were
+ * ingested. A search result cannot outrank it.
+ *
+ * Only speaks when it knows: no stored posts means no opinion, and a run with a
+ * genuinely cold start is unaffected.
+ */
+async function contradictsScrapedPosts(artistId: string, siteName: string, handle: string): Promise<boolean> {
+    if (siteName !== "instagram") return false;   // the only platform we scrape
+    try {
+        const rows = await db.execute(sql`
+            select distinct owner_username from artist_social_posts
+            where artist_id = ${artistId}::uuid and is_own_post = true
+            limit 5`);
+        const known = rowsOf(rows)
+            .map(r => String((r as { owner_username?: unknown }).owner_username ?? ""))
+            .filter(Boolean)
+            .map(normalizeHandle);
+        if (known.length === 0) return false;     // nothing scraped, no opinion
+        return !known.includes(normalizeHandle(handle));
+    } catch (e) {
+        // Fail OPEN here, unlike the ownership guard: this one only ever adds
+        // evidence we happen to hold, and treating "could not read our own
+        // posts" as "the candidate is wrong" would block adoption for every
+        // artist we have never scraped.
+        console.error("[vaultWebSearch] Scraped-post check failed:", e);
+        return false;
+    }
+}
+
 /** Rows out of a `db.execute` result, whatever shape the driver hands back.
  *
  *  A result that carries no rows means the query ran and matched nothing, which
@@ -295,6 +336,10 @@ async function adoptFromMusicBrainz(
             if (isReservedHandle(match.siteName, id)) continue;
             if (artist[match.siteName]) continue;
             if (await handleBelongsToAnotherArtist(artistId, match.siteName, id)) continue;
+            if (await contradictsScrapedPosts(artistId, match.siteName, id)) {
+                console.log(`[vaultWebSearch] MusicBrainz lists ${match.siteName}=${id}, but their own posts are authored by a different handle — ignoring`);
+                continue;
+            }
 
             // An IDENTIFIER match is pinned to a DSP id we already hold, so its
             // links are this artist's by construction. An EXACT-NAME match is
@@ -463,6 +508,10 @@ async function adoptHandlesFromOwnPage(
         if (ambiguous.has(r.siteName)) continue;
         if (done.has(r.siteName)) continue;
         if (artist[r.siteName]) continue; // already have it
+        if (await contradictsScrapedPosts(artistId, r.siteName, r.id)) {
+            console.log(`[vaultWebSearch] ${r.siteName}=${r.id} contradicts the handle their own posts are authored by, ignoring`);
+            continue;
+        }
         try {
             await setArtistLink(artistId, r.siteName, r.id);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
@@ -544,6 +593,7 @@ async function propagateVerifiedHandles(
                 if (outOfTime()) { scannedAll = false; break; }
                 if (isReservedHandle(platform, handle)) continue;
                 if (await handleBelongsToAnotherArtist(artistId, platform, handle)) continue;
+                if (await contradictsScrapedPosts(artistId, platform, handle)) continue;
                 const preview = await fetchLinkPreview(pattern.replace("%@", handle)).catch(() => null);
                 // The title must NAME the artist, not merely exist. Bandcamp and
                 // Twitch answer for handles nobody owns: probing
@@ -936,7 +986,8 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 // Instagram to "p". See isReservedHandle.
                 && !isReservedHandle(profileMatch.siteName, profileMatch.id);
 
-            if (isAccountUrl && relevance.get(result.url) === "about-artist") {
+            if (isAccountUrl && relevance.get(result.url) === "about-artist"
+                && !(await contradictsScrapedPosts(artistId, profileMatch!.siteName, profileMatch!.id))) {
                 try {
                     await setArtistLink(artistId, profileMatch!.siteName, profileMatch!.id);
                     console.log(`[vaultWebSearch] ${profileMatch!.siteName} profile -> links: ${result.url.slice(0, 80)}`);
@@ -1141,6 +1192,10 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 // artist — leave it alone.
                 if (await handleBelongsToAnotherArtist(artistId, cand.siteName, cand.id)) {
                     console.log(`[vaultWebSearch] ${cand.siteName}=${cand.id} is already another artist's, ignoring`);
+                    continue;
+                }
+                if (await contradictsScrapedPosts(artistId, cand.siteName, cand.id)) {
+                    console.log(`[vaultWebSearch] ${cand.siteName}=${cand.id} contradicts the handle their own posts are authored by, ignoring`);
                     continue;
                 }
                 // The page we already read, falling back to a preview for one we
