@@ -59,7 +59,13 @@ export interface CaptionCredit {
     isSelf: boolean;
 }
 
-/** Something the artist said about their own work, worth asking or writing about. */
+/** Something the artist said about themselves, worth asking or writing about.
+ *
+ *  Deliberately not scoped to music. An artist reminiscing about their mother
+ *  teaching them to make Colombian empanadas is not off-topic material to be
+ *  filtered out on the way to the credits; it is the part of a feed that makes
+ *  them a person rather than a discography. The first version of this prompt
+ *  asked only about the work and dropped that post entirely. */
 export interface ArtistStatement {
     /** Their words, verified to appear in the caption. */
     quote: string;
@@ -79,9 +85,13 @@ export const EMPTY_EXTRACTION: CaptionExtraction = { credits: [], statements: []
  *
  *  Forty was the first guess and it was wrong: a forty-caption batch took over
  *  45 seconds and timed out, which cost the whole batch rather than one caption.
- *  Fifteen keeps a call to roughly twenty seconds, makes a timeout cheap, and
- *  lets several batches run at once. */
-const POSTS_PER_BATCH = 15;
+ *  Fifteen fixed the timeouts but hid a worse problem: given fifteen captions
+ *  the model returned highlights rather than working through all of them, and
+ *  Pete Rango's post about his mother teaching him to make empanadas came back
+ *  empty in a batch and perfectly when run on its own. Recall matters more here
+ *  than throughput — this is a background job, and a caption we skip is a piece
+ *  of somebody's life we lose. */
+const POSTS_PER_BATCH = 8;
 /** Batches in flight at once. This runs in a background ingest so wall-clock is
  *  not critical, but a 300-post artist is twenty batches and running those one
  *  at a time would take several minutes for no reason. */
@@ -170,11 +180,21 @@ Each credit: {"subject", "isHandle", "role", "quote", "url"}
 
 ${artistName} often credits THEMSELVES ("Written & Produced by: ${artistName}"). Report these too, exactly the same way. Do not skip them and do not mark them differently; they will be handled downstream.
 
-A STATEMENT is ${artistName} saying something about their own work, life or intent that a fan would find worth knowing: what a song is about, why they made it, what changed for them, what they are working towards. Not announcements ("out now", "link in bio"), not thanks, not hashtags.
+A STATEMENT is ${artistName}, in their own words, about anything that makes them who they are. TWO kinds matter equally and you must look for both:
+
+  THE WORK - what a song is about, why they made it, how it got made, what changed for them, what they are building towards.
+
+  THE PERSON - where they come from, their family, their heritage, the people and places that shaped them, what they believe, what they do when they are not making music, a memory, a loss, a meal, a friendship, a turning point.
+
+Do not treat the second kind as off-topic. A musician reminiscing about their mother teaching them to make empanadas, or naming the record a friend handed them at fourteen that changed everything, is telling you who they are. That is the most valuable thing in the feed and it is the thing most easily mistaken for noise.
+
+Not announcements ("out now", "link in bio"), not thank-you lists, not hashtags, not instructions or recipes copied out in full. When a post wraps a personal memory around something procedural, quote the memory and leave the procedure.
 Each statement: {"quote", "topic", "url"}
   quote - their words, copied EXACTLY from the caption, one to three sentences
-  topic - a few words naming what it is about ("why he wrote My Dear")
+  topic - a few words naming what it is about ("why he wrote My Dear", "his mother teaching him to make empanadas")
   url   - the url of the post
+
+HOW TO WORK: go through the captions ONE AT A TIME, in the order given, and consider every single one before you answer. You are not picking highlights and you are not summarising the feed. Each caption is a separate question: does this one credit anybody, and does this one say something about who ${artistName} is? A caption you skipped is a piece of somebody's life we lose.
 
 Rules:
 - Copy quotes character for character from the caption you were given. Do not tidy, trim, join, or paraphrase them.
@@ -297,7 +317,7 @@ async function runBatch(
     batch: SocialPostRow[],
     artistName: string,
     artistHandle: string,
-    index: number,
+    index: string,
 ): Promise<CaptionExtraction> {
     const payload = batch.map(p => ({ url: p.url, postedAt: p.postedAt, caption: p.caption }));
     try {
@@ -326,8 +346,8 @@ async function runBatch(
             const mid = Math.ceil(batch.length / 2);
             console.warn(`[socialCredits] Batch ${index} timed out for ${artistName}, retrying as two halves`);
             const [a, b] = await Promise.all([
-                runBatch(batch.slice(0, mid), artistName, artistHandle, index),
-                runBatch(batch.slice(mid), artistName, artistHandle, index),
+                runBatch(batch.slice(0, mid), artistName, artistHandle, `${index}a`),
+                runBatch(batch.slice(mid), artistName, artistHandle, `${index}b`),
             ]);
             return { credits: [...a.credits, ...b.credits], statements: [...a.statements, ...b.statements] };
         }
@@ -350,21 +370,61 @@ export async function extractCaptionCredits(
     const posts = captionBearingPosts(allPosts);
     if (posts.length === 0) return EMPTY_EXTRACTION;
 
-    const batches: SocialPostRow[][] = [];
-    for (let i = 0; i < posts.length; i += POSTS_PER_BATCH) batches.push(posts.slice(i, i + POSTS_PER_BATCH));
+    const runPass = async (input: SocialPostRow[], label: string): Promise<CaptionExtraction> => {
+        const batches: SocialPostRow[][] = [];
+        for (let i = 0; i < input.length; i += POSTS_PER_BATCH) batches.push(input.slice(i, i + POSTS_PER_BATCH));
 
-    const out: CaptionExtraction = { credits: [], statements: [] };
-    for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
-        const results = await Promise.all(
-            batches.slice(i, i + BATCH_CONCURRENCY).map((batch, n) => runBatch(batch, artistName, artistHandle, i + n)),
-        );
-        for (const r of results) {
-            out.credits.push(...r.credits);
-            out.statements.push(...r.statements);
+        const acc: CaptionExtraction = { credits: [], statements: [] };
+        for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
+            const results = await Promise.all(
+                batches.slice(i, i + BATCH_CONCURRENCY).map((batch, n) => runBatch(batch, artistName, artistHandle, `${label}${i + n}`)),
+            );
+            for (const r of results) {
+                acc.credits.push(...r.credits);
+                acc.statements.push(...r.statements);
+            }
         }
+        return acc;
+    };
+
+    const out = await runPass(posts, "");
+
+    // A second look at the captions that produced nothing.
+    //
+    // The model is not exhaustive. Given eight captions it reliably answers
+    // about most of them and quietly skips the rest, and which ones it skips
+    // varies run to run — Pete Rango's post about his mother teaching him to
+    // make empanadas came back empty inside a full run and correctly the moment
+    // it was handed over on its own or in a small batch. Prompting for
+    // thoroughness did not fix that and neither did smaller batches.
+    //
+    // Most captions that produce nothing really do contain nothing: a lyric
+    // fragment, a location tag, "out now". So this pass is cheap, it only
+    // revisits the silent ones, and it runs once. What it buys is that a
+    // caption is never lost to a coin flip, only to actually being empty.
+    const claimed = new Set([...out.credits.map(c => c.url), ...out.statements.map(s => s.url)]);
+    const silent = posts.filter(p => !claimed.has(p.url));
+    if (silent.length > 0) {
+        const second = await runPass(silent, "sweep-");
+        const before = out.credits.length + out.statements.length;
+        out.credits.push(...second.credits);
+        out.statements.push(...second.statements);
+        const recovered = out.credits.length + out.statements.length - before;
+        console.debug(`[socialCredits] ${artistName}: swept ${silent.length} silent caption(s), recovered ${recovered} claim(s)`);
     }
 
-    console.debug(`[socialCredits] ${artistName}: ${out.credits.length} credit(s), ${out.statements.length} statement(s) from ${posts.length} caption(s)`);
+    const seen = new Set<string>();
+    out.credits = out.credits.filter(c => {
+        const k = `c|${c.url}|${fold(c.subject)}|${c.role.toLowerCase()}`;
+        return seen.has(k) ? false : (seen.add(k), true);
+    });
+    out.statements = out.statements.filter(s => {
+        const k = `s|${s.url}|${s.quote.toLowerCase()}`;
+        return seen.has(k) ? false : (seen.add(k), true);
+    });
+
+    const covered = new Set([...out.credits.map(c => c.url), ...out.statements.map(s => s.url)]).size;
+    console.debug(`[socialCredits] ${artistName}: ${out.credits.length} credit(s), ${out.statements.length} statement(s) from ${covered}/${posts.length} caption(s)`);
     return out;
 }
 
