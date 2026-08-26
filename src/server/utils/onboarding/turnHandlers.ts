@@ -50,7 +50,7 @@ import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { after } from "next/server";
 import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
-import { ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
+import { ensureSocialCredits, ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
 
 const MAX_DOC_SOURCES = 200;
 
@@ -1187,6 +1187,16 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         runAfterResponse("social ingest", async () => {
             const outcome = await ensureRecentSocialPosts(artistId);
             console.debug(`[onboarding] social ingest for ${artistId}: ${outcome.status}`);
+            // Reading the captions is a separate model pass over what the scrape
+            // just wrote. It belongs here rather than at read time: the knowledge
+            // document rebuilds on every source approve/reject, and re-extracting
+            // there would pay for it each time and let credits flap between
+            // rebuilds. Runs when posts are present at all, not only when this
+            // call ingested them, so an artist whose posts arrived earlier still
+            // gets their captions read.
+            if (outcome.status === "ingested" || outcome.status === "already_present") {
+                await ensureSocialCredits(artistId);
+            }
         });
 
         if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };

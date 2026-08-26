@@ -20,8 +20,10 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals, type SocialSignals } from "@/server/utils/socialSignals";
+import { creditedCollaborators, type CaptionExtraction } from "@/server/utils/socialCredits";
+import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
 
-export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "music";
+export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "music" | "credit" | "statement";
 
 /** Every GroundedQuestion `key` is built as `social_${kind}_...` (see
  *  buildCandidates below) — exported so callers (turnHandlers.ts) can tell a
@@ -43,6 +45,11 @@ const TOP_COLLABORATORS = 3;
 const TOP_THEMES = 3;
 const TOP_STANDOUTS = 2;
 const TOP_MUSIC = 3;
+/** Credits are the strongest material we have — a named person, a stated role,
+ *  in the artist's own words — so more of them are offered than of any counted
+ *  signal. */
+const TOP_CREDITS = 4;
+const TOP_STATEMENTS = 4;
 
 // Short-lived in-process cache for generateGroundedQuestions, keyed by
 // artistId (+ requested `max`, see below). Onboarding chat turns are
@@ -118,8 +125,41 @@ function shortCodeFromUrl(url: string): string {
     return m ? m[1] : slug(url);
 }
 
-function buildCandidates(signals: SocialSignals, artistName: string): SignalCandidate[] {
+function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
     const candidates: SignalCandidate[] = [];
+
+    // Role credits first. "Mixing & Mastering Engineer: @p3t3rango" is a named
+    // person doing a stated job, written by the artist — strictly better
+    // material than any term we arrived at by counting, and for an artist who
+    // never uses Instagram's coauthor tags it is the only collaboration
+    // evidence that exists. Self-credits are excluded by creditedCollaborators:
+    // "Recording Engineer: Pharaoh Sistare" is a fact about him, not a
+    // relationship to ask him about.
+    for (const c of creditedCollaborators(extraction).slice(0, TOP_CREDITS)) {
+        const subject = c.isHandle ? `@${c.subject}` : c.subject;
+        candidates.push({
+            signalId: `credit_${slug(c.subject)}`,
+            kind: "credit",
+            key: `social_credit_${slug(c.subject)}`,
+            authoredBy: "artist",
+            material: `In their own caption${c.evidenceUrls.length > 1 ? "s" : ""}, ${artistName} credits ${subject} as: ${c.roles.join("; ")}. This is ${artistName}'s own wording, on ${c.evidenceUrls.length} post(s).`,
+            sourceUrls: c.evidenceUrls,
+        });
+    }
+
+    // Things the artist said about their own work. The material IS the quote,
+    // so a question built from it can respond to what they actually wrote
+    // rather than to a word that appeared often.
+    for (const s of extraction.statements.slice(0, TOP_STATEMENTS)) {
+        candidates.push({
+            signalId: `statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`,
+            kind: "statement",
+            key: `social_statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`,
+            authoredBy: "artist",
+            material: `${artistName} wrote, about ${s.topic}: "${s.quote}"`,
+            sourceUrls: [s.url],
+        });
+    }
 
     for (const c of [...signals.collaborators].sort((a, b) => b.postCount - a.postCount).slice(0, TOP_COLLABORATORS)) {
         candidates.push({
@@ -188,9 +228,11 @@ const QUESTION_SYSTEM_INSTRUCTION = (artistName: string) => `You are a warm, wel
 
 Each signal has:
 - signalId: an opaque id you MUST echo back EXACTLY as given. Never invent a signalId.
-- kind: collaborator | theme | standout | music
+- kind: collaborator | theme | standout | music | credit | statement
 - authoredBy: "artist" if this is ${artistName}'s own post/words, or "@handle" if the material comes from SOMEONE ELSE's post (a collaborator's post that ${artistName} appears in or is connected to)
 - material: what you actually know about this signal
+
+Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
 
 Rules:
 - You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced. Keep only the ones a genuinely curious, well-prepared journalist would actually ask about.
@@ -269,7 +311,11 @@ export async function generateGroundedQuestions(
         if (posts.length === 0) return [];
 
         const signals = deriveSocialSignals(posts, artist.instagram ?? "", artistName);
-        const candidates = buildCandidates(signals, artistName);
+        // Stored, not recomputed — see socialCredits.ts. An artist whose
+        // captions have not been read yet simply contributes no credit
+        // candidates, exactly as before this existed.
+        const extraction = await getSocialCredits(artistId);
+        const candidates = buildCandidates(signals, artistName, extraction);
         if (candidates.length === 0) return [];
 
         const byId = new Map(candidates.map(c => [c.signalId, c]));
