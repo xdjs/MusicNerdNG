@@ -7,6 +7,17 @@ applied for staging.
 
 Artists: **Pete Rango** and **Pharaoh Sistare**.
 
+## Migrations
+
+Applied to dev (= staging) already: **0017**, **0018**, **0019**. Prod has none
+of them, and prod is still missing 0011-0016 from earlier work.
+
+0018 needs its `GRANT` as well as its RLS policies. A policy filters rows only
+after Postgres has checked that the role may touch the table at all, so a policy
+without a grant permits nothing, and every credits query fails in a way the
+catch blocks turn into an empty result. Dev has default privileges that hid
+this; nowhere else necessarily does.
+
 ## Before the demo
 
 1. **Merge PR #1179 to staging** once CI and the reviewer are both green on
@@ -29,8 +40,16 @@ Artists: **Pete Rango** and **Pharaoh Sistare**.
    about two, so clearing them means the interview asks the three generic
    questions instead of asking about a named collaborator.
 
-4. **Walk both runs end to end yourself first.** Not optional. Reset again
-   afterwards.
+4. **Walk both runs end to end first.** Not optional.
+
+   This needs the artist's own login, so it cannot be done unattended — the
+   useful split is one person driving the browser while the other watches
+   `[vaultWebSearch]` and `[socialCredits]` in the server log and reads the
+   database between steps. Reset again afterwards.
+
+   Nothing in the UI has been clicked through. Discovery is measured hard;
+   the chat, the profiles step, the vault step and the interview are not.
+   That is where the remaining demo risk lives.
 
 ## What blank should find
 
@@ -83,3 +102,40 @@ npm run onboarding -- "<name>" deezer-only --keep-credits
 ```
 
 then set `spotify` back by hand from the backup file.
+
+
+## What review found, and what it means for the demo
+
+Four rounds of review on this branch, each finding problems in the previous
+round's fixes. The ones that would have shown up in front of an audience:
+
+- **A wrong Instagram link.** A second account whose display name is exactly
+  "Pharaoh Sistare" passed verification, because "does this page name the
+  artist" is a question an impostor answers correctly. Now blocked by comparing
+  against the handle the artist's own scraped posts are authored by.
+- **A lookalike domain could donate its links.** `isArtistOwnDomain` was a
+  substring test, then a leftmost-label test, and is now a registrable-domain
+  comparison. `artist-fans.example` and `artist.attacker.example` both fail.
+- **The affirmed-account path could overwrite a confirmed link**, being the one
+  adoption path that never checked whether the platform was already set.
+- **Phase budgets summed past the caller's 45s cap**, so the vault step could
+  re-read a half-written vault and show the artist that while discovery kept
+  writing behind them.
+
+Two that do NOT affect the demo, because both artists are pre-warmed, but which
+would hit every real artist:
+
+- The primary onboarding flow (`runAutoBuild`) never ingested a feed or read a
+  caption at all.
+- On that flow the document was always written before the credits arrived, so
+  it cited none of them.
+
+## Numbers, and how much to trust them
+
+`--blank`, Pete Rango and Pharaoh Sistare: **10 correct, 0 wrong, 2 missed of
+12**. That figure is post-fix and re-measured.
+
+Caveat on everything else: the benchmark ignored its own `seed` field for the
+DSP columns until this branch fixed it, so any *seeded* number reported before
+that was measured with Spotify and Deezer present when the case said otherwise.
+The blank numbers are unaffected — blank clears everything explicitly.
