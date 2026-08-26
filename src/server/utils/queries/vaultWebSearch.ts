@@ -1098,7 +1098,18 @@ export async function searchAndPopulateVault(
                 // Instagram to "p". See isReservedHandle.
                 && !isReservedHandle(profileMatch.siteName, profileMatch.id);
 
-            if (isAccountUrl && relevance.get(result.url) === "about-artist"
+            // NEVER OVERWRITE A LINK THE ARTIST ALREADY HAS. setArtistLink is
+            // an unconditional update for non-DSP columns, and every other
+            // adoption path in this file checks `artist[platform]` first — this
+            // one did not, so a namesake, a label account or a fan page that the
+            // judge affirmed could replace a confirmed link. A second account on
+            // a platform we already have is not an upgrade; it is a different
+            // account, and we have no way to tell which is theirs.
+            const alreadyHave = isAccountUrl && !!(artist as Record<string, unknown>)[profileMatch!.siteName];
+            if (alreadyHave) {
+                console.log(`[vaultWebSearch] Already have ${profileMatch!.siteName}; not replacing it with ${result.url.slice(0, 60)}`);
+            }
+            if (isAccountUrl && !alreadyHave && relevance.get(result.url) === "about-artist"
                 && !(await contradictsScrapedPosts(artistId, profileMatch!.siteName, profileMatch!.id))) {
                 try {
                     await setArtistLink(artistId, profileMatch!.siteName, profileMatch!.id);

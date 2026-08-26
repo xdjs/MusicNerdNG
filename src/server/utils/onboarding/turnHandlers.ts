@@ -41,6 +41,7 @@ import {
     stripCitationMarkers,
     ARTIST_DOC_MAX_CHARS,
     GEMINI_TIMEOUT_MS,
+    refreshArtistDoc,
     type DocSource,
 } from "@/server/utils/artistDocService";
 import { discoverArtistProfilesStream, titleMatchesArtist, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
@@ -1024,8 +1025,20 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     runAfterResponse("social ingest (auto-build)", async () => {
         const outcome = await ensureRecentSocialPosts(artistId);
         console.debug(`[onboarding] auto-build social ingest for ${artistId}: ${outcome.status}`);
-        if (outcome.status === "ingested" || outcome.status === "already_present") {
-            await ensureSocialCredits(artistId);
+        if (outcome.status !== "ingested" && outcome.status !== "already_present") return;
+
+        const stored = await ensureSocialCredits(artistId);
+        // The document is written LATER IN THIS SAME GENERATOR, and this
+        // callback cannot start until the response finishes — so on the
+        // auto-build path the credits are guaranteed to arrive after the
+        // document that should have cited them. Scraping a feed, reading every
+        // caption and then writing a document that mentions none of it is worse
+        // than not doing the work at all.
+        //
+        // Rebuild once, only when the extraction actually produced something.
+        if (stored > 0) {
+            const rebuilt = await refreshArtistDoc(artistId);
+            console.debug(`[onboarding] auto-build doc rebuild after ${stored} credit row(s): ${rebuilt}`);
         }
     });
     yield {
