@@ -588,7 +588,16 @@ describe("searchAndPopulateVault", () => {
         hit("https://www.instagram.com/p3t3rango", "Pete Rango"),
         hit("https://soundcloud.com/peterango", "Pete Rango"),
       ]);
-      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: [] });
+      // Identity is taken from the page we already fetched — title AND
+      // description — rather than from a second request for the title alone.
+      mockFetchPage.mockImplementation(async (url) => ({
+        ...goodPage,
+        outboundLinks: [],
+        title: String(url).includes("instagram")
+          ? "Pete Rango (@p3t3rango) • Instagram photos and videos"
+          : "Pete Rango",
+        snippet: "Pete Rango on the internet",
+      }));
       mockExtract.mockImplementation(async (url) =>
         String(url).includes("instagram") ? { siteName: "instagram", cardPlatformName: "Instagram", id: "p3t3rango" }
         : String(url).includes("soundcloud") ? { siteName: "soundcloud", cardPlatformName: "SoundCloud", id: "peterango" }
