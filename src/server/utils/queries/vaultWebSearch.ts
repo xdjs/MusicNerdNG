@@ -69,6 +69,11 @@ const MAX_HUB_PAGES = 5;
 /** Ceiling on the propagation pass — see propagateVerifiedHandles. */
 const PROPAGATION_BUDGET_MS = 10_000;
 
+/** Letters and digits only, for comparing a name against page text. */
+function folded(v: string): string {
+    return (v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 /** One spelling of a handle. Stored values are inconsistently "@"-prefixed. */
 function normalizeHandle(v: string): string {
     return v.trim().toLowerCase().replace(/^@/, "");
@@ -177,7 +182,7 @@ async function handleBelongsToAnotherArtist(artistId: string, siteName: string, 
     }
 }
 
-/** Do several artists in this directory share this name?
+/** Is this artist the GENERIC one among several who share a name?
  *
  *  If so, a page title that merely repeats the name proves nothing about WHICH
  *  of them it belongs to. Three Black Daves are here, and a fourth account
@@ -186,8 +191,11 @@ async function handleBelongsToAnotherArtist(artistId: string, siteName: string, 
  *  account. Stronger evidence still counts: a page corroborated by an id we
  *  already hold is unambiguous no matter how common the name.
  *
- *  Prefix rather than equality, because that is the shape the collision takes:
- *  "Black Dave", "Black Dave MK2", "Black Dave NYC". */
+ *  Prefix, not equality, and the direction matters. "Black Dave" is a substring
+ *  of "Black Dave MK2", so nothing a page says can prove it means the shorter
+ *  one — every page about MK2 also contains "Black Dave". The reverse is not
+ *  true: only MK2's own bio says "blackdave.mk2", so HE is identifiable and is
+ *  not caught here. The generic name declines; the specific one does not. */
 async function nameIsAmbiguousInDirectory(artistId: string, artistName: string): Promise<boolean> {
     const folded = artistName.toLowerCase().replace(/[^a-z0-9]/g, "");
     if (folded.length < 4) return true; // too short to identify anyone
@@ -703,7 +711,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
         /** Article URLs harvested from index pages, followed after the main pass. */
         const indexLinks = new Set<string>();
         /** Account URLs the search returned — candidate handles, verified below. */
-        const accountCandidates: { siteName: string; id: string; url: string }[] = [];
+        const accountCandidates: { siteName: string; id: string; url: string; identity: string }[] = [];
         /** Handles proven to be this artist's, however we proved it. Both the
          *  account-title check and the own-page adoption contribute, and the
          *  propagation pass runs once over the union — a handle confirmed by a
@@ -802,7 +810,19 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                 // by his search and all three were thrown away on the same run
                 // that scored him 0 of 7 known handles. Verified after the loop.
                 if (profileMatch.id && !isReservedHandle(profileMatch.siteName, String(profileMatch.id))) {
-                    accountCandidates.push({ siteName: profileMatch.siteName, id: String(profileMatch.id), url: result.url });
+                    // Title AND description, captured from the fetch we already
+                    // did. The description is where the distinguishing part of a
+                    // name actually lives: Black Dave MK2's instagram is titled
+                    // "Black Dave! (@blackdave.xyz)" and never says MK2, while
+                    // its bio reads "Making music as @blackdave.mk2". Google
+                    // indexes the bio, which is why a plain search finds him and
+                    // we did not.
+                    accountCandidates.push({
+                        siteName: profileMatch.siteName,
+                        id: String(profileMatch.id),
+                        url: result.url,
+                        identity: `${page.title ?? ""} ${page.snippet ?? ""}`.trim(),
+                    });
                 }
                 skipped++;
                 continue;
@@ -904,7 +924,7 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
             // A title cross-check identifies an artist only if the name does.
             const ambiguous = await nameIsAmbiguousInDirectory(artistId, artistName);
             if (ambiguous) {
-                console.log(`[vaultWebSearch] "${artistName}" is shared by another artist here — a page title cannot say which, skipping ${accountCandidates.length} account candidate(s)`);
+                console.log(`[vaultWebSearch] Another artist's name here begins with "${artistName}" — nothing a page says can tell them apart, skipping ${accountCandidates.length} account candidate(s)`);
             }
             if (ambiguous) throw new SkipAccountPass();
             const current = await getArtistById(artistId).catch(() => undefined);
@@ -939,15 +959,22 @@ export async function searchAndPopulateVault(artistId: string): Promise<ArtistVa
                     console.log(`[vaultWebSearch] ${cand.siteName}=${cand.id} is already another artist's, ignoring`);
                     continue;
                 }
-                const preview = await fetchLinkPreview(stripQuery(cand.url)).catch(() => null);
-                const title = preview?.title ?? "";
-                if (!title || !titleMatchesArtist(title, artistName)) {
+                // The page we already read, falling back to a preview for one we
+                // could not.
+                let identity = cand.identity;
+                if (!identity) {
+                    const preview = await fetchLinkPreview(stripQuery(cand.url)).catch(() => null);
+                    identity = preview?.title ?? "";
+                }
+                if (!identity) continue;
+
+                if (!titleMatchesArtist(identity, artistName)) {
                     console.log(`[vaultWebSearch] Account page did not name "${artistName}", ignoring: ${cand.url.slice(0, 70)}`);
                     continue;
                 }
                 try {
                     await setArtistLink(artistId, cand.siteName, cand.id);
-                    console.log(`[vaultWebSearch] Search found ${cand.siteName}=${cand.id}, title confirms it: "${title.slice(0, 46)}"`);
+                    console.log(`[vaultWebSearch] Search found ${cand.siteName}=${cand.id}, page confirms it: "${identity.slice(0, 60)}"`);
                     done.add(cand.siteName);
                     verifiedHandles.add(normalizeHandle(cand.id));
                 } catch (e) {
