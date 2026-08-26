@@ -53,5 +53,15 @@ jobs:
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+          # Read/Grep/Glob are read-only and the repository is ALREADY checked
+          # out in the step above, so this grants no access the job did not have
+          # — it stops the reviewer being blindfolded in a directory it is
+          # standing in. Without them it sees `gh pr diff` and nothing else: it
+          # cannot check whether a changed function has other callers, cannot
+          # read the test that covers it, cannot open the file the hunk sits in.
+          #
+          # On a large diff that is not just a worse review, it is a failed one.
+          # PR #1179 spent 13 minutes and $8.85 accumulating 16 permission
+          # denials across 6 turns and then errored with no comments at all.
+          claude_args: '--allowed-tools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
 

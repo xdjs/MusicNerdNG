@@ -41,6 +41,7 @@ import {
     stripCitationMarkers,
     ARTIST_DOC_MAX_CHARS,
     GEMINI_TIMEOUT_MS,
+    refreshArtistDoc,
     type DocSource,
 } from "@/server/utils/artistDocService";
 import { discoverArtistProfilesStream, titleMatchesArtist, type DiscoveredProfile } from "@/server/utils/profileDiscovery";
@@ -50,7 +51,7 @@ import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { after } from "next/server";
 import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
-import { ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
+import { ensureSocialCredits, ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
 
 const MAX_DOC_SOURCES = 200;
 
@@ -662,7 +663,7 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                     yield { kind: "progress", label: "Searching the web for sources about you", done: false };
                     try {
                         await Promise.race([
-                            searchAndPopulateVault(artistId),
+                            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS }),
                             new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
                         ]);
                         pending = await getVaultSourcesByArtistId(artistId, "pending");
@@ -1006,6 +1007,51 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     if (discovered.length > 0) {
         await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
     }
+
+    // The Instagram ingest and the caption extraction, on the path most artists
+    // actually take.
+    //
+    // Both used to hang off the confirm_profiles turn only. This auto-build
+    // path confirms the profiles step itself and goes straight on to build the
+    // document, so a fresh claim following the primary flow never scraped a
+    // feed, never populated artist_social_credits, and produced a document
+    // with none of the credits or statements in it. The same class of miss as
+    // the original "grounded questions only worked for hand-seeded artists",
+    // one flow over.
+    //
+    // KNOWN INCOMPLETE, and worth stating rather than implying otherwise.
+    //
+    // after() work is bounded by the route's maxDuration, so this whole
+    // callback shares the request's ~60s. An Instagram scrape takes one to five
+    // minutes and caption extraction takes about seventy seconds for a
+    // sixty-post feed and several minutes for a large one. For an artist whose
+    // posts are ALREADY stored and whose feed is small, this completes and the
+    // document rebuild lands. For a genuinely fresh artist it will not: the
+    // platform stops the invocation partway and the credits never arrive.
+    //
+    // The correct fix is a durable job rather than a request callback, which is
+    // a piece of infrastructure this repo does not have yet. Until then this is
+    // best-effort and should not be described as the mechanism — see
+    // docs/rnd/onboarding-fixes.md.
+    runAfterResponse("social ingest (auto-build)", async () => {
+        const outcome = await ensureRecentSocialPosts(artistId);
+        console.debug(`[onboarding] auto-build social ingest for ${artistId}: ${outcome.status}`);
+        if (outcome.status !== "ingested" && outcome.status !== "already_present") return;
+
+        const stored = await ensureSocialCredits(artistId);
+        // The document is written LATER IN THIS SAME GENERATOR, and this
+        // callback cannot start until the response finishes — so on the
+        // auto-build path the credits are guaranteed to arrive after the
+        // document that should have cited them. Scraping a feed, reading every
+        // caption and then writing a document that mentions none of it is worse
+        // than not doing the work at all.
+        //
+        // Rebuild once, only when the extraction actually produced something.
+        if (stored > 0) {
+            const rebuilt = await refreshArtistDoc(artistId);
+            console.debug(`[onboarding] auto-build doc rebuild after ${stored} credit row(s): ${rebuilt}`);
+        }
+    });
     yield {
         kind: "progress",
         label: discovered.length > 0 ? `Found ${discovered.length} profile${discovered.length === 1 ? "" : "s"}` : "Checked for your profiles",
@@ -1020,7 +1066,7 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // Same budgeted race the vault step uses — a slow search must not hold
         // the whole build open past the route's turn deadline.
         await Promise.race([
-            searchAndPopulateVault(artistId),
+            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS }),
             new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
         ]);
     } catch (e) {
@@ -1187,6 +1233,16 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         runAfterResponse("social ingest", async () => {
             const outcome = await ensureRecentSocialPosts(artistId);
             console.debug(`[onboarding] social ingest for ${artistId}: ${outcome.status}`);
+            // Reading the captions is a separate model pass over what the scrape
+            // just wrote. It belongs here rather than at read time: the knowledge
+            // document rebuilds on every source approve/reject, and re-extracting
+            // there would pay for it each time and let credits flap between
+            // rebuilds. Runs when posts are present at all, not only when this
+            // call ingested them, so an artist whose posts arrived earlier still
+            // gets their captions read.
+            if (outcome.status === "ingested" || outcome.status === "already_present") {
+                await ensureSocialCredits(artistId);
+            }
         });
 
         if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };

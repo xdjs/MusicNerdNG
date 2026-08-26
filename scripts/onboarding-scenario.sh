@@ -4,7 +4,7 @@
 # Puts an artist into a known starting state so the onboarding chat can be
 # replayed from the top without hand-writing SQL each time.
 #
-#   npm run onboarding -- <artist-name-or-uuid> [scenario] [--keep-progress] [--fresh]
+#   npm run onboarding -- <artist-name-or-uuid> [scenario] [--keep-progress] [--fresh] [--keep-credits]
 #   npm run onboarding -- restore <artist-name-or-uuid>
 #
 # Scenarios (what the artist's platform links look like when the chat opens):
@@ -13,8 +13,9 @@
 #   blank        clear every link — exercises the empty-state path
 #
 # Unless --keep-progress, this also clears onboarding step confirmations,
-# interview answers, the generated artist doc, and the artist's doc corrections,
-# and returns EVERY vault source to pending — approved ones too, since a source
+# interview answers, the generated artist doc, the artist's doc corrections, the
+# credits and statements read out of their captions, and returns EVERY vault
+# source to pending — approved ones too, since a source
 # already approved is one the vault step won't ask about, and the point is to
 # replay the step from the top.
 #
@@ -24,6 +25,13 @@
 # already has — so the scrape, the relevance judge and the publication dates all
 # keep whatever they produced the first time. Use --fresh when the thing under
 # test is discovery itself; the plain reset is for iterating on the chat.
+#
+# --keep-credits keeps what was read out of the artist's captions instead of
+# clearing it. Extraction is a background job that takes about five minutes on a
+# 300-post feed, and a walkthrough reaches the interview step in about two — so
+# for a demo, where the point is watching discovery run and not watching a
+# spinner, pre-warmed credits are the difference between the interview asking
+# about a named collaborator and asking the three generic questions.
 #
 # Links are backed up before any clearing; `restore` puts them back.
 set -euo pipefail
@@ -72,11 +80,12 @@ if [ "$MODE" = "restore" ]; then
   exit 0
 fi
 
-SCENARIO="full"; KEEP_PROGRESS=0; FRESH=0
+SCENARIO="full"; KEEP_PROGRESS=0; FRESH=0; KEEP_CREDITS=0
 for arg in "$@"; do
   case "$arg" in
     full|deezer-only|blank) SCENARIO="$arg" ;;
     --keep-progress) KEEP_PROGRESS=1 ;;
+    --keep-credits) KEEP_CREDITS=1 ;;
     --fresh) FRESH=1 ;;
     *) echo "Unknown argument: $arg" >&2; usage ;;
   esac
@@ -107,10 +116,21 @@ if [ "$KEEP_PROGRESS" -eq 0 ]; then
   # Corrections are progress too: they are the artist's answers about a document
   # that is about to be thrown away, and carrying them into a fresh run would
   # apply them to claims that no longer exist.
+  # Caption credits are progress too. They are extracted once per ingest and
+  # skipped if already present, so leaving them behind means a replayed run
+  # silently reuses the last run's extraction instead of doing it again.
+  # The scraped POSTS are deliberately kept: re-scraping costs an Apify run and
+  # one to five minutes, and the extraction reads the stored posts anyway.
   psql "$CONN" -q -c "DELETE FROM artist_onboarding_steps WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_interview_answers WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_docs WHERE artist_id='$ARTIST_ID';
                       DELETE FROM artist_doc_corrections WHERE artist_id='$ARTIST_ID';"
+  if [ "$KEEP_CREDITS" -eq 0 ]; then
+    psql "$CONN" -q -c "DELETE FROM artist_social_credits WHERE artist_id='$ARTIST_ID';"
+  else
+    KEPT="$(q "SELECT count(*) FROM artist_social_credits WHERE artist_id='$ARTIST_ID';")"
+    echo "  --keep-credits: kept $KEPT caption credit/statement row(s)"
+  fi
   if [ "$FRESH" -eq 1 ]; then
     GONE="$(q "WITH d AS (DELETE FROM artist_vault_sources WHERE artist_id='$ARTIST_ID' RETURNING 1) SELECT count(*) FROM d;")"
     echo "  --fresh: deleted $GONE vault source(s); discovery will run again"

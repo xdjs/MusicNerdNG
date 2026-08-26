@@ -664,6 +664,37 @@ export const artistSocialPosts = pgTable("artist_social_posts", {
 	pgPolicy("mnweb_delete_artist_social_posts", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
 ]);
 
+// What an artist's own captions say: role credits and statements, extracted once
+// per ingest by socialCredits.ts and read by questionGenerator + artistDocService.
+// Every row cites the post it came from and carries the verified quote.
+export const artistSocialCredits = pgTable("artist_social_credits", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	platform: text().default("instagram").notNull(),
+	/** 'credit' = a person given a role; 'statement' = the artist on their own work. */
+	kind: text().notNull(),
+	subject: text(),
+	isHandle: boolean("is_handle").default(false).notNull(),
+	/** The artist crediting themselves. Keep the fact, never draw the edge. */
+	isSelf: boolean("is_self").default(false).notNull(),
+	label: text().notNull(),
+	quote: text().notNull(),
+	sourceUrl: text("source_url").notNull(),
+	postedAt: timestamp("posted_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("idx_artist_social_credits_artist").using("btree", table.artistId.asc().nullsLast(), table.kind.asc().nullsLast()),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_social_credits_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_social_credits", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_social_credits", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_social_credits", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_social_credits", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
 // One row per artist+platform — the scraped profile itself (follower count, bio, avatar).
 export const artistSocialProfiles = pgTable("artist_social_profiles", {
 	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),

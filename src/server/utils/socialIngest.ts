@@ -16,6 +16,9 @@ import { db } from "@/server/db/drizzle";
 import { artistSocialPosts, artists } from "@/server/db/schema";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
 import { APIFY_API_TOKEN } from "@/env";
+import { extractCaptionCredits } from "@/server/utils/socialCredits";
+import { replaceSocialCredits, hasSocialCredits } from "@/server/utils/queries/socialCreditQueries";
+import { forgetGroundedQuestions } from "@/server/utils/questionGenerator";
 
 const APIFY_RUN_SYNC_URL = "https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items";
 const DEFAULT_LIMIT = 200;
@@ -468,6 +471,46 @@ export async function ensureRecentSocialPosts(
     } catch (e) {
         console.error("[ensureRecentSocialPosts] Error:", e);
         return { status: "error" };
+    }
+}
+
+/**
+ * Read this artist's captions and store what they say, unless it has been done.
+ *
+ * Runs on the background ingest path, right after the posts land, because the
+ * extraction is a model call per fifteen captions and the alternative is paying
+ * for it on every knowledge-document rebuild. Idempotent: an artist whose
+ * captions have already been read is skipped.
+ *
+ * Never throws. A missing extraction costs profile detail, not the ingest.
+ */
+export async function ensureSocialCredits(artistId: string): Promise<number> {
+    if (!artistId) return 0;
+    try {
+        if (await hasSocialCredits(artistId)) return 0;
+
+        const posts = await getSocialPostsForArtist(artistId);
+        if (posts.length === 0) return 0;
+
+        const artist = await db.query.artists.findFirst({
+            where: eq(artists.id, artistId),
+            columns: { name: true, instagram: true },
+        });
+        if (!artist?.name) return 0;
+
+        const extraction = await extractCaptionCredits(posts, artist.name, artist.instagram ?? "");
+        const postedAtByUrl = new Map(posts.map(p => [p.url, p.postedAt] as const));
+        const stored = await replaceSocialCredits(artistId, extraction, postedAtByUrl);
+        // Questions generated while this was still running were generated
+        // against an empty credits table and cached for fifteen minutes. Drop
+        // them, so the interview asks about the collaborator it now knows
+        // about rather than the three questions it falls back to.
+        if (stored > 0) forgetGroundedQuestions(artistId);
+        console.debug(`[ensureSocialCredits] ${artist.name}: stored ${stored} row(s)`);
+        return stored;
+    } catch (e) {
+        console.error("[ensureSocialCredits] Error:", e);
+        return 0;
     }
 }
 
