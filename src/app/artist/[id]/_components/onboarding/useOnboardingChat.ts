@@ -69,6 +69,8 @@ export function useOnboardingChat(artistId: string) {
     const [busy, setBusy] = useState(false);
     const counter = useRef(0);
 
+
+
     const push = useCallback((item: Omit<ChatItem, "id">) => {
         counter.current += 1;
         const id = `c${counter.current}`;

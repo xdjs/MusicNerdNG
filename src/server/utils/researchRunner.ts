@@ -66,7 +66,11 @@ export async function advanceResearch(opts: { budgetMs: number; artistId?: strin
 
 /** Fetch the feed. Idempotent, and cheap when the posts are already there. */
 async function runIngest(job: ResearchJob): Promise<{ progress: string; done: boolean }> {
-    const outcome = await ensureRecentSocialPosts(job.artistId);
+    // A job created by the "look again" button carries force, so the scrape
+    // runs again and picks up anything posted since. A job created by
+    // onboarding does not, and is a no-op when the posts are already there.
+    const force = job.state?.force === true;
+    const outcome = await ensureRecentSocialPosts(job.artistId, { force });
     if (outcome.status === "error") {
         await failResearchJob(job.id, "apify ingest failed");
         return { progress: "ingest failed", done: false };
@@ -144,7 +148,15 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     return { progress: `complete, ${slice.totalBatches} batch(es)`, done: true };
 }
 
-/** Ask for an artist's feed to be read. Safe to call repeatedly. */
-export async function requestArtistResearch(artistId: string): Promise<void> {
-    await enqueueResearchJob(artistId, "social_ingest");
+/** Ask for an artist's feed to be read. Safe to call repeatedly.
+ *
+ *  `force` means the artist asked, so the scrape runs even though we already
+ *  hold posts — that is how anything they published since gets picked up. */
+export async function requestArtistResearch(
+    artistId: string,
+    opts?: { force?: boolean },
+): Promise<void> {
+    await enqueueResearchJob(artistId, "social_ingest", {
+        state: opts?.force ? { force: true } : {},
+    });
 }

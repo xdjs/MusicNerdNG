@@ -273,7 +273,7 @@ async function upsertMappedRows(rows: SocialPostInsert[]): Promise<IngestResult>
 export async function ingestInstagramPosts(
     artistId: string,
     handle: string,
-    opts?: { limit?: number },
+    opts?: { limit?: number; force?: boolean },
 ): Promise<IngestResult> {
     if (!APIFY_API_TOKEN) return EMPTY_RESULT;
     if (!artistId || !handle) return EMPTY_RESULT;
@@ -448,13 +448,19 @@ export async function hasSocialPosts(artistId: string): Promise<boolean> {
  */
 export async function ensureRecentSocialPosts(
     artistId: string,
-    opts?: { limit?: number },
+    opts?: { limit?: number; force?: boolean },
 ): Promise<EnsureSocialPostsOutcome> {
     if (!APIFY_API_TOKEN) return { status: "disabled" };
     if (!artistId) return { status: "no_handle" };
 
     try {
-        if (await hasSocialPosts(artistId)) return { status: "already_present" };
+        // `force` is the artist asking us to look again. The scrape returns
+        // the most recent N posts and the insert is keyed on
+        // (artist, platform, post id), so re-running adds what is new and
+        // silently ignores what we already have — which is what makes "look
+        // again" cheap rather than a seven-minute re-read of a feed we already
+        // understand.
+        if (!opts?.force && await hasSocialPosts(artistId)) return { status: "already_present" };
 
         const artist = await db.query.artists.findFirst({
             where: eq(artists.id, artistId),
