@@ -16,8 +16,8 @@ import { db } from "@/server/db/drizzle";
 import { artistSocialPosts, artists } from "@/server/db/schema";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
 import { APIFY_API_TOKEN } from "@/env";
-import { extractCaptionCredits } from "@/server/utils/socialCredits";
-import { replaceSocialCredits, hasSocialCredits } from "@/server/utils/queries/socialCreditQueries";
+import { extractCaptionCredits, sweepSilentCaptions } from "@/server/utils/socialCredits";
+import { replaceSocialCredits, appendSocialCredits, claimedSourceUrls } from "@/server/utils/queries/socialCreditQueries";
 import { forgetGroundedQuestions } from "@/server/utils/questionGenerator";
 
 const APIFY_RUN_SYNC_URL = "https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items";
@@ -475,20 +475,22 @@ export async function ensureRecentSocialPosts(
 }
 
 /**
- * Read this artist's captions and store what they say, unless it has been done.
+ * Read this artist's captions, in one go.
  *
- * Runs on the background ingest path, right after the posts land, because the
- * extraction is a model call per fifteen captions and the alternative is paying
- * for it on every knowledge-document rebuild. Idempotent: an artist whose
- * captions have already been read is skipped.
+ * SCRIPTS AND TESTS ONLY. A three-hundred-post feed takes about seven minutes,
+ * which no request survives — running this from a request is the bug that made
+ * every non-pre-warmed artist end up with a document built from an empty
+ * credits table. Production goes through the job queue: enqueue with
+ * `requestArtistResearch`, and slices run in `/api/research/advance`, each with
+ * its own budget.
  *
- * Never throws. A missing extraction costs profile detail, not the ingest.
+ * Kept because the benchmark and the R&D scripts genuinely want the whole thing
+ * at once, and because "read this feed now" is a useful thing to be able to do
+ * from a terminal.
  */
 export async function ensureSocialCredits(artistId: string): Promise<number> {
     if (!artistId) return 0;
     try {
-        if (await hasSocialCredits(artistId)) return 0;
-
         const posts = await getSocialPostsForArtist(artistId);
         if (posts.length === 0) return 0;
 
@@ -498,13 +500,14 @@ export async function ensureSocialCredits(artistId: string): Promise<number> {
         });
         if (!artist?.name) return 0;
 
-        const extraction = await extractCaptionCredits(posts, artist.name, artist.instagram ?? "");
+        const slice = await extractCaptionCredits(posts, artist.name, artist.instagram ?? "");
         const postedAtByUrl = new Map(posts.map(p => [p.url, p.postedAt] as const));
-        const stored = await replaceSocialCredits(artistId, extraction, postedAtByUrl);
-        // Questions generated while this was still running were generated
-        // against an empty credits table and cached for fifteen minutes. Drop
-        // them, so the interview asks about the collaborator it now knows
-        // about rather than the three questions it falls back to.
+        let stored = await replaceSocialCredits(artistId, slice.extraction, postedAtByUrl);
+
+        const swept = await sweepSilentCaptions(
+            posts, await claimedSourceUrls(artistId), artist.name, artist.instagram ?? "");
+        stored += await appendSocialCredits(artistId, swept, postedAtByUrl);
+
         if (stored > 0) forgetGroundedQuestions(artistId);
         console.debug(`[ensureSocialCredits] ${artist.name}: stored ${stored} row(s)`);
         return stored;

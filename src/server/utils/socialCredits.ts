@@ -379,57 +379,97 @@ async function runBatch(
  * Never throws: this is enrichment on a background path, and losing it should
  * cost some profile detail, not the ingest.
  */
+export interface ExtractionSlice {
+    extraction: CaptionExtraction;
+    /** Batch index to resume from. Equal to totalBatches when finished. */
+    nextBatch: number;
+    totalBatches: number;
+    done: boolean;
+}
+
+/**
+ * Read as much of an artist's captions as fits in the time available.
+ *
+ * RESUMABLE ON PURPOSE. A three-hundred-post feed takes about seven minutes and
+ * no request lives that long — the previous version ran the whole thing from an
+ * onboarding turn's after() callback, which the platform bounded to sixty
+ * seconds and killed partway, every time, for every artist we had not
+ * pre-warmed by hand.
+ *
+ * So this does a SLICE: batches from `startBatch` until the budget is spent,
+ * and reports where to resume. The caller persists `nextBatch` and calls again
+ * from another invocation. Whoever is watching — the onboarding client, a cron
+ * ping — supplies the invocations.
+ *
+ * Never throws.
+ */
 export async function extractCaptionCredits(
     allPosts: SocialPostRow[],
     artistName: string,
     artistHandle: string,
-): Promise<CaptionExtraction> {
+    opts?: { startBatch?: number; budgetMs?: number },
+): Promise<ExtractionSlice> {
     const posts = captionBearingPosts(allPosts);
-    if (posts.length === 0) return EMPTY_EXTRACTION;
+    const batches: SocialPostRow[][] = [];
+    for (let i = 0; i < posts.length; i += POSTS_PER_BATCH) batches.push(posts.slice(i, i + POSTS_PER_BATCH));
 
-    const runPass = async (input: SocialPostRow[], label: string): Promise<CaptionExtraction> => {
-        const batches: SocialPostRow[][] = [];
-        for (let i = 0; i < input.length; i += POSTS_PER_BATCH) batches.push(input.slice(i, i + POSTS_PER_BATCH));
+    const start = Math.max(0, opts?.startBatch ?? 0);
+    const deadline = Date.now() + (opts?.budgetMs ?? Number.POSITIVE_INFINITY);
+    const out: CaptionExtraction = { credits: [], statements: [] };
 
-        const acc: CaptionExtraction = { credits: [], statements: [] };
-        for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
-            const results = await Promise.all(
-                batches.slice(i, i + BATCH_CONCURRENCY).map((batch, n) => runBatch(batch, artistName, artistHandle, `${label}${i + n}`)),
-            );
-            for (const r of results) {
-                acc.credits.push(...r.credits);
-                acc.statements.push(...r.statements);
-            }
-        }
-        return acc;
-    };
-
-    const out = await runPass(posts, "");
-
-    // A second look at the captions that produced nothing.
-    //
-    // The model is not exhaustive. Given eight captions it reliably answers
-    // about most of them and quietly skips the rest, and which ones it skips
-    // varies run to run — Pete Rango's post about his mother teaching him to
-    // make empanadas came back empty inside a full run and correctly the moment
-    // it was handed over on its own or in a small batch. Prompting for
-    // thoroughness did not fix that and neither did smaller batches.
-    //
-    // Most captions that produce nothing really do contain nothing: a lyric
-    // fragment, a location tag, "out now". So this pass is cheap, it only
-    // revisits the silent ones, and it runs once. What it buys is that a
-    // caption is never lost to a coin flip, only to actually being empty.
-    const claimed = new Set([...out.credits.map(c => c.url), ...out.statements.map(s => s.url)]);
-    const silent = posts.filter(p => !claimed.has(p.url));
-    if (silent.length > 0) {
-        const second = await runPass(silent, "sweep-");
-        const before = out.credits.length + out.statements.length;
-        out.credits.push(...second.credits);
-        out.statements.push(...second.statements);
-        const recovered = out.credits.length + out.statements.length - before;
-        console.debug(`[socialCredits] ${artistName}: swept ${silent.length} silent caption(s), recovered ${recovered} claim(s)`);
+    if (batches.length === 0 || start >= batches.length) {
+        return { extraction: out, nextBatch: batches.length, totalBatches: batches.length, done: true };
     }
 
+    let i = start;
+    while (i < batches.length) {
+        // Stop BEFORE starting a batch we cannot finish. A batch abandoned
+        // halfway costs its whole model call and returns nothing.
+        if (Date.now() + TIMEOUT_MS > deadline && i > start) break;
+
+        const group = batches.slice(i, i + BATCH_CONCURRENCY);
+        const results = await Promise.all(
+            group.map((batch, n) => runBatch(batch, artistName, artistHandle, String(i + n))),
+        );
+        for (const r of results) {
+            out.credits.push(...r.credits);
+            out.statements.push(...r.statements);
+        }
+        i += group.length;
+    }
+
+    dedupeInPlace(out);
+    const done = i >= batches.length;
+    console.debug(`[socialCredits] ${artistName}: batches ${start}-${i - 1} of ${batches.length}, ${out.credits.length} credit(s), ${out.statements.length} statement(s)${done ? " — complete" : ""}`);
+    return { extraction: out, nextBatch: i, totalBatches: batches.length, done };
+}
+
+/**
+ * A second look at the captions that produced nothing.
+ *
+ * Kept separate from the slicing above because it is a different question: the
+ * model is not exhaustive, and which captions it skips varies run to run — the
+ * post about Pete Rango's mother teaching him to make empanadas came back empty
+ * inside a full run and correctly in a batch of eight. Most silent captions
+ * really are empty, so this only revisits the silent ones and runs once, at the
+ * end, when the caller knows every batch has been read.
+ */
+export async function sweepSilentCaptions(
+    allPosts: SocialPostRow[],
+    claimedUrls: Set<string>,
+    artistName: string,
+    artistHandle: string,
+    opts?: { budgetMs?: number },
+): Promise<CaptionExtraction> {
+    const silent = captionBearingPosts(allPosts).filter(p => !claimedUrls.has(p.url));
+    if (silent.length === 0) return EMPTY_EXTRACTION;
+    const slice = await extractCaptionCredits(silent, artistName, artistHandle, opts);
+    console.debug(`[socialCredits] ${artistName}: swept ${silent.length} silent caption(s), recovered ${slice.extraction.credits.length + slice.extraction.statements.length} claim(s)`);
+    return slice.extraction;
+}
+
+/** Drop exact repeats. A sweep can legitimately re-find what a slice found. */
+export function dedupeInPlace(out: CaptionExtraction): void {
     const seen = new Set<string>();
     out.credits = out.credits.filter(c => {
         const k = `c|${c.url}|${fold(c.subject)}|${c.role.toLowerCase()}`;
@@ -439,10 +479,6 @@ export async function extractCaptionCredits(
         const k = `s|${s.url}|${s.quote.toLowerCase()}`;
         return seen.has(k) ? false : (seen.add(k), true);
     });
-
-    const covered = new Set([...out.credits.map(c => c.url), ...out.statements.map(s => s.url)]).size;
-    console.debug(`[socialCredits] ${artistName}: ${out.credits.length} credit(s), ${out.statements.length} statement(s) from ${covered}/${posts.length} caption(s)`);
-    return out;
 }
 
 /**

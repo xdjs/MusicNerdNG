@@ -51,7 +51,8 @@ import { MAX_BIO_LENGTH, isRealBio } from "@/lib/bioConstants";
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { after } from "next/server";
 import { generateGroundedQuestions, GROUNDED_QUESTION_KEY_PREFIX, type GroundedQuestion } from "@/server/utils/questionGenerator";
-import { ensureSocialCredits, ensureRecentSocialPosts, waitForSocialPosts } from "@/server/utils/socialIngest";
+import { waitForSocialPosts } from "@/server/utils/socialIngest";
+import { requestArtistResearch } from "@/server/utils/researchRunner";
 
 const MAX_DOC_SOURCES = 200;
 
@@ -1019,39 +1020,19 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     // the original "grounded questions only worked for hand-seeded artists",
     // one flow over.
     //
-    // KNOWN INCOMPLETE, and worth stating rather than implying otherwise.
+    // ENQUEUED, not run here.
     //
-    // after() work is bounded by the route's maxDuration, so this whole
-    // callback shares the request's ~60s. An Instagram scrape takes one to five
-    // minutes and caption extraction takes about seventy seconds for a
-    // sixty-post feed and several minutes for a large one. For an artist whose
-    // posts are ALREADY stored and whose feed is small, this completes and the
-    // document rebuild lands. For a genuinely fresh artist it will not: the
-    // platform stops the invocation partway and the credits never arrive.
+    // This used to call the scrape and the extraction from after(), which
+    // shares this invocation's remaining maxDuration — sixty seconds against a
+    // job that needs one to five minutes for the scrape alone. The platform
+    // stopped it partway every time, so the credits never arrived and the
+    // document written later in this same generator cited none of them.
     //
-    // The correct fix is a durable job rather than a request callback, which is
-    // a piece of infrastructure this repo does not have yet. Until then this is
-    // best-effort and should not be described as the mechanism — see
-    // docs/rnd/onboarding-fixes.md.
-    runAfterResponse("social ingest (auto-build)", async () => {
-        const outcome = await ensureRecentSocialPosts(artistId);
-        console.debug(`[onboarding] auto-build social ingest for ${artistId}: ${outcome.status}`);
-        if (outcome.status !== "ingested" && outcome.status !== "already_present") return;
-
-        const stored = await ensureSocialCredits(artistId);
-        // The document is written LATER IN THIS SAME GENERATOR, and this
-        // callback cannot start until the response finishes — so on the
-        // auto-build path the credits are guaranteed to arrive after the
-        // document that should have cited them. Scraping a feed, reading every
-        // caption and then writing a document that mentions none of it is worse
-        // than not doing the work at all.
-        //
-        // Rebuild once, only when the extraction actually produced something.
-        if (stored > 0) {
-            const rebuilt = await refreshArtistDoc(artistId);
-            console.debug(`[onboarding] auto-build doc rebuild after ${stored} credit row(s): ${rebuilt}`);
-        }
-    });
+    // A job row survives the request. Slices run in /api/research/advance with
+    // their own budget, driven by the client while the artist is still here and
+    // by a scheduler when they are not, and the document is rebuilt once the
+    // extraction finishes.
+    await requestArtistResearch(artistId);
     yield {
         kind: "progress",
         label: discovered.length > 0 ? `Found ${discovered.length} profile${discovered.length === 1 ? "" : "s"}` : "Checked for your profiles",
@@ -1230,20 +1211,10 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // `ensureRecentSocialPosts` is idempotent and flow-agnostic on purpose:
         // when onboarding collapses to a pre-filled profile, this call moves to
         // claim approval and nothing here needs rewriting.
-        runAfterResponse("social ingest", async () => {
-            const outcome = await ensureRecentSocialPosts(artistId);
-            console.debug(`[onboarding] social ingest for ${artistId}: ${outcome.status}`);
-            // Reading the captions is a separate model pass over what the scrape
-            // just wrote. It belongs here rather than at read time: the knowledge
-            // document rebuilds on every source approve/reject, and re-extracting
-            // there would pay for it each time and let credits flap between
-            // rebuilds. Runs when posts are present at all, not only when this
-            // call ingested them, so an artist whose posts arrived earlier still
-            // gets their captions read.
-            if (outcome.status === "ingested" || outcome.status === "already_present") {
-                await ensureSocialCredits(artistId);
-            }
-        });
+        // Enqueued rather than run in after(); see runAutoBuild for why. The
+        // artist is about to spend minutes on the vault step, and the client
+        // advances the queue while they do.
+        await requestArtistResearch(artistId);
 
         if (unrecognized.length > 0) yield { kind: "chat", text: buildUnrecognizedLinksMessage(unrecognized, false) };
         if (writeRejected.length > 0) yield { kind: "chat", text: buildWriteRejectedLinksMessage(writeRejected, false) };

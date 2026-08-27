@@ -31,6 +31,10 @@ jest.mock('@/server/utils/fetchPageContent', () => ({
 jest.mock('@/server/utils/linkPreview', () => ({
     fetchLinkPreview: jest.fn().mockResolvedValue({ imageUrl: null, title: null }),
 }));
+jest.mock('@/server/utils/researchRunner', () => ({
+    requestArtistResearch: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@/server/utils/socialIngest', () => ({
     ensureRecentSocialPosts: jest.fn().mockResolvedValue({ status: 'ingested', count: 12 }),
     waitForSocialPosts: jest.fn().mockResolvedValue(true),
@@ -687,19 +691,23 @@ describe('runOnboardingTurn', () => {
         // Regression guard for the bug found with a real artist: ingestion was
         // only ever run by a manual CLI script, so grounded interview questions
         // fired solely for artists whose posts had been hand-seeded.
+        //
+        // The turn now ENQUEUES rather than running the work: after() shares
+        // this invocation's maxDuration, which is sixty seconds against a job
+        // that needs minutes. What must still be true is that confirming
+        // profiles asks for the research to happen.
         const oq = await import('@/server/utils/queries/onboardingQueries');
         oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
         const { extractArtistId } = await import('@/server/utils/services');
         extractArtistId.mockResolvedValueOnce({ siteName: 'instagram', id: 'nova' });
-        const { ensureRecentSocialPosts } = await import('@/server/utils/socialIngest');
+        const { requestArtistResearch } = await import('@/server/utils/researchRunner');
         const { runOnboardingTurn } = await import('../turnHandlers');
         await collect(runOnboardingTurn('a1', {
             type: 'confirm_profiles',
             addedLinks: [{ url: 'https://instagram.com/nova' }],
             removedSiteNames: [],
         }));
-        await new Promise(r => setTimeout(r, 0)); // flush the after()/floating-promise fallback
-        expect(ensureRecentSocialPosts).toHaveBeenCalledWith('a1');
+        expect(requestArtistResearch).toHaveBeenCalledWith('a1');
     });
 
     it('confirm_profiles: does NOT start an ingest when every addition failed and the step is re-emitted', async () => {
@@ -714,16 +722,15 @@ describe('runOnboardingTurn', () => {
         extractArtistId.mockResolvedValueOnce(undefined);
         const { fetchLinkPreview } = await import('@/server/utils/linkPreview');
         fetchLinkPreview.mockResolvedValueOnce({ imageUrl: null, title: null }); // dead link -> unrecognized
-        const { ensureRecentSocialPosts } = await import('@/server/utils/socialIngest');
-        ensureRecentSocialPosts.mockClear();
+        const { requestArtistResearch } = await import('@/server/utils/researchRunner');
+        (requestArtistResearch as jest.Mock).mockClear();
         const { runOnboardingTurn } = await import('../turnHandlers');
         await collect(runOnboardingTurn('a1', {
             type: 'confirm_profiles',
             addedLinks: [{ url: 'https://deadsite.example/gone' }],
             removedSiteNames: [],
         }));
-        await new Promise(r => setTimeout(r, 0));
-        expect(ensureRecentSocialPosts).not.toHaveBeenCalled();
+        expect(requestArtistResearch).not.toHaveBeenCalled();
     });
 
     it('confirm_profiles: a dead/unfetchable URL still produces the (corrected) failure message, no longer overclaiming Links support', async () => {
