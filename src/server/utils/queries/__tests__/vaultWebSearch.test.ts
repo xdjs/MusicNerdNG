@@ -209,6 +209,46 @@ describe("searchAndPopulateVault", () => {
     expect(mockFetchPage).not.toHaveBeenCalledWith("https://rvamag.com/tags/pete-rango-kevin-carroll/feed", expect.anything());
   });
 
+  it("keeps a scrape farm out of the vault, and does not even fetch it", async () => {
+    // Pete, on finding a Boomplay page filed as press about him: "I don't want
+    // boom play anywhere... That seems like just an agregator of music or
+    // something. Not a legit source."
+    //
+    // Both routes it took are closed here. The readable one — Pharaoh Sistare's
+    // Viberate stats page — is genuinely about the artist, so the judge affirms
+    // it; the unreadable one carried his full name in its search title, so it
+    // passed as a lead. Neither survives a host check, and the check runs before
+    // the fetch so the page is never read or judged at all.
+    mockJudge.mockImplementationOnce(async (_a, cands) => new Map(cands.map(c => [c.url, "about-artist"])));
+    mockWebSearch.mockResolvedValue([
+      hit("https://www.boomplay.com/artists/20993709", "Grimes Songs MP3 Download, New Songs & Albums | Boomplay"),
+      hit("https://www.viberate.com/artist/grimes", "Grimes - Songs, Events and Music Stats | Viberate.com"),
+      hit("https://example.com/real-article", "A real interview"),
+    ]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const stored = mockInsert.mock.calls.map(c => c[0].url);
+    expect(stored).not.toContain("https://www.boomplay.com/artists/20993709");
+    expect(stored).not.toContain("https://www.viberate.com/artist/grimes");
+    expect(stored).toContain("https://example.com/real-article");
+    for (const [url] of mockFetchPage.mock.calls) {
+      expect(url).not.toContain("boomplay.com");
+      expect(url).not.toContain("viberate.com");
+    }
+  });
+
+  it("tells the judge what tier each candidate's host is", async () => {
+    // Ranking orders a list that already exists. The tier is a fact handed to
+    // the model WHILE it decides, which is the thing the meeting asked for: a
+    // list the judge consults, not an ordering applied afterwards.
+    mockWebSearch.mockResolvedValue([hit("https://example.com/a", "An interview")]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+    const candidates = mockJudge.mock.calls[0][1];
+    expect(candidates[0]).toHaveProperty("ownDomain");
+  });
+
   it("drops an XML document served from an ordinary-looking URL", async () => {
     mockWebSearch.mockResolvedValue([hit("https://example.com/press", "Press")]);
     mockFetchPage.mockResolvedValue({
