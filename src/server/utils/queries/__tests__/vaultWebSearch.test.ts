@@ -100,12 +100,17 @@ describe("searchAndPopulateVault", () => {
     await searchAndPopulateVault("a1");
 
     const queries = mockWebSearch.mock.calls.map(c => c[0]);
-    expect(queries).toHaveLength(4);
+    expect(queries).toHaveLength(5);
+    // The fifth asks a credits database. None of the editorial queries would
+    // ever return one, and for a producer or engineer that is where most of
+    // their actual work is recorded.
+    expect(queries).toContain('"Grimes" discogs credits');
 
     // Three quoted. Unquoted, a multi-word name matches each token
     // independently — which is exactly how "Black Dave" returns Dave the UK
     // rapper.
-    expect(queries.filter(q => q.includes('"Grimes"'))).toHaveLength(3);
+    // Four quoted now: three editorial angles plus the credits lookup.
+    expect(queries.filter(q => q.includes('"Grimes"'))).toHaveLength(4);
 
     // And one bare. All three quoted queries demand the exact phrase AND an
     // editorial word, so they systematically miss the artist's OWN pages: Black

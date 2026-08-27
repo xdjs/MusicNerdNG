@@ -13,6 +13,19 @@ type Correction = { id: string; claim: string; correction: string | null; kind: 
 /** "VoyageMIA · 2019" — the host is what an artist recognises, and the year is
  *  usually why a claim reads stale. */
 function sourceLabel(s: DocSource): string {
+    // A PRESS source is best identified by where it ran — "rvamag · 2026" says
+    // more than the headline would in a pill. A SOCIAL source is not: every one
+    // of them is on instagram.com, so the hostname reduces the artist's own
+    // words, their self-credits and their track credits all to the single word
+    // "instagram". Pete, looking at a document citing nineteen separate posts
+    // of his: "in my knowledge doc section I see nothing sourced from instagram
+    // except for one thing." There was one PILL. SourcePills dedupes by label,
+    // so nineteen sources with the same label collapse into one.
+    //
+    // The descriptive label is the thing worth showing there: "Their own words
+    // — why he believes in Subvert" is what that citation actually is.
+    if (s.kind === "social" && s.label) return s.label;
+
     let host = "";
     try {
         host = s.url ? new URL(s.url).hostname.replace(/^www\./, "").split(".")[0] : "";
@@ -20,6 +33,13 @@ function sourceLabel(s: DocSource): string {
     const name = host || s.label || s.kind;
     const year = s.publishedAt?.slice(0, 4);
     return year ? `${name} · ${year}` : name;
+}
+
+/** Pills carry a full sentence for social sources, so they need trimming for
+ *  display without losing which post they point at. */
+function pillText(label: string): string {
+    const clipped = label.length > 64 ? `${label.slice(0, 61)}…` : label;
+    return clipped;
 }
 
 function SourcePills({ ids, sources }: { ids: number[]; sources: DocSource[] }) {
@@ -37,7 +57,7 @@ function SourcePills({ ids, sources }: { ids: number[]; sources: DocSource[] }) 
                 seen.add(label);
                 const inner = (
                     <>
-                        {label}
+                        {pillText(label)}
                         {s.url && <ExternalLink size={9} className="opacity-60" />}
                     </>
                 );

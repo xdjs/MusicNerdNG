@@ -25,6 +25,7 @@ import { getDocCorrections } from "@/server/utils/queries/docCorrectionQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals } from "@/server/utils/socialSignals";
 import { creditedCollaborators, selfCredits } from "@/server/utils/socialCredits";
+import { byAuthority } from "@/lib/sourceAuthority";
 import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
 import { MAX_BIO_LENGTH, ARTIST_DOC_MAX_CHARS, ARTIST_DOC_CONTEXT_CAP, ABOUT_LENGTH_RULE, ABOUT_STOP_RULE, ABOUT_OPENING_RULE } from "@/lib/bioConstants";
 import { isCitableSource } from "@/server/utils/sourceVerification";
@@ -205,7 +206,12 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
 function toSourceList(m: DocMaterial): DocSource[] {
     const sources: DocSource[] = [];
     let nextId = 1;
-    for (const s of m.vaultSources) sources.push({ id: nextId++, kind: "vault", label: s.title ?? s.url, url: s.url, publishedAt: s.publishedAt ?? null });
+    // Best sources first. The numbering is positional, so this also means the
+    // model meets a Discogs credit or an interview before an aggregator's
+    // scraped profile page — and a document that cites [1] is citing the best
+    // thing we have rather than the first thing we happened to find.
+    const rankedVault = byAuthority(m.vaultSources, s => ({ url: s.url, type: (s as { siteName?: string | null }).siteName ?? null }));
+    for (const s of rankedVault) sources.push({ id: nextId++, kind: "vault", label: s.title ?? s.url, url: s.url, publishedAt: s.publishedAt ?? null });
     for (const a of m.answers) sources.push({ id: nextId++, kind: "interview", label: `Their own words — "${a.question}"`, url: null });
     for (const c of m.socialCollaborators) sources.push({ id: nextId++, kind: "social", label: `Instagram collaboration with @${c.handle}`, url: c.url });
     for (const c of m.creditedCollaborators) sources.push({ id: nextId++, kind: "social", label: `${m.artistName} credits ${c.isHandle ? "@" : ""}${c.subject} — ${c.roles.join("; ")}`, url: c.url });

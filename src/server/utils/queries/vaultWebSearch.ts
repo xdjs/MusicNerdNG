@@ -875,6 +875,14 @@ export async function searchAndPopulateVault(
         // This is the query that loses the exact-phrase protection, so it is the
         // one the judge and the corroboration rules exist to clean up after.
         artistName,
+        // CREDITS, which none of the above will ever find. The editorial queries
+        // want articles and the bare name wants anything; neither surfaces a
+        // credits database, and for a producer or an engineer that is where
+        // most of their actual work is recorded. Pete Rango appears in the
+        // credits of other artists' releases on Discogs and nothing we searched
+        // for would have returned it — his vault had a Clubhouse profile in it
+        // and no record of the records he made.
+        `"${artistName}" discogs credits`,
     ];
 
     try {
