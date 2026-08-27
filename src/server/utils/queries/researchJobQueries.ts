@@ -210,6 +210,38 @@ export async function failResearchJob(jobId: string, error: string): Promise<voi
     }
 }
 
+/**
+ * Record a cursor AND a failure in one statement.
+ *
+ * Doing these as two writes reset `attempts` to zero (saveJobProgress treats
+ * progress as proof of life) immediately before incrementing it, so a job that
+ * failed the same batch every time sat at exactly one attempt forever and could
+ * never reach MAX_ATTEMPTS. It also released the claim in between.
+ */
+export async function failJobAtCursor(
+    jobId: string,
+    cursor: number,
+    total: number | null,
+    state: Record<string, unknown>,
+    error: string,
+): Promise<void> {
+    try {
+        await db.execute(sql`
+            update artist_research_jobs
+               set cursor = ${cursor},
+                   total = coalesce(${total ?? null}, total),
+                   state = ${JSON.stringify(state)}::jsonb,
+                   attempts = attempts + 1,
+                   status = case when attempts + 1 >= ${MAX_ATTEMPTS} then 'failed' else 'pending' end,
+                   claimed_at = null,
+                   last_error = ${error.slice(0, 500)},
+                   updated_at = now()
+             where id = ${jobId}::uuid`);
+    } catch (e) {
+        console.error("[failJobAtCursor] Error:", e);
+    }
+}
+
 /** What an artist's research is doing, for the UI and for the completion checks
  *  that used to count rows. */
 export async function getResearchJobs(artistId: string): Promise<ResearchJob[]> {

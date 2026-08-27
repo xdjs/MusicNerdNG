@@ -114,6 +114,8 @@ const TIMEOUT_MS = 90_000;
 /** Per batch. Well above what a real feed produces; a backstop on a model that
  *  decides every sentence is a credit. */
 const MAX_CLAIMS_PER_BATCH = 60;
+/** Less time than this left and a model call cannot usefully be started. */
+const MIN_CALL_BUDGET_MS = 8_000;
 
 /** A role is a job, and a job is a few words: "Bass", "Mastered by",
  *  "Mixing & Mastering Engineer", "on guitar". Given no bound the model writes
@@ -443,13 +445,23 @@ export async function extractCaptionCredits(
     // has about fifty-one: the first group was started unconditionally, so a
     // slow one outlived the invocation, nothing was persisted, the lease
     // expired, and the next slice retried the same group forever.
+    // A FLOOR TO DECLINE ON, not a value that extends the deadline. Taking the
+    // max with five seconds when four remained produced a budget LONGER than
+    // the caller had, and the first-group exception then started that call
+    // anyway — eating the persistence reserve and risking the platform killing
+    // us before the cursor was written.
+    const remainingNow = () => (Number.isFinite(deadline) ? deadline - Date.now() : Number.POSITIVE_INFINITY);
     const callBudget = Number.isFinite(deadline)
-        ? Math.max(5_000, Math.min(TIMEOUT_MS, deadline - Date.now()))
+        ? Math.min(TIMEOUT_MS, Math.max(0, deadline - Date.now()))
         : TIMEOUT_MS;
 
     let i = start;
     let failed = false;
     while (i < batches.length) {
+        // Below this there is no point starting a model call at all: it cannot
+        // return in time, and starting it spends the reserve kept for writing
+        // down what earlier batches found.
+        if (remainingNow() < MIN_CALL_BUDGET_MS) break;
         // Stop BEFORE starting a batch we cannot finish. A batch abandoned
         // halfway costs its whole model call and returns nothing.
         if (Date.now() + callBudget > deadline && i > start) break;

@@ -53,17 +53,29 @@ beforeEach(() => {
 });
 
 describe("extractCaptionCredits, sliced", () => {
-    it("reports where to resume when it does not finish", async () => {
+    it("declines to start anything when there is no usable time left", async () => {
         const { extractCaptionCredits } = await import("@/server/utils/socialCredits");
         const posts = Array.from({ length: 40 }, (_, i) => post(i));
 
-        // A budget too small for every batch: it must stop and say where.
+        // Below the minimum a model call cannot return in time, and starting
+        // one anyway spends the reserve the caller keeps for writing down what
+        // earlier batches found. Not-started is the correct outcome; the next
+        // slice arrives with a full budget.
         const slice = await extractCaptionCredits(posts, "Artist", "artist", { budgetMs: 1 });
+        expect(slice.done).toBe(false);
+        expect(slice.nextBatch).toBe(0);
+        expect(generateContent).not.toHaveBeenCalled();
+    });
+
+    it("reports where to resume when it runs out partway", async () => {
+        const { extractCaptionCredits } = await import("@/server/utils/socialCredits");
+        const posts = Array.from({ length: 40 }, (_, i) => post(i));
+
+        // Enough to start, not enough to finish: it must stop and say where.
+        const slice = await extractCaptionCredits(posts, "Artist", "artist", { budgetMs: 9_000 });
         expect(slice.done).toBe(false);
         expect(slice.nextBatch).toBeGreaterThan(0);
         expect(slice.nextBatch).toBeLessThan(slice.totalBatches);
-        // It still did SOMETHING — a slice that returns nothing makes no
-        // progress and the job would never finish.
         expect(slice.extraction.credits.length).toBeGreaterThan(0);
     });
 
@@ -71,7 +83,7 @@ describe("extractCaptionCredits, sliced", () => {
         const { extractCaptionCredits } = await import("@/server/utils/socialCredits");
         const posts = Array.from({ length: 40 }, (_, i) => post(i));
 
-        const first = await extractCaptionCredits(posts, "Artist", "artist", { budgetMs: 1 });
+        const first = await extractCaptionCredits(posts, "Artist", "artist", { budgetMs: 9_000 });
         const firstUrls = new Set(first.extraction.credits.map(c => c.url));
 
         const second = await extractCaptionCredits(posts, "Artist", "artist", {
@@ -103,19 +115,29 @@ describe("extractCaptionCredits, sliced", () => {
     it("does not start a batch it cannot finish", async () => {
         const { extractCaptionCredits } = await import("@/server/utils/socialCredits");
         const posts = Array.from({ length: 40 }, (_, i) => post(i));
-        const calls = () => generateContent.mock.calls.length;
 
-        await extractCaptionCredits(posts, "Artist", "artist", { budgetMs: 1 });
-        const afterTiny = calls();
+        // The mock has to take real time or a budget cannot bite: with instant
+        // replies an unlimited run and a constrained one do identical work and
+        // the test asserts nothing.
+        const slow = generateContent.getMockImplementation()!;
+        generateContent.mockImplementation(async (req: unknown) => {
+            await new Promise(r => setTimeout(r, 120));
+            return slow(req);
+        });
+
+        const constrained = await extractCaptionCredits(posts, "Artist", "artist", { budgetMs: 11_000 });
+        const constrainedCalls = generateContent.mock.calls.length;
 
         generateContent.mockClear();
-        await extractCaptionCredits(posts, "Artist", "artist");
-        const afterFull = calls();
+        const unlimited = await extractCaptionCredits(posts, "Artist", "artist");
+        const unlimitedCalls = generateContent.mock.calls.length;
 
-        // A tiny budget does strictly less work than an unlimited one. Without
-        // the pre-check it would start every batch and lose each one to the
-        // deadline, paying for all of them and keeping nothing.
-        expect(afterTiny).toBeLessThan(afterFull);
+        // A constrained budget does strictly less work and says so. Without the
+        // pre-check it would start every batch and lose each to the deadline,
+        // paying for all of them and keeping nothing.
+        expect(constrainedCalls).toBeLessThan(unlimitedCalls);
+        expect(constrained.done).toBe(false);
+        expect(unlimited.done).toBe(true);
     });
 
     it("sweeps only the captions that produced nothing", async () => {

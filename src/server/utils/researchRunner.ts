@@ -17,14 +17,14 @@ import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 import {
     claimResearchJob, saveJobProgress, saveJobState, completeResearchJob, failResearchJob,
-    enqueueResearchJob, type ResearchJob,
+    failJobAtCursor, enqueueResearchJob, type ResearchJob,
 } from "@/server/utils/queries/researchJobQueries";
 import {
     clearSocialCredits, appendSocialCredits, claimedSourceUrls,
 } from "@/server/utils/queries/socialCreditQueries";
 import { extractCaptionCredits, sweepSilentCaptions } from "@/server/utils/socialCredits";
 import {
-    getSocialPostsForArtist, hasSocialPosts, instagramHandleFor,
+    getSocialPostsOrNull, hasSocialPosts, instagramHandleFor,
     startInstagramScrape, checkInstagramScrape, collectInstagramScrape,
 } from "@/server/utils/socialIngest";
 import { forgetGroundedQuestions } from "@/server/utils/questionGenerator";
@@ -34,6 +34,9 @@ import { refreshArtistDoc } from "@/server/utils/artistDocService";
  *  stops the invocation. Losing a finished batch because there was no time left
  *  to write it down would be the same bug one layer in. */
 const PERSIST_RESERVE_MS = 5_000;
+/** The document rebuild is a Gemini call of its own; below this it waits for a
+ *  slice that can actually finish it. */
+const DOC_REBUILD_RESERVE_MS = 20_000;
 
 export interface AdvanceResult {
     ran: boolean;
@@ -83,6 +86,12 @@ async function runIngest(job: ResearchJob): Promise<{ progress: string; done: bo
 
     // Nothing to scrape, or nothing to scrape it with.
     const handle = await instagramHandleFor(job.artistId);
+    if (handle === "error") {
+        // A database hiccup is not an artist without an Instagram. Completing
+        // here permanently lost both the scrape and the extraction behind it.
+        await failResearchJob(job.id, "could not read the artist's handle");
+        return { progress: "handle lookup failed, will retry", done: false };
+    }
     if (!handle) {
         await completeResearchJob(job.id);
         return { progress: "no instagram handle", done: true };
@@ -148,7 +157,11 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
         return { progress: "no artist", done: true };
     }
 
-    const posts = await getSocialPostsForArtist(job.artistId);
+    const posts = await getSocialPostsOrNull(job.artistId);
+    if (posts === null) {
+        await failResearchJob(job.id, "could not read stored posts");
+        return { progress: "post lookup failed, will retry", done: false };
+    }
     if (posts.length === 0) {
         // Finished, having found nothing to read. Recorded as done so this is
         // never confused with "has not run" — the distinction the old
@@ -238,8 +251,14 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     }
     if (slice.failed) {
         // A batch we could not read at all. The cursor stops where it stopped.
-        await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
-        await failResearchJob(job.id, "a caption batch could not be read");
+        //
+        // Written in ONE statement: saveJobProgress resets attempts to zero, so
+        // doing that first and then failing left every retry at exactly one
+        // attempt — the job could never reach MAX_ATTEMPTS and would retry the
+        // same broken batch forever. It also briefly released the claim between
+        // the two writes.
+        await failJobAtCursor(job.id, slice.nextBatch, slice.totalBatches, job.state,
+            "a caption batch could not be read");
         return { progress: `read up to batch ${slice.nextBatch}, will retry`, done: false };
     }
 
@@ -274,6 +293,11 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
             ? { ...job.state, swept: true }
             : { ...job.state, sweepCursor: swept.nextBatch };
         await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
+        if (swept.failed) {
+            await failJobAtCursor(job.id, slice.nextBatch, slice.totalBatches, job.state,
+                "a sweep batch could not be read");
+            return { progress: "sweep batch failed, will retry", done: false };
+        }
         if (!swept.done) {
             return { progress: `sweeping, ${swept.nextBatch}/${swept.totalBatches}`, done: false };
         }
@@ -282,6 +306,15 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     // Questions cached while this was running were generated against an empty
     // credits table; the document was likely written then too.
     forgetGroundedQuestions(job.artistId);
+
+    // THE REBUILD GETS ITS OWN SLICE. It can spend fifteen seconds in Gemini,
+    // and starting it on the tail of a slice that has already spent its
+    // deadline meant the platform could kill us between the two writes — which
+    // increments nothing, so MAX_ATTEMPTS never stopped it retrying forever.
+    if (remaining() < DOC_REBUILD_RESERVE_MS) {
+        await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
+        return { progress: "credits stored, document rebuild deferred", done: false };
+    }
 
     // refreshArtistDoc swallows its own errors and resolves false, so a .catch
     // here never fired and a failed rebuild left the document and the export

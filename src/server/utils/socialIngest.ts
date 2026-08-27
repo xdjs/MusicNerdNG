@@ -641,14 +641,32 @@ export async function collectInstagramScrape(
 }
 
 /** The artist's stored handle, for a job that only has an artist id. */
-export async function instagramHandleFor(artistId: string): Promise<string | null> {
+/** The artist's stored handle.
+ *
+ *  Returns `"error"` rather than null when the LOOKUP failed: a transient
+ *  database error was otherwise indistinguishable from an artist with no
+ *  Instagram, and the caller marked the job done — permanently losing both the
+ *  scrape and the extraction that follows it. */
+export async function instagramHandleFor(artistId: string): Promise<string | null | "error"> {
     try {
         const artist = await db.query.artists.findFirst({
             where: eq(artists.id, artistId),
             columns: { instagram: true },
         });
         return artist?.instagram?.trim() || null;
-    } catch {
+    } catch (e) {
+        console.error("[instagramHandleFor] Error:", e);
+        return "error";
+    }
+}
+
+/** Stored posts, or null when the query itself failed — which is not the same
+ *  as an artist with no posts, and used to complete the job either way. */
+export async function getSocialPostsOrNull(artistId: string): Promise<SocialPostRow[] | null> {
+    try {
+        return await getSocialPostsForArtist(artistId);
+    } catch (e) {
+        console.error("[getSocialPostsOrNull] Error:", e);
         return null;
     }
 }
