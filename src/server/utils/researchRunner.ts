@@ -157,11 +157,24 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     // seven minutes and a full model bill to learn what we already knew, and a
     // profile left empty if the replacement stalled halfway. A refresh reads
     // only the captions it has no credit for, and keeps everything else.
-    const incremental = job.state?.incremental === true;
+    // Credits we already hold are not ours to throw away.
+    //
+    // A full extraction clears first, so that re-reading a changed feed does
+    // not leave stale credits behind. But "there are credits and no job row"
+    // is the normal state for an artist whose captions were read before this
+    // queue existed — and clearing those to re-read a feed we already
+    // understand is minutes of model time to arrive back where we started,
+    // with the profile empty in between if anything interrupts it.
+    //
+    // So: explicit re-read clears. Anything else reads what it has no credit
+    // for and keeps the rest.
+    const existing = await claimedSourceUrls(job.artistId);
+    const fullRebuild = job.state?.fullRebuild === true;
+    const incremental = job.state?.incremental === true || (!fullRebuild && existing.size > 0);
+
     let toRead = posts;
     if (incremental) {
-        const already = await claimedSourceUrls(job.artistId);
-        toRead = posts.filter(p => !already.has(p.url));
+        toRead = posts.filter(p => !existing.has(p.url));
         if (toRead.length === 0) {
             await completeResearchJob(job.id);
             return { progress: "nothing new to read", done: true };
