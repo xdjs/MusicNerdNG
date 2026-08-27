@@ -15,11 +15,75 @@ const DEFAULT_SUGGESTIONS = (name: string) => [
     `What is ${name} known for?`,
 ];
 
+type AnswerSource = { n: number; title: string; url: string };
+type AnswerMention = { name: string; artistId?: string; instagram?: string; role?: string };
+
+/** A pill has room for where it ran, not for a headline. The full title is the
+ *  hover. */
+function sourceHost(s: AnswerSource): string {
+    try { return new URL(s.url).hostname.replace(/^www\./, ""); }
+    catch { return s.title.slice(0, 32); }
+}
+
+
+/**
+ * Turn credited collaborators named in an answer into links.
+ *
+ * The server decides WHO is linkable and this only renders it. That split
+ * matters: the resolver returns credited collaborators only, never people named
+ * in the artist's statements, because those include people talked about rather
+ * than worked with — and linking a name out of a story about someone who died
+ * to whoever holds a matching handle is a mistake you only make once.
+ *
+ * A collaborator already in the directory goes to their profile; one who is not
+ * goes to their Instagram, which is also a quiet list of people who ought to be
+ * here.
+ */
+function linkifyMentions(text: string, mentions: AnswerMention[]): React.ReactNode {
+    if (mentions.length === 0) return text;
+
+    // Longest first, so "@dame atlas" wins over "@dame" where both are credited.
+    const ordered = [...mentions].sort((a, b) => b.name.length - a.name.length);
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`@?(${ordered.map(m => escape(m.name)).join("|")})\\b`, "gi");
+
+    const out: React.ReactNode[] = [];
+    let last = 0;
+    let match: RegExpExecArray | null;
+    let key = 0;
+    while ((match = pattern.exec(text)) !== null) {
+        const found = ordered.find(m => m.name.toLowerCase() === match![1].toLowerCase());
+        if (!found) continue;
+        const href = found.artistId
+            ? `/artist/${found.artistId}`
+            : found.instagram ? `https://www.instagram.com/${found.instagram}/` : null;
+        if (!href) continue;
+
+        if (match.index > last) out.push(text.slice(last, match.index));
+        out.push(
+            <a
+                key={`m${key++}`}
+                href={href}
+                {...(found.artistId ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+                className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                title={found.role ? `${found.name} — ${found.role}` : found.name}
+            >
+                {match[0]}
+            </a>,
+        );
+        last = match.index + match[0].length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out.length > 0 ? out : text;
+}
+
 export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistProps) {
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState<string | null>(null);
     const [askedQuestion, setAskedQuestion] = useState<string | null>(null);
     const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS(artistName));
+    const [sources, setSources] = useState<AnswerSource[]>([]);
+    const [mentions, setMentions] = useState<AnswerMention[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const askedQuestions = useRef<Set<string>>(new Set());
@@ -50,6 +114,8 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
             }
 
             setAnswer(data.answer);
+            setSources(Array.isArray(data.sources) ? data.sources : []);
+            setMentions(Array.isArray(data.mentions) ? data.mentions : []);
             if (data.suggestions?.length) {
                 // Filter out any suggestions the user has already asked
                 const fresh = data.suggestions.filter(
@@ -143,14 +209,46 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
                     {/* Answer */}
                     {answer && (
                         <p className="text-sm text-black dark:text-white leading-relaxed whitespace-pre-line pr-6">
-                            {answer}
+                            {linkifyMentions(answer, mentions)}
                         </p>
                     )}
 
-                    {/* AI disclaimer */}
+                    {/* Where it came from.
+                      *
+                      * "AI-generated response" tells a reader the least useful
+                      * true thing about an answer: how it was phrased, not
+                      * whether to believe it. The endpoint already reads the
+                      * artist's verified vault and their knowledge document as
+                      * ground truth, and it collected the source urls and then
+                      * dropped them one line before responding. Showing them is
+                      * the difference between a chatbot and a researched answer,
+                      * and it is what a reader needs in order to trust either. */}
+                    {answer && sources.length > 0 && (
+                        <div className="flex flex-col gap-1 pt-1">
+                            <p className="text-[10px] text-muted-foreground/60">Sources</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {sources.map(s => (
+                                    <a
+                                        key={s.n}
+                                        href={s.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-black/10 dark:border-white/15 text-gray-600 dark:text-gray-400 hover:border-black/25 dark:hover:border-white/30 whitespace-nowrap max-w-[16rem] truncate"
+                                        title={s.title}
+                                    >
+                                        <span className="opacity-50">[{s.n}]</span>
+                                        {sourceHost(s)}
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {answer && (
                         <p className="text-[10px] text-muted-foreground/40 italic">
-                            AI-generated response
+                            {sources.length > 0
+                                ? "Written by AI from the sources above"
+                                : "AI-generated response"}
                         </p>
                     )}
                 </div>

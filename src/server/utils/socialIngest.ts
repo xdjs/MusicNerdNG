@@ -16,8 +16,8 @@ import { db } from "@/server/db/drizzle";
 import { artistSocialPosts, artists } from "@/server/db/schema";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
 import { APIFY_API_TOKEN } from "@/env";
-import { extractCaptionCredits } from "@/server/utils/socialCredits";
-import { replaceSocialCredits, hasSocialCredits } from "@/server/utils/queries/socialCreditQueries";
+import { extractCaptionCredits, sweepSilentCaptions } from "@/server/utils/socialCredits";
+import { replaceSocialCredits, appendSocialCredits, claimedSourceUrls } from "@/server/utils/queries/socialCreditQueries";
 import { forgetGroundedQuestions } from "@/server/utils/questionGenerator";
 
 const APIFY_RUN_SYNC_URL = "https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items";
@@ -273,7 +273,7 @@ async function upsertMappedRows(rows: SocialPostInsert[]): Promise<IngestResult>
 export async function ingestInstagramPosts(
     artistId: string,
     handle: string,
-    opts?: { limit?: number },
+    opts?: { limit?: number; force?: boolean },
 ): Promise<IngestResult> {
     if (!APIFY_API_TOKEN) return EMPTY_RESULT;
     if (!artistId || !handle) return EMPTY_RESULT;
@@ -448,13 +448,19 @@ export async function hasSocialPosts(artistId: string): Promise<boolean> {
  */
 export async function ensureRecentSocialPosts(
     artistId: string,
-    opts?: { limit?: number },
+    opts?: { limit?: number; force?: boolean },
 ): Promise<EnsureSocialPostsOutcome> {
     if (!APIFY_API_TOKEN) return { status: "disabled" };
     if (!artistId) return { status: "no_handle" };
 
     try {
-        if (await hasSocialPosts(artistId)) return { status: "already_present" };
+        // `force` is the artist asking us to look again. The scrape returns
+        // the most recent N posts and the insert is keyed on
+        // (artist, platform, post id), so re-running adds what is new and
+        // silently ignores what we already have — which is what makes "look
+        // again" cheap rather than a seven-minute re-read of a feed we already
+        // understand.
+        if (!opts?.force && await hasSocialPosts(artistId)) return { status: "already_present" };
 
         const artist = await db.query.artists.findFirst({
             where: eq(artists.id, artistId),
@@ -475,20 +481,22 @@ export async function ensureRecentSocialPosts(
 }
 
 /**
- * Read this artist's captions and store what they say, unless it has been done.
+ * Read this artist's captions, in one go.
  *
- * Runs on the background ingest path, right after the posts land, because the
- * extraction is a model call per fifteen captions and the alternative is paying
- * for it on every knowledge-document rebuild. Idempotent: an artist whose
- * captions have already been read is skipped.
+ * SCRIPTS AND TESTS ONLY. A three-hundred-post feed takes about seven minutes,
+ * which no request survives — running this from a request is the bug that made
+ * every non-pre-warmed artist end up with a document built from an empty
+ * credits table. Production goes through the job queue: enqueue with
+ * `requestArtistResearch`, and slices run in `/api/research/advance`, each with
+ * its own budget.
  *
- * Never throws. A missing extraction costs profile detail, not the ingest.
+ * Kept because the benchmark and the R&D scripts genuinely want the whole thing
+ * at once, and because "read this feed now" is a useful thing to be able to do
+ * from a terminal.
  */
 export async function ensureSocialCredits(artistId: string): Promise<number> {
     if (!artistId) return 0;
     try {
-        if (await hasSocialCredits(artistId)) return 0;
-
         const posts = await getSocialPostsForArtist(artistId);
         if (posts.length === 0) return 0;
 
@@ -498,13 +506,14 @@ export async function ensureSocialCredits(artistId: string): Promise<number> {
         });
         if (!artist?.name) return 0;
 
-        const extraction = await extractCaptionCredits(posts, artist.name, artist.instagram ?? "");
+        const slice = await extractCaptionCredits(posts, artist.name, artist.instagram ?? "");
         const postedAtByUrl = new Map(posts.map(p => [p.url, p.postedAt] as const));
-        const stored = await replaceSocialCredits(artistId, extraction, postedAtByUrl);
-        // Questions generated while this was still running were generated
-        // against an empty credits table and cached for fifteen minutes. Drop
-        // them, so the interview asks about the collaborator it now knows
-        // about rather than the three questions it falls back to.
+        let stored = await replaceSocialCredits(artistId, slice.extraction, postedAtByUrl);
+
+        const swept = await sweepSilentCaptions(
+            posts, await claimedSourceUrls(artistId), artist.name, artist.instagram ?? "");
+        stored += (await appendSocialCredits(artistId, swept.extraction, postedAtByUrl)) ?? 0;
+
         if (stored > 0) forgetGroundedQuestions(artistId);
         console.debug(`[ensureSocialCredits] ${artist.name}: stored ${stored} row(s)`);
         return stored;
@@ -524,5 +533,140 @@ export async function waitForSocialPosts(artistId: string, timeoutMs: number, po
         if (await hasSocialPosts(artistId)) return true;
         if (Date.now() >= deadline) return false;
         await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Apify, asynchronously.
+//
+// `run-sync-get-dataset-items` blocks until the scrape finishes — up to eight
+// minutes — which cannot work inside a route capped at sixty seconds. Moving it
+// into a job did not help by itself: the job step was still one blocking call,
+// so the platform killed the invocation before anything was written down and
+// the next slice started the same scrape from scratch, forever.
+//
+// Started and polled instead. The run id is persisted the moment the run
+// exists, so an invocation that dies leaves a run we can find again rather than
+// an orphan we pay for and never collect.
+// ---------------------------------------------------------------------------
+
+const APIFY_RUNS_URL = "https://api.apify.com/v2/acts/apify~instagram-scraper/runs";
+const APIFY_RUN_URL = (runId: string) => `https://api.apify.com/v2/actor-runs/${runId}`;
+const APIFY_DATASET_URL = (datasetId: string) => `https://api.apify.com/v2/datasets/${datasetId}/items`;
+/** Starting a run and reading its status are quick calls; only the scrape is
+ *  slow, and we no longer wait for it. */
+const APIFY_CONTROL_TIMEOUT_MS = 20_000;
+
+export type ApifyRunState =
+    | { status: "started"; runId: string }
+    | { status: "running"; runId: string }
+    | { status: "ready"; runId: string; datasetId: string }
+    | { status: "failed"; reason: string };
+
+/** Kick off a scrape and return as soon as Apify has given it an id. */
+export async function startInstagramScrape(handle: string, opts?: { limit?: number }): Promise<ApifyRunState> {
+    if (!APIFY_API_TOKEN) return { status: "failed", reason: "no apify token" };
+    const limit = Math.min(Math.max(1, opts?.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+    const profileUrl = `https://www.instagram.com/${handle.trim().replace(/^@/, "")}/`;
+    try {
+        const res = await fetch(`${APIFY_RUNS_URL}?token=${encodeURIComponent(APIFY_API_TOKEN)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                directUrls: [profileUrl],
+                resultsType: "posts",
+                resultsLimit: limit,
+                addParentData: false,
+            }),
+            signal: AbortSignal.timeout(APIFY_CONTROL_TIMEOUT_MS),
+        });
+        if (!res.ok) return { status: "failed", reason: `apify start ${res.status}` };
+        const body = await res.json() as { data?: { id?: string } };
+        const runId = body?.data?.id;
+        return runId ? { status: "started", runId } : { status: "failed", reason: "apify returned no run id" };
+    } catch (e) {
+        return { status: "failed", reason: e instanceof Error ? e.message : "apify start failed" };
+    }
+}
+
+/** Where a started run has got to. */
+export async function checkInstagramScrape(runId: string): Promise<ApifyRunState> {
+    if (!APIFY_API_TOKEN) return { status: "failed", reason: "no apify token" };
+    try {
+        const res = await fetch(`${APIFY_RUN_URL(runId)}?token=${encodeURIComponent(APIFY_API_TOKEN)}`, {
+            signal: AbortSignal.timeout(APIFY_CONTROL_TIMEOUT_MS),
+        });
+        if (!res.ok) return { status: "failed", reason: `apify status ${res.status}` };
+        const body = await res.json() as { data?: { status?: string; defaultDatasetId?: string } };
+        const state = body?.data?.status;
+        const datasetId = body?.data?.defaultDatasetId;
+        if (state === "SUCCEEDED" && datasetId) return { status: "ready", runId, datasetId };
+        if (state === "READY" || state === "RUNNING") return { status: "running", runId };
+        return { status: "failed", reason: `apify run ${state ?? "unknown"}` };
+    } catch (e) {
+        return { status: "failed", reason: e instanceof Error ? e.message : "apify status failed" };
+    }
+}
+
+/** Collect a finished run's items and store them. */
+/** Returns null when the COLLECTION failed, which is not the same as a feed
+ *  with nothing in it — conflating them recorded a transient dataset error as a
+ *  successfully-ingested artist with no posts, and never retried. */
+export async function collectInstagramScrape(
+    artistId: string,
+    handle: string,
+    datasetId: string,
+): Promise<IngestResult | null> {
+    if (!APIFY_API_TOKEN) return null;
+    try {
+        const res = await fetch(`${APIFY_DATASET_URL(datasetId)}?token=${encodeURIComponent(APIFY_API_TOKEN)}&clean=true&format=json`, {
+            signal: AbortSignal.timeout(APIFY_FETCH_TIMEOUT_MS),
+        });
+        if (!res.ok) {
+            console.error(`[collectInstagramScrape] dataset fetch failed: ${res.status}`);
+            return null;
+        }
+        const items = await res.json();
+        if (!Array.isArray(items)) return null;
+
+        const artistName = await getArtistNameById(artistId);
+        const rows = items
+            .map(item => mapApifyPost(item, artistId, handle, artistName))
+            .filter((r): r is SocialPostInsert => r !== null);
+        return await upsertMappedRows(rows);
+    } catch (e) {
+        console.error("[collectInstagramScrape] Error:", e);
+        return null;
+    }
+}
+
+/** The artist's stored handle, for a job that only has an artist id. */
+/** The artist's stored handle.
+ *
+ *  Returns `"error"` rather than null when the LOOKUP failed: a transient
+ *  database error was otherwise indistinguishable from an artist with no
+ *  Instagram, and the caller marked the job done — permanently losing both the
+ *  scrape and the extraction that follows it. */
+export async function instagramHandleFor(artistId: string): Promise<string | null | "error"> {
+    try {
+        const artist = await db.query.artists.findFirst({
+            where: eq(artists.id, artistId),
+            columns: { instagram: true },
+        });
+        return artist?.instagram?.trim() || null;
+    } catch (e) {
+        console.error("[instagramHandleFor] Error:", e);
+        return "error";
+    }
+}
+
+/** Stored posts, or null when the query itself failed — which is not the same
+ *  as an artist with no posts, and used to complete the job either way. */
+export async function getSocialPostsOrNull(artistId: string): Promise<SocialPostRow[] | null> {
+    try {
+        return await getSocialPostsForArtist(artistId);
+    } catch (e) {
+        console.error("[getSocialPostsOrNull] Error:", e);
+        return null;
     }
 }

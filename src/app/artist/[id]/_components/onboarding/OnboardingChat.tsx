@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import BuildStatus from "./BuildStatus";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
+import { useResearchPump } from "./useResearchPump";
 import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
 import MusicNerdLoader from "@/app/_components/MusicNerdLoader";
 
@@ -39,6 +40,10 @@ function prefersReducedMotion(): boolean {
 
 export default function OnboardingChat({ artistId, artistName, onSkip, onFinish }: Props) {
     const { items, busy, sendTurn } = useOnboardingChat(artistId);
+    // Keeps the scrape and the caption extraction moving while the artist is
+    // here. They are minutes of work and no request lives that long, so the
+    // person on the page is what turns a queued job into a finished one.
+    useResearchPump(artistId);
     const router = useRouter();
     const opened = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);

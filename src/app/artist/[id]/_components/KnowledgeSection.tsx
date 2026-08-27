@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useContext, useEffect, useState } from "react";
-import { Check, Pencil, X, ExternalLink, Undo2, Loader2 } from "lucide-react";
+import { Check, Pencil, X, ExternalLink, Undo2, Loader2, RefreshCw, Download } from "lucide-react";
 import { EditModeContext } from "@/app/_components/EditModeContext";
 import RevealSection from "./RevealSection";
+import { useResearchPump } from "./onboarding/useResearchPump";
 import { getKnowledgeDoc, correctDocClaim, undoDocCorrection } from "@/app/actions/dashboardActions";
 import { parseDocClaims, countClaims, claimKey, type DocSection } from "@/lib/docClaims";
 
@@ -13,6 +14,19 @@ type Correction = { id: string; claim: string; correction: string | null; kind: 
 /** "VoyageMIA · 2019" — the host is what an artist recognises, and the year is
  *  usually why a claim reads stale. */
 function sourceLabel(s: DocSource): string {
+    // A PRESS source is best identified by where it ran — "rvamag · 2026" says
+    // more than the headline would in a pill. A SOCIAL source is not: every one
+    // of them is on instagram.com, so the hostname reduces the artist's own
+    // words, their self-credits and their track credits all to the single word
+    // "instagram". Pete, looking at a document citing nineteen separate posts
+    // of his: "in my knowledge doc section I see nothing sourced from instagram
+    // except for one thing." There was one PILL. SourcePills dedupes by label,
+    // so nineteen sources with the same label collapse into one.
+    //
+    // The descriptive label is the thing worth showing there: "Their own words
+    // — why he believes in Subvert" is what that citation actually is.
+    if (s.kind === "social" && s.label) return s.label;
+
     let host = "";
     try {
         host = s.url ? new URL(s.url).hostname.replace(/^www\./, "").split(".")[0] : "";
@@ -20,6 +34,13 @@ function sourceLabel(s: DocSource): string {
     const name = host || s.label || s.kind;
     const year = s.publishedAt?.slice(0, 4);
     return year ? `${name} · ${year}` : name;
+}
+
+/** Pills carry a full sentence for social sources, so they need trimming for
+ *  display without losing which post they point at. */
+function pillText(label: string): string {
+    const clipped = label.length > 64 ? `${label.slice(0, 61)}…` : label;
+    return clipped;
 }
 
 function SourcePills({ ids, sources }: { ids: number[]; sources: DocSource[] }) {
@@ -37,7 +58,7 @@ function SourcePills({ ids, sources }: { ids: number[]; sources: DocSource[] }) 
                 seen.add(label);
                 const inner = (
                     <>
-                        {label}
+                        {pillText(label)}
                         {s.url && <ExternalLink size={9} className="opacity-60" />}
                     </>
                 );
@@ -191,6 +212,15 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
     const { isEditing, canEdit } = useContext(EditModeContext);
     const [sections, setSections] = useState<DocSection[]>([]);
     const [sources, setSources] = useState<DocSource[]>([]);
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshNote, setRefreshNote] = useState<string | null>(null);
+    /** True while this artist has research queued or running.
+     *
+     *  The pump lives inside the onboarding chat, which the page stops
+     *  rendering once onboarding is complete — so "Look again" on a finished
+     *  profile enqueued a job and nothing ever ran it. This drives the same
+     *  route from here, for as long as there is work. */
+    const [pumping, setPumping] = useState(false);
     const [corrections, setCorrections] = useState<Correction[]>([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
@@ -244,11 +274,69 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
         setBusy(false);
     };
 
+    // Nothing else on this page calls the advance route, so without this the
+    // button is a promise nobody keeps.
+    useResearchPump(artistId, pumping);
+
     if (!canEdit || !isEditing) return null;
+
+    /** Ask the researcher to look at anything posted since it last read the
+     *  feed. Incremental by design: a full re-read of a three-hundred-post feed
+     *  is about seven minutes and a Gemini bill, and almost all of it would be
+     *  re-reading captions we already understood. */
+    const handleLookAgain = async () => {
+        setRefreshing(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/artist/${artistId}/research/refresh`, { method: "POST" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setError(data?.error ?? "Couldn't start that. Try again in a bit.");
+            } else {
+                setRefreshNote(data?.message ?? "Reading your recent posts — this page will fill in as it goes.");
+                setPumping(true);
+            }
+        } catch {
+            setError("Couldn't start that. Try again in a bit.");
+        }
+        setRefreshing(false);
+    };
 
     const shell = (children: React.ReactNode) => (
         <RevealSection className="glass p-4 sm:p-5 space-y-3">
-            <h2 className="text-black dark:text-white text-xl font-bold">What we know about you</h2>
+            <div className="flex items-start justify-between gap-3">
+                <h2 className="text-black dark:text-white text-xl font-bold">What we know about you</h2>
+                {hasDoc && (
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleLookAgain}
+                            disabled={refreshing}
+                            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-black/10 dark:border-white/15 text-gray-600 dark:text-gray-400 hover:border-black/25 dark:hover:border-white/30 disabled:opacity-50"
+                            title="Look at anything you've posted since we last read your feed"
+                        >
+                            {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            Look again
+                        </button>
+                        {/* Markdown, not .txt: same bytes, and this one renders
+                          * and survives a paste into another model with its
+                          * structure and its citations intact. The sources are
+                          * resolved inside the file, so [7] still means
+                          * something wherever it ends up. */}
+                        <a
+                            href={`/api/artist/${artistId}/knowledge-doc/export`}
+                            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-black/10 dark:border-white/15 text-gray-600 dark:text-gray-400 hover:border-black/25 dark:hover:border-white/30"
+                            title="Download as markdown, with sources — ready to hand to another AI"
+                        >
+                            <Download size={12} />
+                            Download
+                        </a>
+                    </div>
+                )}
+            </div>
+            {refreshNote && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">{refreshNote}</p>
+            )}
             {children}
         </RevealSection>
     );

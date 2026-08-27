@@ -664,6 +664,39 @@ export const artistSocialPosts = pgTable("artist_social_posts", {
 	pgPolicy("mnweb_delete_artist_social_posts", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
 ]);
 
+// Long research work that outlives the request that asked for it. See
+// drizzle/0021 for why status and cursor exist rather than "are there rows yet".
+export const artistResearchJobs = pgTable("artist_research_jobs", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	/** 'social_ingest' = fetch the feed; 'caption_extract' = read the captions. */
+	kind: text().notNull(),
+	status: text().default("pending").notNull(),
+	/** How far the work got — for extraction, the next caption batch. */
+	cursor: integer().default(0).notNull(),
+	total: integer(),
+	/** Lease: a claimed job whose lease expired is claimable again. */
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: 'string' }),
+	attempts: integer().default(0).notNull(),
+	lastError: text("last_error"),
+	/** Scratch the job owns — the Apify run id, so a killed request cannot
+	 *  orphan a run we can never find again. */
+	state: jsonb().default({}).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("artist_research_jobs_claimable").using("btree", table.status.asc().nullsLast(), table.claimedAt.asc().nullsLast(), table.createdAt.asc().nullsLast()),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_research_jobs_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_research_jobs", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_research_jobs", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_research_jobs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_research_jobs", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
 // What an artist's own captions say: role credits and statements, extracted once
 // per ingest by socialCredits.ts and read by questionGenerator + artistDocService.
 // Every row cites the post it came from and carries the verified quote.

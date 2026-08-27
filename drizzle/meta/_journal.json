@@ -148,6 +148,13 @@
       "when": 1787672376261,
       "tag": "0020_credit_uniqueness_includes_role",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787690376261,
+      "tag": "0021_artist_research_jobs",
+      "breakpoints": true
     }
   ]
 }

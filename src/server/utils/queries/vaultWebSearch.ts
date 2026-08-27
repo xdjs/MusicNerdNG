@@ -2,7 +2,7 @@ import { insertVaultSource, getVaultSourcesByArtistId } from "./dashboardQueries
 import { getArtistById } from "./artistQueries";
 import { SOURCE_TYPES, inferTypeFromUrl, type SourceType } from "@/lib/sourceTypes";
 import { fetchPageContent, isUnsafeUrl, OUTBOUND_LINK_CAP, type PageContent } from "@/server/utils/fetchPageContent";
-import { classifyFetchedSource, isGroundingRedirect } from "@/server/utils/sourceVerification";
+import { classifyFetchedSource, isGroundingRedirect, nameAppearsIn } from "@/server/utils/sourceVerification";
 import { webSearch } from "@/server/utils/webSearch";
 import { judgeSourceRelevance } from "@/server/utils/sourceRelevance";
 import { extractArtistId } from "@/server/utils/services";
@@ -94,6 +94,18 @@ function folded(v: string): string {
 function normalizeHandle(v: string): string {
     return v.trim().toLowerCase().replace(/^@/, "");
 }
+
+/** Reference databases: a record of work, not an account someone posts from.
+ *
+ *  Worth adopting as a link and NOT worth probing for. A Discogs id cannot be
+ *  guessed from an artist's Instagram handle the way a SoundCloud one often
+ *  can, so these are kept out of the propagation pass on purpose — they are
+ *  adopted only when discovery actually finds the page.
+ *
+ *  Discogs matters more than its traffic suggests: it is where a producer's or
+ *  engineer's credits on OTHER artists' releases are recorded, and that work is
+ *  invisible on every streaming profile they have. */
+const REFERENCE_PLATFORMS = new Set(["discogs"]);
 
 const ACCOUNT_PLATFORMS = new Set([
     "instagram", "x", "tiktok", "youtube", "youtubechannel",
@@ -382,7 +394,7 @@ async function adoptFromMusicBrainz(
         for (const url of found.urls) {
             const match = await extractArtistId(stripQuery(url)).catch(() => undefined);
             if (!match?.siteName || !match?.id) continue;
-            if (!ACCOUNT_PLATFORMS.has(match.siteName)) continue;
+            if (!ACCOUNT_PLATFORMS.has(match.siteName) && !REFERENCE_PLATFORMS.has(match.siteName)) continue;
             const id = String(match.id);
             if (isReservedHandle(match.siteName, id)) continue;
             if (artist[match.siteName]) continue;
@@ -546,14 +558,14 @@ async function adoptHandlesFromOwnPage(
     // only the ones that do. When NONE resemble, keep them all: that is the
     // normal case for a hub whose owner's handle is nothing like their name, and
     // it is how Sherwinn Brice's `dupesdidit` is found at all.
-    const accountHandles = resolved.filter(r => ACCOUNT_PLATFORMS.has(r.siteName));
+    const accountHandles = resolved.filter(r => ACCOUNT_PLATFORMS.has(r.siteName) || REFERENCE_PLATFORMS.has(r.siteName));
     const anyResembles = accountHandles.some(r => sharedPrefix(r.id, artistName) >= HANDLE_STEM_MIN);
 
     let adopted = 0;
     const done = new Set<string>();
     const adoptedHandles = new Set<string>();
     for (const r of resolved) {
-        if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
+        if (!ACCOUNT_PLATFORMS.has(r.siteName) && !REFERENCE_PLATFORMS.has(r.siteName)) continue;
         if (anyResembles && sharedPrefix(r.id, artistName) < HANDLE_STEM_MIN) {
             console.log(`[vaultWebSearch] Page mixes "${artistName}" accounts with ${r.siteName}=${r.id}; keeping only theirs`);
             continue;
@@ -875,6 +887,14 @@ export async function searchAndPopulateVault(
         // This is the query that loses the exact-phrase protection, so it is the
         // one the judge and the corroboration rules exist to clean up after.
         artistName,
+        // CREDITS, which none of the above will ever find. The editorial queries
+        // want articles and the bare name wants anything; neither surfaces a
+        // credits database, and for a producer or an engineer that is where
+        // most of their actual work is recorded. Pete Rango appears in the
+        // credits of other artists' releases on Discogs and nothing we searched
+        // for would have returned it — his vault had a Clubhouse profile in it
+        // and no record of the records he made.
+        `"${artistName}" discogs credits`,
     ];
 
     try {
@@ -1100,7 +1120,7 @@ export async function searchAndPopulateVault(
             const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
             const isAccountUrl = !!profileMatch?.siteName
                 && !!profileMatch?.id
-                && ACCOUNT_PLATFORMS.has(profileMatch.siteName)
+                && (ACCOUNT_PLATFORMS.has(profileMatch.siteName) || REFERENCE_PLATFORMS.has(profileMatch.siteName))
                 // `instagram.com/p/DUtSSjnCYcU` is a POST, and the urlmap regex
                 // reads its first path segment as the handle — so this arrives as
                 // `{ instagram, id: "p" }`. Writing that would set the artist's
@@ -1253,6 +1273,36 @@ export async function searchAndPopulateVault(
                 // from ever becoming citable.
                 identityConfirmed: relevance.get(result.url) === "about-artist",
             });
+            // AN UNREADABLE PAGE IS ONLY AS GOOD AS ITS TITLE.
+            //
+            // A 403, a 5xx or a JS-only page classifies as "lead": real URL,
+            // unread body, filed as a non-citable source. That is right when the
+            // page is plausibly about the artist and wrong when it is plainly
+            // not — blogcritics.org answers our fetch with 403, so the only
+            // evidence we ever had about "Music Review: Pete Seeger - Pete
+            // Seeger At 89" was that title, which names a different musician.
+            // We filed it against Pete Rango anyway and made him look at it.
+            //
+            // So when the body is unreadable, the SEARCH TITLE has to name the
+            // artist in full. The distinctive-token fallback is not allowed
+            // here: it exists for pages we already believe are theirs, and this
+            // is the opposite case. A page we cannot read, whose title is about
+            // somebody else, is not a lead. It is a search result.
+            // Only when we genuinely could not READ it. A readable page that
+            // simply does not name the artist is a different case and keeps its
+            // existing treatment; this is about pages where the search title is
+            // the only evidence that will ever exist.
+            const unreadable = verdict === "lead"
+                && (!page.extractedText || page.extractedText.trim().length < 200);
+            if (unreadable) {
+                const evidence = `${result.title ?? ""} ${result.snippet ?? ""}`;
+                if (!nameAppearsIn(evidence, artistName, { requireFullName: true })) {
+                    console.log(`[vaultWebSearch] Unreadable and its title is not about "${artistName}", dropping: ${String(result.title ?? result.url).slice(0, 70)}`);
+                    dropped++;
+                    continue;
+                }
+            }
+
             if (verdict === "dead") {
                 console.warn(`[vaultWebSearch] Dropping unreachable/irrelevant URL (status ${page.status}): ${result.url.slice(0, 120)}`);
                 dropped++;
