@@ -44,7 +44,7 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
 
 /** One person credited with a role, in the artist's own words. */
-export interface CaptionCredit {
+export interface CaptionCredit extends Dated {
     /** An instagram handle without the @, or a name as written when no handle was used. */
     subject: string;
     /** True when `subject` is a handle we could link to, false when it is a bare name. */
@@ -59,6 +59,11 @@ export interface CaptionCredit {
     isSelf: boolean;
 }
 
+/** When the post this came from was published, when the caller stored one.
+ *  Kept on the type because an undated quote cannot answer "lately", which is
+ *  the most obvious question anyone asks about an artist. */
+export type Dated = { postedAt?: string | null };
+
 /** Something the artist said about themselves, worth asking or writing about.
  *
  *  Deliberately not scoped to music. An artist reminiscing about their mother
@@ -66,7 +71,7 @@ export interface CaptionCredit {
  *  filtered out on the way to the credits; it is the part of a feed that makes
  *  them a person rather than a discography. The first version of this prompt
  *  asked only about the work and dropped that post entirely. */
-export interface ArtistStatement {
+export interface ArtistStatement extends Dated {
     /** Their words, verified to appear in the caption. */
     quote: string;
     /** A few words naming what it is about, for grouping and for prompts. */

@@ -670,3 +670,31 @@ export async function getSocialPostsOrNull(artistId: string): Promise<SocialPost
         return null;
     }
 }
+
+/**
+ * The artist's most recent posts, newest first.
+ *
+ * The ask could not answer "what have they been up to lately" because it read
+ * only the credits and statements EXTRACTED from a feed, never the feed. Those
+ * are the durable facts — who played bass, what a record is about — and they
+ * are deliberately not time-ordered. "Lately" needs the posts themselves.
+ *
+ * Own posts only, and only ones with something to read: a caption of hashtags
+ * answers no question and costs prompt budget.
+ */
+export async function getRecentOwnPosts(
+    artistId: string,
+    limit = 12,
+): Promise<SocialPostRow[]> {
+    if (!artistId) return [];
+    try {
+        const posts = await getSocialPostsForArtist(artistId);
+        return posts
+            .filter(p => p.isOwnPost && (p.caption ?? "").replace(/#\w+/g, "").trim().length >= 20)
+            .sort((a, b) => Date.parse(b.postedAt || "") - Date.parse(a.postedAt || ""))
+            .slice(0, limit);
+    } catch (e) {
+        console.error("[getRecentOwnPosts] Error:", e);
+        return [];
+    }
+}

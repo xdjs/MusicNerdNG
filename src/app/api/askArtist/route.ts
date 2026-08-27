@@ -5,6 +5,8 @@ import { getArtistDocContext } from "@/server/utils/artistDocService";
 import { byAuthority } from "@/lib/sourceAuthority";
 import { selectPassages } from "@/server/utils/passageSelect";
 import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
+import { getRecentOwnPosts } from "@/server/utils/socialIngest";
+import { getSpotifyCatalogDetail, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
 import { creditedCollaborators, selfCredits } from "@/server/utils/socialCredits";
 
 /** Per source. Roughly what the old flat slice cost, spent on the relevant
@@ -17,6 +19,16 @@ const MAX_STATEMENTS_IN_CONTEXT = 24;
 /** The answer is already written when this runs, so it gets what is left of a
  *  reader's patience and no more. */
 const FOLLOWUP_TIMEOUT_MS = 6_000;
+/** Enough to cover "lately" without spending the prompt on a year of feed. */
+const MAX_RECENT_POSTS = 12;
+/** Enough to answer "what is the latest" and "what should I hear". */
+const MAX_RELEASES_IN_CONTEXT = 12;
+/** Pete Rango has 209 credited collaborators. Numbering all of them produced
+ *  source markers in the hundreds and a prompt mostly made of names. */
+const MAX_COLLABORATORS_IN_CONTEXT = 20;
+/** The fallback runs only when we already failed, so it gets what is left of
+ *  a reader's patience. */
+const GROUNDED_TIMEOUT_MS = 15_000;
 import { isRealBio } from "@/lib/bioConstants";
 
 // PUBLIC ENDPOINT — intentionally unauthenticated (rate-limited via middleware STRICT tier).
@@ -60,6 +72,13 @@ export async function POST(req: Request) {
         if (artist.x) contextParts.push(`X/Twitter: @${artist.x}`);
         if (artist.soundcloud) contextParts.push(`SoundCloud: ${artist.soundcloud}`);
         if (artist.youtube) contextParts.push(`YouTube: @${artist.youtube?.replace(/^@/, "")}`);
+        // Bandcamp, Deezer and Linktree were simply missing, so an answer could
+        // never say "you can buy it on Bandcamp" — it did not know one existed.
+        // Given as URLs rather than bare handles, so the answer can offer a
+        // place to listen instead of reciting an identifier.
+        if (artist.bandcamp) contextParts.push(`Bandcamp (buy/listen): https://${artist.bandcamp}.bandcamp.com`);
+        if (artist.deezer) contextParts.push(`Deezer: https://www.deezer.com/artist/${artist.deezer}`);
+        if (artist.linktree) contextParts.push(`Linktree: https://linktr.ee/${artist.linktree}`);
         // Reference databases, when we hold them. Not for reciting a discography
         // — Spotify and Deezer already give us the catalogue — but because they
         // are where an artist's CREDITS live: the records they played on, mixed
@@ -107,6 +126,54 @@ export async function POST(req: Request) {
             console.error("[askArtist] Error fetching vault sources:", e);
         }
 
+        // THE CATALOGUE, with dates.
+        //
+        // getSpotifyCatalogDetail exists and the ask never called it, so
+        // "what is their latest release" was unanswerable from the one source
+        // that actually knows. Context, NOT a discography to recite: the
+        // artist's own Spotify link stays current and a generated copy goes
+        // stale the day they release something.
+        try {
+            if (artist.spotify) {
+                const headers = await getSpotifyHeaders();
+                const releases = await getSpotifyCatalogDetail(artist.spotify, headers);
+                if (releases.length > 0) {
+                    const dated = releases
+                        .filter(r => r.releaseDate)
+                        .sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""))
+                        .slice(0, MAX_RELEASES_IN_CONTEXT);
+                    if (dated.length > 0) {
+                        contextParts.push(`\n--- ${artistName.toUpperCase()}'S RELEASES, NEWEST FIRST (from Spotify) ---\n`
+                            + dated.map(r => `${r.releaseDate} — "${r.name}"${r.kind ? ` (${r.kind})` : ""}`).join("\n"));
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("[askArtist] Error fetching catalogue:", e);
+        }
+
+        // THE POSTS THEMSELVES, newest first.
+        //
+        // Everything below this reads what was EXTRACTED from the feed — the
+        // durable facts, deliberately not time-ordered. None of it can answer
+        // "what have they been up to lately", which is the most obvious
+        // question anyone asks. That needs the posts.
+        try {
+            const recent = await getRecentOwnPosts(artistId, MAX_RECENT_POSTS);
+            if (recent.length > 0) {
+                const lines = recent.map(p => {
+                    const n = citable.length + 1;
+                    const when = p.postedAt ? p.postedAt.slice(0, 10) : "undated";
+                    citable.push({ n, title: `${artistName} on Instagram, ${when}`, url: p.url });
+                    const caption = (p.caption ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
+                    return `[${n}] ${when} — "${caption}"`;
+                });
+                contextParts.push(`\n--- ${artistName.toUpperCase()}'S RECENT POSTS, NEWEST FIRST ---\n${lines.join("\n")}`);
+            }
+        } catch (e) {
+            console.error("[askArtist] Error fetching recent posts:", e);
+        }
+
         // The artist's own captions: who they credited, and what they said.
         //
         // We have hundreds of these rows and the ask never opened the table —
@@ -126,7 +193,7 @@ export async function POST(req: Request) {
                 unexplored.push(`${c.isHandle ? "@" : ""}${c.subject}, credited as ${c.roles[0]}`);
             }
             if (collaborators.length > 0) {
-                const lines = collaborators.map(c => {
+                const lines = collaborators.slice(0, MAX_COLLABORATORS_IN_CONTEXT).map(c => {
                     const n = citable.length + 1;
                     citable.push({
                         n,
@@ -159,7 +226,8 @@ export async function POST(req: Request) {
                 const lines = extraction.statements.slice(0, MAX_STATEMENTS_IN_CONTEXT).map(s => {
                     const n = citable.length + 1;
                     citable.push({ n, title: `Their own words — ${s.topic}`, url: s.url });
-                    return `[${n}] ${s.topic}: "${s.quote}"`;
+                    const when = s.postedAt ? ` (${s.postedAt.slice(0, 10)})` : "";
+                    return `[${n}]${when} ${s.topic}: "${s.quote}"`;
                 });
                 contextParts.push(`\n--- ${artistName.toUpperCase()} IN THEIR OWN WORDS ---\n${lines.join("\n")}`);
             }
@@ -190,8 +258,10 @@ export async function POST(req: Request) {
 - Answer in 2-4 sentences unless the question genuinely needs more. Don't pad.
 - The verified sources below are ground truth — prioritize them. That includes the artist's own captions, which are quoted verbatim and are the best evidence about them that exists.
 - CITE THEM. Each verified source is numbered; put its [n] marker immediately after any sentence that uses it. A reader has no way to tell a researched fact from an invented one unless you show your work, and this product is asking them to trust it.
+- A marker is a NUMBER in square brackets and nothing else. "[Bandcamp]" or "[Instagram]" is not a citation; cite the numbered source, or name the platform in plain words with no brackets.
 - Never invent a marker, and never cite a number you were not given.
-- For any fact not in the verified sources, prefix it with "According to public sources, " so the reader knows where it came from.
+- Use what you were given. Releases, recent posts, credits and the artist's own words are all above; a question about their latest release, their collaborators or what they have been doing is answerable from them.
+- ONLY if the sources contain nothing relevant at all, reply with EXACTLY the single word INSUFFICIENT and nothing else. Do not guess, and do not answer from general knowledge — something else handles that case. Answering thinly from unrelated sources is worse than saying we do not have it.
 - Name songs, projects, dates, and collaborators when you know them. Let specifics do the work, not adjectives.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
 - If you don't know, say so in one line rather than guessing.
@@ -200,7 +270,12 @@ export async function POST(req: Request) {
 
 ARTIST CONTEXT:
 ${artistContext}`,
-                    tools: [{ googleSearch: {} }],
+                    // NO GROUNDING HERE, deliberately. Google Search grounding
+                    // suppresses custom [n] markers entirely — measured: the same
+                    // prompt and sources emit "[1] [3] [2]" with it off and
+                    // nothing at all with it on. This call answers from what we
+                    // hold and cites it; the grounded fallback below handles
+                    // questions we cannot answer.
                     temperature: 0.5,
                 },
             }),
@@ -209,7 +284,44 @@ ${artistContext}`,
             ),
         ]);
 
-        const answer = response.text ?? "";
+        let answer = (response.text ?? "").trim();
+        /** True when this answer came from the open web rather than from us. */
+        let fromOpenWeb = false;
+        /** Domains Google actually used, when it did. */
+        let webDomains: string[] = [];
+
+        // OUR SOURCES DID NOT COVER IT — go outside, and say so.
+        //
+        // Grounding is asked for only here, because it cannot coexist with our
+        // citations. The cost is a second call on questions we cannot answer,
+        // which is also a useful signal: a high fallback rate for an artist
+        // means our research on them is thin.
+        if (/^INSUFFICIENT\b/i.test(answer) || answer.length === 0) {
+            const grounded = await Promise.race([
+                getGemini().models.generateContent({
+                    model: GEMINI_MODEL_FLASH,
+                    contents: question,
+                    config: {
+                        systemInstruction: `You answer questions about the music artist "${artistName}". Write like a sharp music writer: concrete, specific, no filler. Answer in 2-4 sentences. No hype phrases. If you do not know, say so in one line rather than guessing. Never fabricate credits, collaborations or achievements.`,
+                        tools: [{ googleSearch: {} }],
+                        temperature: 0.4,
+                    },
+                }),
+                new Promise<null>(resolve => setTimeout(() => resolve(null), GROUNDED_TIMEOUT_MS)),
+            ]).catch(() => null);
+
+            answer = (grounded?.text ?? "").trim();
+            fromOpenWeb = answer.length > 0;
+            // What it actually used, so a grounded answer still shows provenance.
+            const chunks = (grounded as { candidates?: Array<{ groundingMetadata?: { groundingChunks?: Array<{ web?: { title?: string } }> } }> } | null)
+                ?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+            webDomains = [...new Set(chunks.map(c => c.web?.title).filter((d): d is string => !!d))].slice(0, 6);
+
+            if (!answer) {
+                answer = `I don't have anything on that for ${artistName} yet.`;
+                fromOpenWeb = false;
+            }
+        }
         const durationMs = Math.round(performance.now() - startTime);
         console.debug(`[askArtist] "${artistName}" — "${question.slice(0, 60)}" — ${durationMs}ms`);
 
@@ -236,7 +348,22 @@ ${artistContext}`,
         // Only the sources the answer actually cited. Listing everything we
         // read would be provenance theatre: it looks like sourcing while
         // telling the reader nothing about THIS answer.
-        const citedIds = new Set([...answer.matchAll(/\[(\d+)\]/g)].map(m => Number(m[1])));
+        // The model writes "[1]", "[13, 8, 86]" and occasionally "[2026-05-13]".
+        // Only the first two are citations; a date in brackets is the model
+        // inventing a marker shape, and matching it would map a year to a
+        // source number.
+        const citedIds = new Set<number>();
+        for (const m of answer.matchAll(/\[([^\]]+)\]/g)) {
+            const body = m[1];
+            if (/\d{4}-\d{2}/.test(body)) continue;      // a date, not a citation
+            // Mixed groups are common — "[1, Releases]", "[19, 21, Artist Doc]".
+            // Take the numbers and ignore the prose rather than dropping the
+            // whole citation, which is how a real source stopped being shown.
+            for (const part of body.split(",")) {
+                const n = Number(part.trim());
+                if (Number.isInteger(n) && n > 0) citedIds.add(n);
+            }
+        }
         const sources = citable.filter(s => citedIds.has(s.n));
 
         // People the answer names, resolved to somewhere worth going.
@@ -251,7 +378,12 @@ ${artistContext}`,
         // Same discipline as the citations: only link what we can back.
         const mentions = await resolveMentions(artistId, answer);
 
-        return Response.json({ answer, suggestions, sources, mentions });
+        return Response.json({
+            answer, suggestions, sources, mentions,
+            // The reader must be able to tell "this is from Pete's own posts
+            // and his vault" from "this is from the open web".
+            fromOpenWeb, webDomains,
+        });
     } catch (err: any) {
         console.error("[askArtist] Error:", err);
         if (err.message === "Gemini timeout") {
@@ -373,10 +505,23 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
         const collaborators = creditedCollaborators(await getSocialCredits(artistId));
         if (collaborators.length === 0) return [];
 
+        // MATCH THE NAME AS WRITTEN, not only the handle as stored.
+        //
+        // An answer says "Dame Atlas" and "Alan Zavodsky"; we hold `dameatlas`
+        // and `zavodskyalan`. Matching the raw handle found two of the eight
+        // people named in a real answer. Compare on letters and digits only, so
+        // a handle matches the spaced-out name a writer would actually use, and
+        // try the reversed word order because handles often invert it.
+        const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const foldedAnswer = fold(answer);
         const named = collaborators.filter(c => {
-            const needle = c.subject.replace(/^@/, "");
-            if (needle.length < 3) return false;
-            return new RegExp(`(^|[^\\p{L}\\p{N}_@])@?${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}\\p{N}_]|$)`, "iu").test(answer);
+            const needle = fold(c.subject);
+            if (needle.length < 4) return false;
+            if (foldedAnswer.includes(needle)) return true;
+            // zavodskyalan -> alanzavodsky
+            const parts = c.subject.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+            if (parts.length > 1 && foldedAnswer.includes(fold([...parts].reverse().join("")))) return true;
+            return false;
         });
         if (named.length === 0) return [];
 
@@ -387,12 +532,44 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
         const known = handles.length > 0 ? await findArtistsByInstagram(handles) : [];
         const byHandle = new Map(known.map(a => [String(a.instagram ?? "").toLowerCase().replace(/^@/, ""), a.id]));
 
-        return named.map(c => ({
-            name: c.subject,
-            artistId: c.isHandle ? byHandle.get(c.subject.toLowerCase()) : undefined,
-            instagram: c.isHandle ? c.subject : undefined,
-            role: c.roles[0],
-        }));
+        // Hand back the string as it appears IN THE ANSWER where we can find
+        // it, so the client links the words a reader is actually looking at
+        // rather than a handle that never appears on screen.
+        const asWritten = (subject: string): string => {
+            const needle = fold(subject);
+            // Scan word windows of one to three words and return the span that
+            // folds to the handle. The previous version sliced a split-with-
+            // separators array by the wrong stride and returned fragments like
+            // " Dame Atlas" and "Chas".
+            const words = [...answer.matchAll(/[\p{L}\p{N}_]+/gu)];
+            for (let i = 0; i < words.length; i++) {
+                for (let span = 1; span <= 3 && i + span <= words.length; span++) {
+                    const start = words[i].index ?? 0;
+                    const last = words[i + span - 1];
+                    const end = (last.index ?? 0) + last[0].length;
+                    const phrase = answer.slice(start, end);
+                    if (fold(phrase) === needle) return phrase;
+                }
+            }
+            return subject;
+        };
+
+        // A HANDLE, or nothing.
+        //
+        // The extraction files anything credited with a role, and a role can be
+        // a life story: Pete Rango's cousin André, who died, is stored as a
+        // credit with the role "introduced him to music". There is nowhere to
+        // send a reader who clicks his name, and turning him into a link would
+        // be grotesque. Requiring a handle removes him and every other bare
+        // name without us having to judge which names are appropriate.
+        return named
+            .filter(c => c.isHandle)
+            .map(c => ({
+                name: asWritten(c.subject),
+                artistId: byHandle.get(c.subject.toLowerCase()),
+                instagram: c.subject,
+                role: c.roles[0],
+            }));
     } catch (e) {
         console.error("[askArtist] Could not resolve mentions:", e);
         return [];
