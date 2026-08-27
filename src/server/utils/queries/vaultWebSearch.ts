@@ -95,6 +95,18 @@ function normalizeHandle(v: string): string {
     return v.trim().toLowerCase().replace(/^@/, "");
 }
 
+/** Reference databases: a record of work, not an account someone posts from.
+ *
+ *  Worth adopting as a link and NOT worth probing for. A Discogs id cannot be
+ *  guessed from an artist's Instagram handle the way a SoundCloud one often
+ *  can, so these are kept out of the propagation pass on purpose — they are
+ *  adopted only when discovery actually finds the page.
+ *
+ *  Discogs matters more than its traffic suggests: it is where a producer's or
+ *  engineer's credits on OTHER artists' releases are recorded, and that work is
+ *  invisible on every streaming profile they have. */
+const REFERENCE_PLATFORMS = new Set(["discogs"]);
+
 const ACCOUNT_PLATFORMS = new Set([
     "instagram", "x", "tiktok", "youtube", "youtubechannel",
     "soundcloud", "bandcamp", "twitch", "facebook", "spotify", "deezer",
@@ -382,7 +394,7 @@ async function adoptFromMusicBrainz(
         for (const url of found.urls) {
             const match = await extractArtistId(stripQuery(url)).catch(() => undefined);
             if (!match?.siteName || !match?.id) continue;
-            if (!ACCOUNT_PLATFORMS.has(match.siteName)) continue;
+            if (!ACCOUNT_PLATFORMS.has(match.siteName) && !REFERENCE_PLATFORMS.has(match.siteName)) continue;
             const id = String(match.id);
             if (isReservedHandle(match.siteName, id)) continue;
             if (artist[match.siteName]) continue;
@@ -546,14 +558,14 @@ async function adoptHandlesFromOwnPage(
     // only the ones that do. When NONE resemble, keep them all: that is the
     // normal case for a hub whose owner's handle is nothing like their name, and
     // it is how Sherwinn Brice's `dupesdidit` is found at all.
-    const accountHandles = resolved.filter(r => ACCOUNT_PLATFORMS.has(r.siteName));
+    const accountHandles = resolved.filter(r => ACCOUNT_PLATFORMS.has(r.siteName) || REFERENCE_PLATFORMS.has(r.siteName));
     const anyResembles = accountHandles.some(r => sharedPrefix(r.id, artistName) >= HANDLE_STEM_MIN);
 
     let adopted = 0;
     const done = new Set<string>();
     const adoptedHandles = new Set<string>();
     for (const r of resolved) {
-        if (!ACCOUNT_PLATFORMS.has(r.siteName)) continue;
+        if (!ACCOUNT_PLATFORMS.has(r.siteName) && !REFERENCE_PLATFORMS.has(r.siteName)) continue;
         if (anyResembles && sharedPrefix(r.id, artistName) < HANDLE_STEM_MIN) {
             console.log(`[vaultWebSearch] Page mixes "${artistName}" accounts with ${r.siteName}=${r.id}; keeping only theirs`);
             continue;
@@ -1108,7 +1120,7 @@ export async function searchAndPopulateVault(
             const profileMatch = await extractArtistId(stripQuery(result.url)).catch(() => undefined);
             const isAccountUrl = !!profileMatch?.siteName
                 && !!profileMatch?.id
-                && ACCOUNT_PLATFORMS.has(profileMatch.siteName)
+                && (ACCOUNT_PLATFORMS.has(profileMatch.siteName) || REFERENCE_PLATFORMS.has(profileMatch.siteName))
                 // `instagram.com/p/DUtSSjnCYcU` is a POST, and the urlmap regex
                 // reads its first path segment as the handle — so this arrives as
                 // `{ instagram, id: "p" }`. Writing that would set the artist's

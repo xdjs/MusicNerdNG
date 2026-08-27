@@ -2,6 +2,7 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { getArtistDocContext } from "@/server/utils/artistDocService";
+import { byAuthority } from "@/lib/sourceAuthority";
 import { isRealBio } from "@/lib/bioConstants";
 
 // PUBLIC ENDPOINT — intentionally unauthenticated (rate-limited via middleware STRICT tier).
@@ -45,17 +46,31 @@ export async function POST(req: Request) {
         if (artist.x) contextParts.push(`X/Twitter: @${artist.x}`);
         if (artist.soundcloud) contextParts.push(`SoundCloud: ${artist.soundcloud}`);
         if (artist.youtube) contextParts.push(`YouTube: @${artist.youtube?.replace(/^@/, "")}`);
+        // Reference databases, when we hold them. Not for reciting a discography
+        // — Spotify and Deezer already give us the catalogue — but because they
+        // are where an artist's CREDITS live: the records they played on, mixed
+        // or produced for somebody else. That work is invisible everywhere else
+        // and it is often most of what a producer has actually done.
+        if (artist.discogs) contextParts.push(`Discogs: https://www.discogs.com/artist/${artist.discogs} (credits on other artists' releases)`);
+        if (artist.musicbrainz) contextParts.push(`MusicBrainz: https://musicbrainz.org/artist/${artist.musicbrainz}`);
         // Skip the claim-nudge empty-state — it isn't a real bio, so don't feed it back as context.
         if (isRealBio(artist.bio)) contextParts.push(`\nExisting bio:\n${artist.bio}`);
 
         // Include approved vault sources
+        // Kept as {title, url} rather than bare urls: the answer has to be able
+        // to SAY where something came from, and "voyagemia.com" means more to a
+        // reader than a bare link, which is the whole point of showing it.
         const vaultUrls: string[] = [];
+        const citable: { n: number; title: string; url: string }[] = [];
         try {
             const vaultSources = await getVaultSourcesByArtistId(artistId, "approved");
             if (vaultSources.length > 0) {
-                const vaultContext = vaultSources.map(s => {
+                const ranked = byAuthority(vaultSources, s => ({ url: s.url ?? "", type: null }));
+                const vaultContext = ranked.map(s => {
                     if (s.url) vaultUrls.push(s.url);
-                    const parts = [`Source: ${s.title ?? s.url}`];
+                    const n = citable.length + 1;
+                    if (s.url) citable.push({ n, title: s.title ?? s.url, url: s.url });
+                    const parts = [`[${n}] Source: ${s.title ?? s.url}`];
                     if (s.snippet) parts.push(s.snippet);
                     if (s.extractedText) parts.push(s.extractedText.slice(0, 2000));
                     return parts.join(" — ");
@@ -88,6 +103,8 @@ export async function POST(req: Request) {
 
 - Answer in 2-4 sentences unless the question genuinely needs more. Don't pad.
 - The verified sources below are ground truth — prioritize them.
+- CITE THEM. Each verified source is numbered; put its [n] marker immediately after any sentence that uses it. A reader has no way to tell a researched fact from an invented one unless you show your work, and this product is asking them to trust it.
+- Never invent a marker, and never cite a number you were not given.
 - For any fact not in the verified sources, prefix it with "According to public sources, " so the reader knows where it came from.
 - Name songs, projects, dates, and collaborators when you know them. Let specifics do the work, not adjectives.
 - No hype phrases ("rising star", "eclectic", "undeniable", "pushing boundaries").
@@ -113,7 +130,13 @@ ${artistContext}`,
         // Generate contextual follow-up suggestions based on the answer
         const suggestions = generateFollowUps(artistName, question, answer);
 
-        return Response.json({ answer, suggestions });
+        // Only the sources the answer actually cited. Listing everything we
+        // read would be provenance theatre: it looks like sourcing while
+        // telling the reader nothing about THIS answer.
+        const citedIds = new Set([...answer.matchAll(/\[(\d+)\]/g)].map(m => Number(m[1])));
+        const sources = citable.filter(s => citedIds.has(s.n));
+
+        return Response.json({ answer, suggestions, sources });
     } catch (err: any) {
         console.error("[askArtist] Error:", err);
         if (err.message === "Gemini timeout") {
