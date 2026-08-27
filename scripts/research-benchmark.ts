@@ -286,16 +286,17 @@ async function main() {
         fs.mkdirSync(dir, { recursive: true });
         const lines = [
             `# Research benchmark — ${stamp}`, "",
-            `| artist | links correct | wrong | missed | sources | namesake | secs |`,
-            `|---|---|---|---|---|---|---|`,
-            ...scores.map(s => `| ${s.name} | ${s.linksCorrect.length} | ${s.linksWrong.length} | ${s.linksMissed.length} | ${s.sourcesKept} | ${s.sourcesForbidden.length} | ${s.seconds} |`),
-            "", `**Totals** — ${t.correct} correct, ${t.wrong} wrong, ${t.missed} missed of ${wanted_} known handles; ${t.sources} sources, ${t.bad} namesake.`, "",
+            `| artist | links correct | wrong | missed | sources | namesake | blocked | secs |`,
+            `|---|---|---|---|---|---|---|---|`,
+            ...scores.map(s => `| ${s.name} | ${s.linksCorrect.length} | ${s.linksWrong.length} | ${s.linksMissed.length} | ${s.sourcesKept} | ${s.sourcesForbidden.length} | ${s.sourcesBlocked.length} | ${s.seconds} |`),
+            "", `**Totals** — ${t.correct} correct, ${t.wrong} wrong, ${t.missed} missed of ${wanted_} known handles; ${t.sources} sources, ${t.bad} namesake, ${t.blocked} blocked-host.`, "",
             ...scores.flatMap(s => [
                 `## ${s.name}`,
                 s.linksCorrect.length ? `- found: ${s.linksCorrect.join(", ")}` : "- found: none",
                 s.linksMissed.length ? `- missed: ${s.linksMissed.join(", ")}` : "",
                 s.linksWrong.length ? `- **WRONG**: ${s.linksWrong.join(", ")}` : "",
                 s.sourcesForbidden.length ? `- **NAMESAKE SOURCES**: ${s.sourcesForbidden.join(", ")}` : "",
+                s.sourcesBlocked.length ? `- **BLOCKED HOSTS**: ${s.sourcesBlocked.join(", ")}` : "",
                 "",
             ].filter(Boolean)),
         ];
@@ -303,7 +304,7 @@ async function main() {
         fs.writeFileSync(file, lines.join("\n"));
         console.log(`\nreport -> docs/rnd/benchmarks/${day}.md`);
     }
-    process.exit(t.wrong === 0 && t.bad === 0 ? 0 : 1);
+    process.exit(t.wrong === 0 && t.bad === 0 && t.blocked === 0 ? 0 : 1);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

@@ -2,7 +2,7 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import { getArtistDocContext } from "@/server/utils/artistDocService";
-import { byAuthority } from "@/lib/sourceAuthority";
+import { byAuthority, isBlockedSourceHost } from "@/lib/sourceAuthority";
 import { selectPassages } from "@/server/utils/passageSelect";
 import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
 import { getRecentOwnPosts } from "@/server/utils/socialIngest";
@@ -296,13 +296,19 @@ ${artistContext}`,
         // citations. The cost is a second call on questions we cannot answer,
         // which is also a useful signal: a high fallback rate for an artist
         // means our research on them is thin.
+        //
+        // THE BLOCKLIST REACHES THIS SURFACE TOO. The vault refuses scrape
+        // farms; without the checks below this path would happily answer from
+        // one and name it underneath, which is the same page on the same
+        // artist's screen by a different route. Pete's instruction was that he
+        // does not want them anywhere.
         if (/^INSUFFICIENT\b/i.test(answer) || answer.length === 0) {
             const grounded = await Promise.race([
                 getGemini().models.generateContent({
                     model: GEMINI_MODEL_FLASH,
                     contents: question,
                     config: {
-                        systemInstruction: `You answer questions about the music artist "${artistName}". Write like a sharp music writer: concrete, specific, no filler. Answer in 2-4 sentences. No hype phrases. If you do not know, say so in one line rather than guessing. Never fabricate credits, collaborations or achievements.`,
+                        systemInstruction: `You answer questions about the music artist "${artistName}". Write like a sharp music writer: concrete, specific, no filler. Answer in 2-4 sentences. No hype phrases. If you do not know, say so in one line rather than guessing. Never fabricate credits, collaborations or achievements. Rely on publications, the artist's own pages and credits databases. Do not rely on streaming-stat dashboards, follower counters, chart scrapers or catalogue-listing sites — they carry no reporting and saying "I don't know" is better than repeating one.`,
                         tools: [{ googleSearch: {} }],
                         temperature: 0.4,
                     },
@@ -313,9 +319,27 @@ ${artistContext}`,
             answer = (grounded?.text ?? "").trim();
             fromOpenWeb = answer.length > 0;
             // What it actually used, so a grounded answer still shows provenance.
+            //
+            // `web.title` on a Google-grounded chunk is the registrable domain,
+            // not a page title — measured: "stereogum.com", "peterango.com",
+            // "reddit.com". So the same host check the vault uses applies here
+            // directly, and there is no page URL to check instead: `web.uri` is
+            // an opaque vertexaisearch redirect.
             const chunks = (grounded as { candidates?: Array<{ groundingMetadata?: { groundingChunks?: Array<{ web?: { title?: string } }> } }> } | null)
                 ?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-            webDomains = [...new Set(chunks.map(c => c.web?.title).filter((d): d is string => !!d))].slice(0, 6);
+            const domains = [...new Set(chunks.map(c => c.web?.title).filter((d): d is string => !!d))];
+            const usable = domains.filter(d => !isBlockedSourceHost(`https://${d}`));
+            webDomains = usable.slice(0, 6);
+
+            // Grounded ONLY on sites with no author. Dropping the pill and
+            // keeping the answer would be worse than either: the claim still
+            // came from a scrape, and hiding where it came from is how an
+            // unsourced sentence ends up looking like reporting.
+            if (domains.length > 0 && usable.length === 0) {
+                console.log(`[askArtist] Grounded only on blocked hosts (${domains.join(", ")}) — abstaining`);
+                answer = "";
+                fromOpenWeb = false;
+            }
 
             if (!answer) {
                 answer = `I don't have anything on that for ${artistName} yet.`;
