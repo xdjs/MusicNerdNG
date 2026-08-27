@@ -123,8 +123,16 @@ export async function POST(req: Request) {
                 unexplored.push(`${c.isHandle ? "@" : ""}${c.subject}, credited as ${c.roles[0]}`);
             }
             if (collaborators.length > 0) {
-                contextParts.push(`\n--- WHO ${artistName.toUpperCase()} HAS CREDITED, IN THEIR OWN CAPTIONS ---\n`
-                    + collaborators.map(c => `${c.isHandle ? "@" : ""}${c.subject} — ${c.roles.join("; ")} (${c.evidenceUrls.length} post${c.evidenceUrls.length === 1 ? "" : "s"})`).join("\n"));
+                const lines = collaborators.map(c => {
+                    const n = citable.length + 1;
+                    citable.push({
+                        n,
+                        title: `${artistName} credits ${c.isHandle ? "@" : ""}${c.subject} — ${c.roles.join("; ")}`,
+                        url: c.evidenceUrls[0],
+                    });
+                    return `[${n}] ${c.isHandle ? "@" : ""}${c.subject} — ${c.roles.join("; ")} (${c.evidenceUrls.length} post${c.evidenceUrls.length === 1 ? "" : "s"})`;
+                });
+                contextParts.push(`\n--- WHO ${artistName.toUpperCase()} HAS CREDITED, IN THEIR OWN CAPTIONS ---\n${lines.join("\n")}`);
             }
             const own = selfCredits(extraction);
             if (own.length > 0) {
@@ -133,9 +141,17 @@ export async function POST(req: Request) {
             }
             for (const s of extraction.statements.slice(0, 12)) unexplored.push(s.topic);
             if (extraction.statements.length > 0) {
-                contextParts.push(`\n--- ${artistName.toUpperCase()} IN THEIR OWN WORDS ---\n`
-                    + extraction.statements.slice(0, MAX_STATEMENTS_IN_CONTEXT)
-                        .map(s => `${s.topic}: "${s.quote}" (${s.url})`).join("\n"));
+                // NUMBERED like any other source. Without this an answer built
+                // entirely from the artist's own captions — the best evidence
+                // we have about them — came back with no pills and the words
+                // "AI-generated response", which is the exact impression the
+                // citations exist to correct.
+                const lines = extraction.statements.slice(0, MAX_STATEMENTS_IN_CONTEXT).map(s => {
+                    const n = citable.length + 1;
+                    citable.push({ n, title: `Their own words — ${s.topic}`, url: s.url });
+                    return `[${n}] ${s.topic}: "${s.quote}"`;
+                });
+                contextParts.push(`\n--- ${artistName.toUpperCase()} IN THEIR OWN WORDS ---\n${lines.join("\n")}`);
             }
         } catch (e) {
             console.error("[askArtist] Error fetching caption credits:", e);
@@ -162,7 +178,7 @@ export async function POST(req: Request) {
                     systemInstruction: `You answer questions about the music artist "${artistName}". Write like a sharp music writer: concrete, specific, no filler.
 
 - Answer in 2-4 sentences unless the question genuinely needs more. Don't pad.
-- The verified sources below are ground truth — prioritize them.
+- The verified sources below are ground truth — prioritize them. That includes the artist's own captions, which are quoted verbatim and are the best evidence about them that exists.
 - CITE THEM. Each verified source is numbered; put its [n] marker immediately after any sentence that uses it. A reader has no way to tell a researched fact from an invented one unless you show your work, and this product is asking them to trust it.
 - Never invent a marker, and never cite a number you were not given.
 - For any fact not in the verified sources, prefix it with "According to public sources, " so the reader knows where it came from.

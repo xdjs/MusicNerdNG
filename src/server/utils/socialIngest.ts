@@ -609,22 +609,25 @@ export async function checkInstagramScrape(runId: string): Promise<ApifyRunState
 }
 
 /** Collect a finished run's items and store them. */
+/** Returns null when the COLLECTION failed, which is not the same as a feed
+ *  with nothing in it — conflating them recorded a transient dataset error as a
+ *  successfully-ingested artist with no posts, and never retried. */
 export async function collectInstagramScrape(
     artistId: string,
     handle: string,
     datasetId: string,
-): Promise<IngestResult> {
-    if (!APIFY_API_TOKEN) return EMPTY_RESULT;
+): Promise<IngestResult | null> {
+    if (!APIFY_API_TOKEN) return null;
     try {
         const res = await fetch(`${APIFY_DATASET_URL(datasetId)}?token=${encodeURIComponent(APIFY_API_TOKEN)}&clean=true&format=json`, {
             signal: AbortSignal.timeout(APIFY_FETCH_TIMEOUT_MS),
         });
         if (!res.ok) {
             console.error(`[collectInstagramScrape] dataset fetch failed: ${res.status}`);
-            return EMPTY_RESULT;
+            return null;
         }
         const items = await res.json();
-        if (!Array.isArray(items)) return EMPTY_RESULT;
+        if (!Array.isArray(items)) return null;
 
         const artistName = await getArtistNameById(artistId);
         const rows = items
@@ -633,7 +636,7 @@ export async function collectInstagramScrape(
         return await upsertMappedRows(rows);
     } catch (e) {
         console.error("[collectInstagramScrape] Error:", e);
-        return EMPTY_RESULT;
+        return null;
     }
 }
 

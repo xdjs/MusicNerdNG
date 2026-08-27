@@ -117,6 +117,13 @@ async function runIngest(job: ResearchJob): Promise<{ progress: string; done: bo
     }
 
     const result = await collectInstagramScrape(job.artistId, handle, state.datasetId);
+    if (result === null) {
+        // The dataset request failed, which is not the same as a feed with
+        // nothing in it. Marking this done would record both jobs as
+        // successful with no posts and never retry a transient failure.
+        await failResearchJob(job.id, "could not collect the finished scrape");
+        return { progress: "collection failed, will retry", done: false };
+    }
     await completeResearchJob(job.id);
     await enqueueResearchJob(job.artistId, "caption_extract", {
         state: force ? { incremental: true } : {},
@@ -168,21 +175,51 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     //
     // So: explicit re-read clears. Anything else reads what it has no credit
     // for and keeps the rest.
-    const existing = await claimedSourceUrls(job.artistId);
-    const fullRebuild = job.state?.fullRebuild === true;
-    const incremental = job.state?.incremental === true || (!fullRebuild && existing.size > 0);
+    // DECIDED ONCE, AT THE START, AND WRITTEN DOWN.
+    //
+    // This used to ask "are there credits?" on every slice, which is a question
+    // whose answer THIS JOB CHANGES: after the first slice stored anything, the
+    // next one saw credits, flipped to incremental, and filtered those captions
+    // out of the work list — while `cursor` still indexed the longer list it
+    // started with. Every slice after the first read the wrong batch and the
+    // job could report itself complete having skipped most of the feed.
+    //
+    // A saved cursor is only meaningful against a stable list, so the mode is
+    // resolved on the first slice and carried on the job.
+    let incremental: boolean;
+    if (job.cursor === 0 && job.state?.mode === undefined) {
+        const existing = await claimedSourceUrls(job.artistId);
+        const fullRebuild = job.state?.fullRebuild === true;
+        incremental = job.state?.incremental === true || (!fullRebuild && existing.size > 0);
+        await saveJobProgress(job.id, 0, { state: { ...job.state, mode: incremental ? "incremental" : "full" } });
+        job.state = { ...job.state, mode: incremental ? "incremental" : "full" };
+        // Only a full re-read clears, and only before it has read anything.
+        if (!incremental) await clearSocialCredits(job.artistId);
+    } else {
+        incremental = job.state?.mode === "incremental";
+    }
 
+    // The list this job is working through. For an incremental job that is the
+    // captions it had no credit for AT THE START — computed the same way on
+    // every slice, because the set it excludes is the one that existed before
+    // this job wrote anything.
     let toRead = posts;
     if (incremental) {
-        toRead = posts.filter(p => !existing.has(p.url));
+        const baseline = Array.isArray(job.state?.baseline) ? new Set(job.state.baseline as string[]) : null;
+        if (baseline) {
+            toRead = posts.filter(p => !baseline.has(p.url));
+        } else {
+            const existing = await claimedSourceUrls(job.artistId);
+            toRead = posts.filter(p => !existing.has(p.url));
+            // Written down so later slices filter by the same set rather than
+            // by one this job has been adding to.
+            await saveJobProgress(job.id, job.cursor, { state: { ...job.state, baseline: [...existing] } });
+            job.state = { ...job.state, baseline: [...existing] };
+        }
         if (toRead.length === 0) {
             await completeResearchJob(job.id);
             return { progress: "nothing new to read", done: true };
         }
-    } else if (job.cursor === 0) {
-        // A fresh full extraction starts clean; a resumed one keeps what
-        // earlier slices wrote.
-        await clearSocialCredits(job.artistId);
     }
 
     const budgetMs = Math.max(0, deadline - Date.now());
@@ -199,24 +236,40 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
         return { progress: `batch ${slice.nextBatch}/${slice.totalBatches}, +${stored} row(s)`, done: false };
     }
 
-    // Every batch read. One sweep over the captions that produced nothing,
-    // if there is time; if not, leave the job open and sweep next slice.
-    const remaining = deadline - Date.now();
-    if (remaining > 15_000) {
+    // Every batch read. The sweep and the rebuild are both still work, and a
+    // job that marks itself done before doing them has lost them: the comment
+    // here used to say "leave the job open and sweep next slice" while the
+    // code completed regardless, so the recovery pass was skipped precisely on
+    // the slow final slices where it is most likely to be needed.
+    const remaining = () => deadline - Date.now();
+    if (job.state?.swept !== true) {
+        if (remaining() < 15_000) {
+            await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
+            return { progress: "batches done, sweep deferred to the next slice", done: false };
+        }
         const swept = await sweepSilentCaptions(
             toRead, await claimedSourceUrls(job.artistId), artist.name, artist.instagram ?? "",
-            { budgetMs: remaining },
+            { budgetMs: remaining() },
         );
         await appendSocialCredits(job.artistId, swept, postedAtByUrl);
+        job.state = { ...job.state, swept: true };
+        await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
     }
 
-    await completeResearchJob(job.id);
     // Questions cached while this was running were generated against an empty
     // credits table; the document was likely written then too.
     forgetGroundedQuestions(job.artistId);
-    await refreshArtistDoc(job.artistId).catch(e =>
-        console.error("[research] doc rebuild after extraction failed:", e));
 
+    // refreshArtistDoc swallows its own errors and resolves false, so a .catch
+    // here never fired and a failed rebuild left the document and the export
+    // permanently stale with no live job to retry it.
+    const rebuilt = await refreshArtistDoc(job.artistId);
+    if (!rebuilt) {
+        await failResearchJob(job.id, "credits stored but the document rebuild failed");
+        return { progress: "credits stored, document rebuild failed — will retry", done: false };
+    }
+
+    await completeResearchJob(job.id);
     return { progress: `complete, ${slice.totalBatches} batch(es)`, done: true };
 }
 

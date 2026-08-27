@@ -203,10 +203,10 @@ Rules:
 - Never report a person who is not named in that caption.
 `.trim();
 
-function withTimeout<T>(p: Promise<T>): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number = TIMEOUT_MS): Promise<T> {
     return Promise.race([
         p,
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("caption extraction timed out")), TIMEOUT_MS)),
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("caption extraction timed out")), ms)),
     ]);
 }
 
@@ -335,6 +335,7 @@ async function runBatch(
     artistName: string,
     artistHandle: string,
     index: string,
+    budgetMs: number = TIMEOUT_MS,
 ): Promise<CaptionExtraction> {
     const payload = batch.map(p => ({ url: p.url, postedAt: p.postedAt, caption: p.caption }));
     try {
@@ -350,6 +351,7 @@ async function runBatch(
                     responseMimeType: "application/json",
                 },
             }),
+            budgetMs,
         );
         const text = response.text;
         if (!text) return EMPTY_EXTRACTION;
@@ -421,15 +423,24 @@ export async function extractCaptionCredits(
         return { extraction: out, nextBatch: batches.length, totalBatches: batches.length, done: true };
     }
 
+    // A model call gets its own ceiling OR whatever the caller has left,
+    // whichever is sooner. TIMEOUT_MS is ninety seconds and /api/research/advance
+    // has about fifty-one: the first group was started unconditionally, so a
+    // slow one outlived the invocation, nothing was persisted, the lease
+    // expired, and the next slice retried the same group forever.
+    const callBudget = Number.isFinite(deadline)
+        ? Math.max(5_000, Math.min(TIMEOUT_MS, deadline - Date.now()))
+        : TIMEOUT_MS;
+
     let i = start;
     while (i < batches.length) {
         // Stop BEFORE starting a batch we cannot finish. A batch abandoned
         // halfway costs its whole model call and returns nothing.
-        if (Date.now() + TIMEOUT_MS > deadline && i > start) break;
+        if (Date.now() + callBudget > deadline && i > start) break;
 
         const group = batches.slice(i, i + BATCH_CONCURRENCY);
         const results = await Promise.all(
-            group.map((batch, n) => runBatch(batch, artistName, artistHandle, String(i + n))),
+            group.map((batch, n) => runBatch(batch, artistName, artistHandle, String(i + n), callBudget)),
         );
         for (const r of results) {
             out.credits.push(...r.credits);
