@@ -49,8 +49,8 @@ export async function POST(
         }
 
         const lastFinished = jobs
-            .map(j => Number(new Date((j as unknown as { updatedAt?: string }).updatedAt ?? 0)))
-            .filter(Number.isFinite)
+            .map(j => Number(new Date(j.updatedAt ?? 0)))
+            .filter(n => Number.isFinite(n) && n > 0)
             .sort((a, b) => b - a)[0] ?? 0;
         if (lastFinished && Date.now() - lastFinished < COOLDOWN_MS) {
             const mins = Math.ceil((COOLDOWN_MS - (Date.now() - lastFinished)) / 60000);

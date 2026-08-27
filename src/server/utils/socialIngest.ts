@@ -535,3 +535,117 @@ export async function waitForSocialPosts(artistId: string, timeoutMs: number, po
         await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Apify, asynchronously.
+//
+// `run-sync-get-dataset-items` blocks until the scrape finishes — up to eight
+// minutes — which cannot work inside a route capped at sixty seconds. Moving it
+// into a job did not help by itself: the job step was still one blocking call,
+// so the platform killed the invocation before anything was written down and
+// the next slice started the same scrape from scratch, forever.
+//
+// Started and polled instead. The run id is persisted the moment the run
+// exists, so an invocation that dies leaves a run we can find again rather than
+// an orphan we pay for and never collect.
+// ---------------------------------------------------------------------------
+
+const APIFY_RUNS_URL = "https://api.apify.com/v2/acts/apify~instagram-scraper/runs";
+const APIFY_RUN_URL = (runId: string) => `https://api.apify.com/v2/actor-runs/${runId}`;
+const APIFY_DATASET_URL = (datasetId: string) => `https://api.apify.com/v2/datasets/${datasetId}/items`;
+/** Starting a run and reading its status are quick calls; only the scrape is
+ *  slow, and we no longer wait for it. */
+const APIFY_CONTROL_TIMEOUT_MS = 20_000;
+
+export type ApifyRunState =
+    | { status: "started"; runId: string }
+    | { status: "running"; runId: string }
+    | { status: "ready"; runId: string; datasetId: string }
+    | { status: "failed"; reason: string };
+
+/** Kick off a scrape and return as soon as Apify has given it an id. */
+export async function startInstagramScrape(handle: string, opts?: { limit?: number }): Promise<ApifyRunState> {
+    if (!APIFY_API_TOKEN) return { status: "failed", reason: "no apify token" };
+    const limit = Math.min(Math.max(1, opts?.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+    const profileUrl = `https://www.instagram.com/${handle.trim().replace(/^@/, "")}/`;
+    try {
+        const res = await fetch(`${APIFY_RUNS_URL}?token=${encodeURIComponent(APIFY_API_TOKEN)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                directUrls: [profileUrl],
+                resultsType: "posts",
+                resultsLimit: limit,
+                addParentData: false,
+            }),
+            signal: AbortSignal.timeout(APIFY_CONTROL_TIMEOUT_MS),
+        });
+        if (!res.ok) return { status: "failed", reason: `apify start ${res.status}` };
+        const body = await res.json() as { data?: { id?: string } };
+        const runId = body?.data?.id;
+        return runId ? { status: "started", runId } : { status: "failed", reason: "apify returned no run id" };
+    } catch (e) {
+        return { status: "failed", reason: e instanceof Error ? e.message : "apify start failed" };
+    }
+}
+
+/** Where a started run has got to. */
+export async function checkInstagramScrape(runId: string): Promise<ApifyRunState> {
+    if (!APIFY_API_TOKEN) return { status: "failed", reason: "no apify token" };
+    try {
+        const res = await fetch(`${APIFY_RUN_URL(runId)}?token=${encodeURIComponent(APIFY_API_TOKEN)}`, {
+            signal: AbortSignal.timeout(APIFY_CONTROL_TIMEOUT_MS),
+        });
+        if (!res.ok) return { status: "failed", reason: `apify status ${res.status}` };
+        const body = await res.json() as { data?: { status?: string; defaultDatasetId?: string } };
+        const state = body?.data?.status;
+        const datasetId = body?.data?.defaultDatasetId;
+        if (state === "SUCCEEDED" && datasetId) return { status: "ready", runId, datasetId };
+        if (state === "READY" || state === "RUNNING") return { status: "running", runId };
+        return { status: "failed", reason: `apify run ${state ?? "unknown"}` };
+    } catch (e) {
+        return { status: "failed", reason: e instanceof Error ? e.message : "apify status failed" };
+    }
+}
+
+/** Collect a finished run's items and store them. */
+export async function collectInstagramScrape(
+    artistId: string,
+    handle: string,
+    datasetId: string,
+): Promise<IngestResult> {
+    if (!APIFY_API_TOKEN) return EMPTY_RESULT;
+    try {
+        const res = await fetch(`${APIFY_DATASET_URL(datasetId)}?token=${encodeURIComponent(APIFY_API_TOKEN)}&clean=true&format=json`, {
+            signal: AbortSignal.timeout(APIFY_FETCH_TIMEOUT_MS),
+        });
+        if (!res.ok) {
+            console.error(`[collectInstagramScrape] dataset fetch failed: ${res.status}`);
+            return EMPTY_RESULT;
+        }
+        const items = await res.json();
+        if (!Array.isArray(items)) return EMPTY_RESULT;
+
+        const artistName = await getArtistNameById(artistId);
+        const rows = items
+            .map(item => mapApifyPost(item, artistId, handle, artistName))
+            .filter((r): r is SocialPostInsert => r !== null);
+        return await upsertMappedRows(rows);
+    } catch (e) {
+        console.error("[collectInstagramScrape] Error:", e);
+        return EMPTY_RESULT;
+    }
+}
+
+/** The artist's stored handle, for a job that only has an artist id. */
+export async function instagramHandleFor(artistId: string): Promise<string | null> {
+    try {
+        const artist = await db.query.artists.findFirst({
+            where: eq(artists.id, artistId),
+            columns: { instagram: true },
+        });
+        return artist?.instagram?.trim() || null;
+    } catch {
+        return null;
+    }
+}

@@ -21,6 +21,10 @@ export interface ResearchJob {
     total: number | null;
     attempts: number;
     state: Record<string, unknown>;
+    /** Dropped by an earlier version of toJob, which made the refresh cooldown
+     *  read undefined and never fire — an artist could re-trigger an expensive
+     *  scrape immediately. */
+    updatedAt: string | null;
 }
 
 /** How long a claim is good for. An invocation the platform kills leaves its
@@ -44,6 +48,7 @@ function toJob(row: Record<string, unknown>): ResearchJob {
         total: row.total === null || row.total === undefined ? null : Number(row.total),
         attempts: Number(row.attempts ?? 0),
         state: (row.state as Record<string, unknown>) ?? {},
+        updatedAt: (row.updated_at ?? row.updatedAt) ? String(row.updated_at ?? row.updatedAt) : null,
     };
 }
 
@@ -80,6 +85,13 @@ export async function enqueueResearchJob(
 /**
  * Take one job, atomically.
  *
+ * NOTE that claiming does not increment `attempts`. It used to, which quietly
+ * capped every job at four slices: a three-hundred-post feed needs far more
+ * than that, and once attempts hit the limit the job became unclaimable while
+ * staying `pending`, so the unique live-job index also blocked re-enqueuing it.
+ * A large artist would have stalled forever with no error anywhere. `attempts`
+ * counts FAILURES, and is incremented in failResearchJob.
+ *
  * The claim and the read are a single statement on purpose: two invocations
  * arriving together must not both come away believing they own the same job.
  * MNTv learned this the hard way on their nugget cache and spent three commits
@@ -95,7 +107,6 @@ export async function claimResearchJob(opts?: { artistId?: string }): Promise<Re
             update artist_research_jobs
                set status = 'running',
                    claimed_at = now(),
-                   attempts = attempts + 1,
                    updated_at = now()
              where id = (
                  select id from artist_research_jobs
@@ -118,6 +129,9 @@ export async function claimResearchJob(opts?: { artistId?: string }): Promise<Re
 
 /** Record progress and hand the lease back, so the next slice can pick it up
  *  immediately rather than waiting for the lease to expire. */
+/** Progress is also proof of life: a slice that got somewhere clears the
+ *  failure count, so a job that fails twice and then succeeds is not one
+ *  failure away from being abandoned. */
 export async function saveJobProgress(
     jobId: string,
     cursor: number,
@@ -129,6 +143,7 @@ export async function saveJobProgress(
                set cursor = ${cursor},
                    status = 'pending',
                    claimed_at = null,
+                   attempts = 0,
                    total = coalesce(${opts?.total ?? null}, total),
                    state = coalesce(${opts?.state ? JSON.stringify(opts.state) : null}::jsonb, state),
                    updated_at = now()
@@ -158,7 +173,8 @@ export async function failResearchJob(jobId: string, error: string): Promise<voi
     try {
         await db.execute(sql`
             update artist_research_jobs
-               set status = case when attempts >= ${MAX_ATTEMPTS} then 'failed' else 'pending' end,
+               set attempts = attempts + 1,
+                   status = case when attempts + 1 >= ${MAX_ATTEMPTS} then 'failed' else 'pending' end,
                    claimed_at = null,
                    last_error = ${error.slice(0, 500)},
                    updated_at = now()

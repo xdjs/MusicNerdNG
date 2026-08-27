@@ -4,6 +4,7 @@ import { useCallback, useContext, useEffect, useState } from "react";
 import { Check, Pencil, X, ExternalLink, Undo2, Loader2, RefreshCw, Download } from "lucide-react";
 import { EditModeContext } from "@/app/_components/EditModeContext";
 import RevealSection from "./RevealSection";
+import { useResearchPump } from "./onboarding/useResearchPump";
 import { getKnowledgeDoc, correctDocClaim, undoDocCorrection } from "@/app/actions/dashboardActions";
 import { parseDocClaims, countClaims, claimKey, type DocSection } from "@/lib/docClaims";
 
@@ -213,6 +214,13 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
     const [sources, setSources] = useState<DocSource[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [refreshNote, setRefreshNote] = useState<string | null>(null);
+    /** True while this artist has research queued or running.
+     *
+     *  The pump lives inside the onboarding chat, which the page stops
+     *  rendering once onboarding is complete — so "Look again" on a finished
+     *  profile enqueued a job and nothing ever ran it. This drives the same
+     *  route from here, for as long as there is work. */
+    const [pumping, setPumping] = useState(false);
     const [corrections, setCorrections] = useState<Correction[]>([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
@@ -266,6 +274,10 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
         setBusy(false);
     };
 
+    // Nothing else on this page calls the advance route, so without this the
+    // button is a promise nobody keeps.
+    useResearchPump(artistId, pumping);
+
     if (!canEdit || !isEditing) return null;
 
     /** Ask the researcher to look at anything posted since it last read the
@@ -282,6 +294,7 @@ export default function KnowledgeSection({ artistId }: { artistId: string }) {
                 setError(data?.error ?? "Couldn't start that. Try again in a bit.");
             } else {
                 setRefreshNote(data?.message ?? "Reading your recent posts — this page will fill in as it goes.");
+                setPumping(true);
             }
         } catch {
             setError("Couldn't start that. Try again in a bit.");

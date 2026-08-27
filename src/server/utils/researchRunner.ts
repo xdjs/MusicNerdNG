@@ -23,7 +23,10 @@ import {
     clearSocialCredits, appendSocialCredits, claimedSourceUrls,
 } from "@/server/utils/queries/socialCreditQueries";
 import { extractCaptionCredits, sweepSilentCaptions } from "@/server/utils/socialCredits";
-import { ensureRecentSocialPosts, getSocialPostsForArtist } from "@/server/utils/socialIngest";
+import {
+    getSocialPostsForArtist, hasSocialPosts, instagramHandleFor,
+    startInstagramScrape, checkInstagramScrape, collectInstagramScrape,
+} from "@/server/utils/socialIngest";
 import { forgetGroundedQuestions } from "@/server/utils/questionGenerator";
 import { refreshArtistDoc } from "@/server/utils/artistDocService";
 
@@ -64,24 +67,61 @@ export async function advanceResearch(opts: { budgetMs: number; artistId?: strin
     }
 }
 
-/** Fetch the feed. Idempotent, and cheap when the posts are already there. */
+/**
+ * Fetch the feed, across as many slices as it takes.
+ *
+ * A scrape is one to five minutes and this route has sixty seconds, so it is
+ * never awaited: the run is STARTED, its id goes on the job row immediately,
+ * and later slices poll it. An invocation the platform kills therefore leaves a
+ * run we can find again rather than an orphan we paid for and never collected —
+ * which is what happened when this was a single blocking call, forever, because
+ * each new slice started the same scrape from scratch.
+ */
 async function runIngest(job: ResearchJob): Promise<{ progress: string; done: boolean }> {
-    // A job created by the "look again" button carries force, so the scrape
-    // runs again and picks up anything posted since. A job created by
-    // onboarding does not, and is a no-op when the posts are already there.
     const force = job.state?.force === true;
-    const outcome = await ensureRecentSocialPosts(job.artistId, { force });
-    if (outcome.status === "error") {
-        await failResearchJob(job.id, "apify ingest failed");
-        return { progress: "ingest failed", done: false };
+    const runId = typeof job.state?.apifyRunId === "string" ? job.state.apifyRunId : null;
+
+    // Nothing to scrape, or nothing to scrape it with.
+    const handle = await instagramHandleFor(job.artistId);
+    if (!handle) {
+        await completeResearchJob(job.id);
+        return { progress: "no instagram handle", done: true };
     }
-    await completeResearchJob(job.id);
-    // Reading the captions is the next job, and it only exists once there is
-    // something to read.
-    if (outcome.status === "ingested" || outcome.status === "already_present") {
+
+    // Already have the posts and nobody asked for a fresh look.
+    if (!force && !runId && await hasSocialPosts(job.artistId)) {
+        await completeResearchJob(job.id);
         await enqueueResearchJob(job.artistId, "caption_extract");
+        return { progress: "posts already present", done: true };
     }
-    return { progress: `ingest ${outcome.status}`, done: true };
+
+    if (!runId) {
+        const started = await startInstagramScrape(handle);
+        if (started.status === "failed") {
+            await failResearchJob(job.id, started.reason);
+            return { progress: `scrape did not start: ${started.reason}`, done: false };
+        }
+        // Persisted BEFORE anything else can go wrong.
+        await saveJobProgress(job.id, job.cursor, { state: { ...job.state, apifyRunId: started.runId } });
+        return { progress: `scrape started (${started.runId})`, done: false };
+    }
+
+    const state = await checkInstagramScrape(runId);
+    if (state.status === "started" || state.status === "running") {
+        await saveJobProgress(job.id, job.cursor, { state: job.state });
+        return { progress: "scrape still running", done: false };
+    }
+    if (state.status === "failed") {
+        await failResearchJob(job.id, state.reason);
+        return { progress: `scrape failed: ${state.reason}`, done: false };
+    }
+
+    const result = await collectInstagramScrape(job.artistId, handle, state.datasetId);
+    await completeResearchJob(job.id);
+    await enqueueResearchJob(job.artistId, "caption_extract", {
+        state: force ? { incremental: true } : {},
+    });
+    return { progress: `ingested ${result.ingested} post(s)`, done: true };
 }
 
 /**
@@ -110,11 +150,30 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
         return { progress: "no posts", done: true };
     }
 
-    // A fresh job starts clean; a resumed one keeps what earlier slices wrote.
-    if (job.cursor === 0) await clearSocialCredits(job.artistId);
+    // INCREMENTAL means incremental.
+    //
+    // A "look again" job used to start at cursor zero like any other, which
+    // cleared every credit the artist had and re-read their entire feed —
+    // seven minutes and a full model bill to learn what we already knew, and a
+    // profile left empty if the replacement stalled halfway. A refresh reads
+    // only the captions it has no credit for, and keeps everything else.
+    const incremental = job.state?.incremental === true;
+    let toRead = posts;
+    if (incremental) {
+        const already = await claimedSourceUrls(job.artistId);
+        toRead = posts.filter(p => !already.has(p.url));
+        if (toRead.length === 0) {
+            await completeResearchJob(job.id);
+            return { progress: "nothing new to read", done: true };
+        }
+    } else if (job.cursor === 0) {
+        // A fresh full extraction starts clean; a resumed one keeps what
+        // earlier slices wrote.
+        await clearSocialCredits(job.artistId);
+    }
 
     const budgetMs = Math.max(0, deadline - Date.now());
-    const slice = await extractCaptionCredits(posts, artist.name, artist.instagram ?? "", {
+    const slice = await extractCaptionCredits(toRead, artist.name, artist.instagram ?? "", {
         startBatch: job.cursor,
         budgetMs,
     });
@@ -123,7 +182,7 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     const stored = await appendSocialCredits(job.artistId, slice.extraction, postedAtByUrl);
 
     if (!slice.done) {
-        await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches });
+        await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
         return { progress: `batch ${slice.nextBatch}/${slice.totalBatches}, +${stored} row(s)`, done: false };
     }
 
@@ -132,7 +191,7 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
     const remaining = deadline - Date.now();
     if (remaining > 15_000) {
         const swept = await sweepSilentCaptions(
-            posts, await claimedSourceUrls(job.artistId), artist.name, artist.instagram ?? "",
+            toRead, await claimedSourceUrls(job.artistId), artist.name, artist.instagram ?? "",
             { budgetMs: remaining },
         );
         await appendSocialCredits(job.artistId, swept, postedAtByUrl);

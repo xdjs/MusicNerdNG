@@ -21,23 +21,34 @@ import { useEffect } from "react";
  * cannot double-run it.
  */
 const TICK_MS = 20_000;
+/** Consecutive "nothing to do" replies before this stops asking. */
+const IDLE_TICKS_BEFORE_STOP = 5;
 
 export function useResearchPump(artistId: string | undefined, enabled = true) {
     useEffect(() => {
         if (!artistId || !enabled) return;
         let stopped = false;
+        let idle = 0;
 
-        const tick = () => {
+        const tick = async () => {
             if (stopped) return;
-            void fetch("/api/research/advance", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ artistId }),
-            }).catch(() => { /* background work; never surfaced */ });
+            try {
+                const res = await fetch("/api/research/advance", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ artistId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                // Stop after a few empty ticks. A page left open for an hour
+                // should not keep asking a question the answer to which has
+                // been "nothing to do" since the first minute.
+                idle = data?.ran ? 0 : idle + 1;
+                if (idle >= IDLE_TICKS_BEFORE_STOP) { stopped = true; clearInterval(id); }
+            } catch { /* background work; never surfaced */ }
         };
 
-        tick();
-        const id = setInterval(tick, TICK_MS);
+        const id = setInterval(() => void tick(), TICK_MS);
+        void tick();
         return () => { stopped = true; clearInterval(id); };
     }, [artistId, enabled]);
 }
