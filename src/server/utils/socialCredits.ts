@@ -336,7 +336,7 @@ async function runBatch(
     artistHandle: string,
     index: string,
     budgetMs: number = TIMEOUT_MS,
-): Promise<CaptionExtraction> {
+): Promise<CaptionExtraction | null> {
     const payload = batch.map(p => ({ url: p.url, postedAt: p.postedAt, caption: p.caption }));
     try {
         const response = await withTimeout(
@@ -354,7 +354,7 @@ async function runBatch(
             budgetMs,
         );
         const text = response.text;
-        if (!text) return EMPTY_EXTRACTION;
+        if (!text) return null;
         return verifyClaims(parse(text), batch, artistName, artistHandle);
     } catch (e) {
         // A timeout costs the whole batch, and the batch is fifteen posts of an
@@ -364,14 +364,26 @@ async function runBatch(
         if (batch.length > 2 && String(e).includes("timed out")) {
             const mid = Math.ceil(batch.length / 2);
             console.warn(`[socialCredits] Batch ${index} timed out for ${artistName}, retrying as two halves`);
+            // The halves inherit what is LEFT, not a fresh ninety seconds. A
+            // reset here put the retry back over the invocation's budget after
+            // most of it had already been spent, so the same batch was killed
+            // and retried forever.
             const [a, b] = await Promise.all([
-                runBatch(batch.slice(0, mid), artistName, artistHandle, `${index}a`),
-                runBatch(batch.slice(mid), artistName, artistHandle, `${index}b`),
+                runBatch(batch.slice(0, mid), artistName, artistHandle, `${index}a`, budgetMs),
+                runBatch(batch.slice(mid), artistName, artistHandle, `${index}b`, budgetMs),
             ]);
-            return { credits: [...a.credits, ...b.credits], statements: [...a.statements, ...b.statements] };
+            if (!a && !b) return null;
+            return {
+                credits: [...(a?.credits ?? []), ...(b?.credits ?? [])],
+                statements: [...(a?.statements ?? []), ...(b?.statements ?? [])],
+            };
         }
+        // NOT the same as a batch that read fine and found nothing. Returning
+        // an empty extraction let the caller advance past captions a 429 or a
+        // network error meant we never actually read, and finish the job
+        // reporting success.
         console.error(`[socialCredits] Batch ${index} failed for ${artistName}:`, e);
-        return EMPTY_EXTRACTION;
+        return null;
     }
 }
 
@@ -383,6 +395,9 @@ async function runBatch(
  */
 export interface ExtractionSlice {
     extraction: CaptionExtraction;
+    /** True when a batch could not be read at all — a 429, a network error, a
+     *  response with no text. The caller must not treat this as progress. */
+    failed?: boolean;
     /** Batch index to resume from. Equal to totalBatches when finished. */
     nextBatch: number;
     totalBatches: number;
@@ -433,6 +448,7 @@ export async function extractCaptionCredits(
         : TIMEOUT_MS;
 
     let i = start;
+    let failed = false;
     while (i < batches.length) {
         // Stop BEFORE starting a batch we cannot finish. A batch abandoned
         // halfway costs its whole model call and returns nothing.
@@ -442,17 +458,23 @@ export async function extractCaptionCredits(
         const results = await Promise.all(
             group.map((batch, n) => runBatch(batch, artistName, artistHandle, String(i + n), callBudget)),
         );
+        // Stop at the first batch we could not read, and do not advance past
+        // it. The caller keeps its cursor and the job retries from here.
+        let advanced = 0;
         for (const r of results) {
+            if (r === null) { failed = true; break; }
             out.credits.push(...r.credits);
             out.statements.push(...r.statements);
+            advanced += 1;
         }
-        i += group.length;
+        i += advanced;
+        if (failed) break;
     }
 
     dedupeInPlace(out);
-    const done = i >= batches.length;
+    const done = !failed && i >= batches.length;
     console.debug(`[socialCredits] ${artistName}: batches ${start}-${i - 1} of ${batches.length}, ${out.credits.length} credit(s), ${out.statements.length} statement(s)${done ? " — complete" : ""}`);
-    return { extraction: out, nextBatch: i, totalBatches: batches.length, done };
+    return { extraction: out, nextBatch: i, totalBatches: batches.length, done, failed };
 }
 
 /**
@@ -470,13 +492,19 @@ export async function sweepSilentCaptions(
     claimedUrls: Set<string>,
     artistName: string,
     artistHandle: string,
-    opts?: { budgetMs?: number },
-): Promise<CaptionExtraction> {
+    opts?: { budgetMs?: number; startBatch?: number },
+): Promise<ExtractionSlice> {
     const silent = captionBearingPosts(allPosts).filter(p => !claimedUrls.has(p.url));
-    if (silent.length === 0) return EMPTY_EXTRACTION;
+    if (silent.length === 0) {
+        return { extraction: EMPTY_EXTRACTION, nextBatch: 0, totalBatches: 0, done: true };
+    }
+    // Returns the SLICE, not just what it found. Discarding `done` and the
+    // resume cursor meant a sweep too big for one slice was marked finished
+    // after its first pass, so every silent caption beyond that was skipped
+    // permanently on exactly the feeds with the most of them.
     const slice = await extractCaptionCredits(silent, artistName, artistHandle, opts);
-    console.debug(`[socialCredits] ${artistName}: swept ${silent.length} silent caption(s), recovered ${slice.extraction.credits.length + slice.extraction.statements.length} claim(s)`);
-    return slice.extraction;
+    console.debug(`[socialCredits] ${artistName}: swept ${slice.nextBatch}/${slice.totalBatches} batch(es) of ${silent.length} silent caption(s), recovered ${slice.extraction.credits.length + slice.extraction.statements.length} claim(s)`);
+    return slice;
 }
 
 /** Drop exact repeats. A sweep can legitimately re-find what a slice found. */

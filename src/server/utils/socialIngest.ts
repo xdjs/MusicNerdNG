@@ -512,7 +512,7 @@ export async function ensureSocialCredits(artistId: string): Promise<number> {
 
         const swept = await sweepSilentCaptions(
             posts, await claimedSourceUrls(artistId), artist.name, artist.instagram ?? "");
-        stored += await appendSocialCredits(artistId, swept, postedAtByUrl);
+        stored += (await appendSocialCredits(artistId, swept.extraction, postedAtByUrl)) ?? 0;
 
         if (stored > 0) forgetGroundedQuestions(artistId);
         console.debug(`[ensureSocialCredits] ${artist.name}: stored ${stored} row(s)`);

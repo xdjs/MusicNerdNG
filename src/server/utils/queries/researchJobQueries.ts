@@ -153,6 +153,32 @@ export async function saveJobProgress(
     }
 }
 
+/**
+ * Write job state while KEEPING the claim.
+ *
+ * saveJobProgress hands the lease back so the next slice can start at once,
+ * which is right at the end of a slice and wrong in the middle of one: the
+ * pump ticks every twenty seconds, so releasing the claim before the model
+ * calls meant a second invocation could claim the same job, duplicate the
+ * Gemini work, and overwrite the first one's cursor or mark the job done
+ * before it had written its results.
+ */
+export async function saveJobState(
+    jobId: string,
+    state: Record<string, unknown>,
+): Promise<void> {
+    try {
+        await db.execute(sql`
+            update artist_research_jobs
+               set state = ${JSON.stringify(state)}::jsonb,
+                   claimed_at = now(),
+                   updated_at = now()
+             where id = ${jobId}::uuid`);
+    } catch (e) {
+        console.error("[saveJobState] Error:", e);
+    }
+}
+
 /** Finished, successfully. The row stays: "this ran and found nothing" is a
  *  fact worth keeping, and it is the one the old row-count check could not
  *  express. */

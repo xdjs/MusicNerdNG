@@ -35,11 +35,14 @@ export async function clearSocialCredits(artistId: string): Promise<void> {
 
 /** Add what one slice found. Conflicts are ignored, so a sweep re-finding
  *  something is harmless. */
+/** Returns null when the WRITE failed, which is not the same as a slice that
+ *  found nothing — returning 0 for both let the caller advance its cursor past
+ *  captions whose verified credits had just been dropped on the floor. */
 export async function appendSocialCredits(
     artistId: string,
     extraction: CaptionExtraction,
     postedAtByUrl?: Map<string, string | null>,
-): Promise<number> {
+): Promise<number | null> {
     return writeSocialCredits(artistId, extraction, postedAtByUrl, { clearFirst: false });
 }
 
@@ -48,7 +51,7 @@ export async function replaceSocialCredits(
     extraction: CaptionExtraction,
     postedAtByUrl?: Map<string, string | null>,
 ): Promise<number> {
-    return writeSocialCredits(artistId, extraction, postedAtByUrl, { clearFirst: true });
+    return (await writeSocialCredits(artistId, extraction, postedAtByUrl, { clearFirst: true })) ?? 0;
 }
 
 async function writeSocialCredits(
@@ -56,7 +59,7 @@ async function writeSocialCredits(
     extraction: CaptionExtraction,
     postedAtByUrl?: Map<string, string | null>,
     opts?: { clearFirst?: boolean },
-): Promise<number> {
+): Promise<number | null> {
     if (!artistId) return 0;
     const rows = [
         ...extraction.credits.map(c => ({
@@ -91,8 +94,8 @@ async function writeSocialCredits(
         await db.insert(artistSocialCredits).values(rows).onConflictDoNothing();
         return rows.length;
     } catch (e) {
-        console.error("[replaceSocialCredits] Error:", e);
-        return 0;
+        console.error("[writeSocialCredits] Error:", e);
+        return null;
     }
 }
 

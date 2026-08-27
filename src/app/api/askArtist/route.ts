@@ -14,6 +14,9 @@ const PASSAGE_BUDGET_CHARS = 2_400;
  *  include, but a feed yields hundreds; enough to be substantial, bounded so
  *  one artist's Instagram cannot crowd out every article about them. */
 const MAX_STATEMENTS_IN_CONTEXT = 24;
+/** The answer is already written when this runs, so it gets what is left of a
+ *  reader's patience and no more. */
+const FOLLOWUP_TIMEOUT_MS = 6_000;
 import { isRealBio } from "@/lib/bioConstants";
 
 // PUBLIC ENDPOINT — intentionally unauthenticated (rate-limited via middleware STRICT tier).
@@ -136,8 +139,15 @@ export async function POST(req: Request) {
             }
             const own = selfCredits(extraction);
             if (own.length > 0) {
-                contextParts.push(`\n--- WHAT ${artistName.toUpperCase()} SAYS THEY DO THEMSELVES ---\n`
-                    + own.map(c => c.role).join(", "));
+                // Numbered like the rest. Statements and collaborators became
+                // citable and these did not, so an answer about what the artist
+                // does themselves still came back with no source pill.
+                const lines = own.map(c => {
+                    const n = citable.length + 1;
+                    citable.push({ n, title: `${artistName} on their own role — ${c.role}`, url: c.url });
+                    return `[${n}] ${c.role}`;
+                });
+                contextParts.push(`\n--- WHAT ${artistName.toUpperCase()} SAYS THEY DO THEMSELVES ---\n${lines.join("\n")}`);
             }
             for (const s of extraction.statements.slice(0, 12)) unexplored.push(s.topic);
             if (extraction.statements.length > 0) {
@@ -214,9 +224,14 @@ ${artistContext}`,
         // Grounded in the material the answer left on the table, and falling
         // back to the old list when there is nothing specific to reach for,
         // which is the right answer for an artist we know little about.
-        const suggestions = await suggestFollowUps({
-            artistName, question, answer, unexplored,
-        }).catch(() => generateFollowUps(artistName, question, answer));
+        // Raced against a short deadline. The answer is already written by
+        // this point and these are a nicety; a stalled second model call must
+        // not withhold a usable answer until the platform gives up.
+        const suggestions = await Promise.race([
+            suggestFollowUps({ artistName, question, answer, unexplored }),
+            new Promise<string[]>(resolve =>
+                setTimeout(() => resolve(generateFollowUps(artistName, question, answer)), FOLLOWUP_TIMEOUT_MS)),
+        ]).catch(() => generateFollowUps(artistName, question, answer));
 
         // Only the sources the answer actually cited. Listing everything we
         // read would be provenance theatre: it looks like sourcing while

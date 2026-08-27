@@ -16,7 +16,7 @@ import { db } from "@/server/db/drizzle";
 import { artists } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 import {
-    claimResearchJob, saveJobProgress, completeResearchJob, failResearchJob,
+    claimResearchJob, saveJobProgress, saveJobState, completeResearchJob, failResearchJob,
     enqueueResearchJob, type ResearchJob,
 } from "@/server/utils/queries/researchJobQueries";
 import {
@@ -191,7 +191,7 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
         const existing = await claimedSourceUrls(job.artistId);
         const fullRebuild = job.state?.fullRebuild === true;
         incremental = job.state?.incremental === true || (!fullRebuild && existing.size > 0);
-        await saveJobProgress(job.id, 0, { state: { ...job.state, mode: incremental ? "incremental" : "full" } });
+        await saveJobState(job.id, { ...job.state, mode: incremental ? "incremental" : "full" });
         job.state = { ...job.state, mode: incremental ? "incremental" : "full" };
         // Only a full re-read clears, and only before it has read anything.
         if (!incremental) await clearSocialCredits(job.artistId);
@@ -213,7 +213,7 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
             toRead = posts.filter(p => !existing.has(p.url));
             // Written down so later slices filter by the same set rather than
             // by one this job has been adding to.
-            await saveJobProgress(job.id, job.cursor, { state: { ...job.state, baseline: [...existing] } });
+            await saveJobState(job.id, { ...job.state, baseline: [...existing] });
             job.state = { ...job.state, baseline: [...existing] };
         }
         if (toRead.length === 0) {
@@ -230,6 +230,18 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
 
     const postedAtByUrl = new Map(posts.map(p => [p.url, p.postedAt] as const));
     const stored = await appendSocialCredits(job.artistId, slice.extraction, postedAtByUrl);
+    if (stored === null) {
+        // The credits from this slice were verified and then not written.
+        // Advancing the cursor would discard them permanently.
+        await failResearchJob(job.id, "could not store extracted credits");
+        return { progress: "storage failed, cursor held", done: false };
+    }
+    if (slice.failed) {
+        // A batch we could not read at all. The cursor stops where it stopped.
+        await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
+        await failResearchJob(job.id, "a caption batch could not be read");
+        return { progress: `read up to batch ${slice.nextBatch}, will retry`, done: false };
+    }
 
     if (!slice.done) {
         await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
@@ -247,13 +259,24 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
             await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
             return { progress: "batches done, sweep deferred to the next slice", done: false };
         }
+        const sweepStart = typeof job.state?.sweepCursor === "number" ? job.state.sweepCursor : 0;
         const swept = await sweepSilentCaptions(
             toRead, await claimedSourceUrls(job.artistId), artist.name, artist.instagram ?? "",
-            { budgetMs: remaining() },
+            { budgetMs: remaining(), startBatch: sweepStart },
         );
-        await appendSocialCredits(job.artistId, swept, postedAtByUrl);
-        job.state = { ...job.state, swept: true };
+        if ((await appendSocialCredits(job.artistId, swept.extraction, postedAtByUrl)) === null) {
+            await failResearchJob(job.id, "could not store swept credits");
+            return { progress: "sweep storage failed", done: false };
+        }
+        // The sweep can need more than one slice too. Only when it finishes is
+        // it finished.
+        job.state = swept.done
+            ? { ...job.state, swept: true }
+            : { ...job.state, sweepCursor: swept.nextBatch };
         await saveJobProgress(job.id, slice.nextBatch, { total: slice.totalBatches, state: job.state });
+        if (!swept.done) {
+            return { progress: `sweeping, ${swept.nextBatch}/${swept.totalBatches}`, done: false };
+        }
     }
 
     // Questions cached while this was running were generated against an empty
