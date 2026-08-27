@@ -1087,3 +1087,29 @@ function normaliseText(input: string): string {
         .replace(/[^\p{L}\p{N}\s]+/gu, '') // strip punctuation; keep letters, numbers, spaces
         .toLowerCase();
 } 
+
+/**
+ * Artists in this directory whose Instagram matches one of these handles.
+ *
+ * Used to turn a credited collaborator into a link to their own profile. Some
+ * stored handles carry a legacy leading "@", so both sides are trimmed — the
+ * same mismatch that had the collision guard report a claimed handle as free.
+ */
+export async function findArtistsByInstagram(handles: string[]): Promise<{ id: string; instagram: string | null }[]> {
+    const wanted = handles.map(h => h.toLowerCase().replace(/^@/, "")).filter(Boolean);
+    if (wanted.length === 0) return [];
+    try {
+        const rows = await db.execute(sql`
+            select id, instagram from artists
+             where instagram is not null
+               and lower(ltrim(instagram, '@')) = any(${wanted})`);
+        const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]) ?? [];
+        return (list as Record<string, unknown>[]).map(r => ({
+            id: String(r.id),
+            instagram: r.instagram === null || r.instagram === undefined ? null : String(r.instagram),
+        }));
+    } catch (e) {
+        console.error("[findArtistsByInstagram] Error:", e);
+        return [];
+    }
+}
