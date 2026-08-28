@@ -25,6 +25,7 @@
  * its job instead of wedging it.
  */
 import { advanceResearch } from "@/server/utils/researchRunner";
+import { CRON_SECRET } from "@/env";
 
 export const dynamic = "force-dynamic";
 /** The whole point. A slice gets its own allowance rather than a chat turn's
@@ -74,8 +75,7 @@ export async function GET(req: Request): Promise<Response> {
     // Only when a secret is configured. Unset, this stays as open as POST
     // already is, which keeps local and preview environments working; set, it
     // is required, so production cannot be pumped by anyone who finds the URL.
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+    if (CRON_SECRET && req.headers.get("authorization") !== `Bearer ${CRON_SECRET}`) {
         return Response.json({ ran: false, error: "unauthorized" }, { status: 401 });
     }
 

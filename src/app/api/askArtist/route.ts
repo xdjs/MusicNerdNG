@@ -143,8 +143,24 @@ export async function POST(req: Request) {
                         .sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""))
                         .slice(0, MAX_RELEASES_IN_CONTEXT);
                     if (dated.length > 0) {
-                        contextParts.push(`\n--- ${artistName.toUpperCase()}'S RELEASES, NEWEST FIRST (from Spotify) ---\n`
-                            + dated.map(r => `${r.releaseDate} — "${r.name}"${r.kind ? ` (${r.kind})` : ""}`).join("\n"));
+                        // NUMBERED, like everything else the prompt asks to be
+                        // cited. Without a marker, a question answered purely
+                        // from the catalogue — "what is their latest release?"
+                        // — came back with no source pill and the label
+                        // "AI-generated response", which is exactly wrong: it
+                        // is the best-sourced answer we can give. One number
+                        // for the catalogue rather than one per release, so an
+                        // answer naming three records does not produce three
+                        // pills pointing at the same page.
+                        const n = citable.length + 1;
+                        citable.push({
+                            n,
+                            title: `${artistName}'s catalogue on Spotify`,
+                            url: `https://open.spotify.com/artist/${artist.spotify}`,
+                        });
+                        contextParts.push(`\n--- [${n}] ${artistName.toUpperCase()}'S RELEASES, NEWEST FIRST (from Spotify) ---\n`
+                            + dated.map(r => `${r.releaseDate} — "${r.name}"${r.kind ? ` (${r.kind})` : ""}`).join("\n")
+                            + `\nCite these as [${n}].`);
                     }
                 }
             }

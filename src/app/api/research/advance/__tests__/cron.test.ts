@@ -8,6 +8,9 @@ import { jest } from '@jest/globals';
 
 const advanceResearch = jest.fn();
 jest.mock('@/server/utils/researchRunner', () => ({ advanceResearch: (...a) => advanceResearch(...a) }));
+// Read through @/env like every other server env var, so the value has to be
+// set before the route module is imported.
+jest.mock('@/env', () => ({ get CRON_SECRET() { return process.env.CRON_SECRET ?? ""; } }));
 
 if (!('json' in Response)) {
     Response.json = (data, init) =>

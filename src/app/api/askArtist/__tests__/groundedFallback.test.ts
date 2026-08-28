@@ -15,6 +15,10 @@ jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: jest.f
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({ getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]) }));
 jest.mock('@/server/utils/artistDocService', () => ({ getArtistDocContext: jest.fn().mockResolvedValue('') }));
 jest.mock('@/server/lib/gemini', () => ({ getGemini: jest.fn(), GEMINI_MODEL_FLASH: 'gemini-2.5-flash' }));
+jest.mock('@/server/utils/queries/externalApiQueries', () => ({
+    getSpotifyHeaders: jest.fn().mockResolvedValue({}),
+    getSpotifyCatalogDetail: jest.fn().mockResolvedValue([]),
+}));
 
 if (!('json' in Response)) {
     Response.json = (data, init) =>
@@ -87,5 +91,31 @@ describe('the grounded fallback and the blocklist', () => {
         const { generateContent } = await ask({ text: 'ok', ...chunksFrom('rvamag.com') });
         const sys = generateContent.mock.calls[1][0].config.systemInstruction;
         expect(sys).toMatch(/chart scrapers|catalogue-listing/);
+    });
+
+    it('numbers the Spotify catalogue so a release answer can be cited', async () => {
+        // "What is their latest release?" is answered purely from the catalogue
+        // block. Unnumbered, it came back with no pill and the label
+        // "AI-generated response" — exactly wrong for the best-sourced answer
+        // we can give.
+        const { getArtistById } = await import('@/server/utils/queries/artistQueries');
+        const { getSpotifyCatalogDetail } = await import('@/server/utils/queries/externalApiQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        const generateContent = jest.fn().mockResolvedValue({ text: 'Their latest is "rush" [1].' });
+        getGemini.mockReturnValue({ models: { generateContent } });
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
+        getSpotifyCatalogDetail.mockResolvedValue([{ name: 'rush', releaseDate: '2026-03-01', kind: 'single' }]);
+
+        const { POST } = await import('../route');
+        const res = await POST(new Request('http://x/api/askArtist', {
+            method: 'POST',
+            body: JSON.stringify({ artistId: 'a1', question: 'What is their latest release?' }),
+        }));
+        const body = await res.json();
+
+        expect(String(generateContent.mock.calls[0][0].config.systemInstruction)).toContain("[1] PETE RANGO'S RELEASES");
+        expect(body.sources).toEqual([
+            { n: 1, title: "Pete Rango's catalogue on Spotify", url: 'https://open.spotify.com/artist/SPOT1' },
+        ]);
     });
 });

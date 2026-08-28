@@ -42,3 +42,8 @@ export const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET ?? "";
 
 // Apify (Instagram post ingestion — see socialIngest.ts). Empty = ingestion no-ops.
 export const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN ?? "";
+
+// The scheduler's shared secret (Vercel cron sends it as a bearer token).
+// Empty = /api/research/advance's GET stays as open as its POST already is,
+// which is what local and preview environments need.
+export const CRON_SECRET = process.env.CRON_SECRET ?? "";
