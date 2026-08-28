@@ -11,7 +11,11 @@
  */
 import { jest } from '@jest/globals';
 
-jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: jest.fn() }));
+jest.mock('@/server/utils/queries/artistQueries', () => ({
+    getArtistById: jest.fn(),
+    findArtistsByInstagram: jest.fn().mockResolvedValue([]),
+    findUniqueArtistsByName: jest.fn().mockResolvedValue(new Map()),
+}));
 jest.mock('@/server/utils/queries/dashboardQueries', () => ({ getVaultSourcesByArtistId: jest.fn().mockResolvedValue([]) }));
 jest.mock('@/server/utils/artistDocService', () => ({ getArtistDocContext: jest.fn().mockResolvedValue('') }));
 jest.mock('@/server/lib/gemini', () => ({ getGemini: jest.fn(), GEMINI_MODEL_FLASH: 'gemini-2.5-flash' }));
@@ -19,6 +23,12 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyHeaders: jest.fn().mockResolvedValue({}),
     getSpotifyCatalogDetail: jest.fn().mockResolvedValue([]),
 }));
+jest.mock('@/server/utils/queries/socialCreditQueries', () => ({ getSocialCredits: jest.fn().mockResolvedValue([]) }));
+jest.mock('@/server/utils/socialCredits', () => ({
+    creditedCollaborators: jest.fn(() => []),
+    selfCredits: jest.fn(() => []),
+}));
+jest.mock('@/server/utils/socialIngest', () => ({ getRecentOwnPosts: jest.fn().mockResolvedValue([]) }));
 
 if (!('json' in Response)) {
     Response.json = (data, init) =>
@@ -144,5 +154,96 @@ describe('the grounded fallback and the blocklist', () => {
         // A bare handle is identity, not a place: it stays unnumbered, and the
         // posts behind it are already citable on their own.
         expect(String(generateContent.mock.calls[0][0].config.systemInstruction)).toContain('Instagram: @p3t3rango');
+    });
+
+    it('links records the answer names, and only ones we hold', async () => {
+        const { getArtistById } = await import('@/server/utils/queries/artistQueries');
+        const { getSpotifyCatalogDetail } = await import('@/server/utils/queries/externalApiQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
+            text: 'He put out "rush" and also mentioned Thriller.',
+        }) } });
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1', bandcamp: 'peterango' });
+        getSpotifyCatalogDetail.mockResolvedValue([
+            { name: 'rush', releaseDate: '2026-04-01', kind: 'single', url: 'https://open.spotify.com/album/RUSH' },
+            { name: 'loved you more', releaseDate: '2026-03-20', kind: 'single', url: 'https://open.spotify.com/album/LOVE' },
+        ]);
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST',
+            body: JSON.stringify({ artistId: 'a1', question: 'What has he released?' }),
+        }))).json();
+
+        // "rush" is named and is in the catalogue. "loved you more" is in the
+        // catalogue and is NOT named. "Thriller" is named and is not his — a
+        // quoted phrase is as likely to be a lyric or a project as a release,
+        // so the catalogue is the only evidence that settles it.
+        expect(body.songs).toEqual([{ title: 'rush', spotifyUrl: 'https://open.spotify.com/album/RUSH' }]);
+        expect(body.bandcamp).toBe('https://peterango.bandcamp.com');
+    });
+
+    it('never links the artist to their own page', async () => {
+        // They reach the mention list by both routes: their own handle appears
+        // in their own captions, and their name is in the directory.
+        const { getArtistById, findUniqueArtistsByName, findArtistsByInstagram } = await import('@/server/utils/queries/artistQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        const { creditedCollaborators } = await import('@/server/utils/socialCredits');
+
+        getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
+            text: 'Pete Rango produced it with Dame Atlas.',
+        }) } });
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango' });
+        creditedCollaborators.mockReturnValue([
+            { subject: 'p3t3rango', isHandle: true, roles: ['mixed and mastered'] },
+        ]);
+        findArtistsByInstagram.mockResolvedValue([{ id: 'a1', instagram: 'p3t3rango' }]);
+        findUniqueArtistsByName.mockResolvedValue(new Map([['peterango', 'a1'], ['dameatlas', 'dame-uuid']]));
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST',
+            body: JSON.stringify({ artistId: 'a1', question: 'Who produced it?' }),
+        }))).json();
+
+        expect(body.mentions.map(m => m.artistId)).not.toContain('a1');
+        // Somebody else in the directory still links, so this is about the self
+        // link and not about the pass being switched off.
+        expect(body.mentions).toContainEqual(expect.objectContaining({ artistId: 'dame-uuid' }));
+    });
+
+    it('will not turn a one-word instrument into a link to a stranger', async () => {
+        // Pharaoh Sistare's answer mentions a Rhodes — the electric piano — and
+        // there is exactly one artist here called Rhodes, so uniqueness alone
+        // passed it. Every common instrument, label and place is a potential
+        // artist name; a stoplist of them would always be one word short.
+        const { getArtistById, findUniqueArtistsByName } = await import('@/server/utils/queries/artistQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        const { creditedCollaborators } = await import('@/server/utils/socialCredits');
+
+        getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
+            text: 'He played Rhodes on it, alongside Cherele and Jesse Boykins III.',
+        }) } });
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pharaoh Sistare' });
+        // Cherele is one word AND somebody this artist has credited.
+        creditedCollaborators.mockReturnValue([{ subject: 'Cherele', isHandle: false, roles: ['vocals'] }]);
+        findUniqueArtistsByName.mockResolvedValue(new Map([
+            ['rhodes', 'rhodes-uuid'],
+            ['cherele', 'cherele-uuid'],
+            ['jesseboykinsiii', 'jesse-uuid'],
+        ]));
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST',
+            body: JSON.stringify({ artistId: 'a1', question: 'Who played on it?' }),
+        }))).json();
+
+        const ids = body.mentions.map(m => m.artistId);
+        expect(ids).not.toContain('rhodes-uuid');
+        // Two words carry enough signal on their own; one word needs to be
+        // somebody they have actually credited.
+        expect(ids).toContain('jesse-uuid');
+        expect(ids).toContain('cherele-uuid');
     });
 });

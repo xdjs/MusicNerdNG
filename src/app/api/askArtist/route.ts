@@ -23,6 +23,9 @@ const FOLLOWUP_TIMEOUT_MS = 4_000;
 const MAX_RECENT_POSTS = 12;
 /** Enough to answer "what is the latest" and "what should I hear". */
 const MAX_RELEASES_IN_CONTEXT = 12;
+/** Enough for "what have they released lately"; past this an answer is a
+ *  discography rather than a sentence. */
+const MAX_SONGS_LINKED = 8;
 /** Pete Rango has 209 credited collaborators. Numbering all of them produced
  *  source markers in the hundreds and a prompt mostly made of names. */
 const MAX_COLLABORATORS_IN_CONTEXT = 20;
@@ -78,6 +81,9 @@ export async function POST(req: Request) {
         // reader than a bare link, which is the whole point of showing it.
         const vaultUrls: string[] = [];
         const citable: { n: number; title: string; url: string }[] = [];
+        /** The artist's releases, kept past the prompt so the answer's own
+         *  words can be matched against real records afterwards. */
+        let catalogue: { name: string; releaseDate: string | null; url: string | null }[] = [];
 
         // NUMBERED, because these are the answer to a real question. "Where can
         // I buy their music" is answered entirely from these lines, and
@@ -157,6 +163,7 @@ export async function POST(req: Request) {
                         .filter(r => r.releaseDate)
                         .sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""))
                         .slice(0, MAX_RELEASES_IN_CONTEXT);
+                    catalogue = dated;
                     if (dated.length > 0) {
                         // NUMBERED, like everything else the prompt asks to be
                         // cited. Without a marker, a question answered purely
@@ -441,8 +448,26 @@ ${artistContext}`,
             resolveMentions(artistId, answer),
         ]);
 
+        // Records the answer names that we can prove are theirs.
+        //
+        // Matched against the CATALOGUE rather than guessed from the prose: a
+        // quoted phrase is as likely to be a lyric, a nickname or a project as
+        // a release, and "we hold this record under this artist's Spotify id"
+        // is the only evidence that settles it. Where else you can hear it is
+        // resolved when a reader taps the title, not now — two lookups a song
+        // is most of a second added to every answer for links most people
+        // never open.
+        const songs = catalogue
+            .filter(r => r.url && namedInAnswer(answer, r.name))
+            .map(r => ({ title: r.name, spotifyUrl: r.url as string }))
+            .slice(0, MAX_SONGS_LINKED);
+
         return Response.json({
-            answer, suggestions, sources, mentions,
+            answer, suggestions, sources, mentions, songs,
+            // The artist's store, for the "where can I hear this" menu under a
+            // record. Bandcamp has no API, so this is their page and is
+            // labelled as their page.
+            bandcamp: artist.bandcamp ? `https://${artist.bandcamp}.bandcamp.com` : null,
             // The reader must be able to tell "this is from Pete's own posts
             // and his vault" from "this is from the open web".
             fromOpenWeb, webDomains,
@@ -569,10 +594,14 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
     try {
         const { getSocialCredits } = await import("@/server/utils/queries/socialCreditQueries");
         const { creditedCollaborators } = await import("@/server/utils/socialCredits");
-        const { findArtistsByInstagram } = await import("@/server/utils/queries/artistQueries");
+        const { findArtistsByInstagram, findUniqueArtistsByName } = await import("@/server/utils/queries/artistQueries");
 
+        // NO EARLY RETURN WHEN THERE ARE NO CAPTION CREDITS. This used to bail
+        // here and again below when none of them were named — which meant the
+        // directory pass, the only thing that can link someone we have no
+        // Instagram handle for, never ran for an artist whose feed we have not
+        // read. That is most artists on day one.
         const collaborators = creditedCollaborators(await getSocialCredits(artistId));
-        if (collaborators.length === 0) return [];
 
         // MATCH THE NAME AS WRITTEN, not only the handle as stored.
         //
@@ -587,12 +616,20 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
             const needle = fold(c.subject);
             if (needle.length < 4) return false;
             if (foldedAnswer.includes(needle)) return true;
-            // zavodskyalan -> alanzavodsky
-            const parts = c.subject.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-            if (parts.length > 1 && foldedAnswer.includes(fold([...parts].reverse().join("")))) return true;
+            // zavodskyalan -> alanzavodsky.
+            //
+            // The reversal used to split the SUBJECT on separators, which a
+            // handle does not have: `zavodskyalan` is one part, so the reversal
+            // never fired and Alan Zavodsky went unlinked in an answer that
+            // named him as a production partner. Splitting at every position
+            // instead catches the whole class of surname-first handles. A false
+            // positive needs the full concatenation to appear in the answer,
+            // which is a high bar.
+            for (let i = 4; i <= needle.length - 4; i++) {
+                if (foldedAnswer.includes(needle.slice(i) + needle.slice(0, i))) return true;
+            }
             return false;
         });
-        if (named.length === 0) return [];
 
         // A collaborator who is already an artist here is worth a profile link;
         // one who is not is a person who probably should be, which is a
@@ -631,7 +668,7 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
         // send a reader who clicks his name, and turning him into a link would
         // be grotesque. Requiring a handle removes him and every other bare
         // name without us having to judge which names are appropriate.
-        return named
+        const fromCredits = named
             .filter(c => c.isHandle)
             .map(c => ({
                 name: asWritten(c.subject),
@@ -639,8 +676,99 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
                 instagram: c.subject,
                 role: c.roles[0],
             }));
+
+        // AND ANYONE ELSE IN THE DIRECTORY THE ANSWER NAMES.
+        //
+        // The block above can only link people we hold an Instagram handle
+        // for — a caption credit. Most of the people an answer names arrive
+        // from the vault and the document instead: Nia Sultana, Kilo Kish,
+        // Jesse Boykins III were all plain text next to a linked Dame Atlas,
+        // which reads like a bug rather than a rule.
+        const already = new Set(fromCredits.map(m => fold(m.name)));
+        // A ONE-WORD NAME NEEDS CORROBORATION.
+        //
+        // Uniqueness in the directory is not enough on its own. Pharaoh
+        // Sistare's answer mentions a Rhodes — the electric piano — and there
+        // is exactly one artist here called Rhodes, so the guard passed and a
+        // keyboard became a link to a stranger. Every common instrument, label
+        // and place name is a potential artist name, and a stoplist of them
+        // would always be one word short.
+        //
+        // So a single word only links when it is also somebody this artist has
+        // actually credited; two or more words carry enough signal on their
+        // own. This trades linking a few real one-word acts for never inventing
+        // a collaborator, which is the right way round.
+        const credited = new Set(collaborators.map(c => fold(c.subject)));
+        const linkable = (n: string) =>
+            !already.has(fold(n))
+            && (n.trim().split(/\s+/).length > 1 || credited.has(fold(n)));
+
+        const candidates = candidateNames(answer).filter(linkable);
+        const byName = await findUniqueArtistsByName(candidates);
+        const fromDirectory = candidates
+            .filter(n => byName.has(fold(n)))
+            .map(n => ({ name: n, artistId: byName.get(fold(n)) }));
+
+        // Deduped on the folded name so the same person cannot be linked twice
+        // under two spellings.
+        //
+        // And never the artist whose page this is. Every answer names them, and
+        // they reach this list by BOTH routes — their own handle appears in
+        // their own captions ("@p3t3rango mixed and mastered..."), which is a
+        // self-credit, and their name is in the directory. A link from their
+        // own page back to their own page is a dead end dressed as a
+        // destination. Compared on id, so an alternate spelling is caught too.
+        const seen = new Set<string>();
+        return [...fromCredits, ...fromDirectory].filter(m => {
+            if (m.artistId === artistId) return false;
+            const k = fold(m.name);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+        });
     } catch (e) {
         console.error("[askArtist] Could not resolve mentions:", e);
         return [];
     }
+}
+
+/**
+ * Spans of an answer that could be somebody's name.
+ *
+ * Deliberately blunt: capitalised runs of one to three words, which is what a
+ * person or an act looks like in prose. Precision comes from the lookup, which
+ * only returns names identifying exactly one artist here — so a wrong guess
+ * costs a database row comparison and produces no link.
+ *
+ * TITLES ARE EXCLUDED. Every record in these answers is written in quotes, and
+ * "Cast Out Of Hell" looks exactly like a band name. Anything inside quotes is
+ * dropped before matching; song linking handles those separately.
+ */
+function candidateNames(answer: string): string[] {
+    const withoutTitles = answer.replace(/["“”][^"“”]{1,120}["“”]/g, " ");
+    const out = new Set<string>();
+    // Allows the punctuation real names carry: A$AP Ferg, Hell'z Own, Jesse
+    // Boykins III.
+    const word = "[A-Z][\\p{L}\\p{N}$'’.]*";
+    const re = new RegExp(`${word}(?:\\s+${word}){0,2}`, "gu");
+    for (const m of withoutTitles.matchAll(re)) {
+        const span = m[0].replace(/[.,;:]+$/, "").trim();
+        if (span.replace(/[^a-z0-9]/gi, "").length >= 4) out.add(span);
+    }
+    return [...out].slice(0, 40);
+}
+
+/**
+ * Does this answer actually name this record?
+ *
+ * Folded comparison, because the model writes a title the way a writer would —
+ * "Vi$ions" for "Vi$ions", but also "Cast Out Of Hell" for "Cast out of hell".
+ * Requires the WHOLE title, so "rush" does not match "rushing" and a one-word
+ * release does not light up half the sentence.
+ */
+function namedInAnswer(answer: string, title: string): boolean {
+    const fold = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const needle = fold(title);
+    if (needle.length < 3) return false;
+    return fold(answer).includes(needle);
 }

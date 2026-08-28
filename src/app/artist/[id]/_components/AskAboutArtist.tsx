@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, X, CornerDownLeft } from "lucide-react";
 
 interface AskAboutArtistProps {
@@ -17,6 +17,8 @@ const DEFAULT_SUGGESTIONS = (name: string) => [
 
 type AnswerSource = { n: number; title: string; url: string };
 type AnswerMention = { name: string; artistId?: string; instagram?: string; role?: string };
+type AnswerSong = { title: string; spotifyUrl: string };
+type TrackLink = { service: string; url: string };
 
 /** A pill has room for where it ran, not for a headline. The full title is the
  *  hover.
@@ -40,54 +42,232 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 
 /**
- * Turn credited collaborators named in an answer into links.
+ * Render an answer: its people, its records, and its citations.
  *
- * The server decides WHO is linkable and this only renders it. That split
- * matters: the resolver returns credited collaborators only, never people named
- * in the artist's statements, because those include people talked about rather
- * than worked with — and linking a name out of a story about someone who died
- * to whoever holds a matching handle is a mistake you only make once.
+ * ONE PASS, NOT THREE. Mentions, song titles and citation markers all want to
+ * replace spans of the same string, and running them in sequence means the
+ * second pass matches inside what the first produced — a citation marker inside
+ * a linked title, a name inside a bracket. So every candidate span is collected
+ * with its position, overlaps are resolved by taking the earliest, and the text
+ * is emitted once.
  *
- * A collaborator already in the directory goes to their profile; one who is not
- * goes to their Instagram, which is also a quiet list of people who ought to be
- * here.
+ * WHO IS LINKABLE IS THE SERVER'S DECISION and this only renders it. That split
+ * matters: the resolver returns credited collaborators and artists whose name
+ * identifies exactly one person in the directory — never a name lifted out of a
+ * story, because linking someone who died to whoever holds a matching handle is
+ * a mistake you only make once.
  */
-function linkifyMentions(text: string, mentions: AnswerMention[]): React.ReactNode {
-    if (mentions.length === 0) return text;
+function renderAnswer(
+    text: string,
+    mentions: AnswerMention[],
+    songs: AnswerSong[],
+    sources: AnswerSource[],
+    bandcamp: string | null,
+    artistName: string,
+): React.ReactNode {
+    type Span = { start: number; end: number; node: (key: string) => React.ReactNode };
+    const spans: Span[] = [];
+    const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const byNumber = new Map(sources.map(s => [s.n, s]));
 
-    // Longest first, so "@dame atlas" wins over "@dame" where both are credited.
-    const ordered = [...mentions].sort((a, b) => b.name.length - a.name.length);
-    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`@?(${ordered.map(m => escape(m.name)).join("|")})\\b`, "gi");
-
-    const out: React.ReactNode[] = [];
-    let last = 0;
-    let match: RegExpExecArray | null;
-    let key = 0;
-    while ((match = pattern.exec(text)) !== null) {
-        const found = ordered.find(m => m.name.toLowerCase() === match![1].toLowerCase());
-        if (!found) continue;
-        const href = found.artistId
-            ? `/artist/${found.artistId}`
-            : found.instagram ? `https://www.instagram.com/${found.instagram}/` : null;
-        if (!href) continue;
-
-        if (match.index > last) out.push(text.slice(last, match.index));
-        out.push(
-            <a
-                key={`m${key++}`}
-                href={href}
-                {...(found.artistId ? {} : { target: "_blank", rel: "noopener noreferrer" })}
-                className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
-                title={found.role ? `${found.name} — ${found.role}` : found.name}
-            >
-                {match[0]}
-            </a>,
-        );
-        last = match.index + match[0].length;
+    // CITATIONS. The model writes "[4]", "[11, 18, Artist Doc]" and sometimes
+    // "[2026-05-13]". Only the numbers are citations, and only numbers we have a
+    // source for are links.
+    //
+    // "[Artist Doc]" is the label on the one context block handed to the model
+    // unnumbered, so it invents that marker for anything it read there. There is
+    // no source behind it and never can be — the document has no public URL — so
+    // it is dropped rather than shown. A reader was seeing an internal variable
+    // name in the middle of a sentence.
+    for (const m of text.matchAll(/\[([^\]]{1,60})\]/g)) {
+        const body = m[1];
+        if (/\d{4}-\d{2}/.test(body)) continue;                     // a date, not a citation
+        const nums = body.split(",").map(p => Number(p.trim())).filter(n => Number.isInteger(n) && n > 0);
+        const cited = nums.map(n => byNumber.get(n)).filter((x): x is AnswerSource => !!x);
+        // A bracket with nothing citable in it disappears entirely, which covers
+        // "[Artist Doc]" and a number for a source the answer did not end up
+        // carrying.
+        const at = m.index ?? 0;
+        spans.push({
+            start: at,
+            end: at + m[0].length,
+            node: key => cited.length === 0 ? null : (
+                <sup key={key} className="ml-0.5 text-[0.65em] font-medium">
+                    {cited.map((c, i) => (
+                        <span key={c.n}>
+                            {i > 0 && <span className="text-muted-foreground/50">,</span>}
+                            <a
+                                href={c.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={c.title}
+                                className="px-[0.15em] text-pastypink hover:underline"
+                            >
+                                {c.n}
+                            </a>
+                        </span>
+                    ))}
+                </sup>
+            ),
+        });
     }
-    if (last < text.length) out.push(text.slice(last));
-    return out.length > 0 ? out : text;
+
+    // RECORDS. Matched on the exact title the server proved is theirs.
+    for (const song of songs) {
+        const re = new RegExp(escape(song.title), "gi");
+        for (const m of text.matchAll(re)) {
+            const at = m.index ?? 0;
+            spans.push({
+                start: at,
+                end: at + m[0].length,
+                node: key => (
+                    <SongLink key={key} label={m[0]} song={song} artistName={artistName} bandcamp={bandcamp} />
+                ),
+            });
+        }
+    }
+
+    // PEOPLE. Longest first so "Dame Atlas" wins over "Dame".
+    const ordered = [...mentions].sort((a, b) => b.name.length - a.name.length);
+    for (const person of ordered) {
+        const href = person.artistId
+            ? `/artist/${person.artistId}`
+            : person.instagram ? `https://www.instagram.com/${person.instagram}/` : null;
+        if (!href) continue;
+        const re = new RegExp(`@?${escape(person.name)}\\b`, "gi");
+        for (const m of text.matchAll(re)) {
+            const at = m.index ?? 0;
+            spans.push({
+                start: at,
+                end: at + m[0].length,
+                node: key => (
+                    <a
+                        key={key}
+                        href={href}
+                        {...(person.artistId ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+                        className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                        title={person.role ? `${person.name} — ${person.role}` : person.name}
+                    >
+                        {m[0]}
+                    </a>
+                ),
+            });
+        }
+    }
+
+    if (spans.length === 0) return text;
+
+    // Earliest wins, and anything overlapping it is dropped — a name inside a
+    // record's title is the title, not a second link.
+    spans.sort((a, b) => a.start - b.start || b.end - a.end);
+    const out: React.ReactNode[] = [];
+    let cursor = 0;
+    let key = 0;
+    for (const span of spans) {
+        if (span.start < cursor) continue;
+        if (span.start > cursor) out.push(text.slice(cursor, span.start));
+        out.push(span.node(`s${key++}`));
+        cursor = span.end;
+    }
+    if (cursor < text.length) out.push(text.slice(cursor));
+    return out;
+}
+
+/**
+ * A record, and everywhere you can hear it.
+ *
+ * Opens on click rather than resolving up front: two provider lookups per song,
+ * on an answer naming three of them, is most of a second added to every question
+ * for links most readers never open.
+ *
+ * Spotify is always there, because that is where the title was proved to be
+ * this artist's in the first place. Apple Music and Deezer are searched live.
+ * Bandcamp is offered as the ARTIST's page and labelled as such — they have no
+ * API, so we genuinely do not know whether this particular record is on it, and
+ * a "buy this song" link that lands on a different one is worse than an honest
+ * one that lands on their store.
+ */
+function SongLink({
+    label, song, artistName, bandcamp,
+}: {
+    label: string;
+    song: AnswerSong;
+    artistName: string;
+    bandcamp: string | null;
+}) {
+    const [open, setOpen] = useState(false);
+    const [links, setLinks] = useState<TrackLink[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const box = useRef<HTMLSpanElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const away = (e: MouseEvent) => {
+            if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener("mousedown", away);
+        return () => document.removeEventListener("mousedown", away);
+    }, [open]);
+
+    const toggle = async () => {
+        const next = !open;
+        setOpen(next);
+        if (!next || links !== null || loading) return;
+        setLoading(true);
+        try {
+            const q = new URLSearchParams({ title: song.title, artist: artistName });
+            const res = await fetch(`/api/trackLinks?${q}`);
+            const data = await res.json();
+            setLinks(Array.isArray(data.links) ? data.links : []);
+        } catch {
+            // An empty list, not an error state: Spotify is already on the menu
+            // and a failed lookup should not take a working link away.
+            setLinks([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const options: TrackLink[] = [
+        { service: "Spotify", url: song.spotifyUrl },
+        ...(links ?? []),
+        ...(bandcamp ? [{ service: "Bandcamp (artist page)", url: bandcamp }] : []),
+    ];
+
+    return (
+        <span className="relative inline-block" ref={box}>
+            <button
+                type="button"
+                onClick={toggle}
+                aria-expanded={open}
+                className="underline decoration-dotted underline-offset-2 hover:decoration-solid text-left"
+                title={`Where to hear ${song.title}`}
+            >
+                {label}
+            </button>
+            {open && (
+                <span className="absolute left-0 top-full z-30 mt-1 flex min-w-[13rem] flex-col rounded-lg border border-black/10 bg-white p-1 shadow-lg dark:border-white/15 dark:bg-[#151515]">
+                    {options.map(o => (
+                        <a
+                            key={o.service}
+                            href={o.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded px-2 py-1.5 text-xs text-black hover:bg-black/5 dark:text-white dark:hover:bg-white/10"
+                        >
+                            {o.service}
+                        </a>
+                    ))}
+                    {loading && (
+                        <span className="px-2 py-1.5 text-xs text-muted-foreground">Looking elsewhere…</span>
+                    )}
+                    {!loading && links?.length === 0 && options.length === 1 && (
+                        <span className="px-2 py-1.5 text-xs text-muted-foreground">Nowhere else we could find</span>
+                    )}
+                </span>
+            )}
+        </span>
+    );
 }
 
 export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistProps) {
@@ -97,6 +277,10 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
     const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS(artistName));
     const [sources, setSources] = useState<AnswerSource[]>([]);
     const [mentions, setMentions] = useState<AnswerMention[]>([]);
+    const [songs, setSongs] = useState<AnswerSong[]>([]);
+    /** The artist's own Bandcamp, offered under a record as their store rather
+     *  than as that record — Bandcamp has no API, so we cannot claim more. */
+    const [bandcamp, setBandcamp] = useState<string | null>(null);
     /** The endpoint answered from the open web because our own sources did not
      *  cover the question, and these are the domains it used. Without this the
      *  reader could not tell a researched answer from a searched one — which is
@@ -119,6 +303,7 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
         // would otherwise still be captioned with the first one's provenance.
         setFromOpenWeb(false);
         setWebDomains([]);
+        setSongs([]);
         setAskedQuestion(trimmed);
         setQuestion("");
         askedQuestions.current.add(trimmed.toLowerCase());
@@ -138,6 +323,8 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
 
             setAnswer(data.answer);
             setSources(Array.isArray(data.sources) ? data.sources : []);
+            setSongs(Array.isArray(data.songs) ? data.songs : []);
+            setBandcamp(typeof data.bandcamp === "string" ? data.bandcamp : null);
             setFromOpenWeb(data.fromOpenWeb === true);
             setWebDomains(Array.isArray(data.webDomains) ? data.webDomains : []);
             setMentions(Array.isArray(data.mentions) ? data.mentions : []);
@@ -233,8 +420,8 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
 
                     {/* Answer */}
                     {answer && (
-                        <p className="text-sm text-black dark:text-white leading-relaxed whitespace-pre-line pr-6">
-                            {linkifyMentions(answer, mentions)}
+                        <p data-testid="answer" className="text-sm text-black dark:text-white leading-relaxed whitespace-pre-line pr-6">
+                            {renderAnswer(answer, mentions, songs, sources, bandcamp, artistName)}
                         </p>
                     )}
 
