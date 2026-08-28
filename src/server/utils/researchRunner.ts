@@ -316,17 +316,26 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
         return { progress: "credits stored, document rebuild deferred", done: false };
     }
 
-    // refreshArtistDoc swallows its own errors and resolves false, so a .catch
-    // here never fired and a failed rebuild left the document and the export
-    // permanently stale with no live job to retry it.
+    // refreshArtistDoc swallows its own errors, so a .catch here never fired and
+    // a failed rebuild left the document and the export permanently stale with
+    // no live job to retry it.
+    //
+    // "no-document" is NOT a failure. An artist who has never had a document
+    // written has nothing to rebuild, and the extraction did its whole job:
+    // the credits are stored. Treating that as failure marked the job `failed`
+    // after four retries of work that could never succeed — and every artist
+    // onboarding for the first time arrives in that state.
     const rebuilt = await refreshArtistDoc(job.artistId);
-    if (!rebuilt) {
+    if (rebuilt === "failed") {
         await failResearchJob(job.id, "credits stored but the document rebuild failed");
         return { progress: "credits stored, document rebuild failed — will retry", done: false };
     }
 
     await completeResearchJob(job.id);
-    return { progress: `complete, ${slice.totalBatches} batch(es)`, done: true };
+    return {
+        progress: `complete, ${slice.totalBatches} batch(es)${rebuilt === "no-document" ? ", no document to rebuild" : ""}`,
+        done: true,
+    };
 }
 
 /** Ask for an artist's feed to be read. Safe to call repeatedly.
