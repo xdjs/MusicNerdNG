@@ -82,8 +82,17 @@ function isTheSameTrack(
     const artist = norm(wantArtist);
     if (!artist) return false;
     if (creditedNames(hitArtist).includes(artist)) return true;
+
+    // The title exception, and it does NOT apply when the artist's name is the
+    // whole title. `artist=Dave&title=Dave` would otherwise accept any track
+    // called "Dave" by anyone, which is the same-title failure this function
+    // exists to stop, arrived at from the other direction. The case it is for
+    // is a name carried INSIDE a longer title — "crying on the floor (pete
+    // rango mix)" — where the title is saying whose version this is.
+    const title = norm(wantTitle);
+    if (title === artist) return false;
     const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`\\b${escaped}\\b`).test(norm(hitTitle));
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u").test(norm(hitTitle));
 }
 
 async function withTimeout<T>(p: Promise<T>): Promise<T | null> {

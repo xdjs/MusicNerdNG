@@ -124,4 +124,16 @@ describe('GET /api/trackLinks', () => {
         const { status } = await ask({ title: '', artist: 'Pete Rango' });
         expect(status).toBe(400);
     });
+
+    it('will not let a self-titled request stand in for an artist check', async () => {
+        // The title exception is for a name carried INSIDE a longer title —
+        // "crying on the floor (pete rango mix)". When the artist's name IS the
+        // whole title, it would otherwise accept any track called "Dave" by
+        // anyone: the same-title failure, arrived at from the other direction.
+        const { body } = await ask({
+            title: 'Dave', artist: 'Dave',
+            deezerBody: deezer([{ title: 'Dave', artist: { name: 'Somebody Else' }, link: 'https://www.deezer.com/track/13' }]),
+        });
+        expect(body.links).toEqual([]);
+    });
 });

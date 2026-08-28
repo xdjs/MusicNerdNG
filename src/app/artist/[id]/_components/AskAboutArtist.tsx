@@ -118,9 +118,15 @@ function renderAnswer(
     // about which spans are records. Without the boundaries a catalogue
     // containing "rush" turned the "rush" inside "rushing" into a button.
     for (const song of songs) {
-        const tokens = song.title.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+        // Unicode-aware and identical to the server's rule, so the two cannot
+        // disagree about which spans are records. \b is ASCII-only, so the
+        // edges are asserted as "not a letter or digit" instead.
+        const tokens = song.title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
         if (tokens.length === 0) continue;
-        const re = new RegExp(`\\b${tokens.join("[^a-z0-9]+")}\\b`, "gi");
+        const re = new RegExp(
+            `(?<![\\p{L}\\p{N}])${tokens.map(escape).join("[^\\p{L}\\p{N}]+")}(?![\\p{L}\\p{N}])`,
+            "giu",
+        );
         for (const m of text.matchAll(re)) {
             const at = m.index ?? 0;
             spans.push({

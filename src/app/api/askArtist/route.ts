@@ -445,7 +445,7 @@ ${artistContext}`,
         // Same discipline as the citations: only link what we can back.
         const [suggestions, mentions] = await Promise.all([
             suggestionsPromise,
-            resolveMentions(artistId, answer),
+            resolveMentions(artistId, answer, artistContext),
         ]);
 
         // Records the answer names that we can prove are theirs.
@@ -590,7 +590,7 @@ export type AnswerMention = {
  * as written. A substring match here would relink "Art" inside "started" — the
  * same failure the caption verification had, one layer up and far more visible.
  */
-async function resolveMentions(artistId: string, answer: string): Promise<AnswerMention[]> {
+async function resolveMentions(artistId: string, answer: string, context: string): Promise<AnswerMention[]> {
     try {
         const { getSocialCredits } = await import("@/server/utils/queries/socialCreditQueries");
         const { creditedCollaborators } = await import("@/server/utils/socialCredits");
@@ -642,7 +642,17 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
         // it, so the client links the words a reader is actually looking at
         // rather than a handle that never appears on screen.
         const asWritten = (subject: string): string => {
-            const needle = fold(subject);
+            // EVERY SPELLING THE FILTER WOULD HAVE ACCEPTED, not just the
+            // stored one. The filter accepts `zavodskyalan` because the answer
+            // says "Alan Zavodsky"; this then looked for a phrase folding to
+            // `zavodskyalan`, found none, and returned the raw handle — which
+            // the client cannot find in the answer, so the collaborator the
+            // filter just accepted stayed unlinked.
+            const base = fold(subject);
+            const accepted = new Set([base]);
+            for (let i = 4; i <= base.length - 4; i++) {
+                accepted.add(base.slice(i) + base.slice(0, i));
+            }
             // Scan word windows of one to three words and return the span that
             // folds to the handle. The previous version sliced a split-with-
             // separators array by the wrong stride and returned fragments like
@@ -654,7 +664,7 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
                     const last = words[i + span - 1];
                     const end = (last.index ?? 0) + last[0].length;
                     const phrase = answer.slice(start, end);
-                    if (fold(phrase) === needle) return phrase;
+                    if (accepted.has(fold(phrase))) return phrase;
                 }
             }
             return subject;
@@ -699,8 +709,19 @@ async function resolveMentions(artistId: string, answer: string): Promise<Answer
         // own. This trades linking a few real one-word acts for never inventing
         // a collaborator, which is the right way round.
         const credited = new Set(collaborators.map(c => fold(c.subject)));
+        // AND THE NAME HAS TO BE IN THE MATERIAL WE HANDED THE MODEL.
+        //
+        // Uniqueness in the directory proves one row has this spelling, not
+        // that the sentence means that row. A relative called John Smith, or
+        // Los Angeles, can each identify exactly one artist here. What
+        // separates a real collaborator from a coincidence is where the name
+        // came from: one we supplied in the vault, the document or the credits
+        // is grounded, and one the model produced from its own weights is a
+        // guess wearing a link.
+        const grounded = fold(context);
         const linkable = (n: string) =>
             !already.has(fold(n))
+            && grounded.includes(fold(n))
             && (n.trim().split(/\s+/).length > 1 || credited.has(fold(n)));
 
         const candidates = candidateNames(answer).filter(linkable);
@@ -775,11 +796,18 @@ function candidateNames(answer: string): string[] {
 // config values, and anything else fails the build with an unhelpful message
 // about an index signature.
 function titlePattern(title: string): RegExp | null {
-    const tokens = title.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    // UNICODE, not ASCII. [a-z0-9] tokenised "Beyoncé" to "beyonc" and then
+    // matched the first six letters of it — so the client wrapped part of a
+    // word as a record button — while a title in a non-Latin script produced
+    // no tokens at all and could never link.
+    const tokens = title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
     if (tokens.length === 0) return null;
     // A single very short token is not a title anybody can match safely.
     if (tokens.length === 1 && tokens[0].length < 3) return null;
-    return new RegExp(`\\b${tokens.join("[^a-z0-9]+")}\\b`, "i");
+    const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    // \b is ASCII-only, so the edges are asserted as "not a letter or digit"
+    // instead — otherwise "Été" would match inside a longer French word.
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped.join("[^\\p{L}\\p{N}]+")}(?![\\p{L}\\p{N}])`, "iu");
 }
 
 function namedInAnswer(answer: string, title: string): boolean {

@@ -193,7 +193,12 @@ describe('the grounded fallback and the blocklist', () => {
         getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
             text: 'Pete Rango produced it with Dame Atlas.',
         }) } });
-        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango' });
+        // The bio is part of the material handed to the model, so a name in it
+        // is grounded rather than something the model brought from its weights.
+        getArtistById.mockResolvedValue({
+            id: 'a1', name: 'Pete Rango',
+            bio: 'Pete Rango produces. He works with Dame Atlas.',
+        });
         creditedCollaborators.mockReturnValue([
             { subject: 'p3t3rango', isHandle: true, roles: ['mixed and mastered'] },
         ]);
@@ -224,7 +229,10 @@ describe('the grounded fallback and the blocklist', () => {
         getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
             text: 'He played Rhodes on it, alongside Cherele and Jesse Boykins III.',
         }) } });
-        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pharaoh Sistare' });
+        getArtistById.mockResolvedValue({
+            id: 'a1', name: 'Pharaoh Sistare',
+            bio: 'He played Rhodes on it, alongside Cherele and Jesse Boykins III.',
+        });
         // Cherele is one word AND somebody this artist has credited.
         creditedCollaborators.mockReturnValue([{ subject: 'Cherele', isHandle: false, roles: ['vocals'] }]);
         findUniqueArtistsByName.mockResolvedValue(new Map([
@@ -267,5 +275,61 @@ describe('the grounded fallback and the blocklist', () => {
             method: 'POST', body: JSON.stringify({ artistId: 'a1', question: 'What is he doing?' }),
         }))).json();
         expect(body.songs).toEqual([]);
+    });
+
+    it('will not link a name the model brought from its own weights', async () => {
+        // Uniqueness in the directory proves one row has this spelling, not
+        // that the sentence means that row. A name we never supplied — in the
+        // vault, the document or the credits — is a guess wearing a link.
+        const { getArtistById, findUniqueArtistsByName } = await import('@/server/utils/queries/artistQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+
+        getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
+            text: 'He grew up in Los Angeles and worked with Dame Atlas.',
+        }) } });
+        getArtistById.mockResolvedValue({
+            id: 'a1', name: 'Pete Rango',
+            bio: 'Pete Rango works with Dame Atlas.',   // Los Angeles is NOT in here
+        });
+        findUniqueArtistsByName.mockResolvedValue(new Map([
+            ['losangeles', 'la-uuid'],
+            ['dameatlas', 'dame-uuid'],
+        ]));
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST', body: JSON.stringify({ artistId: 'a1', question: 'Where is he from?' }),
+        }))).json();
+
+        const ids = body.mentions.map(m => m.artistId);
+        expect(ids).not.toContain('la-uuid');
+        expect(ids).toContain('dame-uuid');
+    });
+
+    it('links a surname-first handle to the words the answer actually used', async () => {
+        // The filter accepts `zavodskyalan` because the answer says "Alan
+        // Zavodsky", and asWritten then has to hand back that spelling — the
+        // raw handle appears nowhere on screen, so the client cannot link it.
+        const { getArtistById, findArtistsByInstagram } = await import('@/server/utils/queries/artistQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        const { creditedCollaborators } = await import('@/server/utils/socialCredits');
+
+        getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
+            text: 'He works with Alan Zavodsky on production.',
+        }) } });
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango' });
+        creditedCollaborators.mockReturnValue([
+            { subject: 'zavodskyalan', isHandle: true, roles: ['production'] },
+        ]);
+        findArtistsByInstagram.mockResolvedValue([]);
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST', body: JSON.stringify({ artistId: 'a1', question: 'Who does he work with?' }),
+        }))).json();
+
+        expect(body.mentions).toContainEqual(expect.objectContaining({
+            name: 'Alan Zavodsky', instagram: 'zavodskyalan',
+        }));
     });
 });
