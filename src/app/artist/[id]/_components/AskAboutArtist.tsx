@@ -112,9 +112,15 @@ function renderAnswer(
         });
     }
 
-    // RECORDS. Matched on the exact title the server proved is theirs.
+    // RECORDS. Matched on the title the server proved is theirs, on word
+    // boundaries and allowing whatever punctuation the writer used between the
+    // words — the same rule the server applies, so the two cannot disagree
+    // about which spans are records. Without the boundaries a catalogue
+    // containing "rush" turned the "rush" inside "rushing" into a button.
     for (const song of songs) {
-        const re = new RegExp(escape(song.title), "gi");
+        const tokens = song.title.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+        if (tokens.length === 0) continue;
+        const re = new RegExp(`\\b${tokens.join("[^a-z0-9]+")}\\b`, "gi");
         for (const m of text.matchAll(re)) {
             const at = m.index ?? 0;
             spans.push({

@@ -761,14 +761,27 @@ function candidateNames(answer: string): string[] {
 /**
  * Does this answer actually name this record?
  *
- * Folded comparison, because the model writes a title the way a writer would —
- * "Vi$ions" for "Vi$ions", but also "Cast Out Of Hell" for "Cast out of hell".
- * Requires the WHOLE title, so "rush" does not match "rushing" and a one-word
- * release does not light up half the sentence.
+ * Case- and punctuation-insensitive, because the model writes a title the way a
+ * writer would — "Cast Out Of Hell" for "Cast out of hell".
+ *
+ * BUT ON WORD BOUNDARIES. This folded both sides to bare letters and used
+ * `includes`, which claimed to require the whole title and did not: a catalogue
+ * containing "rush" matched an answer that only said "rushing", and the client
+ * then rendered the "rush" inside "rushing" as a record button. So the title
+ * becomes a pattern whose tokens are separated by whatever punctuation the
+ * writer used, anchored at both ends.
  */
+// Not exported: a route module may only export its HTTP handlers and Next's
+// config values, and anything else fails the build with an unhelpful message
+// about an index signature.
+function titlePattern(title: string): RegExp | null {
+    const tokens = title.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    if (tokens.length === 0) return null;
+    // A single very short token is not a title anybody can match safely.
+    if (tokens.length === 1 && tokens[0].length < 3) return null;
+    return new RegExp(`\\b${tokens.join("[^a-z0-9]+")}\\b`, "i");
+}
+
 function namedInAnswer(answer: string, title: string): boolean {
-    const fold = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const needle = fold(title);
-    if (needle.length < 3) return false;
-    return fold(answer).includes(needle);
+    return titlePattern(title)?.test(answer) ?? false;
 }

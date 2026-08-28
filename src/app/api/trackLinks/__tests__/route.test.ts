@@ -20,11 +20,11 @@ const deezer = (data) => ({ ok: true, json: async () => ({ data }) });
 
 /** Distinct titles per test so the route's cache cannot answer for us. */
 let n = 0;
-async function ask({ title, artist, withWho = '', appleBody = apple([]), deezerBody = deezer([]) }) {
+async function ask({ title, artist, appleBody = apple([]), deezerBody = deezer([]) }) {
     global.fetch = jest.fn(async (url) =>
         String(url).includes('itunes.apple.com') ? appleBody : deezerBody);
     const { GET } = await import('../route');
-    const q = new URLSearchParams({ title, artist, ...(withWho ? { with: withWho } : {}) });
+    const q = new URLSearchParams({ title, artist });
     const res = await GET({ nextUrl: { searchParams: q } });
     return { status: res.status, body: await res.json() };
 }
@@ -59,12 +59,35 @@ describe('GET /api/trackLinks', () => {
         expect(body.links).toEqual([{ service: 'Deezer', url: 'https://www.deezer.com/track/4094333431' }]);
     });
 
-    it('accepts a track credited to a known collaborator', async () => {
+    it('accepts the artist as one name among several credited', async () => {
         const { body } = await ask({
-            title: `some song ${n}`, artist: 'Pete Rango', withWho: 'Dame Atlas,Cherele',
-            deezerBody: deezer([{ title: `some song ${n}`, artist: { name: 'Cherele' }, link: 'https://www.deezer.com/track/9' }]),
+            title: `some song ${n}`, artist: 'Pete Rango',
+            deezerBody: deezer([{ title: `some song ${n}`, artist: { name: 'Dame Atlas & Pete Rango' }, link: 'https://www.deezer.com/track/9' }]),
         });
-        expect(body.links).toHaveLength(1);
+        expect(body.links).toEqual([{ service: 'Deezer', url: 'https://www.deezer.com/track/9' }]);
+    });
+
+    it('will not accept a longer name that merely starts with the artist', async () => {
+        // A substring check accepts "Dave East" for an artist called "Dave" —
+        // the exact namesake failure this route exists to prevent, and three
+        // artists in this directory are some version of "Black Dave".
+        const { body } = await ask({
+            title: `some song ${n}`, artist: 'Dave',
+            deezerBody: deezer([{ title: `some song ${n}`, artist: { name: 'Dave East' }, link: 'https://www.deezer.com/track/11' }]),
+        });
+        expect(body.links).toEqual([]);
+    });
+
+    it('ignores a collaborator list a caller tries to smuggle in', async () => {
+        // `with` used to RELAX the match on an endpoint anyone can call, and
+        // the cache key did not mention it — so one crafted request poisoned
+        // the answer for every later caller for an hour.
+        global.fetch = jest.fn(async () =>
+            deezer([{ title: `Thriller ${n}`, artist: { name: 'Michael Jackson' }, link: 'https://www.deezer.com/track/12' }]));
+        const { GET } = await import('../route');
+        const q = new URLSearchParams({ title: `Thriller ${n}`, artist: 'Pete Rango', with: 'Michael Jackson' });
+        const body = await (await GET({ nextUrl: { searchParams: q } })).json();
+        expect(body.links).toEqual([]);
     });
 
     it("refuses a stranger's record with the same title", async () => {

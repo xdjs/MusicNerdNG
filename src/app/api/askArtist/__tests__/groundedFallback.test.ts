@@ -246,4 +246,26 @@ describe('the grounded fallback and the blocklist', () => {
         expect(ids).toContain('jesse-uuid');
         expect(ids).toContain('cherele-uuid');
     });
+
+    it('does not find a one-word release inside a longer word', async () => {
+        // A catalogue containing "rush" matched an answer that only said
+        // "rushing", and the client then rendered the "rush" inside "rushing"
+        // as a record button.
+        const { getArtistById } = await import('@/server/utils/queries/artistQueries');
+        const { getSpotifyCatalogDetail } = await import('@/server/utils/queries/externalApiQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        getGemini.mockReturnValue({ models: { generateContent: jest.fn().mockResolvedValue({
+            text: 'He has been rushing to finish the record.',
+        }) } });
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
+        getSpotifyCatalogDetail.mockResolvedValue([
+            { name: 'rush', releaseDate: '2026-04-01', kind: 'single', url: 'https://open.spotify.com/album/RUSH' },
+        ]);
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST', body: JSON.stringify({ artistId: 'a1', question: 'What is he doing?' }),
+        }))).json();
+        expect(body.songs).toEqual([]);
+    });
 });

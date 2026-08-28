@@ -35,6 +35,23 @@ export type TrackLink = { service: string; url: string };
 const cache = new Map<string, { at: number; links: TrackLink[] }>();
 
 const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+/** Letters and digits, single-spaced — keeps word boundaries, which folding
+ *  away every space destroys. */
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * The people a provider credits, one per entry.
+ *
+ * Split on the raw string BEFORE normalising, because normalising is what
+ * removes the "&" that separates them. "Dame Atlas & Pete Rango" is two people;
+ * "Dave East" is one, and that difference is the whole point.
+ */
+function creditedNames(credit: string): string[] {
+    return credit
+        .split(/\s*(?:&|\/|,|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bwith\b|\band\b)\s*/i)
+        .map(norm)
+        .filter(Boolean);
+}
 
 /**
  * Is this search hit the song we asked for?
@@ -42,29 +59,31 @@ const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
  * The title has to match outright — a near-match is a different song, and
  * "close enough" is how a stranger's record ends up on an artist's page.
  *
- * The artist test is deliberately looser, because the strict version is wrong.
- * Deezer credits "crying on the floor (pete rango mix)" to Dame Atlas alone; it
- * is still Pete's mix, and the TITLE SAYS SO. So the name counts if it appears
- * in the credited artist or in the title itself, and a credited collaborator
- * counts too — a remix or a production credit is exactly the case where the
- * artist we are asking about is not the one on the label.
+ * THE ARTIST TEST IS TWO TESTS, and neither is a substring check. A substring
+ * check accepts "Dave East" for an artist called "Dave", which is precisely the
+ * namesake failure this route exists to prevent.
+ *
+ *   1. The artist is one of the people credited. Compared against each credited
+ *      name in full, so "Pete Rango" matches "Dame Atlas & Pete Rango" and
+ *      "Dave" does not match "Dave East".
+ *
+ *   2. Or their name is in the TITLE. Pete, on his own remix: "crying in the
+ *      floor says Pete Rango mix should show up." Deezer credits that track to
+ *      Dame Atlas alone; it is still his mix, and the title says so. Matched on
+ *      word boundaries so "Dave" does not match "Dave East" here either.
  */
 function isTheSameTrack(
     hitTitle: string,
     hitArtist: string,
     wantTitle: string,
     wantArtist: string,
-    collaborators: string[],
 ): boolean {
     if (fold(hitTitle) !== fold(wantTitle)) return false;
-    const artist = fold(wantArtist);
+    const artist = norm(wantArtist);
     if (!artist) return false;
-    const haystack = `${fold(hitArtist)} ${fold(hitTitle)}`;
-    if (haystack.includes(artist)) return true;
-    return collaborators.some(c => {
-        const folded = fold(c);
-        return folded.length >= 4 && fold(hitArtist).includes(folded);
-    });
+    if (creditedNames(hitArtist).includes(artist)) return true;
+    const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`).test(norm(hitTitle));
 }
 
 async function withTimeout<T>(p: Promise<T>): Promise<T | null> {
@@ -74,14 +93,14 @@ async function withTimeout<T>(p: Promise<T>): Promise<T | null> {
     ]).catch(() => null);
 }
 
-async function appleMusic(title: string, artist: string, collaborators: string[]): Promise<TrackLink | null> {
+async function appleMusic(title: string, artist: string): Promise<TrackLink | null> {
     const term = encodeURIComponent(`${artist} ${title}`);
     const res = await withTimeout(fetch(`https://itunes.apple.com/search?term=${term}&entity=song&limit=5`));
     if (!res?.ok) return null;
     const body = await res.json().catch(() => null) as { results?: Array<{ trackName?: string; artistName?: string; trackViewUrl?: string }> } | null;
     for (const r of body?.results ?? []) {
         if (!r.trackName || !r.trackViewUrl) continue;
-        if (isTheSameTrack(r.trackName, r.artistName ?? "", title, artist, collaborators)) {
+        if (isTheSameTrack(r.trackName, r.artistName ?? "", title, artist)) {
             // The `uo=4` affiliate-ish parameter Apple appends is noise on a
             // link we are showing to a fan.
             return { service: "Apple Music", url: r.trackViewUrl.split("?")[0] };
@@ -90,14 +109,14 @@ async function appleMusic(title: string, artist: string, collaborators: string[]
     return null;
 }
 
-async function deezer(title: string, artist: string, collaborators: string[]): Promise<TrackLink | null> {
+async function deezer(title: string, artist: string): Promise<TrackLink | null> {
     const q = encodeURIComponent(`${artist} ${title}`);
     const res = await withTimeout(fetch(`https://api.deezer.com/search?q=${q}&limit=5`));
     if (!res?.ok) return null;
     const body = await res.json().catch(() => null) as { data?: Array<{ title?: string; link?: string; artist?: { name?: string } }> } | null;
     for (const r of body?.data ?? []) {
         if (!r.title || !r.link) continue;
-        if (isTheSameTrack(r.title, r.artist?.name ?? "", title, artist, collaborators)) {
+        if (isTheSameTrack(r.title, r.artist?.name ?? "", title, artist)) {
             return { service: "Deezer", url: r.link };
         }
     }
@@ -108,11 +127,14 @@ export async function GET(req: NextRequest): Promise<Response> {
     const started = Date.now();
     const title = (req.nextUrl.searchParams.get("title") ?? "").trim();
     const artist = (req.nextUrl.searchParams.get("artist") ?? "").trim();
-    // Handles and names we already know are connected to this record. Sent by
-    // the caller because it knows the artist's credited collaborators and this
-    // route does not.
-    const collaborators = (req.nextUrl.searchParams.get("with") ?? "")
-        .split(",").map(s => s.trim()).filter(Boolean).slice(0, 8);
+    // NO CALLER-SUPPLIED COLLABORATOR LIST. It used to take a `with` parameter
+    // that RELAXED the match, on an endpoint anyone can call — so
+    // `?artist=Pete Rango&title=Thriller&with=Michael Jackson` would resolve,
+    // and then sit in the cache for an hour under a key that did not mention
+    // it, handing that link to every later caller. Untrusted input must not
+    // loosen a safety check. The remix case it existed for is already covered
+    // by the title rule; if production credits need it back, the artist's
+    // collaborators should be looked up HERE from an artist id, not passed in.
 
     if (!title || !artist) {
         return Response.json({ error: "title and artist are required" }, { status: 400 });
@@ -130,8 +152,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     // Both at once — they are independent, and the slower one should not add to
     // the faster one.
     const [apple, dz] = await Promise.all([
-        appleMusic(title, artist, collaborators).catch(() => null),
-        deezer(title, artist, collaborators).catch(() => null),
+        appleMusic(title, artist).catch(() => null),
+        deezer(title, artist).catch(() => null),
     ]);
     const links = [apple, dz].filter((l): l is TrackLink => l !== null);
 
