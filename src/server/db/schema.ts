@@ -700,35 +700,6 @@ export const artistResearchJobs = pgTable("artist_research_jobs", {
 // What an artist's own captions say: role credits and statements, extracted once
 // per ingest by socialCredits.ts and read by questionGenerator + artistDocService.
 // Every row cites the post it came from and carries the verified quote.
-/**
- * Passages from an artist's own captions that they have asked us not to use.
- *
- * Keyed on the normalised quote rather than on a credits row, because a full
- * re-read clears artist_social_credits and writes it again — a flag on the row
- * would be erased by the next refresh and the artist would have to hide the
- * same passage every time.
- */
-export const artistHiddenStatements = pgTable("artist_hidden_statements", {
-	id: uuid().default(sql`gen_random_uuid()`).primaryKey().notNull(),
-	artistId: uuid("artist_id").notNull(),
-	/** Lowercased, letters and digits only. */
-	quoteNorm: text("quote_norm").notNull(),
-	sourceUrl: text("source_url"),
-	hiddenAt: timestamp("hidden_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
-}, (table) => [
-	uniqueIndex("artist_hidden_statements_unique").using("btree", table.artistId.asc().nullsLast(), table.quoteNorm.asc().nullsLast()),
-	index("artist_hidden_statements_by_artist").using("btree", table.artistId.asc().nullsLast()),
-	foreignKey({
-		columns: [table.artistId],
-		foreignColumns: [artists.id],
-		name: "artist_hidden_statements_artist_id_fkey"
-	}).onDelete("cascade"),
-	pgPolicy("mnweb_select_artist_hidden_statements", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
-	pgPolicy("mnweb_insert_artist_hidden_statements", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
-	pgPolicy("mnweb_update_artist_hidden_statements", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
-	pgPolicy("mnweb_delete_artist_hidden_statements", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
-]);
-
 export const artistSocialCredits = pgTable("artist_social_credits", {
 	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
 	artistId: uuid("artist_id").notNull(),

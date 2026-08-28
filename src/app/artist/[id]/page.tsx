@@ -15,7 +15,6 @@ import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
 import VaultSection from "./_components/VaultSection";
 import KnowledgeSection from "./_components/KnowledgeSection";
-import YourWordsSection from "./_components/YourWordsSection";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
@@ -270,7 +269,6 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     nothing at all the rest of the time. */}
                 <div id="mn-knowledge">
                     <KnowledgeSection artistId={artist.id} />
-                    <YourWordsSection artistId={artist.id} />
                 </div>
 
             </div>
