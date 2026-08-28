@@ -172,4 +172,37 @@ describe('GET /api/trackLinks', () => {
         });
         expect(body.links).toEqual([]);
     });
+
+    it('matches a band whose own name contains a separator', async () => {
+        // "Earth, Wind & Fire" is one band containing two of the separators.
+        // Splitting first left three names, none equal to it, so a band like
+        // that could never match its own record.
+        const { body } = await ask({
+            title: `September ${n}`, artist: 'Earth, Wind & Fire',
+            deezerBody: deezer([{ title: `September ${n}`, artist: { name: 'Earth, Wind & Fire' }, link: 'https://www.deezer.com/track/14' }]),
+        });
+        expect(body.links).toEqual([{ service: 'Deezer', url: 'https://www.deezer.com/track/14' }]);
+    });
+
+    it('does not cache a provider failure as a definitive miss', async () => {
+        // A timeout or a 5xx came back as the same null a genuine no-match
+        // does, so one bad minute at Apple pinned an empty result in front of
+        // every later click for an hour.
+        const title = `retry me ${n}`;
+        const { GET } = await import('../route');
+        const q = () => new URLSearchParams({ title, artist: 'Pete Rango' });
+
+        global.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) }));
+        const first = await (await GET({ nextUrl: { searchParams: q() } })).json();
+        expect(first.links).toEqual([]);
+        expect(first.cached).toBeUndefined();
+
+        // Both recover. The second click must actually search again.
+        global.fetch = jest.fn(async (url) =>
+            String(url).includes('itunes.apple.com')
+                ? apple([{ trackName: title, artistName: 'Pete Rango', trackViewUrl: 'https://music.apple.com/ok' }])
+                : deezer([]));
+        const second = await (await GET({ nextUrl: { searchParams: q() } })).json();
+        expect(second.links).toEqual([{ service: 'Apple Music', url: 'https://music.apple.com/ok' }]);
+    });
 });

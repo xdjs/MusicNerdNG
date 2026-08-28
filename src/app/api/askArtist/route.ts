@@ -778,11 +778,17 @@ function candidateNames(answer: string): string[] {
     const out = new Set<string>();
     // Allows the punctuation real names carry: A$AP Ferg, Hell'z Own, Jesse
     // Boykins III.
-    const word = "[A-Z][\\p{L}\\p{N}$'’.]*";
+    //
+    // [A-Z] would have been the third place in this file where ASCII stood in
+    // for "a letter". It reduces "Édith Piaf" to the candidate "Piaf" and
+    // produces nothing at all for a name in a script without capitals, so
+    // those artists could never link. \p{Lu} is any uppercase letter; \p{Lo}
+    // is a letter in a caseless script, which is how 宇多田ヒカル gets a look in.
+    const word = "[\\p{Lu}\\p{Lo}][\\p{L}\\p{N}$'’.]*";
     const re = new RegExp(`${word}(?:\\s+${word}){0,2}`, "gu");
     for (const m of withoutTitles.matchAll(re)) {
         const span = m[0].replace(/[.,;:]+$/, "").trim();
-        if (span.replace(/[^a-z0-9]/gi, "").length >= 4) out.add(span);
+        if (span.replace(/[^\p{L}\p{N}]/gu, "").length >= 2) out.add(span);
     }
     return [...out].slice(0, 40);
 }

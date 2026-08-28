@@ -1108,17 +1108,22 @@ function normaliseText(input: string): string {
  */
 export async function findUniqueArtistsByName(names: string[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
-    const fold = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const wanted = [...new Set(names.map(fold).filter(n => n.length >= 4))];
+    // Unicode, and a low floor. [^a-z0-9] emptied every name in a non-Latin
+    // script, and a four-character minimum excludes most Japanese and Korean
+    // names outright. The safety here is not length: it is uniqueness, plus the
+    // caller's rules that a name must appear in the material we supplied and
+    // that a single-word name must belong to somebody the artist has credited.
+    const fold = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const wanted = [...new Set(names.map(fold).filter(n => n.length >= 2))];
     if (wanted.length === 0) return out;
     try {
         const literal = `{${wanted.map(n => `"${n.replace(/"/g, '\\"')}"`).join(",")}}`;
         const rows = await db.execute(sql`
-            select regexp_replace(lower(name), '[^a-z0-9]', '', 'g') as folded,
+            select regexp_replace(lower(name), '[^[:alnum:]]', '', 'g') as folded,
                    min(id::text) as id,
                    count(*) as n
               from artists
-             where regexp_replace(lower(name), '[^a-z0-9]', '', 'g') = any(${literal}::text[])
+             where regexp_replace(lower(name), '[^[:alnum:]]', '', 'g') = any(${literal}::text[])
              group by 1`);
         const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]) ?? [];
         for (const r of list as Record<string, unknown>[]) {

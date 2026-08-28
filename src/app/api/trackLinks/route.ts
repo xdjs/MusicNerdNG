@@ -90,6 +90,11 @@ function isTheSameTrack(
     if (!fold(wantTitle) || fold(hitTitle) !== fold(wantTitle)) return false;
     const artist = norm(wantArtist);
     if (!artist) return false;
+    // The whole credit first, BEFORE splitting it. "Earth, Wind & Fire" is one
+    // band whose name contains two of the separators, and splitting first left
+    // three names none of which equalled it — so a band like that could never
+    // match its own record.
+    if (norm(hitArtist) === artist) return true;
     if (creditedNames(hitArtist).includes(artist)) return true;
 
     // The title exception, and it does NOT apply when the artist's name is the
@@ -111,15 +116,20 @@ async function withTimeout<T>(p: Promise<T>): Promise<T | null> {
     ]).catch(() => null);
 }
 
-async function appleMusic(title: string, artist: string, isAlbum: boolean): Promise<TrackLink | null> {
+/** `null` is "searched, no match"; `undefined` is "could not search". The
+ *  difference decides whether the answer is worth caching. */
+type Lookup = TrackLink | null | undefined;
+
+async function appleMusic(title: string, artist: string, isAlbum: boolean): Promise<Lookup> {
     const term = encodeURIComponent(`${artist} ${title}`);
     // An album is not a song. Searching `entity=song` for one returns its
     // tracks or nothing, so an answer naming a record — and Spotify's catalogue
     // is mostly albums — silently found no Apple link at all.
     const entity = isAlbum ? "album" : "song";
     const res = await withTimeout(fetch(`https://itunes.apple.com/search?term=${term}&entity=${entity}&limit=5`));
-    if (!res?.ok) return null;
-    const body = await res.json().catch(() => null) as { results?: Array<{ trackName?: string; collectionName?: string; artistName?: string; trackViewUrl?: string; collectionViewUrl?: string }> } | null;
+    if (!res?.ok) return undefined;
+    const body = await res.json().catch(() => undefined) as { results?: Array<{ trackName?: string; collectionName?: string; artistName?: string; trackViewUrl?: string; collectionViewUrl?: string }> } | undefined;
+    if (!body) return undefined;
     for (const r of body?.results ?? []) {
         const name = isAlbum ? r.collectionName : r.trackName;
         const link = isAlbum ? r.collectionViewUrl : r.trackViewUrl;
@@ -133,12 +143,13 @@ async function appleMusic(title: string, artist: string, isAlbum: boolean): Prom
     return null;
 }
 
-async function deezer(title: string, artist: string, isAlbum: boolean): Promise<TrackLink | null> {
+async function deezer(title: string, artist: string, isAlbum: boolean): Promise<Lookup> {
     const q = encodeURIComponent(`${artist} ${title}`);
     const path = isAlbum ? "search/album" : "search";
     const res = await withTimeout(fetch(`https://api.deezer.com/${path}?q=${q}&limit=5`));
-    if (!res?.ok) return null;
-    const body = await res.json().catch(() => null) as { data?: Array<{ title?: string; link?: string; artist?: { name?: string } }> } | null;
+    if (!res?.ok) return undefined;
+    const body = await res.json().catch(() => undefined) as { data?: Array<{ title?: string; link?: string; artist?: { name?: string } }> } | undefined;
+    if (!body) return undefined;
     for (const r of body?.data ?? []) {
         if (!r.title || !r.link) continue;
         if (isTheSameTrack(r.title, r.artist?.name ?? "", title, artist)) {
@@ -180,13 +191,20 @@ export async function GET(req: NextRequest): Promise<Response> {
     // Both at once — they are independent, and the slower one should not add to
     // the faster one.
     const [apple, dz] = await Promise.all([
-        appleMusic(title, artist, isAlbum).catch(() => null),
-        deezer(title, artist, isAlbum).catch(() => null),
+        appleMusic(title, artist, isAlbum).catch(() => undefined),
+        deezer(title, artist, isAlbum).catch(() => undefined),
     ]);
-    const links = [apple, dz].filter((l): l is TrackLink => l !== null);
+    const links = [apple, dz].filter((l): l is TrackLink => !!l);
 
-    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
-    cache.set(key, { at: Date.now(), links });
+    // ONLY CACHE A COMPLETED SEARCH. A timeout, a 5xx or malformed JSON came
+    // back as the same `null` a genuine no-match does, so one bad minute at
+    // Apple pinned an empty result in front of every later click for an hour —
+    // long after they recovered.
+    const complete = apple !== undefined && dz !== undefined;
+    if (complete) {
+        if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
+        cache.set(key, { at: Date.now(), links });
+    }
 
     console.debug(`[trackLinks] "${title}" — ${links.length} link(s) in ${Date.now() - started}ms`);
     return Response.json({ links });
