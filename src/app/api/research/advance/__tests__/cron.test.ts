@@ -89,4 +89,22 @@ describe('GET /api/research/advance', () => {
         expect(body.ran).toBe(true);
         expect(body.error).toBe('advance failed');
     });
+
+    it('sets a waiting job aside for the rest of the tick', async () => {
+        // An ingest polling an Apify run hands its lease straight back, and the
+        // queue orders by age — so without this the loop reclaims it and polls
+        // the same scrape until the invocation expires, hammering the provider
+        // and starving every job behind it.
+        advanceResearch
+            .mockResolvedValueOnce({ ran: true, jobId: 'ingest-1', kind: 'social_ingest', progress: 'scrape still running', waiting: true })
+            .mockResolvedValueOnce({ ran: true, jobId: 'extract-1', kind: 'caption_extract', progress: 'batch 3/30' })
+            .mockResolvedValue({ ran: false });
+
+        await get();
+        expect(advanceResearch.mock.calls[0][0].excludeJobIds).toEqual([]);
+        expect(advanceResearch.mock.calls[1][0].excludeJobIds).toEqual(['ingest-1']);
+        // The extraction made progress, so it is NOT set aside: taking several
+        // extraction slices per tick is the reason this loops at all.
+        expect(advanceResearch.mock.calls[2][0].excludeJobIds).toEqual(['ingest-1']);
+    });
 });

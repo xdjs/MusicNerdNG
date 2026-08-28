@@ -118,4 +118,31 @@ describe('the grounded fallback and the blocklist', () => {
             { n: 1, title: "Pete Rango's catalogue on Spotify", url: 'https://open.spotify.com/artist/SPOT1' },
         ]);
     });
+
+    it('numbers the places to listen, so "where can I buy this" has a pill', async () => {
+        // Answered entirely from these lines. Unnumbered they produced no pill
+        // and the label "AI-generated response" — presenting a link we hold on
+        // file as though we made it up.
+        const { getArtistById } = await import('@/server/utils/queries/artistQueries');
+        const { getGemini } = await import('@/server/lib/gemini');
+        const generateContent = jest.fn().mockResolvedValue({ text: 'Buy it on Bandcamp [1] or hear it on Deezer [2].' });
+        getGemini.mockReturnValue({ models: { generateContent } });
+        getArtistById.mockResolvedValue({
+            id: 'a1', name: 'Pete Rango', bandcamp: 'peterango', deezer: '123', instagram: 'p3t3rango',
+        });
+
+        const { POST } = await import('../route');
+        const body = await (await POST(new Request('http://x/api/askArtist', {
+            method: 'POST',
+            body: JSON.stringify({ artistId: 'a1', question: 'Where can I buy their music?' }),
+        }))).json();
+
+        expect(body.sources).toEqual([
+            { n: 1, title: 'Pete Rango on Bandcamp', url: 'https://peterango.bandcamp.com' },
+            { n: 2, title: 'Pete Rango on Deezer', url: 'https://www.deezer.com/artist/123' },
+        ]);
+        // A bare handle is identity, not a place: it stays unnumbered, and the
+        // posts behind it are already citable on their own.
+        expect(String(generateContent.mock.calls[0][0].config.systemInstruction)).toContain('Instagram: @p3t3rango');
+    });
 });

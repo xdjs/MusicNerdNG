@@ -81,14 +81,28 @@ export async function GET(req: Request): Promise<Response> {
 
     const deadline = started + maxDuration * 1000 - RESPONSE_RESERVE_MS;
     const slices: unknown[] = [];
+    // A WAITING JOB IS SET ASIDE FOR THE REST OF THE TICK. An ingest polling an
+    // Apify run hands its lease straight back and the queue orders by age, so
+    // the loop would otherwise reclaim that same job and poll the scrape until
+    // the invocation expired — hammering the provider and starving every job
+    // behind it. The next tick a minute later picks it up, which is the right
+    // cadence for something that takes one to five minutes anyway.
+    //
+    // Only WAITING jobs. A job that read a batch of captions made progress and
+    // should keep the invocation: taking several extraction slices per tick is
+    // the reason this loops at all.
+    const waiting: string[] = [];
     try {
         // A slice needs room to do something and to write down what it did.
         // Starting one with eight seconds left spends the reserve and keeps
         // nothing, which is the same rule extractCaptionCredits applies inside
         // itself.
         while (Date.now() < deadline - MIN_SLICE_MS) {
-            const result = await advanceResearch({ budgetMs: deadline - Date.now(), artistId: undefined });
+            // A copy, not the live array — the callee must not be holding a
+            // reference to a list this loop keeps appending to.
+            const result = await advanceResearch({ budgetMs: deadline - Date.now(), excludeJobIds: [...waiting] });
             if (!result.ran) break;
+            if (result.waiting && result.jobId) waiting.push(result.jobId);
             slices.push(result);
         }
         console.debug(`[research/advance] cron ran ${slices.length} slice(s) in ${Date.now() - started}ms`);

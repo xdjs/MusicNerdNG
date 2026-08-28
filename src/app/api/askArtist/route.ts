@@ -72,29 +72,44 @@ export async function POST(req: Request) {
         if (artist.x) contextParts.push(`X/Twitter: @${artist.x}`);
         if (artist.soundcloud) contextParts.push(`SoundCloud: ${artist.soundcloud}`);
         if (artist.youtube) contextParts.push(`YouTube: @${artist.youtube?.replace(/^@/, "")}`);
-        // Bandcamp, Deezer and Linktree were simply missing, so an answer could
-        // never say "you can buy it on Bandcamp" — it did not know one existed.
-        // Given as URLs rather than bare handles, so the answer can offer a
-        // place to listen instead of reciting an identifier.
-        if (artist.bandcamp) contextParts.push(`Bandcamp (buy/listen): https://${artist.bandcamp}.bandcamp.com`);
-        if (artist.deezer) contextParts.push(`Deezer: https://www.deezer.com/artist/${artist.deezer}`);
-        if (artist.linktree) contextParts.push(`Linktree: https://linktr.ee/${artist.linktree}`);
-        // Reference databases, when we hold them. Not for reciting a discography
-        // — Spotify and Deezer already give us the catalogue — but because they
-        // are where an artist's CREDITS live: the records they played on, mixed
-        // or produced for somebody else. That work is invisible everywhere else
-        // and it is often most of what a producer has actually done.
-        if (artist.discogs) contextParts.push(`Discogs: https://www.discogs.com/artist/${artist.discogs} (credits on other artists' releases)`);
-        if (artist.musicbrainz) contextParts.push(`MusicBrainz: https://musicbrainz.org/artist/${artist.musicbrainz}`);
-        // Skip the claim-nudge empty-state — it isn't a real bio, so don't feed it back as context.
-        if (isRealBio(artist.bio)) contextParts.push(`\nExisting bio:\n${artist.bio}`);
-
         // Include approved vault sources
         // Kept as {title, url} rather than bare urls: the answer has to be able
         // to SAY where something came from, and "voyagemia.com" means more to a
         // reader than a bare link, which is the whole point of showing it.
         const vaultUrls: string[] = [];
         const citable: { n: number; title: string; url: string }[] = [];
+
+        // NUMBERED, because these are the answer to a real question. "Where can
+        // I buy their music" is answered entirely from these lines, and
+        // unnumbered they produced no pill and the label "AI-generated
+        // response" — presenting a link we hold on file as though we made it
+        // up. Only the URL-shaped entries: a bare handle is identity, not a
+        // place, and the posts behind it are already citable on their own.
+        //
+        // Bandcamp, Deezer and Linktree were simply missing before this, so an
+        // answer could never say "you can buy it on Bandcamp" — it did not know
+        // one existed. Discogs and MusicBrainz are here for a different reason:
+        // not for reciting a discography, which Spotify and Deezer already
+        // give us, but because they are where an artist's CREDITS live — the
+        // records they played on, mixed or produced for somebody else. That
+        // work is invisible everywhere else and is often most of what a
+        // producer has actually done.
+        const destinations: [string, string | null | undefined, string][] = [
+            ["Bandcamp (buy/listen)", artist.bandcamp && `https://${artist.bandcamp}.bandcamp.com`, `${artistName} on Bandcamp`],
+            ["Deezer", artist.deezer && `https://www.deezer.com/artist/${artist.deezer}`, `${artistName} on Deezer`],
+            ["Linktree", artist.linktree && `https://linktr.ee/${artist.linktree}`, `${artistName}'s Linktree`],
+            ["Discogs (credits on other artists' releases)", artist.discogs && `https://www.discogs.com/artist/${artist.discogs}`, `${artistName} on Discogs`],
+            ["MusicBrainz", artist.musicbrainz && `https://musicbrainz.org/artist/${artist.musicbrainz}`, `${artistName} on MusicBrainz`],
+        ];
+        for (const [label, url, title] of destinations) {
+            if (!url) continue;
+            const n = citable.length + 1;
+            citable.push({ n, title, url });
+            contextParts.push(`[${n}] ${label}: ${url}`);
+        }
+
+        // Skip the claim-nudge empty-state — it isn't a real bio, so don't feed it back as context.
+        if (isRealBio(artist.bio)) contextParts.push(`\nExisting bio:\n${artist.bio}`);
         const passageStats: string[] = [];
         /** Concrete things we hold that a question could go at next. */
         const unexplored: string[] = [];
