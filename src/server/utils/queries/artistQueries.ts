@@ -1089,6 +1089,57 @@ function normaliseText(input: string): string {
 } 
 
 /**
+ * Names that identify EXACTLY ONE artist in this directory.
+ *
+ * The ask names people it cannot link — Nia Sultana, Kilo Kish, Jesse Boykins
+ * III — because linking has only ever worked from a stored Instagram handle,
+ * and most people named in an answer arrive from prose rather than from a
+ * caption credit. A name lookup fixes that and reintroduces the hazard this
+ * whole pipeline exists to fight: three artists in here are called some version
+ * of "Black Dave".
+ *
+ * So uniqueness is the contract, not a nicety. A name matching two rows returns
+ * nothing and the reader gets plain text, which is the correct outcome — there
+ * is no way to tell from a sentence which of two artists was meant, and a
+ * confident link to the wrong person is worse than no link.
+ *
+ * Exact folded equality, never a prefix: "Dave" must not resolve to "Dave East".
+ * One query for the whole answer rather than one per name.
+ */
+export async function findUniqueArtistsByName(names: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    // Unicode, and a low floor. [^a-z0-9] emptied every name in a non-Latin
+    // script, and a four-character minimum excludes most Japanese and Korean
+    // names outright. The safety here is not length: it is uniqueness, plus the
+    // caller's rules that a name must appear in the material we supplied and
+    // that a single-word name must belong to somebody the artist has credited.
+    const fold = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const wanted = [...new Set(names.map(fold).filter(n => n.length >= 2))];
+    if (wanted.length === 0) return out;
+    try {
+        const literal = `{${wanted.map(n => `"${n.replace(/"/g, '\\"')}"`).join(",")}}`;
+        const rows = await db.execute(sql`
+            select regexp_replace(lower(name), '[^[:alnum:]]', '', 'g') as folded,
+                   min(id::text) as id,
+                   count(*) as n
+              from artists
+             where regexp_replace(lower(name), '[^[:alnum:]]', '', 'g') = any(${literal}::text[])
+             group by 1`);
+        const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]) ?? [];
+        for (const r of list as Record<string, unknown>[]) {
+            // Two artists share this name. Neither gets the link.
+            if (Number(r.n) !== 1) continue;
+            out.set(String(r.folded), String(r.id));
+        }
+        return out;
+    } catch (e) {
+        // Fail closed: a database error is not evidence that a name is unique.
+        console.error("[findUniqueArtistsByName] Error:", e);
+        return new Map();
+    }
+}
+
+/**
  * Artists in this directory whose Instagram matches one of these handles.
  *
  * Used to turn a credited collaborator into a link to their own profile. Some

@@ -1,0 +1,234 @@
+/**
+ * Where else can you hear this song?
+ *
+ * The ask can name a record; until now it could not send anyone to it. We hold
+ * the artist's Spotify catalogue and nothing else at track level — there is no
+ * track table, and the artist's Bandcamp and Deezer are handles for the ARTIST,
+ * not for a song.
+ *
+ * RESOLVED ON CLICK, NOT ON ANSWER. Two lookups per song, on an answer naming
+ * three of them, is most of a second added to every question for links most
+ * readers never open. The title renders immediately and this runs when somebody
+ * actually taps it.
+ *
+ * WHAT WE USE, AND WHY NOT THE OBVIOUS THING. Odesli/Songlink resolves every
+ * platform from one URL and was the right answer until they retired the free
+ * tier — it now answers 401 PUBLIC_API_ACCESS_DEPRECATED. Apple's iTunes Search
+ * and Deezer's public API are both still open with no key and no account, and
+ * between them they covered every track tested, including one each missed.
+ * Tidal needs registered OAuth credentials; Bandcamp has no API at all, so the
+ * artist's Bandcamp stays an artist-level link the caller adds.
+ */
+import { NextRequest } from "next/server";
+
+export const dynamic = "force-dynamic";
+
+/** A search returns A result, not THE result, and both providers answer with
+ *  their best guess rather than nothing. Everything below is about not
+ *  believing them. */
+const PROVIDER_TIMEOUT_MS = 4_000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
+const CACHE_MAX = 500;
+
+export type TrackLink = { service: string; url: string };
+
+const cache = new Map<string, { at: number; links: TrackLink[] }>();
+
+/**
+ * Letters and digits of ANY script, run together.
+ *
+ * This was [^a-z0-9], which reduces a Korean or Japanese title to the empty
+ * string — so every non-Latin release by one artist shared a cache key, and the
+ * exact-title check considered any two of them equal. The first provider hit
+ * for any of them would have been served for all of them.
+ */
+const fold = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+/** The same, single-spaced — keeps the word boundaries that folding destroys. */
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/**
+ * The people a provider credits, one per entry.
+ *
+ * Split on the raw string BEFORE normalising, because normalising is what
+ * removes the "&" that separates them. "Dame Atlas & Pete Rango" is two people;
+ * "Dave East" is one, and that difference is the whole point.
+ */
+function creditedNames(credit: string): string[] {
+    return credit
+        .split(/\s*(?:&|\/|,|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bwith\b|\band\b)\s*/i)
+        .map(norm)
+        .filter(Boolean);
+}
+
+/** Words that mark a title's bracketed segment as somebody's VERSION of the
+ *  record rather than part of its name. */
+const VERSION_WORDS = /\b(mix|remix|rmx|edit|version|rework|flip|bootleg|dub|instrumental|remaster(ed)?|live|acoustic)\b/i;
+
+/**
+ * The bracketed version credits in a title, normalised.
+ *
+ * "crying on the floor (pete rango mix)" has one: "pete rango mix". "Rango
+ * Sessions" has none, which is the point — a name in the body of a title says
+ * nothing about who made this recording.
+ */
+function versionCredits(title: string): string[] {
+    return [...title.matchAll(/[([]([^)\]]{1,80})[)\]]/g)]
+        .map(m => m[1])
+        .filter(seg => VERSION_WORDS.test(seg))
+        .map(norm);
+}
+
+/**
+ * Is this search hit the song we asked for?
+ *
+ * The title has to match outright — a near-match is a different song, and
+ * "close enough" is how a stranger's record ends up on an artist's page.
+ *
+ * THE ARTIST TEST IS TWO TESTS, and neither is a substring check. A substring
+ * check accepts "Dave East" for an artist called "Dave", which is precisely the
+ * namesake failure this route exists to prevent.
+ *
+ *   1. The artist is one of the people credited. Compared against each credited
+ *      name in full, so "Pete Rango" matches "Dame Atlas & Pete Rango" and
+ *      "Dave" does not match "Dave East".
+ *
+ *   2. Or their name is in the TITLE. Pete, on his own remix: "crying in the
+ *      floor says Pete Rango mix should show up." Deezer credits that track to
+ *      Dame Atlas alone; it is still his mix, and the title says so. Matched on
+ *      word boundaries so "Dave" does not match "Dave East" here either.
+ */
+function isTheSameTrack(
+    hitTitle: string,
+    hitArtist: string,
+    wantTitle: string,
+    wantArtist: string,
+): boolean {
+    // An empty fold on either side means there was nothing comparable in it —
+    // punctuation, or a title we could not read. Two of those are not "equal".
+    if (!fold(wantTitle) || fold(hitTitle) !== fold(wantTitle)) return false;
+    const artist = norm(wantArtist);
+    if (!artist) return false;
+    // The whole credit first, BEFORE splitting it. "Earth, Wind & Fire" is one
+    // band whose name contains two of the separators, and splitting first left
+    // three names none of which equalled it — so a band like that could never
+    // match its own record.
+    if (norm(hitArtist) === artist) return true;
+    if (creditedNames(hitArtist).includes(artist)) return true;
+
+    // THE TITLE EXCEPTION, narrowed to what it was actually for.
+    //
+    // Pete, on his own remix: "crying in the floor says Pete Rango mix should
+    // show up" — Deezer credits that track to Dame Atlas alone and it is still
+    // his mix, because the title says whose version it is.
+    //
+    // But "the name appears somewhere in the title" is far too broad: an artist
+    // called Rango would accept a stranger's "Rango Sessions", which is the
+    // same-title failure arrived at from the other direction. So the name has
+    // to sit inside a bracketed VERSION credit — the "(… mix)" that makes it
+    // theirs — and nowhere else counts.
+    return versionCredits(wantTitle).some(seg => {
+        const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u").test(seg);
+    });
+}
+
+async function withTimeout<T>(p: Promise<T>): Promise<T | null> {
+    return Promise.race([
+        p,
+        new Promise<null>(resolve => setTimeout(() => resolve(null), PROVIDER_TIMEOUT_MS)),
+    ]).catch(() => null);
+}
+
+/** `null` is "searched, no match"; `undefined` is "could not search". The
+ *  difference decides whether the answer is worth caching. */
+type Lookup = TrackLink | null | undefined;
+
+async function appleMusic(title: string, artist: string, isAlbum: boolean): Promise<Lookup> {
+    const term = encodeURIComponent(`${artist} ${title}`);
+    // An album is not a song. Searching `entity=song` for one returns its
+    // tracks or nothing, so an answer naming a record — and Spotify's catalogue
+    // is mostly albums — silently found no Apple link at all.
+    const entity = isAlbum ? "album" : "song";
+    const res = await withTimeout(fetch(`https://itunes.apple.com/search?term=${term}&entity=${entity}&limit=5`));
+    if (!res?.ok) return undefined;
+    const body = await res.json().catch(() => undefined) as { results?: Array<{ trackName?: string; collectionName?: string; artistName?: string; trackViewUrl?: string; collectionViewUrl?: string }> } | undefined;
+    if (!body) return undefined;
+    for (const r of body?.results ?? []) {
+        const name = isAlbum ? r.collectionName : r.trackName;
+        const link = isAlbum ? r.collectionViewUrl : r.trackViewUrl;
+        if (!name || !link) continue;
+        if (isTheSameTrack(name, r.artistName ?? "", title, artist)) {
+            // The `uo=4` affiliate-ish parameter Apple appends is noise on a
+            // link we are showing to a fan.
+            return { service: "Apple Music", url: link.split("?")[0] };
+        }
+    }
+    return null;
+}
+
+async function deezer(title: string, artist: string, isAlbum: boolean): Promise<Lookup> {
+    const q = encodeURIComponent(`${artist} ${title}`);
+    const path = isAlbum ? "search/album" : "search";
+    const res = await withTimeout(fetch(`https://api.deezer.com/${path}?q=${q}&limit=5`));
+    if (!res?.ok) return undefined;
+    const body = await res.json().catch(() => undefined) as { data?: Array<{ title?: string; link?: string; artist?: { name?: string } }> } | undefined;
+    if (!body) return undefined;
+    for (const r of body?.data ?? []) {
+        if (!r.title || !r.link) continue;
+        if (isTheSameTrack(r.title, r.artist?.name ?? "", title, artist)) {
+            return { service: "Deezer", url: r.link };
+        }
+    }
+    return null;
+}
+
+export async function GET(req: NextRequest): Promise<Response> {
+    const started = Date.now();
+    const title = (req.nextUrl.searchParams.get("title") ?? "").trim();
+    const artist = (req.nextUrl.searchParams.get("artist") ?? "").trim();
+    // Spotify's catalogue is mostly albums and singles rather than tracks, and
+    // the two need different provider endpoints.
+    const isAlbum = (req.nextUrl.searchParams.get("kind") ?? "") === "album";
+    // NO CALLER-SUPPLIED COLLABORATOR LIST. It used to take a `with` parameter
+    // that RELAXED the match, on an endpoint anyone can call — so
+    // `?artist=Pete Rango&title=Thriller&with=Michael Jackson` would resolve,
+    // and then sit in the cache for an hour under a key that did not mention
+    // it, handing that link to every later caller. Untrusted input must not
+    // loosen a safety check. The remix case it existed for is already covered
+    // by the title rule; if production credits need it back, the artist's
+    // collaborators should be looked up HERE from an artist id, not passed in.
+
+    if (!title || !artist) {
+        return Response.json({ error: "title and artist are required" }, { status: 400 });
+    }
+    if (title.length > 200 || artist.length > 200) {
+        return Response.json({ error: "title or artist too long" }, { status: 400 });
+    }
+
+    const key = `${fold(artist)}::${fold(title)}::${isAlbum ? "album" : "song"}`;
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+        return Response.json({ links: hit.links, cached: true });
+    }
+
+    // Both at once — they are independent, and the slower one should not add to
+    // the faster one.
+    const [apple, dz] = await Promise.all([
+        appleMusic(title, artist, isAlbum).catch(() => undefined),
+        deezer(title, artist, isAlbum).catch(() => undefined),
+    ]);
+    const links = [apple, dz].filter((l): l is TrackLink => !!l);
+
+    // ONLY CACHE A COMPLETED SEARCH. A timeout, a 5xx or malformed JSON came
+    // back as the same `null` a genuine no-match does, so one bad minute at
+    // Apple pinned an empty result in front of every later click for an hour —
+    // long after they recovered.
+    const complete = apple !== undefined && dz !== undefined;
+    if (complete) {
+        if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
+        cache.set(key, { at: Date.now(), links });
+    }
+
+    console.debug(`[trackLinks] "${title}" — ${links.length} link(s) in ${Date.now() - started}ms`);
+    return Response.json({ links });
+}

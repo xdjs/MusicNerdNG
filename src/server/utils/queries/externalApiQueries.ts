@@ -332,6 +332,9 @@ export type SpotifyRelease = {
     releaseDate: string | null;
     /** "album" | "single" | "compilation" | "appears_on" */
     kind: string | null;
+    /** The release's own page. Already in every response and thrown away until
+     *  now, which is why an answer could name a record and not link to it. */
+    url: string | null;
 };
 
 /**
@@ -365,12 +368,17 @@ export async function getSpotifyCatalogDetail(
         );
         const seen = new Set<string>();
         const out: SpotifyRelease[] = [];
-        for (const a of ((res.data.items ?? []) as Array<{ name?: string; release_date?: string; album_group?: string }>)) {
+        for (const a of ((res.data.items ?? []) as Array<{ name?: string; release_date?: string; album_group?: string; external_urls?: { spotify?: string } }>)) {
             if (!a.name) continue;
             const key = a.name.toLowerCase();
             if (seen.has(key)) continue;
             seen.add(key);
-            out.push({ name: a.name, releaseDate: a.release_date ?? null, kind: a.album_group ?? null });
+            out.push({
+                name: a.name,
+                releaseDate: a.release_date ?? null,
+                kind: a.album_group ?? null,
+                url: a.external_urls?.spotify ?? null,
+            });
         }
         // Newest first: what an artist is asked about is usually recent.
         out.sort((x, y) => (y.releaseDate ?? "").localeCompare(x.releaseDate ?? ""));
