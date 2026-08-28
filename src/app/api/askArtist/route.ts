@@ -18,7 +18,7 @@ const PASSAGE_BUDGET_CHARS = 2_400;
 const MAX_STATEMENTS_IN_CONTEXT = 24;
 /** The answer is already written when this runs, so it gets what is left of a
  *  reader's patience and no more. */
-const FOLLOWUP_TIMEOUT_MS = 6_000;
+const FOLLOWUP_TIMEOUT_MS = 4_000;
 /** Enough to cover "lately" without spending the prompt on a year of feed. */
 const MAX_RECENT_POSTS = 12;
 /** Enough to answer "what is the latest" and "what should I hear". */
@@ -363,7 +363,12 @@ ${artistContext}`,
         // Raced against a short deadline. The answer is already written by
         // this point and these are a nicety; a stalled second model call must
         // not withhold a usable answer until the platform gives up.
-        const suggestions = await Promise.race([
+        //
+        // Started here and awaited below, alongside mention resolution. These
+        // were sequential, so a reader waited for the suggestion chips and THEN
+        // for a database round trip before seeing a word of the answer. Neither
+        // needs the other; both need only the answer.
+        const suggestionsPromise = Promise.race([
             suggestFollowUps({ artistName, question, answer, unexplored }),
             new Promise<string[]>(resolve =>
                 setTimeout(() => resolve(generateFollowUps(artistName, question, answer)), FOLLOWUP_TIMEOUT_MS)),
@@ -400,7 +405,10 @@ ${artistContext}`,
         // kind of thing this restriction exists to make impossible.
         //
         // Same discipline as the citations: only link what we can back.
-        const mentions = await resolveMentions(artistId, answer);
+        const [suggestions, mentions] = await Promise.all([
+            suggestionsPromise,
+            resolveMentions(artistId, answer),
+        ]);
 
         return Response.json({
             answer, suggestions, sources, mentions,
@@ -454,6 +462,12 @@ async function suggestFollowUps(input: {
 Return STRICT JSON: an array of 4 strings. No markdown, no commentary.`,
             temperature: 0.4,
             responseMimeType: "application/json",
+            // Writing four short questions from a list is formatting, not
+            // reasoning, and the default thinking budget was costing seconds on
+            // the critical path — the answer was ready and the reader was
+            // watching "Thinking..." while the model deliberated over chips it
+            // had not been asked for.
+            thinkingConfig: { thinkingBudget: 0 },
         },
     });
 

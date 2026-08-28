@@ -21,11 +21,13 @@ import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueri
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import ArtistJsonLd from "./_components/ArtistJsonLd";
 import OfficialSiteLinks from "./_components/OfficialSiteLinks";
 import OnboardingGate from "./_components/onboarding/OnboardingGate";
 import ProfileTour from "./_components/onboarding/ProfileTour";
 import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
+import { isRealBio } from "@/lib/bioConstants";
 
 type ArtistProfileProps = {
     params: Promise<{ id: string }>;
@@ -56,14 +58,26 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
         : platformData?.imageUrl || "https://www.musicnerd.xyz/default_pfp_pink.png";
     const artistName = artist.name ?? "Unknown Artist";
 
+    // The artist's own About, when one has been written, rather than the
+    // template. "Discover X's social links and streaming profiles on Music
+    // Nerd" is the same sentence on every page in the directory: it is what a
+    // search result shows, what a shared link previews as, and what an
+    // assistant quotes, and it says nothing about the artist. The About is
+    // right there and is the best 160 characters we have.
+    const description = artist.bio && isRealBio(artist.bio)
+        ? summarize(artist.bio)
+        : `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`;
+    const pageUrl = `https://www.musicnerd.xyz/artist/${id}`;
+
     return {
         title: `${artistName} | Music Nerd`,
-        description: `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`,
+        description,
+        alternates: { canonical: pageUrl },
         openGraph: {
             type: "profile",
             title: `${artistName} | Music Nerd`,
-            description: `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`,
-            url: `https://www.musicnerd.xyz/artist/${id}`,
+            description,
+            url: pageUrl,
             images: [
                 {
                     url: imageUrl,
@@ -76,10 +90,21 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
         twitter: {
             card: "summary_large_image",
             title: `${artistName} | Music Nerd`,
-            description: `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`,
+            description,
             images: [imageUrl],
         },
     };
+}
+
+/** A description is a couple of sentences, not a bio. Cut on a sentence
+ *  boundary when there is one in range; a description that ends mid-clause
+ *  reads as broken rather than truncated. */
+function summarize(bio: string, max = 300): string {
+    const text = bio.trim().replace(/\s+/g, " ");
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max);
+    const lastStop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+    return lastStop > max * 0.5 ? cut.slice(0, lastStop + 1) : `${cut.trimEnd()}…`;
 }
 
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
@@ -249,6 +274,11 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
             </div>
             </EditModeProvider>
             <SeoArtistLinks artist={artist} />
+            <ArtistJsonLd
+                artist={artist}
+                imageUrl={imageUrl}
+                pageUrl={`https://www.musicnerd.xyz/artist/${id}`}
+            />
         </>
     );
 }

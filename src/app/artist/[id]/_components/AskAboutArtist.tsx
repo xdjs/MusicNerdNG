@@ -19,11 +19,24 @@ type AnswerSource = { n: number; title: string; url: string };
 type AnswerMention = { name: string; artistId?: string; instagram?: string; role?: string };
 
 /** A pill has room for where it ran, not for a headline. The full title is the
- *  hover. */
+ *  hover.
+ *
+ *  Except when every source is the same site. An answer about what an artist has
+ *  been doing lately cites a dozen of their own posts, and twelve pills reading
+ *  "instagram.com" tell a reader nothing and look like a bug. The titles carry
+ *  the date — "Pete Rango on Instagram, 2026-03-23" — so the pill shows that
+ *  instead, and the reader can see which one is the recent one. */
 function sourceHost(s: AnswerSource): string {
-    try { return new URL(s.url).hostname.replace(/^www\./, ""); }
+    const dated = s.title.match(/\b(\d{4})-(\d{2})-\d{2}\b/);
+    let host: string;
+    try { host = new URL(s.url).hostname.replace(/^www\./, ""); }
     catch { return s.title.slice(0, 32); }
+    if (!dated) return host;
+    const month = MONTHS[Number(dated[2]) - 1];
+    return month ? `${host} · ${month} ${dated[1]}` : host;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 
 /**
