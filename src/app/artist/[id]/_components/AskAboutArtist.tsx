@@ -146,7 +146,11 @@ function renderAnswer(
             ? `/artist/${person.artistId}`
             : person.instagram ? `https://www.instagram.com/${person.instagram}/` : null;
         if (!href) continue;
-        const re = new RegExp(`@?${escape(person.name)}\\b`, "gi");
+        // \b is ASCII-only: "Beyoncé\b" asserts a boundary after é, which is not
+        // a word character to \b, so the name never matched and the person went
+        // unlinked. Asserted as "not followed by a letter or digit" instead,
+        // which is the same rule the record matcher uses.
+        const re = new RegExp(`@?${escape(person.name)}(?![\\p{L}\\p{N}])`, "giu");
         for (const m of text.matchAll(re)) {
             const at = m.index ?? 0;
             spans.push({

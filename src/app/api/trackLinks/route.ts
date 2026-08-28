@@ -60,6 +60,24 @@ function creditedNames(credit: string): string[] {
         .filter(Boolean);
 }
 
+/** Words that mark a title's bracketed segment as somebody's VERSION of the
+ *  record rather than part of its name. */
+const VERSION_WORDS = /\b(mix|remix|rmx|edit|version|rework|flip|bootleg|dub|instrumental|remaster(ed)?|live|acoustic)\b/i;
+
+/**
+ * The bracketed version credits in a title, normalised.
+ *
+ * "crying on the floor (pete rango mix)" has one: "pete rango mix". "Rango
+ * Sessions" has none, which is the point — a name in the body of a title says
+ * nothing about who made this recording.
+ */
+function versionCredits(title: string): string[] {
+    return [...title.matchAll(/[([]([^)\]]{1,80})[)\]]/g)]
+        .map(m => m[1])
+        .filter(seg => VERSION_WORDS.test(seg))
+        .map(norm);
+}
+
 /**
  * Is this search hit the song we asked for?
  *
@@ -97,16 +115,21 @@ function isTheSameTrack(
     if (norm(hitArtist) === artist) return true;
     if (creditedNames(hitArtist).includes(artist)) return true;
 
-    // The title exception, and it does NOT apply when the artist's name is the
-    // whole title. `artist=Dave&title=Dave` would otherwise accept any track
-    // called "Dave" by anyone, which is the same-title failure this function
-    // exists to stop, arrived at from the other direction. The case it is for
-    // is a name carried INSIDE a longer title — "crying on the floor (pete
-    // rango mix)" — where the title is saying whose version this is.
-    const title = norm(wantTitle);
-    if (title === artist) return false;
-    const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u").test(norm(hitTitle));
+    // THE TITLE EXCEPTION, narrowed to what it was actually for.
+    //
+    // Pete, on his own remix: "crying in the floor says Pete Rango mix should
+    // show up" — Deezer credits that track to Dame Atlas alone and it is still
+    // his mix, because the title says whose version it is.
+    //
+    // But "the name appears somewhere in the title" is far too broad: an artist
+    // called Rango would accept a stranger's "Rango Sessions", which is the
+    // same-title failure arrived at from the other direction. So the name has
+    // to sit inside a bracketed VERSION credit — the "(… mix)" that makes it
+    // theirs — and nowhere else counts.
+    return versionCredits(wantTitle).some(seg => {
+        const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u").test(seg);
+    });
 }
 
 async function withTimeout<T>(p: Promise<T>): Promise<T | null> {

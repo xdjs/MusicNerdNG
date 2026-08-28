@@ -205,4 +205,29 @@ describe('GET /api/trackLinks', () => {
         const second = await (await GET({ nextUrl: { searchParams: q() } })).json();
         expect(second.links).toEqual([{ service: 'Apple Music', url: 'https://music.apple.com/ok' }]);
     });
+
+    it('accepts the title exception only for a bracketed version credit', async () => {
+        // The case it is for: Deezer credits this to Dame Atlas alone, and it
+        // is still Pete's mix because "(pete rango mix)" says so.
+        const yes = await ask({
+            title: `crying on the floor (pete rango mix) ${n}`, artist: 'Pete Rango',
+            deezerBody: deezer([{
+                title: `crying on the floor (pete rango mix) ${n}`,
+                artist: { name: 'Dame Atlas' },
+                link: 'https://www.deezer.com/track/15',
+            }]),
+        });
+        expect(yes.body.links).toHaveLength(1);
+    });
+
+    it('refuses a name that merely appears in the body of a title', async () => {
+        // "the name is somewhere in the title" would let an artist called Rango
+        // take a stranger's "Rango Sessions" — the same-title failure arrived
+        // at from the other direction.
+        const no = await ask({
+            title: `Rango Sessions ${n}`, artist: 'Rango',
+            deezerBody: deezer([{ title: `Rango Sessions ${n}`, artist: { name: 'Somebody Else' }, link: 'https://www.deezer.com/track/16' }]),
+        });
+        expect(no.body.links).toEqual([]);
+    });
 });
