@@ -17,7 +17,7 @@ const DEFAULT_SUGGESTIONS = (name: string) => [
 
 type AnswerSource = { n: number; title: string; url: string };
 type AnswerMention = { name: string; artistId?: string; instagram?: string; role?: string };
-type AnswerSong = { title: string; spotifyUrl: string };
+type AnswerSong = { title: string; spotifyUrl: string; kind?: string };
 type TrackLink = { service: string; url: string };
 
 /** A pill has room for where it ran, not for a headline. The full title is the
@@ -227,7 +227,12 @@ function SongLink({
         if (!next || links !== null || loading) return;
         setLoading(true);
         try {
-            const q = new URLSearchParams({ title: song.title, artist: artistName });
+            const q = new URLSearchParams({
+                title: song.title,
+                artist: artistName,
+                // Albums and singles need different provider endpoints.
+                kind: song.kind ?? "album",
+            });
             const res = await fetch(`/api/trackLinks?${q}`);
             const data = await res.json();
             setLinks(Array.isArray(data.links) ? data.links : []);

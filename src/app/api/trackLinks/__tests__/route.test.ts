@@ -20,11 +20,11 @@ const deezer = (data) => ({ ok: true, json: async () => ({ data }) });
 
 /** Distinct titles per test so the route's cache cannot answer for us. */
 let n = 0;
-async function ask({ title, artist, appleBody = apple([]), deezerBody = deezer([]) }) {
+async function ask({ title, artist, kind = 'song', appleBody = apple([]), deezerBody = deezer([]) }) {
     global.fetch = jest.fn(async (url) =>
         String(url).includes('itunes.apple.com') ? appleBody : deezerBody);
     const { GET } = await import('../route');
-    const q = new URLSearchParams({ title, artist });
+    const q = new URLSearchParams({ title, artist, kind });
     const res = await GET({ nextUrl: { searchParams: q } });
     return { status: res.status, body: await res.json() };
 }
@@ -133,6 +133,42 @@ describe('GET /api/trackLinks', () => {
         const { body } = await ask({
             title: 'Dave', artist: 'Dave',
             deezerBody: deezer([{ title: 'Dave', artist: { name: 'Somebody Else' }, link: 'https://www.deezer.com/track/13' }]),
+        });
+        expect(body.links).toEqual([]);
+    });
+
+    it('searches albums as albums, not as songs', async () => {
+        // Spotify's catalogue is mostly albums, and `entity=song` returns their
+        // tracks or nothing — so an answer naming a record found no Apple link
+        // at all.
+        const asked = [];
+        global.fetch = jest.fn(async (url) => {
+            asked.push(String(url));
+            return String(url).includes('itunes.apple.com')
+                ? { ok: true, json: async () => ({ results: [{
+                    collectionName: `Cast Out Of Hell ${n}`,
+                    artistName: 'Pete Rango',
+                    collectionViewUrl: 'https://music.apple.com/us/album/coh?uo=4',
+                  }] }) }
+                : deezer([]);
+        });
+        const { GET } = await import('../route');
+        const q = new URLSearchParams({ title: `Cast Out Of Hell ${n}`, artist: 'Pete Rango', kind: 'album' });
+        const body = await (await GET({ nextUrl: { searchParams: q } })).json();
+
+        // Both providers, each at its album endpoint.
+        expect(asked.some(u => u.includes('itunes.apple.com') && u.includes('entity=album'))).toBe(true);
+        expect(asked.some(u => u.includes('api.deezer.com/search/album'))).toBe(true);
+        expect(body.links).toContainEqual({ service: 'Apple Music', url: 'https://music.apple.com/us/album/coh' });
+    });
+
+    it('does not treat two different non-Latin titles as the same song', async () => {
+        // Folding to [a-z0-9] reduced both to the empty string, so they
+        // compared equal and shared a cache key — the first hit for either
+        // would have been served for both.
+        const { body } = await ask({
+            title: '사랑', artist: 'Pete Rango',
+            deezerBody: deezer([{ title: '恋', artist: { name: 'Pete Rango' }, link: 'https://www.deezer.com/track/99' }]),
         });
         expect(body.links).toEqual([]);
     });

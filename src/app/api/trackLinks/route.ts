@@ -34,10 +34,17 @@ export type TrackLink = { service: string; url: string };
 
 const cache = new Map<string, { at: number; links: TrackLink[] }>();
 
-const fold = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-/** Letters and digits, single-spaced — keeps word boundaries, which folding
- *  away every space destroys. */
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+/**
+ * Letters and digits of ANY script, run together.
+ *
+ * This was [^a-z0-9], which reduces a Korean or Japanese title to the empty
+ * string — so every non-Latin release by one artist shared a cache key, and the
+ * exact-title check considered any two of them equal. The first provider hit
+ * for any of them would have been served for all of them.
+ */
+const fold = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+/** The same, single-spaced — keeps the word boundaries that folding destroys. */
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 /**
  * The people a provider credits, one per entry.
@@ -78,7 +85,9 @@ function isTheSameTrack(
     wantTitle: string,
     wantArtist: string,
 ): boolean {
-    if (fold(hitTitle) !== fold(wantTitle)) return false;
+    // An empty fold on either side means there was nothing comparable in it —
+    // punctuation, or a title we could not read. Two of those are not "equal".
+    if (!fold(wantTitle) || fold(hitTitle) !== fold(wantTitle)) return false;
     const artist = norm(wantArtist);
     if (!artist) return false;
     if (creditedNames(hitArtist).includes(artist)) return true;
@@ -102,25 +111,32 @@ async function withTimeout<T>(p: Promise<T>): Promise<T | null> {
     ]).catch(() => null);
 }
 
-async function appleMusic(title: string, artist: string): Promise<TrackLink | null> {
+async function appleMusic(title: string, artist: string, isAlbum: boolean): Promise<TrackLink | null> {
     const term = encodeURIComponent(`${artist} ${title}`);
-    const res = await withTimeout(fetch(`https://itunes.apple.com/search?term=${term}&entity=song&limit=5`));
+    // An album is not a song. Searching `entity=song` for one returns its
+    // tracks or nothing, so an answer naming a record — and Spotify's catalogue
+    // is mostly albums — silently found no Apple link at all.
+    const entity = isAlbum ? "album" : "song";
+    const res = await withTimeout(fetch(`https://itunes.apple.com/search?term=${term}&entity=${entity}&limit=5`));
     if (!res?.ok) return null;
-    const body = await res.json().catch(() => null) as { results?: Array<{ trackName?: string; artistName?: string; trackViewUrl?: string }> } | null;
+    const body = await res.json().catch(() => null) as { results?: Array<{ trackName?: string; collectionName?: string; artistName?: string; trackViewUrl?: string; collectionViewUrl?: string }> } | null;
     for (const r of body?.results ?? []) {
-        if (!r.trackName || !r.trackViewUrl) continue;
-        if (isTheSameTrack(r.trackName, r.artistName ?? "", title, artist)) {
+        const name = isAlbum ? r.collectionName : r.trackName;
+        const link = isAlbum ? r.collectionViewUrl : r.trackViewUrl;
+        if (!name || !link) continue;
+        if (isTheSameTrack(name, r.artistName ?? "", title, artist)) {
             // The `uo=4` affiliate-ish parameter Apple appends is noise on a
             // link we are showing to a fan.
-            return { service: "Apple Music", url: r.trackViewUrl.split("?")[0] };
+            return { service: "Apple Music", url: link.split("?")[0] };
         }
     }
     return null;
 }
 
-async function deezer(title: string, artist: string): Promise<TrackLink | null> {
+async function deezer(title: string, artist: string, isAlbum: boolean): Promise<TrackLink | null> {
     const q = encodeURIComponent(`${artist} ${title}`);
-    const res = await withTimeout(fetch(`https://api.deezer.com/search?q=${q}&limit=5`));
+    const path = isAlbum ? "search/album" : "search";
+    const res = await withTimeout(fetch(`https://api.deezer.com/${path}?q=${q}&limit=5`));
     if (!res?.ok) return null;
     const body = await res.json().catch(() => null) as { data?: Array<{ title?: string; link?: string; artist?: { name?: string } }> } | null;
     for (const r of body?.data ?? []) {
@@ -136,6 +152,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     const started = Date.now();
     const title = (req.nextUrl.searchParams.get("title") ?? "").trim();
     const artist = (req.nextUrl.searchParams.get("artist") ?? "").trim();
+    // Spotify's catalogue is mostly albums and singles rather than tracks, and
+    // the two need different provider endpoints.
+    const isAlbum = (req.nextUrl.searchParams.get("kind") ?? "") === "album";
     // NO CALLER-SUPPLIED COLLABORATOR LIST. It used to take a `with` parameter
     // that RELAXED the match, on an endpoint anyone can call — so
     // `?artist=Pete Rango&title=Thriller&with=Michael Jackson` would resolve,
@@ -152,7 +171,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         return Response.json({ error: "title or artist too long" }, { status: 400 });
     }
 
-    const key = `${fold(artist)}::${fold(title)}`;
+    const key = `${fold(artist)}::${fold(title)}::${isAlbum ? "album" : "song"}`;
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
         return Response.json({ links: hit.links, cached: true });
@@ -161,8 +180,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     // Both at once — they are independent, and the slower one should not add to
     // the faster one.
     const [apple, dz] = await Promise.all([
-        appleMusic(title, artist).catch(() => null),
-        deezer(title, artist).catch(() => null),
+        appleMusic(title, artist, isAlbum).catch(() => null),
+        deezer(title, artist, isAlbum).catch(() => null),
     ]);
     const links = [apple, dz].filter((l): l is TrackLink => l !== null);
 

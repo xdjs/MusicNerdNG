@@ -179,7 +179,11 @@ describe('the grounded fallback and the blocklist', () => {
         // catalogue and is NOT named. "Thriller" is named and is not his — a
         // quoted phrase is as likely to be a lyric or a project as a release,
         // so the catalogue is the only evidence that settles it.
-        expect(body.songs).toEqual([{ title: 'rush', spotifyUrl: 'https://open.spotify.com/album/RUSH' }]);
+        expect(body.songs).toEqual([
+            // `kind` travels with it: an album and a single need different
+            // provider endpoints when the picker resolves.
+            { title: 'rush', spotifyUrl: 'https://open.spotify.com/album/RUSH', kind: 'single' },
+        ]);
         expect(body.bandcamp).toBe('https://peterango.bandcamp.com');
     });
 

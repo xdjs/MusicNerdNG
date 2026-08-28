@@ -83,7 +83,7 @@ export async function POST(req: Request) {
         const citable: { n: number; title: string; url: string }[] = [];
         /** The artist's releases, kept past the prompt so the answer's own
          *  words can be matched against real records afterwards. */
-        let catalogue: { name: string; releaseDate: string | null; url: string | null }[] = [];
+        let catalogue: { name: string; releaseDate: string | null; kind: string | null; url: string | null }[] = [];
 
         // NUMBERED, because these are the answer to a real question. "Where can
         // I buy their music" is answered entirely from these lines, and
@@ -459,7 +459,15 @@ ${artistContext}`,
         // never open.
         const songs = catalogue
             .filter(r => r.url && namedInAnswer(answer, r.name))
-            .map(r => ({ title: r.name, spotifyUrl: r.url as string }))
+            // `kind` travels with it. An album is not a song, and the provider
+            // lookup needs different endpoints for the two — without this an
+            // answer naming a record found no Apple link at all, and Spotify's
+            // catalogue is mostly albums.
+            .map(r => ({
+                title: r.name,
+                spotifyUrl: r.url as string,
+                kind: r.kind === "single" ? "single" : "album",
+            }))
             .slice(0, MAX_SONGS_LINKED);
 
         return Response.json({
