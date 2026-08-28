@@ -7,7 +7,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
-import { artistSocialCredits } from "@/server/db/schema";
+import { artistSocialCredits, artistHiddenStatements } from "@/server/db/schema";
 import type { CaptionExtraction, CaptionCredit, ArtistStatement } from "@/server/utils/socialCredits";
 import { EMPTY_EXTRACTION } from "@/server/utils/socialCredits";
 
@@ -99,13 +99,129 @@ async function writeSocialCredits(
     }
 }
 
-/** Read back what was extracted, in the shape the extraction module produced.
- *  Returns an empty extraction on any failure or when nothing is stored. */
+/**
+ * How a quote is compared for hiding: lowercase, letters and digits only, and
+ * without accents.
+ *
+ * A re-read can re-punctuate the same passage, or write "Andre" where it
+ * previously wrote "André", and the artist should not have to hide it again
+ * because the model kept a different comma. Both sides go through this, so
+ * whatever it does it does consistently.
+ */
+export const normalizeQuote = (quote: string) =>
+    quote
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * Passages this artist has asked us not to use, ready to compare against.
+ *
+ * `null` means WE DO NOT KNOW, which is not the same as "none". An empty set
+ * would tell the caller nothing is hidden, and the caller would then serve
+ * something an artist asked us to keep private — so a failure has to be
+ * distinguishable, and the caller drops every statement when it sees one.
+ *
+ * The one failure that is NOT unknown is the table not existing yet. Migrations
+ * here are applied by hand through Supabase, so this ships before the table
+ * does; until then nothing CAN be hidden, and an empty set is the truth rather
+ * than a guess. Any other error is a guess.
+ */
+export async function getHiddenStatementQuotes(artistId: string): Promise<Set<string> | null> {
+    if (!artistId) return new Set();
+    try {
+        const rows = await db.select({ q: artistHiddenStatements.quoteNorm })
+            .from(artistHiddenStatements)
+            .where(eq(artistHiddenStatements.artistId, artistId));
+        return new Set(rows.map(r => r.q));
+    } catch (e) {
+        // 42P01 is undefined_table.
+        if ((e as { code?: string })?.code === "42P01") return new Set();
+        console.error("[getHiddenStatementQuotes] Error:", e);
+        return null;
+    }
+}
+
+/** Stop using a passage. Idempotent — hiding it twice is one row. */
+export async function hideStatement(
+    artistId: string,
+    quote: string,
+    sourceUrl: string | null,
+): Promise<boolean> {
+    const quoteNorm = normalizeQuote(quote);
+    if (!artistId || !quoteNorm) return false;
+    try {
+        await db.insert(artistHiddenStatements)
+            .values({ artistId, quoteNorm, sourceUrl })
+            .onConflictDoNothing({ target: [artistHiddenStatements.artistId, artistHiddenStatements.quoteNorm] });
+        return true;
+    } catch (e) {
+        console.error("[hideStatement] Error:", e);
+        return false;
+    }
+}
+
+/** Changed their mind. */
+export async function unhideStatement(artistId: string, quote: string): Promise<boolean> {
+    const quoteNorm = normalizeQuote(quote);
+    if (!artistId || !quoteNorm) return false;
+    try {
+        await db.delete(artistHiddenStatements)
+            .where(and(
+                eq(artistHiddenStatements.artistId, artistId),
+                eq(artistHiddenStatements.quoteNorm, quoteNorm),
+            ));
+        return true;
+    } catch (e) {
+        console.error("[unhideStatement] Error:", e);
+        return false;
+    }
+}
+
+/**
+ * Every stored row, unfiltered, for the screen where the artist decides.
+ *
+ * getSocialCredits deliberately drops hidden statements — that is its job. The
+ * curation screen needs them BACK, or hiding something removes it from the only
+ * place that could restore it.
+ */
+export async function getSocialCreditRows(artistId: string) {
+    if (!artistId) return [];
+    try {
+        return await db.select().from(artistSocialCredits)
+            .where(eq(artistSocialCredits.artistId, artistId));
+    } catch (e) {
+        console.error("[getSocialCreditRows] Error:", e);
+        return [];
+    }
+}
+
+/**
+ * Read back what was extracted, in the shape the extraction module produced.
+ *
+ * FILTERED HERE, which is the point: the ask, the document builder and the
+ * question generator all read through this one function, so an artist hides a
+ * passage once and it leaves every surface at the same time. Filtering in any
+ * one consumer would have left it in the others.
+ *
+ * Returns an empty extraction on any failure or when nothing is stored.
+ */
 export async function getSocialCredits(artistId: string): Promise<CaptionExtraction> {
     if (!artistId) return EMPTY_EXTRACTION;
     try {
-        const rows = await db.select().from(artistSocialCredits)
-            .where(eq(artistSocialCredits.artistId, artistId));
+        const [rows, hidden] = await Promise.all([
+            db.select().from(artistSocialCredits).where(eq(artistSocialCredits.artistId, artistId)),
+            getHiddenStatementQuotes(artistId),
+        ]);
+        // Could not read what is hidden. Credits still go out — they are
+        // somebody's role on a record, not the artist talking about their life
+        // — but every statement is withheld, because serving one we were
+        // supposed to be hiding is the failure this whole feature exists to
+        // prevent.
+        if (hidden === null) {
+            console.error(`[getSocialCredits] Withholding statements for ${artistId}: cannot read what is hidden`);
+        }
         const credits: CaptionCredit[] = [];
         const statements: ArtistStatement[] = [];
         for (const r of rows) {
@@ -120,6 +236,8 @@ export async function getSocialCredits(artistId: string): Promise<CaptionExtract
                     postedAt: r.postedAt ?? null,
                 });
             } else {
+                // Asked to be kept private. Their words, their call.
+                if (hidden === null || hidden.has(normalizeQuote(r.quote))) continue;
                 // postedAt was stored on every row and dropped here, which is
                 // why nothing downstream could answer a question about
                 // "lately" — the material arrived with no sense of when.

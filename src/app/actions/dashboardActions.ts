@@ -332,6 +332,86 @@ const MAX_CORRECTION_CHARS = 2000;
 /** The document plus the artist's corrections, for their own review surface.
  *  Read-only and owner-gated: this is our working material about a person, not
  *  something to serve to visitors. */
+/**
+ * What we read out of this artist's own captions, and whether they want it used.
+ *
+ * The vault already lets them reject a SOURCE. Nothing let them reject
+ * something lifted from their own words, which is the more personal of the two:
+ * Pete Rango's memorial post for his cousin produced one statement about the
+ * music André gave him and three about his death, and a fan asking the ask box
+ * could get the latter back.
+ *
+ * Owner-only, and the server re-checks that rather than trusting the client.
+ */
+export async function getArtistStatements(artistId: string): Promise<{
+    success: boolean;
+    statements?: { quote: string; topic: string; url: string; postedAt: string | null; hidden: boolean }[];
+    error?: string;
+}> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false, error: "Not authenticated" };
+    try {
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
+
+        const { getSocialCreditRows, getHiddenStatementQuotes, normalizeQuote } =
+            await import("@/server/utils/queries/socialCreditQueries");
+
+        // The HIDDEN ones have to be listed too, or hiding something makes it
+        // vanish from the only screen that could bring it back.
+        const [all, hidden] = await Promise.all([
+            getSocialCreditRows(artistId),
+            getHiddenStatementQuotes(artistId),
+        ]);
+        const statements = all
+            .filter(r => r.kind === "statement")
+            .map(r => ({
+                quote: r.quote,
+                topic: r.label,
+                url: r.sourceUrl,
+                postedAt: r.postedAt ?? null,
+                // `null` means the lookup failed; the list still renders so the
+                // artist is not staring at an error, and nothing is claimed to
+                // be private that we could not confirm is.
+                hidden: hidden?.has(normalizeQuote(r.quote)) ?? false,
+            }));
+        return { success: true, statements };
+    } catch (error) {
+        console.error("[getArtistStatements] Error:", error);
+        return { success: false, error: "Failed to load what we read from your posts" };
+    }
+}
+
+/** Keep a passage private, or put it back. */
+export async function setStatementHidden(
+    artistId: string,
+    quote: string,
+    hidden: boolean,
+    sourceUrl?: string | null,
+): Promise<{ success: boolean; error?: string }> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false, error: "Not authenticated" };
+    try {
+        const auth = await verifyArtistEditable(session.user.id, artistId);
+        if (!auth.ok) return { success: false, error: auth.error };
+
+        const { hideStatement, unhideStatement } = await import("@/server/utils/queries/socialCreditQueries");
+        const ok = hidden
+            ? await hideStatement(artistId, quote, sourceUrl ?? null)
+            : await unhideStatement(artistId, quote);
+        if (!ok) return { success: false, error: "Could not save that" };
+
+        // The document was built from these, so it has to be rebuilt without
+        // them — otherwise the passage stays on the page in synthesised form
+        // while the artist has been told it is hidden.
+        scheduleDocRefresh(artistId);
+        return { success: true };
+    } catch (error) {
+        console.error("[setStatementHidden] Error:", error);
+        return { success: false, error: "Failed to save" };
+    }
+}
+
 export async function getKnowledgeDoc(artistId: string): Promise<{
     success: boolean;
     content?: string;
