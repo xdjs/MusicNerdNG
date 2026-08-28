@@ -65,6 +65,9 @@ jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSectio
 jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return null; });
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return null; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
+// Same reason as SeoArtistLinks: an async server component that reads the link
+// table, which this suite does not stand up.
+jest.mock('@/app/artist/[id]/_components/ArtistJsonLd', () => function ArtistJsonLd() { return null; });
 jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return null; });
 jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
 jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return null; });

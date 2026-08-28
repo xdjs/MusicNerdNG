@@ -28,6 +28,7 @@
  * judge at all.
  */
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
+import { sourceTier } from "@/lib/sourceAuthority";
 
 /** Per-page text handed to the judge. Enough to tell who a page is about —
  *  a page that hasn't said whose it is in 1,500 characters is not a source. */
@@ -49,6 +50,9 @@ export type RelevanceCandidate = {
     url: string;
     title: string | null;
     text: string | null;
+    /** True when the URL is the artist's own domain, which the caller knows and
+     *  a hostname cannot tell. Only affects the tier shown to the model. */
+    ownDomain?: boolean;
 };
 
 /** What we can prove about who the artist is, independent of their name. */
@@ -131,6 +135,8 @@ This is NOT a lesser "about". A page that merely lists the artist is worthless a
 
 Each page carries a MENTIONS line giving how many of its paragraphs name the artist. Weigh it — a very low share is strong evidence of "lists" — but it is one signal, not a rule: a short review can be entirely about the artist while naming them twice, and a long interview refers to them as "I" throughout.
 
+Each page also carries a TIER line describing the site it came from. "low-signal" means the site generates its pages from scraped or catalogue data rather than publishing written work, so treat it as "lists" unless the page itself shows a human wrote it about this artist. "preferred" and "unknown" carry no such presumption; judge them on the page. The tier is about the SITE and never settles which person a page is about — a low-signal page about somebody else is still "no".
+
 Reply with ONLY a JSON array, one object per numbered page, no other text:
 [{"i": 0, "v": "about"}, {"i": 1, "v": "lists"}, {"i": 2, "v": "no"}]
 
@@ -166,7 +172,13 @@ export async function judgeSourceRelevance(
             const mentions = density
                 ? `MENTIONS: names the artist in ${density.hits} of ${density.total} paragraphs`
                 : `MENTIONS: unknown (no paragraph structure)`;
-            return `--- PAGE ${i} ---\nTITLE: ${c.title ?? "(none)"}\n${mentions}\n${(c.text ?? "").slice(0, EXCERPT_CHARS)}`;
+            // The site, as a fact to weigh alongside the page. A stats dashboard
+            // reads like coverage in its first 1,500 characters — Pharaoh
+            // Sistare's Viberate page did, and was affirmed as "about" — because
+            // the thing that gives it away is who publishes it, which is not on
+            // the page.
+            const tier = `TIER: ${sourceTier(c.url, null, { ownDomain: c.ownDomain })}`;
+            return `--- PAGE ${i} ---\nTITLE: ${c.title ?? "(none)"}\n${tier}\n${mentions}\n${(c.text ?? "").slice(0, EXCERPT_CHARS)}`;
         })
         .join("\n\n");
 

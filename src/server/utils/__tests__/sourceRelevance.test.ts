@@ -126,3 +126,56 @@ describe("judgeSourceRelevance", () => {
     expect(verdicts.get("https://a.example/x")).toBe("undecided");
   });
 });
+
+describe("what the judge is told about the site", () => {
+  beforeEach(() => { jest.resetModules(); mockGenerate.mockReset(); });
+
+  const promptFor = async (candidates) => {
+    mockGenerate.mockResolvedValue({ text: "[]" });
+    const { judgeSourceRelevance } = await import("@/server/utils/sourceRelevance");
+    await judgeSourceRelevance(ANCHOR, candidates);
+    return String(mockGenerate.mock.calls[0][0].contents);
+  };
+
+  it("labels each page with its host's tier", async () => {
+    // A stats dashboard reads like coverage in its first 1,500 characters —
+    // Pharaoh Sistare's Viberate page did, and was affirmed as "about". What
+    // gives it away is who publishes it, and that is not on the page.
+    const prompt = await promptFor([
+      page("https://www.discogs.com/artist/1-Black-Dave", "Credits for Black Dave. ".repeat(20), "Discogs"),
+      page("https://last.fm/user/someone", "Black Dave and 400 other artists. ".repeat(20), "Library"),
+    ]);
+    expect(prompt).toContain("TIER: preferred");
+    expect(prompt).toContain("TIER: low-signal");
+  });
+
+  it("says unknown for a publication, because a hostname cannot tell", async () => {
+    // The tier describes the SITE. Whether a page is an interview is a fact
+    // about the page, and the judge is reading the page — telling it "preferred"
+    // on the strength of a search result's guessed type would feed a guess back
+    // in as evidence.
+    const prompt = await promptFor([
+      page("https://voyagemia.com/interview/x", "A long interview with the artist. ".repeat(20), "Interview"),
+    ]);
+    expect(prompt).toContain("TIER: unknown");
+  });
+
+  it("calls the artist's own site preferred when the caller says it is theirs", async () => {
+    // A hostname cannot tell whose site it is; the caller knows.
+    const prompt = await promptFor([
+      { ...page("https://blackdave.example/about", "About me. ".repeat(60), "About"), ownDomain: true },
+    ]);
+    expect(prompt).toContain("TIER: preferred");
+  });
+
+  it("still gives every page its MENTIONS line", async () => {
+    // The tier is one more signal, not a replacement for the evidence that
+    // separates coverage from an index.
+    const prompt = await promptFor([
+      page("https://example.com/a", "Black Dave released Worst Generation.\n\nA second paragraph.\n\nA third.\n\nA fourth."),
+    ]);
+    expect(prompt).toMatch(/TIER: \w/);
+    expect(prompt).toContain("MENTIONS: names the artist in");
+  });
+});
+

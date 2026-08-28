@@ -753,19 +753,29 @@ export async function synthesizeFallbackAbout(artistId: string, artistName: stri
  * outside onboarding would be a different feature. Never throws: this runs
  * fire-and-forget behind a user action that has already succeeded, so a Gemini
  * failure must not turn a successful removal into an error.
+ *
+ * THREE OUTCOMES, NOT TWO. This returned a boolean, and "there was no document
+ * to rebuild" and "the rebuild failed" were both `false`. The extraction job
+ * read that as failure: Pharaoh Sistare, who has never had a document, finished
+ * every batch, stored every credit, and was then marked `failed` after four
+ * retries of a rebuild that was never going to happen. Every artist onboarding
+ * for the first time is in exactly that state, so this was the common case
+ * rather than an edge.
  */
-export async function refreshArtistDoc(artistId: string): Promise<boolean> {
+export type DocRefresh = "rebuilt" | "no-document" | "failed";
+
+export async function refreshArtistDoc(artistId: string): Promise<DocRefresh> {
     try {
-        if (!(await getArtistDoc(artistId))) return false;
+        if (!(await getArtistDoc(artistId))) return "no-document";
         const sources = await buildDocSources(artistId);
         const doc = await synthesizeArtistDoc(artistId, sources);
         await upsertArtistDoc(artistId, doc);
         await upsertArtistDocSources(artistId, sources);
         console.log(`[refreshArtistDoc] Rebuilt doc for ${artistId} from ${sources.length} sources`);
-        return true;
+        return "rebuilt";
     } catch (e) {
         console.error("[refreshArtistDoc] Failed:", e);
-        return false;
+        return "failed";
     }
 }
 

@@ -1099,10 +1099,13 @@ export async function findArtistsByInstagram(handles: string[]): Promise<{ id: s
     const wanted = handles.map(h => h.toLowerCase().replace(/^@/, "")).filter(Boolean);
     if (wanted.length === 0) return [];
     try {
+        // Bound as a text[] literal rather than a JS array: the driver rejects
+        // a bare array here with "Array value must start with {".
+        const literal = `{${wanted.map(h => `"${h.replace(/"/g, '\\"')}"`).join(",")}}`;
         const rows = await db.execute(sql`
             select id, instagram from artists
              where instagram is not null
-               and lower(ltrim(instagram, '@')) = any(${wanted})`);
+               and lower(ltrim(instagram, '@')) = any(${literal}::text[])`);
         const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]) ?? [];
         return (list as Record<string, unknown>[]).map(r => ({
             id: String(r.id),

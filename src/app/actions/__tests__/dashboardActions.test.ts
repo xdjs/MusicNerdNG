@@ -38,7 +38,7 @@ jest.mock("@/server/utils/queries/artistBioQuery", () => ({
     generateArtistBio: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("@/server/utils/artistDocService", () => ({
-    refreshArtistDoc: jest.fn().mockResolvedValue(true),
+    refreshArtistDoc: jest.fn().mockResolvedValue("rebuilt"),
 }));
 jest.mock("@/server/utils/queries/discord", () => ({
     sendDiscordMessage: jest.fn().mockResolvedValue(undefined),

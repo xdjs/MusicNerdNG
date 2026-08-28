@@ -117,9 +117,16 @@ export async function getSocialCredits(artistId: string): Promise<CaptionExtract
                     quote: r.quote,
                     url: r.sourceUrl,
                     isSelf: r.isSelf,
+                    postedAt: r.postedAt ?? null,
                 });
             } else {
-                statements.push({ quote: r.quote, topic: r.label, url: r.sourceUrl });
+                // postedAt was stored on every row and dropped here, which is
+                // why nothing downstream could answer a question about
+                // "lately" — the material arrived with no sense of when.
+                statements.push({
+                    quote: r.quote, topic: r.label, url: r.sourceUrl,
+                    postedAt: r.postedAt ?? null,
+                });
             }
         }
         return { credits: credits.filter(c => c.subject), statements };

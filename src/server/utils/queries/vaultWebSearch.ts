@@ -9,6 +9,7 @@ import { extractArtistId } from "@/server/utils/services";
 import { db } from "@/server/db/drizzle";
 import { sql } from "drizzle-orm";
 import { isReservedHandle } from "@/lib/platformHandles";
+import { isBlockedSourceHost } from "@/lib/sourceAuthority";
 import { setArtistLink } from "@/server/utils/artistLinkService";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
@@ -1000,6 +1001,18 @@ export async function searchAndPopulateVault(
                 skipped++;
                 continue;
             }
+            // A host with no author on it. Dropped here rather than after the
+            // fetch so we neither read nor judge it: these pages are readable
+            // and are genuinely about the artist, so the judge affirms them and
+            // they become citable press. Pharaoh Sistare's vault holds a
+            // Viberate stats page for exactly that reason, and Pete Rango's
+            // Boomplay page arrived by the other route — unreadable, but its
+            // search title carried his full name, so it passed as a lead.
+            if (isBlockedSourceHost(result.url)) {
+                console.log(`[vaultWebSearch] Blocked host, not a source: ${result.url.slice(0, 100)}`);
+                skipped++;
+                continue;
+            }
             if (isUnsafeUrl(result.url)) {
                 console.warn(`[vaultWebSearch] Skipping unsafe URL: ${result.url.slice(0, 100)}`);
                 continue;
@@ -1076,6 +1089,7 @@ export async function searchAndPopulateVault(
                 url: result.url,
                 title: page.title ?? result.title,
                 text: page.fullText ?? page.extractedText,
+                ownDomain: isArtistOwnDomain(result.url, artistName),
             })),
         );
 
@@ -1526,9 +1540,18 @@ export async function searchAndPopulateVault(
                 // artist's own tag page is a lead, never a verdict.
                 const followVerdicts = await judgeSourceRelevance(
                     { name: artistName, catalog: [...catalog.topTracks, ...catalog.releases], identifiers },
-                    readable.map(({ url, page }) => ({ url, title: page.title, text: page.fullText ?? page.extractedText })),
+                    readable.map(({ url, page }) => ({
+                        url, title: page.title, text: page.fullText ?? page.extractedText,
+                        ownDomain: isArtistOwnDomain(url, artistName),
+                    })),
                 );
                 for (const { url, page } of readable) {
+                    // Reached from an index rather than from search, so it never
+                    // passed the intake filter.
+                    if (isBlockedSourceHost(url)) {
+                        console.log(`[vaultWebSearch] Blocked host, not a source: ${url.slice(0, 100)}`);
+                        continue;
+                    }
                     if (followVerdicts.get(url) !== "about-artist") {
                         console.log(`[vaultWebSearch] Followed link is not about "${artistName}" — ${url.slice(0, 90)}`);
                         continue;

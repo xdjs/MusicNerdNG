@@ -40,6 +40,13 @@ const DOC_REBUILD_RESERVE_MS = 20_000;
 
 export interface AdvanceResult {
     ran: boolean;
+    /** Which job ran, so a caller taking several slices in one invocation can
+     *  ask not to be handed the same one again. */
+    jobId?: string;
+    /** The slice did no work — it is waiting on something outside us, and the
+     *  only way to make progress is for time to pass. A caller looping inside
+     *  one invocation must skip this job for the rest of the tick. */
+    waiting?: boolean;
     kind?: string;
     artistId?: string;
     progress?: string;
@@ -52,8 +59,8 @@ export interface AdvanceResult {
  * Returns `{ ran: false }` when there is nothing to do, which is the normal
  * case and not an error.
  */
-export async function advanceResearch(opts: { budgetMs: number; artistId?: string }): Promise<AdvanceResult> {
-    const job = await claimResearchJob({ artistId: opts.artistId });
+export async function advanceResearch(opts: { budgetMs: number; artistId?: string; excludeJobIds?: string[] }): Promise<AdvanceResult> {
+    const job = await claimResearchJob({ artistId: opts.artistId, excludeIds: opts.excludeJobIds });
     if (!job) return { ran: false };
 
     const deadline = Date.now() + Math.max(0, opts.budgetMs - PERSIST_RESERVE_MS);
@@ -61,12 +68,12 @@ export async function advanceResearch(opts: { budgetMs: number; artistId?: strin
         const result = job.kind === "social_ingest"
             ? await runIngest(job)
             : await runExtraction(job, deadline);
-        return { ran: true, kind: job.kind, artistId: job.artistId, ...result };
+        return { ran: true, jobId: job.id, kind: job.kind, artistId: job.artistId, ...result };
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[research] ${job.kind} failed for ${job.artistId}:`, message);
         await failResearchJob(job.id, message);
-        return { ran: true, kind: job.kind, artistId: job.artistId, progress: `failed: ${message}` };
+        return { ran: true, jobId: job.id, kind: job.kind, artistId: job.artistId, progress: `failed: ${message}` };
     }
 }
 
@@ -80,7 +87,7 @@ export async function advanceResearch(opts: { budgetMs: number; artistId?: strin
  * which is what happened when this was a single blocking call, forever, because
  * each new slice started the same scrape from scratch.
  */
-async function runIngest(job: ResearchJob): Promise<{ progress: string; done: boolean }> {
+async function runIngest(job: ResearchJob): Promise<{ progress: string; done: boolean; waiting?: boolean }> {
     const force = job.state?.force === true;
     const runId = typeof job.state?.apifyRunId === "string" ? job.state.apifyRunId : null;
 
@@ -112,13 +119,15 @@ async function runIngest(job: ResearchJob): Promise<{ progress: string; done: bo
         }
         // Persisted BEFORE anything else can go wrong.
         await saveJobProgress(job.id, job.cursor, { state: { ...job.state, apifyRunId: started.runId } });
-        return { progress: `scrape started (${started.runId})`, done: false };
+        // The scrape takes one to five minutes. Nothing this invocation can do
+        // will finish it.
+        return { progress: `scrape started (${started.runId})`, done: false, waiting: true };
     }
 
     const state = await checkInstagramScrape(runId);
     if (state.status === "started" || state.status === "running") {
         await saveJobProgress(job.id, job.cursor, { state: job.state });
-        return { progress: "scrape still running", done: false };
+        return { progress: "scrape still running", done: false, waiting: true };
     }
     if (state.status === "failed") {
         await failResearchJob(job.id, state.reason);
@@ -316,17 +325,26 @@ async function runExtraction(job: ResearchJob, deadline: number): Promise<{ prog
         return { progress: "credits stored, document rebuild deferred", done: false };
     }
 
-    // refreshArtistDoc swallows its own errors and resolves false, so a .catch
-    // here never fired and a failed rebuild left the document and the export
-    // permanently stale with no live job to retry it.
+    // refreshArtistDoc swallows its own errors, so a .catch here never fired and
+    // a failed rebuild left the document and the export permanently stale with
+    // no live job to retry it.
+    //
+    // "no-document" is NOT a failure. An artist who has never had a document
+    // written has nothing to rebuild, and the extraction did its whole job:
+    // the credits are stored. Treating that as failure marked the job `failed`
+    // after four retries of work that could never succeed — and every artist
+    // onboarding for the first time arrives in that state.
     const rebuilt = await refreshArtistDoc(job.artistId);
-    if (!rebuilt) {
+    if (rebuilt === "failed") {
         await failResearchJob(job.id, "credits stored but the document rebuild failed");
         return { progress: "credits stored, document rebuild failed — will retry", done: false };
     }
 
     await completeResearchJob(job.id);
-    return { progress: `complete, ${slice.totalBatches} batch(es)`, done: true };
+    return {
+        progress: `complete, ${slice.totalBatches} batch(es)${rebuilt === "no-document" ? ", no document to rebuild" : ""}`,
+        done: true,
+    };
 }
 
 /** Ask for an artist's feed to be read. Safe to call repeatedly.

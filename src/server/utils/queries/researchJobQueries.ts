@@ -98,10 +98,19 @@ export async function enqueueResearchJob(
  * on releasing the claim; the lease here means a claim that is never released
  * expires instead of wedging.
  */
-export async function claimResearchJob(opts?: { artistId?: string }): Promise<ResearchJob | null> {
+export async function claimResearchJob(opts?: { artistId?: string; excludeIds?: string[] }): Promise<ResearchJob | null> {
     try {
         const scope = opts?.artistId
             ? sql`and artist_id = ${opts.artistId}::uuid`
+            : sql``;
+        // Jobs a single caller has already worked on this invocation. A slice
+        // that is WAITING — an ingest polling an Apify run — hands its lease
+        // straight back, and `order by created_at` then offers the same job
+        // again, so a loop would poll one scrape until its budget ran out and
+        // never reach anything behind it. Excluding what it has already touched
+        // lets it move down the queue instead.
+        const skip = opts?.excludeIds?.length
+            ? sql`and id <> all(${sql.raw(`'{${opts.excludeIds.map(id => `"${id}"`).join(",")}}'::uuid[]`)})`
             : sql``;
         const res = await db.execute(sql`
             update artist_research_jobs
@@ -114,6 +123,7 @@ export async function claimResearchJob(opts?: { artistId?: string }): Promise<Re
                     and attempts < ${MAX_ATTEMPTS}
                     and (claimed_at is null or claimed_at < now() - interval '${sql.raw(String(LEASE_MS))} milliseconds')
                     ${scope}
+                    ${skip}
                   order by created_at
                   limit 1
                   for update skip locked

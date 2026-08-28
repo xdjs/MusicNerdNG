@@ -23,6 +23,7 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { isBlockedSourceHost } from "../src/lib/sourceAuthority";
 dotenv.config({ path: ".env.local" });
 
 const PROD_REF = "cbabvmebugudeuylronz";
@@ -141,7 +142,7 @@ const CASES: Case[] = [
 type Score = {
     case: string; name: string;
     linksCorrect: string[]; linksWrong: string[]; linksMissed: string[];
-    sourcesKept: number; sourcesForbidden: string[];
+    sourcesKept: number; sourcesForbidden: string[]; sourcesBlocked: string[];
     seconds: number;
 };
 
@@ -237,9 +238,14 @@ async function main() {
             select url from artist_vault_sources where artist_id = ${c.id}::uuid`);
         const urls = (srcs.rows ?? srcs).map((r: any) => String(r.url));
         const sourcesForbidden = urls.filter((u: string) => c.forbidHosts.some(h => u.includes(h)));
+        // Read from the pipeline's own list rather than restated here, so the
+        // benchmark cannot pass while the two drift apart. A blocked host is a
+        // different failure from a namesake: the page is really about the
+        // artist, and it still should not be on their page.
+        const sourcesBlocked = urls.filter((u: string) => isBlockedSourceHost(u));
 
         scores.push({ case: c.key, name: c.name, linksCorrect, linksWrong, linksMissed,
-                      sourcesKept: urls.length, sourcesForbidden, seconds });
+                      sourcesKept: urls.length, sourcesForbidden, sourcesBlocked, seconds });
 
         const want = Object.keys(c.expect).length;
         console.log(`\n${c.name}  (${seconds}s)`);
@@ -251,6 +257,7 @@ async function main() {
         console.log(`  sources   ${urls.length} kept` +
                     `${sourcesForbidden.length ? `, ${sourcesForbidden.length} NAMESAKE` : ""}`);
         if (sourcesForbidden.length) for (const s of sourcesForbidden) console.log(`              ! ${s.slice(0, 80)}`);
+        if (sourcesBlocked.length) for (const s of sourcesBlocked) console.log(`              ! BLOCKED HOST ${s.slice(0, 70)}`);
     }
 
     // ---- totals -------------------------------------------------------
@@ -260,16 +267,17 @@ async function main() {
         missed: a.missed + s.linksMissed.length,
         sources: a.sources + s.sourcesKept,
         bad: a.bad + s.sourcesForbidden.length,
-    }), { correct: 0, wrong: 0, missed: 0, sources: 0, bad: 0 });
+        blocked: a.blocked + s.sourcesBlocked.length,
+    }), { correct: 0, wrong: 0, missed: 0, sources: 0, bad: 0, blocked: 0 });
     const wanted_ = t.correct + t.missed + scores.reduce((a, s) => a + s.linksWrong.filter(w => w.includes("want")).length, 0);
 
     console.log(`\n${"=".repeat(58)}`);
     console.log(`links    ${t.correct} correct   ${t.wrong} wrong   ${t.missed} missed   (of ${wanted_} known)`);
-    console.log(`sources  ${t.sources} kept      ${t.bad} namesake`);
+    console.log(`sources  ${t.sources} kept      ${t.bad} namesake   ${t.blocked} blocked-host`);
     console.log(`${"=".repeat(58)}`);
-    console.log(t.wrong === 0 && t.bad === 0
-        ? "No wrong links and no namesakes. Misses are recall; those two are correctness."
-        : "CORRECTNESS FAILURE — a wrong link or a namesake source is worse than a gap.");
+    console.log(t.wrong === 0 && t.bad === 0 && t.blocked === 0
+        ? "No wrong links, no namesakes, no scrape farms. Misses are recall; those are correctness."
+        : "CORRECTNESS FAILURE — a wrong link, a namesake, or a blocked host is worse than a gap.");
 
     if (write) {
         const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -278,16 +286,17 @@ async function main() {
         fs.mkdirSync(dir, { recursive: true });
         const lines = [
             `# Research benchmark — ${stamp}`, "",
-            `| artist | links correct | wrong | missed | sources | namesake | secs |`,
-            `|---|---|---|---|---|---|---|`,
-            ...scores.map(s => `| ${s.name} | ${s.linksCorrect.length} | ${s.linksWrong.length} | ${s.linksMissed.length} | ${s.sourcesKept} | ${s.sourcesForbidden.length} | ${s.seconds} |`),
-            "", `**Totals** — ${t.correct} correct, ${t.wrong} wrong, ${t.missed} missed of ${wanted_} known handles; ${t.sources} sources, ${t.bad} namesake.`, "",
+            `| artist | links correct | wrong | missed | sources | namesake | blocked | secs |`,
+            `|---|---|---|---|---|---|---|---|`,
+            ...scores.map(s => `| ${s.name} | ${s.linksCorrect.length} | ${s.linksWrong.length} | ${s.linksMissed.length} | ${s.sourcesKept} | ${s.sourcesForbidden.length} | ${s.sourcesBlocked.length} | ${s.seconds} |`),
+            "", `**Totals** — ${t.correct} correct, ${t.wrong} wrong, ${t.missed} missed of ${wanted_} known handles; ${t.sources} sources, ${t.bad} namesake, ${t.blocked} blocked-host.`, "",
             ...scores.flatMap(s => [
                 `## ${s.name}`,
                 s.linksCorrect.length ? `- found: ${s.linksCorrect.join(", ")}` : "- found: none",
                 s.linksMissed.length ? `- missed: ${s.linksMissed.join(", ")}` : "",
                 s.linksWrong.length ? `- **WRONG**: ${s.linksWrong.join(", ")}` : "",
                 s.sourcesForbidden.length ? `- **NAMESAKE SOURCES**: ${s.sourcesForbidden.join(", ")}` : "",
+                s.sourcesBlocked.length ? `- **BLOCKED HOSTS**: ${s.sourcesBlocked.join(", ")}` : "",
                 "",
             ].filter(Boolean)),
         ];
@@ -295,7 +304,7 @@ async function main() {
         fs.writeFileSync(file, lines.join("\n"));
         console.log(`\nreport -> docs/rnd/benchmarks/${day}.md`);
     }
-    process.exit(t.wrong === 0 && t.bad === 0 ? 0 : 1);
+    process.exit(t.wrong === 0 && t.bad === 0 && t.blocked === 0 ? 0 : 1);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

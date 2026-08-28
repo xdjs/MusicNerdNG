@@ -84,8 +84,15 @@ async function main() {
         await db.execute(sql`update artist_vault_sources set status = 'rejected' where id = ${s.id}::uuid`);
     }
     console.log(`\nRejected ${doomed.length}. Rebuilding the knowledge document...`);
-    console.log(await refreshArtistDoc(artist.id) ? "Document rebuilt." : "No document to rebuild.");
-    process.exit(0);
+    // Three outcomes, not two — both "no-document" and "failed" are truthy, so
+    // a ternary here reported success while the document stayed stale.
+    const refreshed = await refreshArtistDoc(artist.id);
+    console.log({
+        rebuilt: "Document rebuilt.",
+        "no-document": "No document to rebuild.",
+        failed: "DOCUMENT REBUILD FAILED — it still cites the sources just rejected.",
+    }[refreshed]);
+    process.exit(refreshed === "failed" ? 1 : 0);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

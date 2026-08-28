@@ -19,11 +19,24 @@ type AnswerSource = { n: number; title: string; url: string };
 type AnswerMention = { name: string; artistId?: string; instagram?: string; role?: string };
 
 /** A pill has room for where it ran, not for a headline. The full title is the
- *  hover. */
+ *  hover.
+ *
+ *  Except when every source is the same site. An answer about what an artist has
+ *  been doing lately cites a dozen of their own posts, and twelve pills reading
+ *  "instagram.com" tell a reader nothing and look like a bug. The titles carry
+ *  the date — "Pete Rango on Instagram, 2026-03-23" — so the pill shows that
+ *  instead, and the reader can see which one is the recent one. */
 function sourceHost(s: AnswerSource): string {
-    try { return new URL(s.url).hostname.replace(/^www\./, ""); }
+    const dated = s.title.match(/\b(\d{4})-(\d{2})-\d{2}\b/);
+    let host: string;
+    try { host = new URL(s.url).hostname.replace(/^www\./, ""); }
     catch { return s.title.slice(0, 32); }
+    if (!dated) return host;
+    const month = MONTHS[Number(dated[2]) - 1];
+    return month ? `${host} · ${month} ${dated[1]}` : host;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 
 /**
@@ -84,6 +97,12 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
     const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS(artistName));
     const [sources, setSources] = useState<AnswerSource[]>([]);
     const [mentions, setMentions] = useState<AnswerMention[]>([]);
+    /** The endpoint answered from the open web because our own sources did not
+     *  cover the question, and these are the domains it used. Without this the
+     *  reader could not tell a researched answer from a searched one — which is
+     *  the whole reason the fallback reports it. */
+    const [fromOpenWeb, setFromOpenWeb] = useState(false);
+    const [webDomains, setWebDomains] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const askedQuestions = useRef<Set<string>>(new Set());
@@ -96,6 +115,10 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
         setLoading(true);
         setError(null);
         setAnswer(null);
+        // Cleared with the answer, not left over it: a failed second question
+        // would otherwise still be captioned with the first one's provenance.
+        setFromOpenWeb(false);
+        setWebDomains([]);
         setAskedQuestion(trimmed);
         setQuestion("");
         askedQuestions.current.add(trimmed.toLowerCase());
@@ -115,6 +138,8 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
 
             setAnswer(data.answer);
             setSources(Array.isArray(data.sources) ? data.sources : []);
+            setFromOpenWeb(data.fromOpenWeb === true);
+            setWebDomains(Array.isArray(data.webDomains) ? data.webDomains : []);
             setMentions(Array.isArray(data.mentions) ? data.mentions : []);
             if (data.suggestions?.length) {
                 // Filter out any suggestions the user has already asked
@@ -244,11 +269,37 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
                         </div>
                     )}
 
+                    {/* Answered from the open web, because our own sources did
+                      * not cover it. Named as such: a reader has to be able to
+                      * tell "this is from the artist's own posts and their
+                      * vault" from "this is from a search". */}
+                    {answer && fromOpenWeb && (
+                        <div className="flex flex-col gap-1 pt-1">
+                            <p className="text-[10px] text-muted-foreground/60">
+                                Not in {artistName}&apos;s sources — answered from the web
+                            </p>
+                            {webDomains.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {webDomains.map(d => (
+                                        <span
+                                            key={d}
+                                            className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full border border-dashed border-black/15 dark:border-white/20 text-gray-600 dark:text-gray-400 whitespace-nowrap"
+                                        >
+                                            {d}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {answer && (
                         <p className="text-[10px] text-muted-foreground/40 italic">
                             {sources.length > 0
                                 ? "Written by AI from the sources above"
-                                : "AI-generated response"}
+                                : fromOpenWeb
+                                    ? "Written by AI from a web search"
+                                    : "AI-generated response"}
                         </p>
                     )}
                 </div>
