@@ -38,13 +38,26 @@ const OWN_POSTS = [
 describe('generateGroundedQuestions', () => {
     beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
+    /** Generation calls only. The fact-checker adds a second call per run, and
+     *  these assertions are about the cache rather than about how many models a
+     *  run talks to. */
+    const generations = (mock) => mock.mock.calls.filter(
+        c => !String(c[0]?.config?.systemInstruction ?? "").startsWith("You are fact-checking")).length;
+
     async function setup({ posts = OWN_POSTS, artist = { id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' }, geminiText, generateContentImpl } = {}) {
         const { getArtistById } = await import('@/server/utils/queries/artistQueries');
         const { getSocialPostsForArtist } = await import('@/server/utils/socialIngest');
         const { getGemini } = await import('@/server/lib/gemini');
         getArtistById.mockResolvedValue(artist);
         getSocialPostsForArtist.mockResolvedValue(posts);
-        const generateContent = generateContentImpl ?? jest.fn().mockResolvedValue({ text: geminiText ?? '[]' });
+        // Two calls now: the generator, then the fact-checker. Without a
+        // verdict for a question it is treated as unverified and dropped, so
+        // the default here approves everything and the tests that care about
+        // rejection say so explicitly.
+        const generateContent = generateContentImpl ?? jest.fn(async (req) =>
+            String(req?.config?.systemInstruction ?? "").startsWith("You are fact-checking")
+                ? { text: JSON.stringify(Array.from({ length: 10 }, (_, i) => ({ i, ok: true, problem: "" }))) }
+                : { text: geminiText ?? '[]' });
         getGemini.mockReturnValue({ models: { generateContent } });
         const mod = await import('@/server/utils/questionGenerator');
         return { ...mod, generateContent, getArtistById, getSocialPostsForArtist, getGemini };
@@ -63,8 +76,8 @@ describe('generateGroundedQuestions', () => {
 
     it('builds questions from model answers, joined back to OUR signal data (not the model\'s)', async () => {
         const geminiText = JSON.stringify([
-            { signalId: 'collab_dameatlas', question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
-            { signalId: 'theme_hashtag_housemusic', question: 'House music keeps coming up for you — where does that come from?', rationale: 'recurring hashtag' },
+            { signalIds: ['collab_dameatlas'], question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
+            { signalIds: ['theme_hashtag_housemusic'], question: 'House music keeps coming up for you — where does that come from?', rationale: 'recurring hashtag' },
         ]);
         const { generateGroundedQuestions } = await setup({ geminiText });
         const questions = await generateGroundedQuestions('a1');
@@ -87,7 +100,7 @@ describe('generateGroundedQuestions', () => {
 
     it('drops any answer whose signalId was not one WE supplied (hallucination defense)', async () => {
         const geminiText = JSON.stringify([
-            { signalId: 'made_up_signal_not_real', question: 'Tell me about this thing I invented', rationale: 'x' },
+            { signalIds: ['made_up_signal_not_real'], question: 'Tell me about this thing I invented', rationale: 'x' },
         ]);
         const { generateGroundedQuestions } = await setup({ geminiText });
         await expect(generateGroundedQuestions('a1')).resolves.toEqual([]);
@@ -95,8 +108,8 @@ describe('generateGroundedQuestions', () => {
 
     it('drops a duplicate signalId (only the first occurrence counts)', async () => {
         const geminiText = JSON.stringify([
-            { signalId: 'collab_dameatlas', question: 'First question', rationale: 'x' },
-            { signalId: 'collab_dameatlas', question: 'Second question', rationale: 'x' },
+            { signalIds: ['collab_dameatlas'], question: 'First question', rationale: 'x' },
+            { signalIds: ['collab_dameatlas'], question: 'Second question', rationale: 'x' },
         ]);
         const { generateGroundedQuestions } = await setup({ geminiText });
         const questions = await generateGroundedQuestions('a1');
@@ -106,8 +119,8 @@ describe('generateGroundedQuestions', () => {
 
     it('caps output at opts.max even when the model returns more', async () => {
         const geminiText = JSON.stringify([
-            { signalId: 'collab_dameatlas', question: 'q1', rationale: 'x' },
-            { signalId: 'theme_hashtag_housemusic', question: 'q2', rationale: 'x' },
+            { signalIds: ['collab_dameatlas'], question: 'q1', rationale: 'x' },
+            { signalIds: ['theme_hashtag_housemusic'], question: 'q2', rationale: 'x' },
         ]);
         const { generateGroundedQuestions } = await setup({ geminiText });
         const questions = await generateGroundedQuestions('a1', { max: 1 });
@@ -115,7 +128,7 @@ describe('generateGroundedQuestions', () => {
     });
 
     it('strips markdown code fences from the model response defensively', async () => {
-        const geminiText = '```json\n' + JSON.stringify([{ signalId: 'collab_dameatlas', question: 'fenced question', rationale: 'x' }]) + '\n```';
+        const geminiText = '```json\n' + JSON.stringify([{ signalIds: ['collab_dameatlas'], question: 'fenced question', rationale: 'x' }]) + '\n```';
         const { generateGroundedQuestions } = await setup({ geminiText });
         const questions = await generateGroundedQuestions('a1');
         expect(questions).toHaveLength(1);
@@ -171,21 +184,21 @@ describe('generateGroundedQuestions', () => {
     // step calls generateGroundedQuestions on every turn it re-enters) ---
     describe('per-artist TTL cache', () => {
         const geminiText = JSON.stringify([
-            { signalId: 'collab_dameatlas', question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
+            { signalIds: ['collab_dameatlas'], question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
         ]);
 
         it('a second call for the same artist within the TTL does not re-invoke generation', async () => {
             const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
             const first = await generateGroundedQuestions('a1', { max: 3 });
             const second = await generateGroundedQuestions('a1', { max: 3 });
-            expect(generateContent).toHaveBeenCalledTimes(1);
+            expect(generations(generateContent)).toBe(1);
             expect(second).toEqual(first);
         });
 
         it('a fresh module registry starts with an empty cache — sanity check that jest.resetModules() actually isolates the module-level Map across tests', async () => {
             const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
             await generateGroundedQuestions('a1', { max: 3 });
-            expect(generateContent).toHaveBeenCalledTimes(1);
+            expect(generations(generateContent)).toBe(1);
         });
 
         it('expiry regenerates — a call after the TTL has elapsed invokes generation again', async () => {
@@ -195,7 +208,7 @@ describe('generateGroundedQuestions', () => {
                 await generateGroundedQuestions('a1', { max: 3 });
                 jest.advanceTimersByTime(15 * 60 * 1000 + 1_000); // just past the 15-minute TTL
                 await generateGroundedQuestions('a1', { max: 3 });
-                expect(generateContent).toHaveBeenCalledTimes(2);
+                expect(generations(generateContent)).toBe(2);
             } finally {
                 jest.useRealTimers();
             }
@@ -203,8 +216,8 @@ describe('generateGroundedQuestions', () => {
 
         it('a cache hit never changes which question gets asked — same keys, same order, as the original generation', async () => {
             const multiGeminiText = JSON.stringify([
-                { signalId: 'collab_dameatlas', question: 'Q1', rationale: 'x' },
-                { signalId: 'theme_hashtag_housemusic', question: 'Q2', rationale: 'x' },
+                { signalIds: ['collab_dameatlas'], question: 'Q1', rationale: 'x' },
+                { signalIds: ['theme_hashtag_housemusic'], question: 'Q2', rationale: 'x' },
             ]);
             const { generateGroundedQuestions } = await setup({ geminiText: multiGeminiText });
             const first = await generateGroundedQuestions('a1', { max: 3 });
@@ -218,7 +231,7 @@ describe('generateGroundedQuestions', () => {
             await generateGroundedQuestions('a1', { max: 3 });
             getArtistById.mockResolvedValue({ id: 'a2', name: 'Other Artist', instagram: 'other' });
             await generateGroundedQuestions('a2', { max: 3 });
-            expect(generateContent).toHaveBeenCalledTimes(2);
+            expect(generations(generateContent)).toBe(2);
         });
     });
 
@@ -285,6 +298,95 @@ describe('generateGroundedQuestions', () => {
                 await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
             await generateGroundedQuestions("a1", { max: 3 });
             expect(String(generateContent.mock.calls[0][0].contents)).toContain("appears in 4 of their own posts");
+        });
+    });
+
+    describe("questions that cross two signals, and the check on them", () => {
+        /** Answers generation with `questions`, then the fact-checker with `verdicts`. */
+        const twoCalls = (questions, verdicts) => jest.fn(async (req) =>
+            String(req?.config?.systemInstruction ?? "").startsWith("You are fact-checking")
+                ? { text: typeof verdicts === "function" ? verdicts() : JSON.stringify(verdicts) }
+                : { text: JSON.stringify(questions) });
+
+        const PAIR = [{
+            signalIds: ["collab_dameatlas", "theme_hashtag_housemusic"],
+            question: "You put that track out with @dameatlas around the time house kept coming up — connected?",
+            rationale: "collision",
+        }];
+
+        it("keeps a two-signal question and carries both sources", async () => {
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: twoCalls(PAIR, [{ i: 0, ok: true, problem: "" }]),
+            });
+            const [q] = await generateGroundedQuestions("a1");
+            expect(q.question).toContain("@dameatlas");
+            // Both signals' evidence travels with it, so the artist can see
+            // everything the question was built from.
+            expect(q.sourceUrls).toContain("https://www.instagram.com/p/COLLAB1/");
+            // A stable key per COMBINATION, so "already asked" works for a pair.
+            expect(q.key).toBe("social_pair_collab_dameatlas__theme_hashtag_housemusic");
+        });
+
+        it("drops a question the checker says is unsupported", async () => {
+            // The real miss: asked to cross two signals, the model wrote "your
+            // cousin's introduction to samplers and computers" from a caption
+            // saying he handed over two albums and that THOSE changed things.
+            // Every word came from the source and the sentence was still false.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: twoCalls(PAIR, [{ i: 0, ok: false, problem: "introduction to samplers" }]),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("treats a question with no verdict as unverified, not as approved", async () => {
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: twoCalls(PAIR, []),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("rejects a pair containing one signalId we never supplied", async () => {
+            // A model that echoes identifiers can invent them, and an invented
+            // id inside a pair would smuggle an ungrounded claim into a question
+            // that looks doubly sourced.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: twoCalls(
+                    [{ signalIds: ["collab_dameatlas", "invented_signal"], question: "q", rationale: "x" }],
+                    [{ i: 0, ok: true, problem: "" }],
+                ),
+            });
+            const [q] = await generateGroundedQuestions("a1");
+            // The real half still stands; the invented half contributes nothing.
+            expect(q.key).toBe("social_collaborator_dameatlas");
+            expect(q.sourceUrls).toEqual(["https://www.instagram.com/p/COLLAB1/"]);
+        });
+
+        it("keeps single-signal questions and drops crossed ones when the checker fails", async () => {
+            // Asymmetric on purpose: single-signal questions were accurate in
+            // every sample and were never the risk. An unchecked question about
+            // somebody's family is not worth the interest it adds.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: twoCalls(
+                    [
+                        { signalIds: ["collab_dameatlas"], question: "a safe one", rationale: "x" },
+                        ...PAIR,
+                    ],
+                    () => { throw new Error("checker down"); },
+                ),
+            });
+            const out = await generateGroundedQuestions("a1");
+            expect(out.map(q => q.question)).toEqual(["a safe one"]);
+        });
+
+        it("asks the checker about the material, not about the question alone", async () => {
+            const impl = twoCalls(PAIR, [{ i: 0, ok: true, problem: "" }]);
+            const { generateGroundedQuestions } = await setup({ generateContentImpl: impl });
+            await generateGroundedQuestions("a1");
+
+            const check = impl.mock.calls.find(c =>
+                String(c[0]?.config?.systemInstruction ?? "").startsWith("You are fact-checking"));
+            expect(String(check[0].contents)).toContain("SOURCE:");
+            expect(String(check[0].contents)).toContain("dameatlas");
         });
     });
 });
