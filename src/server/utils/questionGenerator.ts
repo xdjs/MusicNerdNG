@@ -20,10 +20,14 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals, type SocialSignals } from "@/server/utils/socialSignals";
-import { creditedCollaborators, type CaptionExtraction } from "@/server/utils/socialCredits";
+import { creditedCollaborators, type CaptionExtraction, type CaptionCredit, type ArtistStatement } from "@/server/utils/socialCredits";
 import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
 
-export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "music" | "credit" | "statement";
+export type GroundedQuestionKind =
+    | "collaborator" | "theme" | "standout" | "music" | "credit" | "statement"
+    /** A relationship COMPUTED from the posts rather than guessed: the same
+     *  person credited across several of them, or two things said in one. */
+    | "partnership" | "same_post";
 
 /** Every GroundedQuestion `key` is built as `social_${kind}_...` (see
  *  buildCandidates below) — exported so callers (turnHandlers.ts) can tell a
@@ -125,8 +129,93 @@ function shortCodeFromUrl(url: string): string {
     return m ? m[1] : slug(url);
 }
 
+/** How many recurring-collaborator and same-post relationships to offer. These
+ *  are the best material we have, so they get room, but a list of twenty
+ *  crowds out everything else. */
+const TOP_PARTNERSHIPS = 3;
+const TOP_SAME_POST = 3;
+
+/**
+ * Relationships, joined here rather than guessed by the model.
+ *
+ * THIS IS THE FIX FOR THE WHOLE CLASS. Letting the model pick two signals and
+ * hypothesise a link between them produced a question telling Pharaoh Sistare
+ * that @p3t3rango engineered "Hourglass & The Flame". One signal said Pharaoh
+ * credits p3t3rango; another said what Hourglass sounds like; the join was
+ * invented, and the two facts come from four different posts. A fact-checker
+ * could not see it either, because merging the two sources destroyed the only
+ * evidence that would have shown it — which post each fact came from.
+ *
+ * So the interesting question still gets asked, and the connection inside it is
+ * one we computed and can point at:
+ *
+ *   - the same person credited across SEVERAL posts, which is a working
+ *     relationship rather than a one-off;
+ *   - two things said in ONE post, which are connected because the artist put
+ *     them together.
+ *
+ * Each asserts only what the join proves. Neither can put somebody on a record
+ * they were not credited on, because the evidence travels with the claim.
+ */
+function relationshipCandidates(artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
+    const out: SignalCandidate[] = [];
+
+    // A collaborator who keeps coming back. `creditedCollaborators` already
+    // groups by person and collects every post they were credited on; two or
+    // more is a relationship, one is an anecdote.
+    for (const c of creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2).slice(0, TOP_PARTNERSHIPS)) {
+        const subject = c.isHandle ? `@${c.subject}` : c.subject;
+        out.push({
+            signalId: `partnership_${slug(c.subject)}`,
+            kind: "partnership",
+            key: `social_partnership_${slug(c.subject)}`,
+            authoredBy: "artist",
+            material: `${artistName} has credited ${subject} on ${c.evidenceUrls.length} SEPARATE posts, in their own words each time, as: ${c.roles.join("; ")}. That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, and you must not attach ${subject} to any release you were told about elsewhere.`,
+            sourceUrls: c.evidenceUrls,
+        });
+    }
+
+    // Two things the artist put in the SAME post. Connected because they said
+    // them together, which is a fact rather than an inference.
+    const byPost = new Map<string, { credits: CaptionCredit[]; statements: ArtistStatement[] }>();
+    for (const c of extraction.credits) {
+        if (c.isSelf || !c.url) continue;
+        const at = byPost.get(c.url) ?? { credits: [], statements: [] };
+        at.credits.push(c);
+        byPost.set(c.url, at);
+    }
+    for (const st of extraction.statements) {
+        if (!st.url) continue;
+        const at = byPost.get(st.url) ?? { credits: [], statements: [] };
+        at.statements.push(st);
+        byPost.set(st.url, at);
+    }
+    const pairs = [...byPost.entries()]
+        // Only posts where a credit and something the artist SAID sit together.
+        // Two credits alone is a personnel list; a credit beside a sentence
+        // about the work is a question.
+        .filter(([, v]) => v.credits.length > 0 && v.statements.length > 0)
+        .slice(0, TOP_SAME_POST);
+    for (const [url, v] of pairs) {
+        const credit = v.credits[0];
+        const statement = v.statements[0];
+        const subject = credit.isHandle ? `@${credit.subject}` : credit.subject;
+        out.push({
+            signalId: `same_post_${shortCodeFromUrl(url)}`,
+            kind: "same_post",
+            key: `social_same_post_${shortCodeFromUrl(url)}`,
+            authoredBy: "artist",
+            material: `IN ONE POST, ${artistName} credited ${subject} as "${credit.role}" AND wrote, about ${statement.topic}: "${statement.quote}". Both are from that same post, so they are genuinely about the same piece of work.`,
+            sourceUrls: [url],
+        });
+    }
+    return out;
+}
+
 function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
-    const candidates: SignalCandidate[] = [];
+    // Relationships first: they are the only candidates that carry a verified
+    // connection, and the prompt is told to reach for them.
+    const candidates: SignalCandidate[] = relationshipCandidates(artistName, extraction);
 
     // Role credits first. "Mixing & Mastering Engineer: @p3t3rango" is a named
     // person doing a stated job, written by the artist — strictly better
@@ -234,9 +323,11 @@ Each signal has:
 
 Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
 
-THE BEST QUESTION COLLIDES TWO SIGNALS. If two facts sit oddly together — a stated belief and a thing they actually did, an early influence and their current sound, a role they claim for themselves and one they credit to somebody else — ask about the space between them and name both signalIds. A question drawn from two facts is one only somebody who read everything could ask, which is the entire point. One signal is fine when the fact carries a question on its own; two is better when it genuinely does.
+SOME SIGNALS ARE RELATIONSHIPS, AND THEY ARE YOUR BEST MATERIAL. A signal of kind "partnership" or "same_post" is a connection we have already verified against the posts — the same person credited across several records, or two things said in one post. Reach for those: they are how you ask a question that only somebody who read everything could ask.
 
-ATTRIBUTION IS THE THING YOU WILL GET WRONG. When you say a NAMED PERSON did something, the material must say THAT PERSON did THAT THING. Do not compress a chain of causes into an agent: if the material says "she gave me the record, and the record made me pick up a sampler", then she gave you a record — she did NOT introduce you to samplers, and writing that puts words in the artist's mouth about somebody else. When in doubt, quote the artist's own words rather than paraphrasing them. Every accurate question you can write is one you could defend by pointing at a sentence.
+NEVER BUILD A RELATIONSHIP YOURSELF. If a connection between two facts is not stated inside ONE signal's material, it is not a fact and you may not imply it. Two signals mentioning the same person do not put that person on both records. Two signals from the same artist do not make one the cause of the other. This is the single way these questions go wrong, and it is not recoverable: an artist asked about work they did not do knows immediately that nobody read anything.
+
+ATTRIBUTION IS THE OTHER THING YOU WILL GET WRONG. When you say a NAMED PERSON did something, the material must say THAT PERSON did THAT THING. Do not compress a chain of causes into an agent: if the material says "she gave me the record, and the record made me pick up a sampler", then she gave you a record — she did NOT introduce you to samplers, and writing that puts words in the artist's mouth about somebody else. When in doubt, quote the artist's own words rather than paraphrasing them. Every accurate question you can write is one you could defend by pointing at a sentence.
 
 Rules:
 - You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced.
@@ -252,7 +343,7 @@ Rules:
 - One sentence. Plain spoken language, never clinical, never creepy, never over-familiar, and never flattering ("powerful", "amazing", "clearly struck a nerve").
 - Use ONLY signalIds from the list you were given.
 
-Return STRICT JSON ONLY — an array of objects: [{ "signalIds": string[], "question": string, "rationale": string }]. "signalIds" holds one or two ids, echoed exactly. "rationale" is one short internal phrase (not shown to the artist) noting why it's worth asking. Return [] if nothing in the signals is worth asking about. No markdown fences, no commentary, JSON only.`;
+Return STRICT JSON ONLY — an array of objects: [{ "signalId": string, "question": string, "rationale": string }]. "signalId" is exactly one id, echoed exactly. "rationale" is one short internal phrase (not shown to the artist) noting why it's worth asking. Return [] if nothing in the signals is worth asking about. No markdown fences, no commentary, JSON only.`;
 
 function withTimeout<T>(p: Promise<T>): Promise<T> {
     return Promise.race([
@@ -268,7 +359,7 @@ function stripJsonFences(text: string): string {
 }
 
 interface ModelAnswer {
-    signalIds?: unknown;
+    signalId?: unknown;
     question?: unknown;
     rationale?: unknown;
 }
@@ -499,34 +590,29 @@ export async function generateGroundedQuestions(
         for (const answer of answers) {
             if (drafted.length >= max) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
-            // JOIN-BACK, PER ID. Only signalIds WE supplied are honored, and now
-            // there can be two of them — so each is checked, not just the first.
-            // A model that echoes identifiers can invent them, and one invented
-            // id inside a pair would smuggle an ungrounded claim into a question
-            // that looks doubly sourced.
-            const ids = Array.isArray(answer.signalIds)
-                ? answer.signalIds.filter((v): v is string => typeof v === "string").slice(0, 2)
-                : [];
-            const used = ids.map(id => byId.get(id)).filter((c): c is SignalCandidate => !!c);
-            if (!question || used.length === 0) continue;
-
-            // Deduped on the whole set, so the same pair cannot be asked twice
-            // from two directions.
-            const fingerprint = used.map(c => c.signalId).sort().join("+");
-            if (seen.has(fingerprint)) continue;
-            seen.add(fingerprint);
+            // ONE SIGNAL. Letting the model name two and hypothesise a link
+            // between them is how it told Pharaoh Sistare that @p3t3rango
+            // engineered "Hourglass & The Flame": one signal said Pharaoh
+            // credits p3t3rango, another said what Hourglass sounds like, and
+            // the join was invented. Nothing anywhere connected them — they are
+            // four different posts.
+            //
+            // Connections are computed in buildCandidates now, where they can
+            // carry the evidence that makes them true. A model cannot invent a
+            // relationship it was handed.
+            const signalId = typeof answer.signalId === "string" ? answer.signalId : null;
+            if (!signalId || !question || seen.has(signalId)) continue;
+            const candidate = byId.get(signalId); // only signalIds WE supplied are honored
+            if (!candidate) continue;
+            seen.add(signalId);
 
             drafted.push({
-                // Stable across runs and unique per combination, so "already
-                // asked" keeps working for a pair as it does for a single.
-                key: used.length === 1
-                    ? used[0].key
-                    : `social_pair_${used.map(c => c.signalId).sort().join("__")}`.slice(0, 200),
+                key: candidate.key,
                 question,
                 rationale: typeof answer.rationale === "string" ? answer.rationale : "",
-                sourceUrls: [...new Set(used.flatMap(c => c.sourceUrls))],
-                kind: used[0].kind,
-                materials: used.map(c => c.material),
+                sourceUrls: candidate.sourceUrls,
+                kind: candidate.kind,
+                materials: [candidate.material],
             });
         }
 
