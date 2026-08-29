@@ -221,4 +221,70 @@ describe('generateGroundedQuestions', () => {
             expect(generateContent).toHaveBeenCalledTimes(2);
         });
     });
+
+    describe("scoped to what is new", () => {
+        // A returning artist should be asked about what they have done since,
+        // not handed the same questions again.
+
+        /** Two posts either side of a cutoff, each with a caption we can look
+         *  for in the prompt. */
+        const post = (id, caption, postedAt) => ({
+            platform: "instagram", platformPostId: id, ownerUsername: "p3t3rango", isOwnPost: true,
+            caption, url: `https://www.instagram.com/p/${id}/`, postedAt,
+            likeCount: 400, commentCount: 9, playCount: 8000, hashtags: ["housemusic"], mentions: [],
+            coauthors: [], musicTitle: null, musicArtist: null,
+        });
+        const OLD_AND_NEW = [
+            post("OLD1", "house been therapy", "2020-04-01T00:00:00.000Z"),
+            post("OLD2", "house been therapy again", "2020-05-01T00:00:00.000Z"),
+            post("NEW1", "the colombia page is live", "2026-08-20T00:00:00.000Z"),
+            post("NEW2", "colombia relief keeps growing", "2026-08-22T00:00:00.000Z"),
+        ];
+
+        it("ignores posts older than the cutoff", async () => {
+            const { generateGroundedQuestions, generateContent } =
+                await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
+            await generateGroundedQuestions("a1", { max: 3, since: "2026-06-01T00:00:00.000Z" });
+
+            // The prompt carries derived material rather than raw captions, so
+            // the count is the thing that shows the cutoff bit: two posts in
+            // the window, not all four.
+            const sent = String(generateContent.mock.calls[0][0].contents);
+            expect(sent).toContain("appears in 2 of their own posts");
+            expect(sent).not.toContain("appears in 4 of their own posts");
+        });
+
+        it("scopes the stored statements and credits too, not only the posts", async () => {
+            // Filtering only the posts left statement and credit candidates
+            // unbounded, so a return interview scoped to the last two months
+            // came back asking about a post from 2020 — measured on Pete Rango,
+            // where a pandemic reflection surfaced in a window starting six
+            // years after it.
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: [],
+                    statements: [
+                        { quote: "the pandemic was a blessing and a curse", topic: "pandemic reflection",
+                          url: "https://www.instagram.com/p/OLD1/", postedAt: "2020-04-01T00:00:00.000Z" },
+                        { quote: "I made a bilingual page to help", topic: "Colombia relief",
+                          url: "https://www.instagram.com/p/NEW1/", postedAt: "2026-08-20T00:00:00.000Z" },
+                    ],
+                })),
+            }));
+            const { generateGroundedQuestions, generateContent } =
+                await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
+            await generateGroundedQuestions("a1", { max: 3, since: "2026-06-01T00:00:00.000Z" });
+
+            const sent = String(generateContent.mock.calls[0][0].contents);
+            expect(sent).toContain("bilingual page");
+            expect(sent).not.toContain("blessing and a curse");
+        });
+
+        it("uses everything when no cutoff is given", async () => {
+            const { generateGroundedQuestions, generateContent } =
+                await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
+            await generateGroundedQuestions("a1", { max: 3 });
+            expect(String(generateContent.mock.calls[0][0].contents)).toContain("appears in 4 of their own posts");
+        });
+    });
 });

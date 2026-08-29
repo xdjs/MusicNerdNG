@@ -25,6 +25,7 @@ import ArtistJsonLd from "./_components/ArtistJsonLd";
 import OfficialSiteLinks from "./_components/OfficialSiteLinks";
 import OnboardingGate from "./_components/onboarding/OnboardingGate";
 import ProfileTour from "./_components/onboarding/ProfileTour";
+import InterviewOffer from "./_components/onboarding/InterviewOffer";
 import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
 import { isRealBio } from "@/lib/bioConstants";
@@ -167,6 +168,15 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                     once complete it stays complete, so unlike that one this
                     cannot be unmounted out from under the tour. */}
                 {isClaimedByUser && onboardingState?.complete && <ProfileTour artistId={artist.id} />}
+
+                {/* The only part of onboarding where what lands on the page
+                    comes from the artist rather than from research. Gated the
+                    same way the tour is — onboarding finished, and their own
+                    page — and it decides for itself whether there is anything
+                    worth asking about. */}
+                {isClaimedByUser && onboardingState?.complete && (
+                    <InterviewOffer artistId={artist.id} artistName={artist.name ?? "your"} />
+                )}
 
                 {onboardingState && !onboardingState.complete && (
                     <OnboardingGate

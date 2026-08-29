@@ -312,12 +312,12 @@ export function forgetGroundedQuestions(artistId: string): void {
 
 export async function generateGroundedQuestions(
     artistId: string,
-    opts?: { max?: number },
+    opts?: { max?: number; since?: string | null },
 ): Promise<GroundedQuestion[]> {
     const max = Math.max(0, opts?.max ?? DEFAULT_MAX_QUESTIONS);
     if (!artistId || max === 0) return [];
 
-    const cacheKey = `${artistId}::${max}`;
+    const cacheKey = `${artistId}::${max}::${opts?.since ?? ""}`;
     const now = Date.now();
     const cached = groundedQuestionsCache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
@@ -327,14 +327,44 @@ export async function generateGroundedQuestions(
         if (!artist) return [];
         const artistName = artist.name ?? "the artist";
 
-        const posts = await getSocialPostsForArtist(artistId);
+        const all = await getSocialPostsForArtist(artistId);
+        // SCOPED TO WHAT IS NEW, when the caller asks for it.
+        //
+        // A returning artist should be asked about what they have done since,
+        // not handed the same three questions again — "we only come back when
+        // we have something new to ask about" is the rule that makes a second
+        // ask feel like interest rather than nagging.
+        const since = opts?.since ? Date.parse(opts.since) : NaN;
+        const posts = Number.isNaN(since)
+            ? all
+            : all.filter(p => {
+                const at = Date.parse(p.postedAt ?? "");
+                return !Number.isNaN(at) && at > since;
+            });
         if (posts.length === 0) return [];
 
         const signals = deriveSocialSignals(posts, artist.instagram ?? "", artistName);
         // Stored, not recomputed — see socialCredits.ts. An artist whose
         // captions have not been read yet simply contributes no credit
         // candidates, exactly as before this existed.
-        const extraction = await getSocialCredits(artistId);
+        //
+        // FILTERED BY `since` TOO. Filtering only the posts left the statement
+        // and credit candidates unbounded, so a return interview scoped to the
+        // last two months came back asking about a post from 2020 — the exact
+        // "same questions again" this scoping exists to prevent. Measured on
+        // Pete Rango: a pandemic reflection surfaced in a window that started
+        // six years after it.
+        const stored = await getSocialCredits(artistId);
+        const newer = <T extends { postedAt?: string | null }>(rows: T[]): T[] =>
+            Number.isNaN(since) ? rows : rows.filter(r => {
+                const at = Date.parse(r.postedAt ?? "");
+                return !Number.isNaN(at) && at > since;
+            });
+        const extraction = {
+            ...stored,
+            credits: newer(stored.credits),
+            statements: newer(stored.statements),
+        };
         const candidates = buildCandidates(signals, artistName, extraction);
         if (candidates.length === 0) return [];
 
