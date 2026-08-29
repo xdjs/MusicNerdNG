@@ -249,6 +249,29 @@ describe("searchAndPopulateVault", () => {
     expect(candidates[0]).toHaveProperty("ownDomain");
   });
 
+  it("recognises a profile stored as a whole url, not just as a handle", async () => {
+    // Ten rows hold a url instead of a handle — a Facebook profile saved as
+    // ".../people/Angela-Bofill/100044180243805/", a Bandcamp, a Discogs, six
+    // Farcasters. Comparing the whole stored string against the search result
+    // can essentially never match, so those artists' own profiles were not
+    // recognised as theirs and could be filed as press ABOUT them.
+    mockGetArtist.mockResolvedValueOnce({
+      id: "a1", name: "Grimes", spotify: "sp1",
+      facebookId: "https://www.facebook.com/people/Grimes/100044180243805/",
+      instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([
+      hit("https://www.facebook.com/profile.php?id=100044180243805", "Grimes on Facebook"),
+      hit("https://example.com/real-article", "A real interview"),
+    ]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const stored = mockInsert.mock.calls.map(c => c[0].url);
+    expect(stored).not.toContain("https://www.facebook.com/profile.php?id=100044180243805");
+    expect(stored).toContain("https://example.com/real-article");
+  });
+
   it("drops an XML document served from an ordinary-looking URL", async () => {
     mockWebSearch.mockResolvedValue([hit("https://example.com/press", "Press")]);
     mockFetchPage.mockResolvedValue({

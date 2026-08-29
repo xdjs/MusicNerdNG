@@ -811,6 +811,24 @@ export const PLATFORM_DOMAINS: Record<string, string[]> = {
     ...PLATFORM_DOMAINS_EXTRA,
 };
 
+/**
+ * The part of a stored value that identifies the profile.
+ *
+ * Almost always the value itself — these columns hold handles. When one holds a
+ * whole url, the identifying part is its last meaningful path segment: a
+ * Facebook profile stored as ".../people/Angela-Bofill/100044180243805/"
+ * identifies the same page as "profile.php?id=100044180243805", and only the
+ * number is common to both.
+ */
+function identifyingPart(value: string): string {
+    const v = value.trim().toLowerCase().replace(/^@/, "");
+    if (!/^https?:\/\//.test(v)) return v;
+    const segments = v.split(/[?#]/)[0].split("/").filter(Boolean).slice(2);
+    // The longest segment is the identifier; the rest is routing ("people",
+    // "artist", a display name).
+    return segments.sort((a, b) => b.length - a.length)[0] ?? v;
+}
+
 function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolean {
     let host: string;
     try {
@@ -820,6 +838,13 @@ function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolea
     }
     const haystack = url.toLowerCase();
     return PROFILE_LINK_COLUMNS.some(col => {
+        // A stored value is USUALLY a handle and occasionally a whole url. Ten
+        // rows hold one — a Facebook profile saved as
+        // ".../people/Angela-Bofill/100044180243805/", a Bandcamp, a Discogs,
+        // six Farcasters — and `haystack.includes(wholeUrl)` can essentially
+        // never match, so those artists' own profiles were never recognised as
+        // theirs. Comparing the identifying part instead covers all of them
+        // rather than special-casing the one the review happened to find.
         // BY ROW PROPERTY, NOT BY COLUMN NAME. The column is `facebookID` and
         // the Drizzle property is `facebookId`, so indexing by the column read
         // undefined and an artist's own numeric Facebook profile was never
@@ -828,7 +853,7 @@ function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolea
         // copy of it.
         const value = artist[artistRowProperty(col)];
         if (typeof value !== "string") return false;
-        const v = value.trim().toLowerCase().replace(/^@/, "");
+        const v = identifyingPart(value);
         if (v.length < IDENTITY_MATCH_MIN_LENGTH) return false;
         // The handle must appear ON ITS OWN PLATFORM. Without this the check is
         // a bare substring test: an artist whose Bandcamp handle is "dupes" had
