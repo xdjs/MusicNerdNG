@@ -28,6 +28,15 @@ export function tourPendingKey(artistId: string): string {
  *  listening. An event closes that gap without polling. */
 export const TOUR_ARMED_EVENT = "mn-tour-armed";
 
+/** Fired when the tour ends, however it ends.
+ *
+ *  The interview is offered here rather than as a fifth card, because the four
+ *  cards say "here is what we found" and the offer turns that round — it lands
+ *  after the artist has seen the gaps for themselves. An event rather than a
+ *  prop because the tour and the offer are siblings on the page, not nested,
+ *  and the tour has no business knowing what comes after it. */
+export const TOUR_FINISHED_EVENT = "mn-tour-finished";
+
 export function armTour(artistId: string): void {
     try {
         sessionStorage.setItem(tourPendingKey(artistId), "1");
@@ -213,12 +222,18 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
         };
     }, [index, armed, dismissed, reposition]);
 
-    const finish = () => {
+    const finish = (reachedTheEnd: boolean) => {
         try {
             sessionStorage.setItem(tourFlagKey(artistId), "1");
             sessionStorage.removeItem(tourPendingKey(artistId));
         } catch { /* private mode */ }
         setDismissed(true);
+        // Only when they walked it. Somebody who hit Skip on card one has said
+        // they do not want to be walked through anything, and following that
+        // with three questions is not reading the room.
+        if (reachedTheEnd) {
+            window.dispatchEvent(new CustomEvent(TOUR_FINISHED_EVENT, { detail: artistId }));
+        }
     };
 
     if (!armed || dismissed || !stop) return null;
@@ -265,7 +280,7 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
                 <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-medium text-pink-500">{index + 1} of {STOPS.length}</p>
                     <button
-                        onClick={finish}
+                        onClick={() => finish(false)}
                         className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                     >
                         Skip
@@ -285,7 +300,7 @@ export default function ProfileTour({ artistId }: { artistId: string }) {
                         </button>
                     )}
                     <button
-                        onClick={() => (isLast ? finish() : setIndex(i => i + 1))}
+                        onClick={() => (isLast ? finish(true) : setIndex(i => i + 1))}
                         className="flex-1 bg-pink-500 hover:bg-pink-600 active:bg-pink-700 transition-colors text-white font-semibold py-2 rounded-lg"
                     >
                         {isLast ? "Got it" : "Next"}

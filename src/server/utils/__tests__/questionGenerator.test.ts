@@ -38,13 +38,26 @@ const OWN_POSTS = [
 describe('generateGroundedQuestions', () => {
     beforeEach(() => { jest.resetModules(); jest.clearAllMocks(); });
 
+    /** Generation calls only. The fact-checker adds a second call per run, and
+     *  these assertions are about the cache rather than about how many models a
+     *  run talks to. */
+    const generations = (mock) => mock.mock.calls.filter(
+        c => !String(c[0]?.config?.systemInstruction ?? "").startsWith("You are fact-checking")).length;
+
     async function setup({ posts = OWN_POSTS, artist = { id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' }, geminiText, generateContentImpl } = {}) {
         const { getArtistById } = await import('@/server/utils/queries/artistQueries');
         const { getSocialPostsForArtist } = await import('@/server/utils/socialIngest');
         const { getGemini } = await import('@/server/lib/gemini');
         getArtistById.mockResolvedValue(artist);
         getSocialPostsForArtist.mockResolvedValue(posts);
-        const generateContent = generateContentImpl ?? jest.fn().mockResolvedValue({ text: geminiText ?? '[]' });
+        // Two calls now: the generator, then the fact-checker. Without a
+        // verdict for a question it is treated as unverified and dropped, so
+        // the default here approves everything and the tests that care about
+        // rejection say so explicitly.
+        const generateContent = generateContentImpl ?? jest.fn(async (req) =>
+            String(req?.config?.systemInstruction ?? "").startsWith("You are fact-checking")
+                ? { text: JSON.stringify(Array.from({ length: 10 }, (_, i) => ({ i, ok: true, problem: "" }))) }
+                : { text: geminiText ?? '[]' });
         getGemini.mockReturnValue({ models: { generateContent } });
         const mod = await import('@/server/utils/questionGenerator');
         return { ...mod, generateContent, getArtistById, getSocialPostsForArtist, getGemini };
@@ -178,14 +191,14 @@ describe('generateGroundedQuestions', () => {
             const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
             const first = await generateGroundedQuestions('a1', { max: 3 });
             const second = await generateGroundedQuestions('a1', { max: 3 });
-            expect(generateContent).toHaveBeenCalledTimes(1);
+            expect(generations(generateContent)).toBe(1);
             expect(second).toEqual(first);
         });
 
         it('a fresh module registry starts with an empty cache — sanity check that jest.resetModules() actually isolates the module-level Map across tests', async () => {
             const { generateGroundedQuestions, generateContent } = await setup({ geminiText });
             await generateGroundedQuestions('a1', { max: 3 });
-            expect(generateContent).toHaveBeenCalledTimes(1);
+            expect(generations(generateContent)).toBe(1);
         });
 
         it('expiry regenerates — a call after the TTL has elapsed invokes generation again', async () => {
@@ -195,7 +208,7 @@ describe('generateGroundedQuestions', () => {
                 await generateGroundedQuestions('a1', { max: 3 });
                 jest.advanceTimersByTime(15 * 60 * 1000 + 1_000); // just past the 15-minute TTL
                 await generateGroundedQuestions('a1', { max: 3 });
-                expect(generateContent).toHaveBeenCalledTimes(2);
+                expect(generations(generateContent)).toBe(2);
             } finally {
                 jest.useRealTimers();
             }
@@ -218,7 +231,234 @@ describe('generateGroundedQuestions', () => {
             await generateGroundedQuestions('a1', { max: 3 });
             getArtistById.mockResolvedValue({ id: 'a2', name: 'Other Artist', instagram: 'other' });
             await generateGroundedQuestions('a2', { max: 3 });
-            expect(generateContent).toHaveBeenCalledTimes(2);
+            expect(generations(generateContent)).toBe(2);
+        });
+    });
+
+    describe("scoped to what is new", () => {
+        // A returning artist should be asked about what they have done since,
+        // not handed the same questions again.
+
+        /** Two posts either side of a cutoff, each with a caption we can look
+         *  for in the prompt. */
+        const post = (id, caption, postedAt) => ({
+            platform: "instagram", platformPostId: id, ownerUsername: "p3t3rango", isOwnPost: true,
+            caption, url: `https://www.instagram.com/p/${id}/`, postedAt,
+            likeCount: 400, commentCount: 9, playCount: 8000, hashtags: ["housemusic"], mentions: [],
+            coauthors: [], musicTitle: null, musicArtist: null,
+        });
+        const OLD_AND_NEW = [
+            post("OLD1", "house been therapy", "2020-04-01T00:00:00.000Z"),
+            post("OLD2", "house been therapy again", "2020-05-01T00:00:00.000Z"),
+            post("NEW1", "the colombia page is live", "2026-08-20T00:00:00.000Z"),
+            post("NEW2", "colombia relief keeps growing", "2026-08-22T00:00:00.000Z"),
+        ];
+
+        it("ignores posts older than the cutoff", async () => {
+            const { generateGroundedQuestions, generateContent } =
+                await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
+            await generateGroundedQuestions("a1", { max: 3, since: "2026-06-01T00:00:00.000Z" });
+
+            // The prompt carries derived material rather than raw captions, so
+            // the count is the thing that shows the cutoff bit: two posts in
+            // the window, not all four.
+            const sent = String(generateContent.mock.calls[0][0].contents);
+            expect(sent).toContain("appears in 2 of their own posts");
+            expect(sent).not.toContain("appears in 4 of their own posts");
+        });
+
+        it("scopes the stored statements and credits too, not only the posts", async () => {
+            // Filtering only the posts left statement and credit candidates
+            // unbounded, so a return interview scoped to the last two months
+            // came back asking about a post from 2020 — measured on Pete Rango,
+            // where a pandemic reflection surfaced in a window starting six
+            // years after it.
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: [],
+                    statements: [
+                        { quote: "the pandemic was a blessing and a curse", topic: "pandemic reflection",
+                          url: "https://www.instagram.com/p/OLD1/", postedAt: "2020-04-01T00:00:00.000Z" },
+                        { quote: "I made a bilingual page to help", topic: "Colombia relief",
+                          url: "https://www.instagram.com/p/NEW1/", postedAt: "2026-08-20T00:00:00.000Z" },
+                    ],
+                })),
+            }));
+            const { generateGroundedQuestions, generateContent } =
+                await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
+            await generateGroundedQuestions("a1", { max: 3, since: "2026-06-01T00:00:00.000Z" });
+
+            const sent = String(generateContent.mock.calls[0][0].contents);
+            expect(sent).toContain("bilingual page");
+            expect(sent).not.toContain("blessing and a curse");
+        });
+
+        it("uses everything when no cutoff is given", async () => {
+            const { generateGroundedQuestions, generateContent } =
+                await setup({ posts: OLD_AND_NEW, geminiText: "[]" });
+            await generateGroundedQuestions("a1", { max: 3 });
+            expect(String(generateContent.mock.calls[0][0].contents)).toContain("appears in 4 of their own posts");
+        });
+    });
+
+    describe("relationships, computed rather than guessed", () => {
+        /** Answers generation with `questions`, then the fact-checker with `verdicts`. */
+        const twoCalls = (questions, verdicts) => jest.fn(async (req) =>
+            String(req?.config?.systemInstruction ?? "").startsWith("You are fact-checking")
+                ? { text: typeof verdicts === "function" ? verdicts() : JSON.stringify(verdicts) }
+                : { text: JSON.stringify(questions) });
+
+        /** A collaborator credited on two posts, plus a statement sharing one
+         *  of them — enough for both relationship kinds. */
+        const EXTRACTION = {
+            credits: [
+                { subject: "p3t3rango", isHandle: true, isSelf: false, role: "Mixed by",
+                  quote: "Mixed by @p3t3rango", url: "https://www.instagram.com/p/A/", postedAt: null },
+                { subject: "p3t3rango", isHandle: true, isSelf: false, role: "engineered by",
+                  quote: "engineered by @p3t3rango", url: "https://www.instagram.com/p/B/", postedAt: null },
+            ],
+            statements: [
+                { quote: "my first single engineered by someone other than myself", topic: "a first",
+                  url: "https://www.instagram.com/p/B/", postedAt: null },
+                { quote: "a silhouette in flickering light", topic: "what Hourglass means",
+                  url: "https://www.instagram.com/p/Z/", postedAt: null },
+            ],
+        };
+
+        async function withExtraction(opts = {}) {
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => EXTRACTION),
+            }));
+            return setup(opts);
+        }
+
+        const promptFrom = (mock) => String(mock.mock.calls.find(c =>
+            !String(c[0]?.config?.systemInstruction ?? "").startsWith("You are fact-checking"))[0].contents);
+
+        it("offers a collaborator credited on more than one post as a relationship", async () => {
+            const { generateGroundedQuestions, generateContent } = await withExtraction({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            const sent = promptFrom(generateContent);
+            expect(sent).toContain("partnership_p3t3rango");
+            expect(sent).toContain("2 SEPARATE posts");
+        });
+
+        it("warns, in the material, against attaching that person to other releases", async () => {
+            // The failure this replaces: the model was told Pharaoh credits
+            // @p3t3rango and, separately, what "Hourglass & The Flame" sounds
+            // like — and wrote that p3t3rango engineered Hourglass. Four
+            // different posts, no connection anywhere.
+            const { generateGroundedQuestions, generateContent } = await withExtraction({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            expect(promptFrom(generateContent)).toContain("must not attach");
+        });
+
+        it("offers a credit and a statement from the SAME post as one signal", async () => {
+            const { generateGroundedQuestions, generateContent } = await withExtraction({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            const sent = promptFrom(generateContent);
+            expect(sent).toContain("same_post_B");
+            expect(sent).toContain("IN ONE POST");
+            // The statement on post Z has no credit beside it, so it is not a
+            // same-post relationship — it is just a statement.
+            expect(sent).not.toContain("same_post_Z");
+        });
+
+        it("carries only that post as the evidence for a same-post question", async () => {
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalId: "same_post_B", question: "You said it was your first — what changed?", rationale: "x" }],
+                    [{ i: 0, ok: true, problem: "" }],
+                ),
+            });
+            const [q] = await generateGroundedQuestions("a1");
+            expect(q.kind).toBe("same_post");
+            expect(q.sourceUrls).toEqual(["https://www.instagram.com/p/B/"]);
+        });
+
+        it("ignores an answer that tries to name two signals", async () => {
+            // Pairing is gone: a link the model draws between two signals is a
+            // guess, and a guess about who worked on what is the one thing an
+            // artist notices immediately.
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalIds: ["partnership_p3t3rango", "statement_Z_what_hourglass_means"], question: "did p3t3rango engineer Hourglass?", rationale: "x" }],
+                    [{ i: 0, ok: true, problem: "" }],
+                ),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("still drops a question the checker says is unsupported", async () => {
+            // Single-signal questions can drift too: the material can hold a
+            // chain of causes that gets compressed into an agent doing
+            // something they never did.
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalId: "same_post_B", question: "q", rationale: "x" }],
+                    [{ i: 0, ok: false, problem: "introduction to samplers" }],
+                ),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("drops EVERY grounded question when the checker cannot run", async () => {
+            // There was no test for this path, which is how a broken guard
+            // survived: it claimed to fail closed "asymmetrically" by keeping
+            // single-signal questions, and once pairing was removed every draft
+            // had exactly one material — so the filter kept all of them. It
+            // read as protective and did nothing, which is worse than having
+            // none, because it was the reason to feel safe.
+            //
+            // There is no safe subset. The André sentence compressed a chain of
+            // causes inside a SINGLE caption; single-signal questions were
+            // never immune, only untouched so far.
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalId: "same_post_B", question: "a question", rationale: "x" }],
+                    () => { throw new Error("checker down"); },
+                ),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("drops everything when the checker answers with nonsense", async () => {
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalId: "same_post_B", question: "a question", rationale: "x" }],
+                    () => "not json at all",
+                ),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("gives two collaborators with non-Latin names distinct keys", async () => {
+            // `slug` is ASCII-only and reduces both to "x", so they would share
+            // a signalId — byId keeps only the last, and their answers overwrite
+            // each other under the unique (artist, questionKey) index.
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [
+                        { subject: "사랑", isHandle: false, isSelf: false, role: "mixed", quote: "q", url: "https://insta/p/A/", postedAt: null },
+                        { subject: "사랑", isHandle: false, isSelf: false, role: "mixed", quote: "q", url: "https://insta/p/B/", postedAt: null },
+                        { subject: "恋", isHandle: false, isSelf: false, role: "played", quote: "q", url: "https://insta/p/C/", postedAt: null },
+                        { subject: "恋", isHandle: false, isSelf: false, role: "played", quote: "q", url: "https://insta/p/D/", postedAt: null },
+                    ],
+                })),
+            }));
+            const { generateGroundedQuestions, generateContent } = await setup({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            const sent = promptFrom(generateContent);
+            const ids = [...sent.matchAll(/"signalId": "(partnership_[^"]+)"/g)].map(m => m[1]);
+            expect(new Set(ids).size).toBe(ids.length);
+        });
+
+        it("treats a question with no verdict as unverified, not approved", async () => {
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls([{ signalId: "same_post_B", question: "q", rationale: "x" }], []),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
         });
     });
 });

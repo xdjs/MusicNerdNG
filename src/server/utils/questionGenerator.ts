@@ -20,10 +20,14 @@ import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
 import { deriveSocialSignals, type SocialSignals } from "@/server/utils/socialSignals";
-import { creditedCollaborators, type CaptionExtraction } from "@/server/utils/socialCredits";
+import { creditedCollaborators, type CaptionExtraction, type CaptionCredit, type ArtistStatement } from "@/server/utils/socialCredits";
 import { getSocialCredits } from "@/server/utils/queries/socialCreditQueries";
 
-export type GroundedQuestionKind = "collaborator" | "theme" | "standout" | "music" | "credit" | "statement";
+export type GroundedQuestionKind =
+    | "collaborator" | "theme" | "standout" | "music" | "credit" | "statement"
+    /** A relationship COMPUTED from the posts rather than guessed: the same
+     *  person credited across several of them, or two things said in one. */
+    | "partnership" | "same_post";
 
 /** Every GroundedQuestion `key` is built as `social_${kind}_...` (see
  *  buildCandidates below) — exported so callers (turnHandlers.ts) can tell a
@@ -109,6 +113,13 @@ interface SignalCandidate {
     sourceUrls: string[];
 }
 
+/** Letters and digits of any script, so a name outside ASCII still identifies
+ *  one person. `slug` below is ASCII-only and stays that way for the callers
+ *  that key on urls and hashtags, where ASCII is the alphabet in use. */
+function unicodeSlug(s: string): string {
+    return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "").slice(0, 60) || "x";
+}
+
 function slug(s: string): string {
     return s
         .toLowerCase()
@@ -125,8 +136,111 @@ function shortCodeFromUrl(url: string): string {
     return m ? m[1] : slug(url);
 }
 
+/** How many recurring-collaborator and same-post relationships to offer. These
+ *  are the best material we have, so they get room, but a list of twenty
+ *  crowds out everything else. */
+const TOP_PARTNERSHIPS = 3;
+const TOP_SAME_POST = 3;
+
+/**
+ * Relationships, joined here rather than guessed by the model.
+ *
+ * THIS IS THE FIX FOR THE WHOLE CLASS. Letting the model pick two signals and
+ * hypothesise a link between them produced a question telling Pharaoh Sistare
+ * that @p3t3rango engineered "Hourglass & The Flame". One signal said Pharaoh
+ * credits p3t3rango; another said what Hourglass sounds like; the join was
+ * invented, and the two facts come from four different posts. A fact-checker
+ * could not see it either, because merging the two sources destroyed the only
+ * evidence that would have shown it — which post each fact came from.
+ *
+ * So the interesting question still gets asked, and the connection inside it is
+ * one we computed and can point at:
+ *
+ *   - the same person credited across SEVERAL posts, which is a working
+ *     relationship rather than a one-off;
+ *   - two things said in ONE post, which are connected because the artist put
+ *     them together.
+ *
+ * Each asserts only what the join proves. Neither can put somebody on a record
+ * they were not credited on, because the evidence travels with the claim.
+ */
+function relationshipCandidates(artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
+    const out: SignalCandidate[] = [];
+
+    // A collaborator who keeps coming back. `creditedCollaborators` already
+    // groups by person and collects every post they were credited on; two or
+    // more is a relationship, one is an anecdote.
+    for (const c of creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2).slice(0, TOP_PARTNERSHIPS)) {
+        const subject = c.isHandle ? `@${c.subject}` : c.subject;
+        // UNICODE. `slug` is ASCII-only and reduces a Japanese or Korean name
+        // to "x", so two such collaborators would share a signalId — the byId
+        // map would keep only the last, and their answers would overwrite each
+        // other under the unique (artist, questionKey) index. Same bug as the
+        // release keys, in the place I did not look.
+        const id = unicodeSlug(c.subject);
+        out.push({
+            signalId: `partnership_${id}`,
+            kind: "partnership",
+            key: `social_partnership_${id}`,
+            authoredBy: "artist",
+            material: `${artistName} has credited ${subject} on ${c.evidenceUrls.length} SEPARATE posts, in their own words each time, as: ${c.roles.join("; ")}. That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, and you must not attach ${subject} to any release you were told about elsewhere.`,
+            sourceUrls: c.evidenceUrls,
+        });
+    }
+
+    // Two things the artist put in the SAME post. Connected because they said
+    // them together, which is a fact rather than an inference.
+    const byPost = new Map<string, { credits: CaptionCredit[]; statements: ArtistStatement[] }>();
+    for (const c of extraction.credits) {
+        if (c.isSelf || !c.url) continue;
+        const at = byPost.get(c.url) ?? { credits: [], statements: [] };
+        at.credits.push(c);
+        byPost.set(c.url, at);
+    }
+    for (const st of extraction.statements) {
+        if (!st.url) continue;
+        const at = byPost.get(st.url) ?? { credits: [], statements: [] };
+        at.statements.push(st);
+        byPost.set(st.url, at);
+    }
+    const pairs = [...byPost.entries()]
+        // EXACTLY ONE CREDIT. A post with several is a roundup — Pete Rango has
+        // one covering a day in New York that names nine people across a
+        // rehearsal, a house party, a trombonist he heard in the street and a
+        // bar — and picking the first credit and the first statement out of
+        // that pairs two things at random.
+        //
+        // One credit beside something the artist said is unambiguous: there is
+        // only one person in the post and only one thing to be talking about.
+        .filter(([, v]) => v.credits.length === 1 && v.statements.length > 0)
+        .slice(0, TOP_SAME_POST);
+    for (const [url, v] of pairs) {
+        const credit = v.credits[0];
+        const statement = v.statements[0];
+        const subject = credit.isHandle ? `@${credit.subject}` : credit.subject;
+        out.push({
+            signalId: `same_post_${shortCodeFromUrl(url)}`,
+            kind: "same_post",
+            key: `social_same_post_${shortCodeFromUrl(url)}`,
+            authoredBy: "artist",
+            // STATES THE JOIN AND NOTHING MORE. The first version ended "so
+            // they are genuinely about the same piece of work", which is an
+            // inference, not the join — and asserting it in the material handed
+            // the fact-checker a falsehood as evidence, so it could not
+            // possibly have caught it. Co-occurrence in one post is the fact.
+            // Whether they are about the same record is the artist's to say,
+            // which is what makes it a question worth asking.
+            material: `IN ONE POST, ${artistName} credited ${subject} as "${credit.role}" and also wrote, about ${statement.topic}: "${statement.quote}". The only thing this establishes is that they said both in the same post. It does NOT establish that ${subject} worked on whatever the writing is about — ask about that rather than asserting it.`,
+            sourceUrls: [url],
+        });
+    }
+    return out;
+}
+
 function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
-    const candidates: SignalCandidate[] = [];
+    // Relationships first: they are the only candidates that carry a verified
+    // connection, and the prompt is told to reach for them.
+    const candidates: SignalCandidate[] = relationshipCandidates(artistName, extraction);
 
     // Role credits first. "Mixing & Mastering Engineer: @p3t3rango" is a named
     // person doing a stated job, written by the artist — strictly better
@@ -234,19 +348,27 @@ Each signal has:
 
 Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
 
-Rules:
-- You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced. Keep only the ones a genuinely curious, well-prepared journalist would actually ask about.
-- It is strictly better to return 2-3 sharp, specific questions than 5-6 uneven ones. Do not pad the list to cover more signals — quality and hit rate matter more than count.
-- Write ONE short, specific, curious interview question per signal you choose to keep — the kind of question that shows you actually looked, not a generic one that could apply to anyone.
-- If authoredBy is "artist", you may reference or lightly quote their own words/caption.
-- If authoredBy is "@handle" (NOT the artist), you must NEVER say or imply that ${artistName} wrote, said, or posted that caption/material — it belongs to the other account. Frame the question around the relationship or collaboration instead. Example: material from @dameatlas's post about a joint track → "You and @dameatlas put out that track together — what's the story behind it?" NOT "You said/posted...".
-- Never fabricate anything beyond what "material" states. If a signal doesn't give you enough for a real, specific question, skip it entirely — do not force one.
-- A question must be about the specific post(s) named in that signal's material — nothing else. Never generalize a single post into a pattern (e.g. turning one post that used a track into "you posted quite a bit about X" or "you post about X a lot") — say what the post actually was, not a habit you're inferring from it.
-- No engagement-metric language in the question text itself. Never say a number, "plays", "likes", or "views" in the question. Describe the feeling or moment instead — "that one clearly struck a nerve" is fine, "your post got 8,285 plays" is not.
-- Plain spoken language, one sentence, never clinical, never creepy, never over-familiar.
-- Use ONLY signalIds from the list you were given. Do not process the same signalId twice.
+SOME SIGNALS ARE RELATIONSHIPS, AND THEY ARE YOUR BEST MATERIAL. A signal of kind "partnership" or "same_post" is a connection we have already verified against the posts — the same person credited across several records, or two things said in one post. Reach for those: they are how you ask a question that only somebody who read everything could ask.
 
-Return STRICT JSON ONLY — an array of objects: [{ "signalId": string, "question": string, "rationale": string }]. "rationale" is one short internal phrase (not shown to the artist) noting why it's worth asking. Return [] if nothing in the signals is worth asking about. No markdown fences, no commentary, JSON only.`;
+NEVER BUILD A RELATIONSHIP YOURSELF. If a connection between two facts is not stated inside ONE signal's material, it is not a fact and you may not imply it. Two signals mentioning the same person do not put that person on both records. Two signals from the same artist do not make one the cause of the other. This is the single way these questions go wrong, and it is not recoverable: an artist asked about work they did not do knows immediately that nobody read anything.
+
+ATTRIBUTION IS THE OTHER THING YOU WILL GET WRONG. When you say a NAMED PERSON did something, the material must say THAT PERSON did THAT THING. Do not compress a chain of causes into an agent: if the material says "she gave me the record, and the record made me pick up a sampler", then she gave you a record — she did NOT introduce you to samplers, and writing that puts words in the artist's mouth about somebody else. When in doubt, quote the artist's own words rather than paraphrasing them. Every accurate question you can write is one you could defend by pointing at a sentence.
+
+Rules:
+- You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced.
+- ONLY the ones that clear the bar. One excellent question is a better outcome than three even ones, and returning fewer is correct rather than a failure. Padding to reach a count is the failure. Look hard for distinct collisions before settling — different pairs, different corners of their work, never three versions of the same question.
+- BANNED, because they are what an interviewer who did not do the reading says: "what's the story behind", "what was that like", "what motivated you", "how did that come about", "tell me about", "can you talk about", "what inspired you", "walk me through", "what has that experience been like".
+- DO NOT RECAP THEIR POST BACK TO THEM. They know what they posted. At most one short clause of context — roughly a dozen words — then the question. If you are quoting more than about ten words you are stalling.
+- Ask something ANSWERABLE and specific: a decision, a moment, a disagreement, a cost, a person. "Who pushed back on that?" beats "what was that process like". You may risk a hypothesis they can confirm or reject — being slightly wrong is better than being vacuous — but phrase it as a question about a possible connection, never as an assertion that the connection exists.
+- If authoredBy is "artist", you may quote their own words.
+- If authoredBy is "@handle" (NOT the artist), you must NEVER say or imply that ${artistName} wrote, said, or posted that caption/material — it belongs to the other account. Frame the question around the relationship instead.
+- Never fabricate anything beyond what "material" states. If a signal doesn't give you enough for a real, specific question, skip it entirely.
+- Never generalize a single post into a pattern — say what the post actually was, not a habit you are inferring from it.
+- No engagement-metric language. Never say a number, "plays", "likes", or "views".
+- One sentence. Plain spoken language, never clinical, never creepy, never over-familiar, and never flattering ("powerful", "amazing", "clearly struck a nerve").
+- Use ONLY signalIds from the list you were given.
+
+Return STRICT JSON ONLY — an array of objects: [{ "signalId": string, "question": string, "rationale": string }]. "signalId" is exactly one id, echoed exactly. "rationale" is one short internal phrase (not shown to the artist) noting why it's worth asking. Return [] if nothing in the signals is worth asking about. No markdown fences, no commentary, JSON only.`;
 
 function withTimeout<T>(p: Promise<T>): Promise<T> {
     return Promise.race([
@@ -310,14 +432,119 @@ export function forgetGroundedQuestions(artistId: string): void {
     }
 }
 
+/** A question that has been written but not yet checked. `materials` are the
+ *  exact signal materials it claims to draw on — the only thing it may assert. */
+interface DraftedQuestion extends GroundedQuestion {
+    materials: string[];
+}
+
+const VERIFIER_TIMEOUT_MS = 12_000;
+
+const VERIFIER_INSTRUCTION = `You are fact-checking interview questions before they are put to the artist they are about. For each one you are given the question and the SOURCE material it was written from. The source is the only thing that is true; you know nothing else.
+
+Mark a question UNSUPPORTED if any factual claim in it is not in the source. Be strict about two things in particular:
+
+1. ATTRIBUTION. If the question says a named person did something, the source must say that person did that thing. A chain of causes is not an agent: source "she gave me the record, and that record made me pick up a sampler" supports "she gave you that record" and does NOT support "she introduced you to samplers". Collapsing the chain invents an action and credits it to a real person.
+
+2. PARAPHRASE DRIFT. A restatement that adds a degree, a motive, a scale or a causal link the source does not state is unsupported, however plausible it sounds.
+
+A question that merely ASKS about a possible connection between two things in the source is supported — "do you see these as connected?" asserts nothing. A question that ASSERTS the connection is not.
+
+Return STRICT JSON ONLY: [{ "i": number, "ok": boolean, "problem": string }]. "i" is the question's index as given. "problem" is one short phrase naming the unsupported claim, or "" when ok. No markdown.`;
+
+/**
+ * Drop any question that says something its source does not.
+ *
+ * This exists because of a real miss. Asked to draw on two signals at once, the
+ * model wrote "your cousin's introduction to samplers and computers shifted
+ * your perspective" from a caption that actually said he handed over two albums
+ * and that THOSE shifted it. Every word was from the source and the sentence
+ * was still false: a two-step chain compressed into one, crediting a real
+ * person — a dead relative — with something the artist never said he did. The
+ * artist caught it immediately, because he wrote it. Nobody else would have.
+ *
+ * That is the cost of letting questions cross signals, and it is worth paying
+ * only with this in front of it. Single-signal questions were accurate in every
+ * sample; the failure arrived with the collision.
+ *
+ * FAILS CLOSED. If the checker cannot run, nothing grounded goes out.
+ *
+ * It used to say it failed closed "asymmetrically" — keeping single-signal
+ * questions and dropping crossed ones — and after cross-signal pairing was
+ * removed EVERY draft has exactly one material, so that filter kept all of
+ * them. The guard read as protective and did nothing, which is worse than not
+ * having one, because it was the reason to feel safe.
+ *
+ * There is no safe subset to keep. The André sentence compressed a chain of
+ * causes inside a SINGLE caption; single-signal questions were never immune,
+ * they were just where the failure had not landed yet. So an unavailable
+ * checker means no grounded questions this sitting — the static bank still
+ * fills a first one, and a return visit stays quiet, which is the right way to
+ * be wrong.
+ */
+async function keepOnlySupported(
+    drafted: DraftedQuestion[],
+    artistName: string,
+): Promise<GroundedQuestion[]> {
+    const strip = ({ materials, ...q }: DraftedQuestion): GroundedQuestion => { void materials; return q; };
+    if (drafted.length === 0) return [];
+
+    const payload = drafted
+        .map((d, i) => `--- QUESTION ${i} ---\nQ: ${d.question}\nSOURCE:\n${d.materials.join("\n---\n")}`)
+        .join("\n\n");
+
+    let text = "";
+    try {
+        const res = await Promise.race([
+            getGemini().models.generateContent({
+                model: GEMINI_MODEL_FLASH,
+                contents: `The artist is "${artistName}".\n\n${payload}`,
+                config: {
+                    systemInstruction: VERIFIER_INSTRUCTION,
+                    temperature: 0,
+                    responseMimeType: "application/json",
+                    thinkingConfig: { thinkingBudget: 0 },
+                },
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("verifier timeout")), VERIFIER_TIMEOUT_MS)),
+        ]);
+        text = res.text ?? "";
+    } catch (e) {
+        console.error("[questionGenerator] verifier unavailable, dropping every grounded question:", e);
+        return [];
+    }
+
+    let verdicts: { i?: unknown; ok?: unknown; problem?: unknown }[];
+    try {
+        const parsed: unknown = JSON.parse(stripJsonFences(text));
+        if (!Array.isArray(parsed)) throw new Error("not an array");
+        verdicts = parsed as typeof verdicts;
+    } catch (e) {
+        console.error("[questionGenerator] unparseable verifier output, dropping every grounded question:", e);
+        return [];
+    }
+
+    // A question with NO verdict is unverified, not approved — the same
+    // direction the failure above ran in.
+    const byIndex = new Map<number, boolean>();
+    for (const v of verdicts) {
+        if (typeof v?.i !== "number" || !Number.isInteger(v.i)) continue;
+        byIndex.set(v.i, v.ok === true);
+        if (v.ok !== true) {
+            console.log(`[questionGenerator] dropped a question: ${String(v.problem ?? "unsupported")}`);
+        }
+    }
+    return drafted.filter((_, i) => byIndex.get(i) === true).map(strip);
+}
+
 export async function generateGroundedQuestions(
     artistId: string,
-    opts?: { max?: number },
+    opts?: { max?: number; since?: string | null },
 ): Promise<GroundedQuestion[]> {
     const max = Math.max(0, opts?.max ?? DEFAULT_MAX_QUESTIONS);
     if (!artistId || max === 0) return [];
 
-    const cacheKey = `${artistId}::${max}`;
+    const cacheKey = `${artistId}::${max}::${opts?.since ?? ""}`;
     const now = Date.now();
     const cached = groundedQuestionsCache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
@@ -327,14 +554,44 @@ export async function generateGroundedQuestions(
         if (!artist) return [];
         const artistName = artist.name ?? "the artist";
 
-        const posts = await getSocialPostsForArtist(artistId);
+        const all = await getSocialPostsForArtist(artistId);
+        // SCOPED TO WHAT IS NEW, when the caller asks for it.
+        //
+        // A returning artist should be asked about what they have done since,
+        // not handed the same three questions again — "we only come back when
+        // we have something new to ask about" is the rule that makes a second
+        // ask feel like interest rather than nagging.
+        const since = opts?.since ? Date.parse(opts.since) : NaN;
+        const posts = Number.isNaN(since)
+            ? all
+            : all.filter(p => {
+                const at = Date.parse(p.postedAt ?? "");
+                return !Number.isNaN(at) && at > since;
+            });
         if (posts.length === 0) return [];
 
         const signals = deriveSocialSignals(posts, artist.instagram ?? "", artistName);
         // Stored, not recomputed — see socialCredits.ts. An artist whose
         // captions have not been read yet simply contributes no credit
         // candidates, exactly as before this existed.
-        const extraction = await getSocialCredits(artistId);
+        //
+        // FILTERED BY `since` TOO. Filtering only the posts left the statement
+        // and credit candidates unbounded, so a return interview scoped to the
+        // last two months came back asking about a post from 2020 — the exact
+        // "same questions again" this scoping exists to prevent. Measured on
+        // Pete Rango: a pandemic reflection surfaced in a window that started
+        // six years after it.
+        const stored = await getSocialCredits(artistId);
+        const newer = <T extends { postedAt?: string | null }>(rows: T[]): T[] =>
+            Number.isNaN(since) ? rows : rows.filter(r => {
+                const at = Date.parse(r.postedAt ?? "");
+                return !Number.isNaN(at) && at > since;
+            });
+        const extraction = {
+            ...stored,
+            credits: newer(stored.credits),
+            statements: newer(stored.statements),
+        };
         const candidates = buildCandidates(signals, artistName, extraction);
         if (candidates.length === 0) return [];
 
@@ -364,24 +621,37 @@ export async function generateGroundedQuestions(
 
         const answers = parseModelAnswers(text);
         const seen = new Set<string>();
-        const questions: GroundedQuestion[] = [];
-
+        const drafted: DraftedQuestion[] = [];
         for (const answer of answers) {
-            if (questions.length >= max) break;
-            const signalId = typeof answer.signalId === "string" ? answer.signalId : null;
+            if (drafted.length >= max) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
+            // ONE SIGNAL. Letting the model name two and hypothesise a link
+            // between them is how it told Pharaoh Sistare that @p3t3rango
+            // engineered "Hourglass & The Flame": one signal said Pharaoh
+            // credits p3t3rango, another said what Hourglass sounds like, and
+            // the join was invented. Nothing anywhere connected them — they are
+            // four different posts.
+            //
+            // Connections are computed in buildCandidates now, where they can
+            // carry the evidence that makes them true. A model cannot invent a
+            // relationship it was handed.
+            const signalId = typeof answer.signalId === "string" ? answer.signalId : null;
             if (!signalId || !question || seen.has(signalId)) continue;
-            const candidate = byId.get(signalId); // join-back: only signalIds WE supplied are honored
+            const candidate = byId.get(signalId); // only signalIds WE supplied are honored
             if (!candidate) continue;
             seen.add(signalId);
-            questions.push({
+
+            drafted.push({
                 key: candidate.key,
                 question,
                 rationale: typeof answer.rationale === "string" ? answer.rationale : "",
                 sourceUrls: candidate.sourceUrls,
                 kind: candidate.kind,
+                materials: [candidate.material],
             });
         }
+
+        const questions = await keepOnlySupported(drafted, artistName);
 
         pruneGroundedQuestionsCache(now);
         groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });

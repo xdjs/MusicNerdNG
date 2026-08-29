@@ -90,7 +90,7 @@ const MAX_SELF_CREDIT_SOURCES = 6;
 const MAX_STATEMENT_SOURCES = 12;
 
 type VaultSourceRow = Awaited<ReturnType<typeof getVaultSourcesByArtistId>>[number];
-type InterviewAnswerRow = Awaited<ReturnType<typeof getInterviewAnswers>>[number];
+type InterviewAnswerRow = NonNullable<Awaited<ReturnType<typeof getInterviewAnswers>>>[number];
 
 /** Raw material fetched ONCE per doc-generation-adjacent call. Both the
  *  numbered source list and the prompt context text are pure derivations of
@@ -141,7 +141,7 @@ async function gatherDocMaterial(artistId: string): Promise<DocMaterial> {
     if (uncitable > 0) {
         console.log(`[gatherDocMaterial] ${uncitable}/${approvedSources.length} approved source(s) excluded from citation for ${artistName} — page content never verified`);
     }
-    const answers = (await getInterviewAnswers(artistId)).filter(a => a.answer);
+    const answers = (await getInterviewAnswers(artistId) ?? []).filter(a => a.answer);
 
     // Social signals: confirmed mutual Instagram collaborations (co-authored /
     // tagged posts) plus real track credits — the "we have real collaborator

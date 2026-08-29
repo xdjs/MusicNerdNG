@@ -29,6 +29,9 @@ type TrackLink = { service: string; url: string };
  *  the date — "Pete Rango on Instagram, 2026-03-23" — so the pill shows that
  *  instead, and the reader can see which one is the recent one. */
 function sourceHost(s: AnswerSource): string {
+    // The artist answering a question we asked. There is no page to send
+    // anyone to, and saying so beats showing a truncated question.
+    if (!s.url) return "their own words";
     const dated = s.title.match(/\b(\d{4})-(\d{2})-\d{2}\b/);
     let host: string;
     try { host = new URL(s.url).hostname.replace(/^www\./, ""); }
@@ -96,15 +99,24 @@ function renderAnswer(
                     {cited.map((c, i) => (
                         <span key={c.n}>
                             {i > 0 && <span className="text-muted-foreground/50">,</span>}
-                            <a
-                                href={c.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={c.title}
-                                className="px-[0.15em] text-pastypink hover:underline"
-                            >
-                                {c.n}
-                            </a>
+                            {c.url ? (
+                                <a
+                                    href={c.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={c.title}
+                                    className="px-[0.15em] text-pastypink hover:underline"
+                                >
+                                    {c.n}
+                                </a>
+                            ) : (
+                                // The artist told us this directly. Nowhere to
+                                // link to, and a link that goes nowhere is
+                                // worse than a number that admits it.
+                                <span title={c.title} className="px-[0.15em] text-pastypink">
+                                    {c.n}
+                                </span>
+                            )}
                         </span>
                     ))}
                 </sup>
@@ -460,19 +472,29 @@ export default function AskAboutArtist({ artistId, artistName }: AskAboutArtistP
                         <div className="flex flex-col gap-1 pt-1">
                             <p className="text-[10px] text-muted-foreground/60">Sources</p>
                             <div className="flex flex-wrap gap-1.5">
-                                {sources.map(s => (
-                                    <a
-                                        key={s.n}
-                                        href={s.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-black/10 dark:border-white/15 text-gray-600 dark:text-gray-400 hover:border-black/25 dark:hover:border-white/30 whitespace-nowrap max-w-[16rem] truncate"
-                                        title={s.title}
-                                    >
-                                        <span className="opacity-50">[{s.n}]</span>
-                                        {sourceHost(s)}
-                                    </a>
-                                ))}
+                                {sources.map(s => {
+                                    const label = (
+                                        <>
+                                            <span className="opacity-50">[{s.n}]</span>
+                                            {sourceHost(s)}
+                                        </>
+                                    );
+                                    const pill = "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-black/10 dark:border-white/15 text-gray-600 dark:text-gray-400 whitespace-nowrap max-w-[16rem] truncate";
+                                    return s.url ? (
+                                        <a
+                                            key={s.n}
+                                            href={s.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={`${pill} hover:border-black/25 dark:hover:border-white/30`}
+                                            title={s.title}
+                                        >
+                                            {label}
+                                        </a>
+                                    ) : (
+                                        <span key={s.n} className={pill} title={s.title}>{label}</span>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

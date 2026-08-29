@@ -29,6 +29,9 @@ const MAX_SONGS_LINKED = 8;
 /** Pete Rango has 209 credited collaborators. Numbering all of them produced
  *  source markers in the hundreds and a prompt mostly made of names. */
 const MAX_COLLABORATORS_IN_CONTEXT = 20;
+/** Everything an artist has told us directly is worth carrying; the cap is
+ *  only there so a prolific interviewee cannot crowd out the rest. */
+const MAX_INTERVIEW_IN_CONTEXT = 12;
 /** The fallback runs only when we already failed, so it gets what is left of
  *  a reader's patience. */
 const GROUNDED_TIMEOUT_MS = 15_000;
@@ -255,6 +258,41 @@ export async function POST(req: Request) {
                 contextParts.push(`\n--- WHAT ${artistName.toUpperCase()} SAYS THEY DO THEMSELVES ---\n${lines.join("\n")}`);
             }
             for (const s of extraction.statements.slice(0, 12)) unexplored.push(s.topic);
+
+            // THE INTERVIEW. The one part of this page the artist wrote on
+            // purpose, and the ask never read it — it arrived second-hand
+            // through the knowledge document, so an answer could not cite what
+            // they actually said as a source of its own.
+            //
+            // Numbered like everything else, but with no url: there is nowhere
+            // to send a reader except back to this page. The client renders a
+            // citation without a link rather than pretending there is one.
+            try {
+                const { getInterviewAnswers } = await import("@/server/utils/queries/onboardingQueries");
+                // NEWEST FIRST. getInterviewAnswers orders oldest-first, so
+                // slicing kept the oldest twelve — an artist who kept talking
+                // to us had every later answer dropped while their first ones
+                // stayed, and the ask went on citing stale material.
+                const answered = (await getInterviewAnswers(artistId) ?? [])
+                    .filter(a => a.answer)
+                    .sort((x, y) => String(y.createdAt ?? "").localeCompare(String(x.createdAt ?? "")));
+                if (answered.length > 0) {
+                    const lines = answered.slice(0, MAX_INTERVIEW_IN_CONTEXT).map(a => {
+                        const n = citable.length + 1;
+                        citable.push({ n, title: `${artistName}, asked "${a.question}"`, url: "" });
+                        return `[${n}] Asked: ${a.question}\n    They said: "${a.answer}"`;
+                    });
+                    contextParts.push(
+                        `\n--- ${artistName.toUpperCase()} ANSWERING US DIRECTLY (their own words, given on purpose — treat as ground truth and prefer it over anything inferred) ---\n`
+                        + lines.join("\n"),
+                    );
+                    // A fan's next question should be able to go at something
+                    // the artist actually chose to tell us.
+                    for (const a of answered.slice(0, 6)) unexplored.push(`their answer about: ${a.question}`);
+                }
+            } catch (e) {
+                console.error("[askArtist] Could not read interview answers:", e);
+            }
             if (extraction.statements.length > 0) {
                 // NUMBERED like any other source. Without this an answer built
                 // entirely from the artist's own captions — the best evidence
