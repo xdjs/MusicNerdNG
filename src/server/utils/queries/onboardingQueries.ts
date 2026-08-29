@@ -58,7 +58,12 @@ export async function upsertInterviewAnswer(input: {
     questionKey: string;
     question: string;
     answer: string | null;
-    source: "onboarding" | "followup";
+    /** "offered" is a question we PUT to them that they have not dealt with
+     *  yet — the boundary of a sitting. It becomes "followup" the moment they
+     *  answer it or skip it. Without it there is no way to tell a sitting
+     *  somebody abandoned from one they finished, because a lifetime row count
+     *  cannot see where one offer ended and the next began. */
+    source: "onboarding" | "followup" | "offered";
 }): Promise<void> {
     await db
         .insert(artistInterviewAnswers)

@@ -36,7 +36,12 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyCatalogDetail: (...a) => getSpotifyCatalogDetail(...a),
 }));
 
-const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', createdAt: at });
+const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', createdAt: at, source: 'followup' });
+/** A question put to them that they have not dealt with — the boundary of a
+ *  sitting, and the only thing that can tell an abandoned one from a finished
+ *  one. A lifetime row count cannot: after a completed first sitting, one
+ *  answer into a second gives four rows, which is not "fewer than a set". */
+const stillOpen = (key) => ({ questionKey: key, question: 'q', answer: null, createdAt: '2026-08-25T00:00:00Z', source: 'offered' });
 /** A COMPLETED sitting. Fewer rows than this means they started and stopped,
  *  and the remaining questions are still owed — the new-material gate does not
  *  apply until a full set has been dealt with, one way or another. Dismissing
@@ -141,7 +146,10 @@ describe('getInterviewInvite', () => {
         // Answering one question and closing the tab made `since` truthy, and
         // the new-material gate then hid the other two until the artist
         // happened to post something. The sitting could never be resumed.
-        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-01T00:00:00Z'),
+            stillOpen('social_credit_2'),
+        ]);
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-07-01T00:00:00Z' }]);  // nothing new
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_2', question: 'the next one' }]);
 
@@ -189,5 +197,60 @@ describe('getInterviewInvite', () => {
         expect(upsertInterviewAnswer).toHaveBeenCalledTimes(2);
         // Written as skips — the same shape skipping one inside the panel uses.
         expect(upsertInterviewAnswer.mock.calls[0][0]).toMatchObject({ questionKey: 'k1', answer: null });
+    });
+
+    it('resumes an abandoned SECOND sitting, which a row count cannot see', async () => {
+        // After a completed first sitting, one answer into a later one gives
+        // four rows — not "fewer than a set" — so the gate hid the rest of that
+        // offer for good. The open row is the boundary.
+        getInterviewAnswers.mockResolvedValue([
+            ...aFullSitting('2026-08-01T00:00:00Z'),
+            answered('social_theme_9', '2026-08-25T00:00:00Z'),
+            stillOpen('social_theme_10'),
+        ]);
+        getSocialPostsForArtist.mockResolvedValue([]);          // nothing newer
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_theme_10', question: 'the one they did not reach' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: null });
+    });
+
+    it('does not treat an open offer as an answer', async () => {
+        // An offered row means "we asked, they have not said" — re-offering it
+        // is the point, so it must not land in answeredKeys.
+        getInterviewAnswers.mockResolvedValue([stillOpen('social_theme_10')]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_theme_10', question: 'ask me again' }]);
+        const out = await invite();
+        expect(out.questions.map(q => q.key)).toContain('social_theme_10');
+    });
+
+    it('gives two non-Latin releases distinct keys', async () => {
+        // [^a-z0-9] reduces a Korean or Japanese title to nothing, so every
+        // such release collapsed onto one key — and (artist, questionKey) is
+        // unique, so the second answer would have overwritten the first and
+        // silently destroyed what the artist wrote.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([]);
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
+        getSpotifyCatalogDetail.mockResolvedValue([
+            { name: '사랑', releaseDate: '2026-08-20' },
+            { name: '恋', releaseDate: '2026-08-22' },
+        ]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        const keys = out.questions.map(q => q.key);
+        expect(new Set(keys).size).toBe(keys.length);
+    });
+
+    it('records an opened offer without overwriting an existing answer', async () => {
+        upsertInterviewAnswer.mockClear();
+        getInterviewAnswers.mockResolvedValue([answered('k1', '2026-08-01T00:00:00Z')]);
+        const { markInterviewOffered } = await import('../interviewActions');
+        await markInterviewOffered('a1', [{ key: 'k1', question: 'already answered' }, { key: 'k2', question: 'new' }]);
+
+        expect(upsertInterviewAnswer).toHaveBeenCalledTimes(1);
+        expect(upsertInterviewAnswer.mock.calls[0][0]).toMatchObject({ questionKey: 'k2', source: 'offered', answer: null });
     });
 });

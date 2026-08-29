@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/server/db/drizzle";
 import { sql } from "drizzle-orm";
+import { ABOUT_EMPTY_STATE } from "@/lib/bioConstants";
 
 /**
  * Which pages we are asking search engines to read.
@@ -37,7 +38,16 @@ const BASE = "https://www.musicnerd.xyz";
  * To widen this — say, once most pages have been built out — add to the OR.
  */
 const WORTH_CRAWLING = sql`
-    (a.bio IS NOT NULL AND length(a.bio) > 120)
+    (
+        a.bio IS NOT NULL
+        AND length(a.bio) > 120
+        -- LENGTH IS NOT SUBSTANCE. artistBioQuery caches the claim-nudge empty
+        -- state into artists.bio for a thin artist, and it runs to well over a
+        -- hundred characters while explicitly saying there is nothing verified
+        -- here — so the filter would have admitted exactly the pages it exists
+        -- to keep out, more of them every day.
+        AND btrim(a.bio) <> ${ABOUT_EMPTY_STATE}
+    )
     OR EXISTS (
         SELECT 1 FROM artist_vault_sources s
          WHERE s.artist_id = a.id AND s.status = 'approved'

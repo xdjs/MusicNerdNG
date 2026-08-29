@@ -72,23 +72,33 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // check the vault and the knowledge document use.
         if (!(await canEditArtist(session.user.id, artistId))) return { show: false };
 
-        const answers = await getInterviewAnswers(artistId);
-        // Skipped questions count as answered for this purpose: they were asked
-        // and dealt with, and re-offering them is the nagging we are avoiding.
-        const answeredKeys = new Set(answers.map(a => a.questionKey));
-        const lastAnsweredAt = answers.reduce<string | null>((latest, a) => {
+        const rows = await getInterviewAnswers(artistId);
+        // A question we put to them and they have not dealt with yet. This is
+        // the boundary of a sitting, and it is why the row exists.
+        const stillOpen = rows.filter(r => r.source === "offered");
+        const dealtWith = rows.filter(r => r.source !== "offered");
+
+        // Skipped questions count as dealt with: they were asked and answered
+        // by being declined, and re-offering them is the nagging we avoid.
+        const answeredKeys = new Set(dealtWith.map(a => a.questionKey));
+        const lastAnsweredAt = dealtWith.reduce<string | null>((latest, a) => {
             const at = a.createdAt ? String(a.createdAt) : null;
             if (!at) return latest;
             return !latest || at > latest ? at : latest;
         }, null);
 
         // AN UNFINISHED SITTING IS NOT A FINISHED ONE. Answering one question
-        // and closing the tab made `since` truthy, and the new-material gate
-        // then hid the other two until the artist happened to post something —
-        // so the sitting could never be resumed. Fewer than a full set means
-        // they started and stopped, and the rest are still owed.
-        const unfinished = answers.length > 0 && answers.length < QUESTION_COUNT;
-        const since = unfinished ? null : lastAnsweredAt;
+        // and closing the tab made `since` truthy, and the gate then hid the
+        // rest until the artist happened to post something, so the sitting
+        // could never be resumed.
+        //
+        // A LIFETIME ROW COUNT CANNOT SEE THIS. After a completed first sitting
+        // an artist who answers one question of a second has four rows, which
+        // is not "fewer than a set" — and the questions that came with it were
+        // hidden for good. The open rows are the boundary: they say which
+        // questions are outstanding from the offer that is actually in front of
+        // them.
+        const since = stillOpen.length > 0 ? null : lastAnsweredAt;
 
         if (since && !(await hasNewMaterialSince(artistId, since))) return { show: false };
 
@@ -103,7 +113,7 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
 }
 
 /** Records that appeared since they last told us anything, newest first. */
-async function newReleasesSince(artistId: string, since: string | null): Promise<{ name: string }[]> {
+async function newReleasesSince(artistId: string, since: string | null): Promise<{ name: string; releaseDate: string | null }[]> {
     const artist = await getArtistById(artistId).catch(() => null);
     if (!artist?.spotify) return [];
     const releases = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders()).catch(() => []);
@@ -114,7 +124,7 @@ async function newReleasesSince(artistId: string, since: string | null): Promise
             const at = Date.parse(r.releaseDate ?? "");
             return !Number.isNaN(at) && at > cutoff;
         })
-        .map(r => ({ name: r.name }));
+        .map(r => ({ name: r.name, releaseDate: r.releaseDate ?? null }));
 }
 
 /** A post scraped or a record released since they last told us anything. */
@@ -164,7 +174,14 @@ async function pickQuestions(
     if (picked.length < QUESTION_COUNT) {
         for (const r of await newReleasesSince(artistId, since)) {
             if (picked.length >= QUESTION_COUNT) break;
-            const key = `release_${r.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`.slice(0, 120);
+            // UNICODE, AND THE DATE. [^a-z0-9] reduces a Korean or Japanese
+            // title to nothing, so every non-Latin release collapsed onto the
+            // same key — and (artist, questionKey) is unique, so the second
+            // answer would have overwritten the first and silently destroyed
+            // what the artist had already written. The date disambiguates two
+            // releases that normalise alike for any other reason.
+            const slug = r.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "");
+            const key = `release_${slug || "untitled"}_${r.releaseDate ?? "undated"}`.slice(0, 180);
             if (answeredKeys.has(key)) continue;
             // Not generated: we know the title and the date and nothing else,
             // and inventing a detail about a record we have not heard is how
@@ -272,6 +289,41 @@ export async function declineInterview(
         return { success: true };
     } catch (e) {
         console.error("[declineInterview] Error:", e);
+        return { success: false };
+    }
+}
+
+/**
+ * They opened the panel. Record what was put to them.
+ *
+ * Written as "offered" rather than skipped: these are questions in front of the
+ * artist right now, not ones they declined. If they close the browser halfway
+ * the rows survive, and the next visit resumes the sitting instead of hiding it
+ * behind the new-material gate — which is what happened before this existed.
+ */
+export async function markInterviewOffered(
+    artistId: string,
+    questions: InterviewQuestion[],
+): Promise<{ success: boolean }> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false };
+    try {
+        if (!(await canEditArtist(session.user.id, artistId))) return { success: false };
+        const existing = new Set((await getInterviewAnswers(artistId)).map(r => r.questionKey));
+        for (const q of questions.slice(0, QUESTION_COUNT)) {
+            // Never overwrite a real answer with an empty offer row.
+            if (existing.has(q.key)) continue;
+            await upsertInterviewAnswer({
+                artistId,
+                questionKey: q.key,
+                question: q.question.trim().slice(0, 500),
+                answer: null,
+                source: "offered",
+            });
+        }
+        return { success: true };
+    } catch (e) {
+        console.error("[markInterviewOffered] Error:", e);
         return { success: false };
     }
 }

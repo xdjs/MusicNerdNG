@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import {
     answerInterviewQuestion,
     finishInterview,
+    markInterviewOffered,
     type InterviewQuestion,
 } from "@/app/actions/interviewActions";
 
@@ -44,6 +45,13 @@ export default function InterviewPanel({
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
     const [answered, setAnswered] = useState(0);
+
+    // Written down the moment the panel opens, so a sitting abandoned by
+    // closing the browser can be resumed rather than disappearing behind the
+    // new-material gate.
+    useEffect(() => {
+        void markInterviewOffered(artistId, questions);
+    }, [artistId, questions]);
 
     const current = questions[index];
 
