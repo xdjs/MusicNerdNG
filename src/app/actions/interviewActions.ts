@@ -5,6 +5,7 @@ import { getDevSession } from "@/server/utils/dev-auth";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import {
     getInterviewAnswers,
+    recordInterviewOffered,
     upsertInterviewAnswer,
 } from "@/server/utils/queries/onboardingQueries";
 import { generateGroundedQuestions } from "@/server/utils/questionGenerator";
@@ -72,7 +73,12 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // check the vault and the knowledge document use.
         if (!(await canEditArtist(session.user.id, artistId))) return { show: false };
 
+        // FAIL CLOSED. getInterviewAnswers swallows its own errors and returns
+        // [], which here reads as "they have never answered anything" — so a
+        // database blip would offer a first interview to somebody who has
+        // already done one, and every question they had answered again.
         const rows = await getInterviewAnswers(artistId);
+        if (rows === null) return { show: false };
         // A question we put to them and they have not dealt with yet. This is
         // the boundary of a sitting, and it is why the row exists.
         const stillOpen = rows.filter(r => r.source === "offered");
@@ -102,7 +108,15 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
 
         if (since && !(await hasNewMaterialSince(artistId, since))) return { show: false };
 
-        const questions = await pickQuestions(artistId, since, answeredKeys);
+        // THE OPEN ROWS ARE THE QUESTIONS, not just a flag. Regenerating and
+        // hoping the same keys come back leaves an outstanding question orphaned
+        // whenever the model picks differently — and an orphaned open row keeps
+        // every later invite unscoped and labelled a first interview, forever.
+        const resumed: InterviewQuestion[] = stillOpen.map(r => ({ key: r.questionKey, question: r.question }));
+        const generated = resumed.length >= QUESTION_COUNT
+            ? []
+            : await pickQuestions(artistId, since, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
+        const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);
         if (questions.length === 0) return { show: false };
 
         return { show: true, reason: since ? "new-material" : "first", questions };
@@ -309,18 +323,16 @@ export async function markInterviewOffered(
     if (!session) return { success: false };
     try {
         if (!(await canEditArtist(session.user.id, artistId))) return { success: false };
-        const existing = new Set((await getInterviewAnswers(artistId)).map(r => r.questionKey));
-        for (const q of questions.slice(0, QUESTION_COUNT)) {
-            // Never overwrite a real answer with an empty offer row.
-            if (existing.has(q.key)) continue;
-            await upsertInterviewAnswer({
+        // Insert-only, and no read first. Reading the existing rows and then
+        // writing nulls left a window in which an answer typed in the moment
+        // between the two was overwritten with `answer: null` — losing what the
+        // artist had just written, on the one screen where the words are theirs.
+        await Promise.all(questions.slice(0, QUESTION_COUNT).map(q =>
+            recordInterviewOffered({
                 artistId,
                 questionKey: q.key,
                 question: q.question.trim().slice(0, 500),
-                answer: null,
-                source: "offered",
-            });
-        }
+            })));
         return { success: true };
     } catch (e) {
         console.error("[markInterviewOffered] Error:", e);

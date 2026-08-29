@@ -70,10 +70,56 @@ export async function upsertInterviewAnswer(input: {
         .values(input)
         .onConflictDoUpdate({
             target: [artistInterviewAnswers.artistId, artistInterviewAnswers.questionKey],
-            set: { question: input.question, answer: input.answer, source: input.source },
+            set: {
+                question: input.question,
+                answer: input.answer,
+                source: input.source,
+                // RE-STAMPED, because this row may have been created when the
+                // question was OFFERED rather than when it was answered. The
+                // watermark that decides "has anything happened since they last
+                // spoke" read the offer time, so an artist who answered days
+                // later was immediately offered another interview about
+                // activity that predated their answer.
+                createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
+            },
         });
 }
 
+/**
+ * Write down that a question was PUT to somebody, and never anything more.
+ *
+ * Insert-only, deliberately. The upsert version read the existing rows and then
+ * wrote nulls, so an artist who answered the first question in the moment
+ * between those two steps had their answer overwritten with `answer: null` —
+ * losing what they had just typed, on the one screen in the product where the
+ * words are theirs.
+ *
+ * `onConflictDoNothing` removes the race rather than narrowing it: a row that
+ * exists, for any reason, in any order, is left exactly as it is.
+ */
+export async function recordInterviewOffered(input: {
+    artistId: string;
+    questionKey: string;
+    question: string;
+}): Promise<void> {
+    await db
+        .insert(artistInterviewAnswers)
+        .values({ ...input, answer: null, source: "offered" })
+        .onConflictDoNothing({
+            target: [artistInterviewAnswers.artistId, artistInterviewAnswers.questionKey],
+        });
+}
+
+/**
+ * `null` means WE DO NOT KNOW, which is not the same as "they have answered
+ * nothing".
+ *
+ * Returning [] on a failure told the interview that a database blip was a
+ * blank slate — so it would offer a first sitting to somebody who had already
+ * done one, and re-ask every question they had answered. Callers that only
+ * want to READ answers can treat null as empty; the one that decides whether to
+ * ask has to stop.
+ */
 export async function getInterviewAnswers(artistId: string) {
     try {
         return await db.query.artistInterviewAnswers.findMany({
@@ -82,7 +128,7 @@ export async function getInterviewAnswers(artistId: string) {
         });
     } catch (e) {
         console.error("[getInterviewAnswers] Error:", e);
-        return [];
+        return null;
     }
 }
 

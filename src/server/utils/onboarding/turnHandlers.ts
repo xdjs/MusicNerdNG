@@ -697,7 +697,7 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             return;
         }
         case "interview": {
-            const asked = new Set((await getInterviewAnswers(artistId)).map(a => a.questionKey));
+            const asked = new Set((await getInterviewAnswers(artistId) ?? []).map(a => a.questionKey));
             // Once INTERVIEW_QUESTION_CAP distinct questions have been asked
             // (answered or skipped — both count), there is nothing left to
             // offer regardless of what a regeneration might return, so skip
@@ -1301,7 +1301,7 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         const answer = turn.answer?.trim() || null;
         // Count of questions already asked BEFORE this one — its 0-based
         // position, used to pick a non-repeating ack fallback on a miss.
-        const priorAnswers = await getInterviewAnswers(artistId);
+        const priorAnswers = await getInterviewAnswers(artistId) ?? [];
         await upsertInterviewAnswer({
             artistId,
             questionKey: turn.questionKey,

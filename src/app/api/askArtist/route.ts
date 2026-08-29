@@ -273,7 +273,7 @@ export async function POST(req: Request) {
                 // slicing kept the oldest twelve — an artist who kept talking
                 // to us had every later answer dropped while their first ones
                 // stayed, and the ask went on citing stale material.
-                const answered = (await getInterviewAnswers(artistId))
+                const answered = (await getInterviewAnswers(artistId) ?? [])
                     .filter(a => a.answer)
                     .sort((x, y) => String(y.createdAt ?? "").localeCompare(String(x.createdAt ?? "")));
                 if (answered.length > 0) {

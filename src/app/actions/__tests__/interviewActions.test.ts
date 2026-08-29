@@ -12,6 +12,7 @@ import { jest } from '@jest/globals';
 const canEditArtist = jest.fn();
 const getInterviewAnswers = jest.fn();
 const upsertInterviewAnswer = jest.fn();
+const recordInterviewOffered = jest.fn();
 const generateGroundedQuestions = jest.fn();
 const getSocialPostsForArtist = jest.fn();
 const getArtistById = jest.fn();
@@ -23,6 +24,7 @@ jest.mock('@/server/utils/artistEditAuth', () => ({ canEditArtist: (...a) => can
 jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     getInterviewAnswers: (...a) => getInterviewAnswers(...a),
     upsertInterviewAnswer: (...a) => upsertInterviewAnswer(...a),
+    recordInterviewOffered: (...a) => recordInterviewOffered(...a),
 }));
 jest.mock('@/server/utils/questionGenerator', () => ({
     generateGroundedQuestions: (...a) => generateGroundedQuestions(...a),
@@ -244,13 +246,42 @@ describe('getInterviewInvite', () => {
         expect(new Set(keys).size).toBe(keys.length);
     });
 
-    it('records an opened offer without overwriting an existing answer', async () => {
+    it('records an opened offer without a read-then-write that could clobber an answer', async () => {
+        // The upsert version read the existing rows and then wrote nulls, so an
+        // answer typed in the moment between those two steps was overwritten
+        // with answer: null — losing what the artist had just written, on the
+        // one screen where the words are theirs. Insert-only removes the race
+        // rather than narrowing it.
+        recordInterviewOffered.mockClear();
         upsertInterviewAnswer.mockClear();
-        getInterviewAnswers.mockResolvedValue([answered('k1', '2026-08-01T00:00:00Z')]);
         const { markInterviewOffered } = await import('../interviewActions');
-        await markInterviewOffered('a1', [{ key: 'k1', question: 'already answered' }, { key: 'k2', question: 'new' }]);
+        await markInterviewOffered('a1', [{ key: 'k1', question: 'one' }, { key: 'k2', question: 'two' }]);
 
-        expect(upsertInterviewAnswer).toHaveBeenCalledTimes(1);
-        expect(upsertInterviewAnswer.mock.calls[0][0]).toMatchObject({ questionKey: 'k2', source: 'offered', answer: null });
+        expect(recordInterviewOffered).toHaveBeenCalledTimes(2);
+        expect(upsertInterviewAnswer).not.toHaveBeenCalled();
+        expect(recordInterviewOffered.mock.calls[0][0]).toMatchObject({ questionKey: 'k1' });
+    });
+
+    it('stops rather than guessing when the answer history cannot be read', async () => {
+        // Returning [] on a failure said "they have answered nothing", so a
+        // database blip would offer a first sitting to somebody who had already
+        // done one and re-ask everything they had answered.
+        getInterviewAnswers.mockResolvedValue(null);
+        expect((await invite()).show).toBe(false);
+    });
+
+    it('resumes the questions that are actually outstanding, not regenerated guesses', async () => {
+        // An open row whose key the model stops choosing is orphaned forever,
+        // and an orphaned open row keeps every later invite unscoped and
+        // labelled a first interview.
+        getInterviewAnswers.mockResolvedValue([
+            ...aFullSitting('2026-08-01T00:00:00Z'),
+            { questionKey: 'social_theme_7', question: 'the one still open', answer: null,
+              createdAt: '2026-08-25T00:00:00Z', source: 'offered' },
+        ]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'something_else', question: 'a different one' }]);
+
+        const out = await invite();
+        expect(out.questions[0]).toEqual({ key: 'social_theme_7', question: 'the one still open' });
     });
 });

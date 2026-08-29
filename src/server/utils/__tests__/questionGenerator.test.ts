@@ -402,6 +402,58 @@ describe('generateGroundedQuestions', () => {
             await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
         });
 
+        it("drops EVERY grounded question when the checker cannot run", async () => {
+            // There was no test for this path, which is how a broken guard
+            // survived: it claimed to fail closed "asymmetrically" by keeping
+            // single-signal questions, and once pairing was removed every draft
+            // had exactly one material — so the filter kept all of them. It
+            // read as protective and did nothing, which is worse than having
+            // none, because it was the reason to feel safe.
+            //
+            // There is no safe subset. The André sentence compressed a chain of
+            // causes inside a SINGLE caption; single-signal questions were
+            // never immune, only untouched so far.
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalId: "same_post_B", question: "a question", rationale: "x" }],
+                    () => { throw new Error("checker down"); },
+                ),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("drops everything when the checker answers with nonsense", async () => {
+            const { generateGroundedQuestions } = await withExtraction({
+                generateContentImpl: twoCalls(
+                    [{ signalId: "same_post_B", question: "a question", rationale: "x" }],
+                    () => "not json at all",
+                ),
+            });
+            await expect(generateGroundedQuestions("a1")).resolves.toEqual([]);
+        });
+
+        it("gives two collaborators with non-Latin names distinct keys", async () => {
+            // `slug` is ASCII-only and reduces both to "x", so they would share
+            // a signalId — byId keeps only the last, and their answers overwrite
+            // each other under the unique (artist, questionKey) index.
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [
+                        { subject: "사랑", isHandle: false, isSelf: false, role: "mixed", quote: "q", url: "https://insta/p/A/", postedAt: null },
+                        { subject: "사랑", isHandle: false, isSelf: false, role: "mixed", quote: "q", url: "https://insta/p/B/", postedAt: null },
+                        { subject: "恋", isHandle: false, isSelf: false, role: "played", quote: "q", url: "https://insta/p/C/", postedAt: null },
+                        { subject: "恋", isHandle: false, isSelf: false, role: "played", quote: "q", url: "https://insta/p/D/", postedAt: null },
+                    ],
+                })),
+            }));
+            const { generateGroundedQuestions, generateContent } = await setup({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            const sent = promptFrom(generateContent);
+            const ids = [...sent.matchAll(/"signalId": "(partnership_[^"]+)"/g)].map(m => m[1]);
+            expect(new Set(ids).size).toBe(ids.length);
+        });
+
         it("treats a question with no verdict as unverified, not approved", async () => {
             const { generateGroundedQuestions } = await withExtraction({
                 generateContentImpl: twoCalls([{ signalId: "same_post_B", question: "q", rationale: "x" }], []),

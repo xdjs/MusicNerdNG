@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { MessageCircleQuestion, X } from "lucide-react";
 import { EditModeContext } from "@/app/_components/EditModeContext";
-import { declineInterview, getInterviewInvite, type InterviewQuestion } from "@/app/actions/interviewActions";
+import { declineInterview, getInterviewInvite, type InterviewInvite, type InterviewQuestion } from "@/app/actions/interviewActions";
 import InterviewPanel from "./InterviewPanel";
 import { TOUR_FINISHED_EVENT } from "./ProfileTour";
 
@@ -44,11 +44,26 @@ export default function InterviewOffer({
     const [questions, setQuestions] = useState<InterviewQuestion[] | null>(null);
     const [reason, setReason] = useState<"first" | "new-material">("first");
     const [open, setOpen] = useState(false);
+    const openRef = useRef(false);
     const [dismissed, setDismissed] = useState(false);
 
+    /** One in-flight request, shared. The mount check and the tour-finished
+     *  check used to run concurrently: the tour's could open the panel with one
+     *  set of questions while the older one resolved afterwards and replaced
+     *  the `questions` prop underneath it — changing the question being
+     *  answered, and recording both sets as offered. */
+    const inFlight = useRef<Promise<InterviewInvite> | null>(null);
+
     const check = useCallback(async () => {
-        const invite = await getInterviewInvite(artistId).catch(() => ({ show: false }) as const);
+        if (!inFlight.current) {
+            inFlight.current = getInterviewInvite(artistId)
+                .catch(() => ({ show: false }) as InterviewInvite)
+                .finally(() => { inFlight.current = null; });
+        }
+        const invite = await inFlight.current;
         if (!invite.show) return null;
+        // Never while they are answering.
+        if (openRef.current) return invite;
         setQuestions(invite.questions);
         setReason(invite.reason);
         return invite;
@@ -69,7 +84,7 @@ export default function InterviewOffer({
         const onFinished = async (e: Event) => {
             if ((e as CustomEvent).detail !== artistId) return;
             const invite = await check();
-            if (invite?.show) setOpen(true);
+            if (invite?.show) { openRef.current = true; setOpen(true); }
         };
         window.addEventListener(TOUR_FINISHED_EVENT, onFinished);
         return () => window.removeEventListener(TOUR_FINISHED_EVENT, onFinished);
@@ -85,6 +100,7 @@ export default function InterviewOffer({
                 questions={questions}
                 reason={reason}
                 onClose={() => {
+                    openRef.current = false;
                     setOpen(false);
                     // Answered or skipped inside the panel either way — every
                     // question they saw has a row now, so nothing needs
@@ -113,7 +129,7 @@ export default function InterviewOffer({
                 </p>
                 <button
                     type="button"
-                    onClick={() => setOpen(true)}
+                    onClick={() => { openRef.current = true; setOpen(true); }}
                     className="mt-2 rounded-lg bg-pastypink px-3 py-1.5 text-xs font-semibold text-black"
                 >
                     Start

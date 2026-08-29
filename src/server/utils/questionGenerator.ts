@@ -113,6 +113,13 @@ interface SignalCandidate {
     sourceUrls: string[];
 }
 
+/** Letters and digits of any script, so a name outside ASCII still identifies
+ *  one person. `slug` below is ASCII-only and stays that way for the callers
+ *  that key on urls and hashtags, where ASCII is the alphabet in use. */
+function unicodeSlug(s: string): string {
+    return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "").slice(0, 60) || "x";
+}
+
 function slug(s: string): string {
     return s
         .toLowerCase()
@@ -165,10 +172,16 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
     // more is a relationship, one is an anecdote.
     for (const c of creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2).slice(0, TOP_PARTNERSHIPS)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
+        // UNICODE. `slug` is ASCII-only and reduces a Japanese or Korean name
+        // to "x", so two such collaborators would share a signalId — the byId
+        // map would keep only the last, and their answers would overwrite each
+        // other under the unique (artist, questionKey) index. Same bug as the
+        // release keys, in the place I did not look.
+        const id = unicodeSlug(c.subject);
         out.push({
-            signalId: `partnership_${slug(c.subject)}`,
+            signalId: `partnership_${id}`,
             kind: "partnership",
-            key: `social_partnership_${slug(c.subject)}`,
+            key: `social_partnership_${id}`,
             authoredBy: "artist",
             material: `${artistName} has credited ${subject} on ${c.evidenceUrls.length} SEPARATE posts, in their own words each time, as: ${c.roles.join("; ")}. That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, and you must not attach ${subject} to any release you were told about elsewhere.`,
             sourceUrls: c.evidenceUrls,
@@ -454,10 +467,20 @@ Return STRICT JSON ONLY: [{ "i": number, "ok": boolean, "problem": string }]. "i
  * only with this in front of it. Single-signal questions were accurate in every
  * sample; the failure arrived with the collision.
  *
- * FAILS CLOSED, AND ASYMMETRICALLY. If the checker cannot run, the single-signal
- * questions still go — they were never the risk — and the cross-signal ones are
- * dropped. An unchecked question about somebody's family is not worth the
- * interest it adds.
+ * FAILS CLOSED. If the checker cannot run, nothing grounded goes out.
+ *
+ * It used to say it failed closed "asymmetrically" — keeping single-signal
+ * questions and dropping crossed ones — and after cross-signal pairing was
+ * removed EVERY draft has exactly one material, so that filter kept all of
+ * them. The guard read as protective and did nothing, which is worse than not
+ * having one, because it was the reason to feel safe.
+ *
+ * There is no safe subset to keep. The André sentence compressed a chain of
+ * causes inside a SINGLE caption; single-signal questions were never immune,
+ * they were just where the failure had not landed yet. So an unavailable
+ * checker means no grounded questions this sitting — the static bank still
+ * fills a first one, and a return visit stays quiet, which is the right way to
+ * be wrong.
  */
 async function keepOnlySupported(
     drafted: DraftedQuestion[],
@@ -487,8 +510,8 @@ async function keepOnlySupported(
         ]);
         text = res.text ?? "";
     } catch (e) {
-        console.error("[questionGenerator] verifier unavailable, keeping single-signal questions only:", e);
-        return drafted.filter(d => d.materials.length === 1).map(strip);
+        console.error("[questionGenerator] verifier unavailable, dropping every grounded question:", e);
+        return [];
     }
 
     let verdicts: { i?: unknown; ok?: unknown; problem?: unknown }[];
@@ -497,8 +520,8 @@ async function keepOnlySupported(
         if (!Array.isArray(parsed)) throw new Error("not an array");
         verdicts = parsed as typeof verdicts;
     } catch (e) {
-        console.error("[questionGenerator] unparseable verifier output, keeping single-signal questions only:", e);
-        return drafted.filter(d => d.materials.length === 1).map(strip);
+        console.error("[questionGenerator] unparseable verifier output, dropping every grounded question:", e);
+        return [];
     }
 
     // A question with NO verdict is unverified, not approved — the same
