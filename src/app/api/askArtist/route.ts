@@ -269,7 +269,13 @@ export async function POST(req: Request) {
             // citation without a link rather than pretending there is one.
             try {
                 const { getInterviewAnswers } = await import("@/server/utils/queries/onboardingQueries");
-                const answered = (await getInterviewAnswers(artistId)).filter(a => a.answer);
+                // NEWEST FIRST. getInterviewAnswers orders oldest-first, so
+                // slicing kept the oldest twelve — an artist who kept talking
+                // to us had every later answer dropped while their first ones
+                // stayed, and the ask went on citing stale material.
+                const answered = (await getInterviewAnswers(artistId))
+                    .filter(a => a.answer)
+                    .sort((x, y) => String(y.createdAt ?? "").localeCompare(String(x.createdAt ?? "")));
                 if (answered.length > 0) {
                     const lines = answered.slice(0, MAX_INTERVIEW_IN_CONTEXT).map(a => {
                         const n = citable.length + 1;

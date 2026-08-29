@@ -37,6 +37,14 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
 }));
 
 const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', createdAt: at });
+/** A COMPLETED sitting. Fewer rows than this means they started and stopped,
+ *  and the remaining questions are still owed — the new-material gate does not
+ *  apply until a full set has been dealt with, one way or another. Dismissing
+ *  the card writes a skip row for every question offered, so an artist only
+ *  lingers below three by closing the browser mid-sitting. */
+const aFullSitting = (at) => [
+    answered('social_credit_1', at), answered('social_credit_2', at), answered('social_credit_3', at),
+];
 
 async function invite() {
     const { getInterviewInvite } = await import('../interviewActions');
@@ -66,13 +74,13 @@ describe('getInterviewInvite', () => {
     });
 
     it('stays quiet when they have answered and nothing has happened since', async () => {
-        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-07-01T00:00:00Z' }]);
         expect((await invite()).show).toBe(false);
     });
 
     it('comes back when a new post has landed', async () => {
-        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_theme_9', question: 'What was that show?' }]);
 
@@ -84,7 +92,7 @@ describe('getInterviewInvite', () => {
     });
 
     it('comes back when a record has appeared', async () => {
-        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
         getSpotifyCatalogDetail.mockResolvedValue([{ name: 'rush', releaseDate: '2026-08-15' }]);
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_music_2', question: 'Tell me about rush.' }]);
@@ -94,7 +102,7 @@ describe('getInterviewInvite', () => {
     it('will not pad a return visit with the generic bank', async () => {
         // Coming back with "what got you started?" when they have just released
         // a record is the generic re-ask this whole design exists to avoid.
-        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_theme_9', question: 'What was that show?' }]);
 
@@ -103,7 +111,10 @@ describe('getInterviewInvite', () => {
     });
 
     it('never re-asks something already answered or skipped', async () => {
-        getInterviewAnswers.mockResolvedValue([{ questionKey: 'social_theme_9', question: 'q', answer: null, createdAt: '2026-08-01T00:00:00Z' }]);
+        getInterviewAnswers.mockResolvedValue([
+            ...aFullSitting('2026-08-01T00:00:00Z'),
+            { questionKey: 'social_theme_9', question: 'q', answer: null, createdAt: '2026-08-01T00:00:00Z' },
+        ]);
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
         generateGroundedQuestions.mockResolvedValue([
             { key: 'social_theme_9', question: 'the skipped one' },
@@ -120,9 +131,63 @@ describe('getInterviewInvite', () => {
     });
 
     it('stays quiet rather than showing an empty interview', async () => {
-        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
         generateGroundedQuestions.mockResolvedValue([]);
         expect((await invite()).show).toBe(false);
+    });
+
+    it('lets an abandoned sitting be finished, without waiting for new material', async () => {
+        // Answering one question and closing the tab made `since` truthy, and
+        // the new-material gate then hid the other two until the artist
+        // happened to post something. The sitting could never be resumed.
+        getInterviewAnswers.mockResolvedValue([answered('social_credit_1', '2026-08-01T00:00:00Z')]);
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-07-01T00:00:00Z' }]);  // nothing new
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_2', question: 'the next one' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        // Unscoped, because this is still the first sitting rather than a return.
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: null });
+    });
+
+    it('asks about a record even when nothing was posted about it', async () => {
+        // Releases trigger the invite, but the generator reads captions — so an
+        // artist who put out a record and said nothing on Instagram produced no
+        // questions and the invite was suppressed. The release trigger did
+        // nothing, silently.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([]);
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
+        getSpotifyCatalogDetail.mockResolvedValue([{ name: 'rush', releaseDate: '2026-08-20' }]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions[0].question).toContain('"rush"');
+    });
+
+    it('truncates an oversized answer rather than storing it', async () => {
+        // A server action is a public endpoint and the textarea's maxLength is
+        // a suggestion. An unbounded answer goes straight into the ask prompt
+        // and the document build.
+        upsertInterviewAnswer.mockClear();
+        const { answerInterviewQuestion } = await import('../interviewActions');
+        await answerInterviewQuestion({
+            artistId: 'a1', questionKey: 'k', question: 'q', answer: 'x'.repeat(9000),
+        });
+        expect(upsertInterviewAnswer.mock.calls[0][0].answer).toHaveLength(2000);
+    });
+
+    it('records a dismissal, so the same three do not come back next visit', async () => {
+        upsertInterviewAnswer.mockClear();
+        const { declineInterview } = await import('../interviewActions');
+        await declineInterview('a1', [
+            { key: 'k1', question: 'one' },
+            { key: 'k2', question: 'two' },
+        ]);
+        expect(upsertInterviewAnswer).toHaveBeenCalledTimes(2);
+        // Written as skips — the same shape skipping one inside the panel uses.
+        expect(upsertInterviewAnswer.mock.calls[0][0]).toMatchObject({ questionKey: 'k1', answer: null });
     });
 });

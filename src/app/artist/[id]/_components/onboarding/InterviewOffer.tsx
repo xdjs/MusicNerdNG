@@ -3,7 +3,7 @@
 import { useCallback, useContext, useEffect, useState } from "react";
 import { MessageCircleQuestion, X } from "lucide-react";
 import { EditModeContext } from "@/app/_components/EditModeContext";
-import { getInterviewInvite, type InterviewQuestion } from "@/app/actions/interviewActions";
+import { declineInterview, getInterviewInvite, type InterviewQuestion } from "@/app/actions/interviewActions";
 import InterviewPanel from "./InterviewPanel";
 import { TOUR_FINISHED_EVENT } from "./ProfileTour";
 
@@ -24,8 +24,14 @@ import { TOUR_FINISHED_EVENT } from "./ProfileTour";
  * THE RULE BEHIND BOTH: we only come back when we have something new to ask
  * about, which the server decides. So a decline is never permanent and never a
  * nag, because there is nothing to return with until the artist has actually
- * done something. Dismissing the card is therefore cheap: it costs this visit,
- * not the feature.
+ * done something.
+ *
+ * WHICH ONLY HOLDS IF A DECLINE IS WRITTEN DOWN. It was local state at first,
+ * so closing the card showed the identical three questions again on the next
+ * page load — the exact nagging the rule exists to prevent, from the one place
+ * nobody would look for it. Declining now records those questions as skipped,
+ * the same way skipping one inside the panel does. Nothing is lost: new
+ * material produces new questions.
  */
 export default function InterviewOffer({
     artistId,
@@ -80,8 +86,9 @@ export default function InterviewOffer({
                 reason={reason}
                 onClose={() => {
                     setOpen(false);
-                    // Gone for this visit either way: they have now either
-                    // answered them or decided not to.
+                    // Answered or skipped inside the panel either way — every
+                    // question they saw has a row now, so nothing needs
+                    // recording here.
                     setDismissed(true);
                 }}
             />
@@ -114,7 +121,12 @@ export default function InterviewOffer({
             </div>
             <button
                 type="button"
-                onClick={() => setDismissed(true)}
+                onClick={() => {
+                    setDismissed(true);
+                    // Recorded, not just hidden — otherwise the same three come
+                    // back on the next page load.
+                    void declineInterview(artistId, questions);
+                }}
                 aria-label="Not now"
                 className="shrink-0 rounded-full p-1 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
             >

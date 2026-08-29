@@ -32,6 +32,12 @@ import { getSpotifyCatalogDetail, getSpotifyHeaders } from "@/server/utils/queri
  *  short enough that somebody finishes it. */
 const QUESTION_COUNT = 3;
 
+/** The textarea says 2,000 too, but a server action is a public endpoint and
+ *  the client's maxLength is a suggestion. An unbounded answer is interpolated
+ *  straight into the ask prompt and the document build, so one oversized
+ *  submission would break both for that artist until somebody noticed. */
+const MAX_ANSWER_CHARS = 2_000;
+
 export type InterviewQuestion = { key: string; question: string };
 
 export type InterviewInvite =
@@ -76,7 +82,14 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
             return !latest || at > latest ? at : latest;
         }, null);
 
-        const since = lastAnsweredAt;
+        // AN UNFINISHED SITTING IS NOT A FINISHED ONE. Answering one question
+        // and closing the tab made `since` truthy, and the new-material gate
+        // then hid the other two until the artist happened to post something —
+        // so the sitting could never be resumed. Fewer than a full set means
+        // they started and stopped, and the rest are still owed.
+        const unfinished = answers.length > 0 && answers.length < QUESTION_COUNT;
+        const since = unfinished ? null : lastAnsweredAt;
+
         if (since && !(await hasNewMaterialSince(artistId, since))) return { show: false };
 
         const questions = await pickQuestions(artistId, since, answeredKeys);
@@ -87,6 +100,21 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         console.error("[getInterviewInvite] Error:", e);
         return { show: false };
     }
+}
+
+/** Records that appeared since they last told us anything, newest first. */
+async function newReleasesSince(artistId: string, since: string | null): Promise<{ name: string }[]> {
+    const artist = await getArtistById(artistId).catch(() => null);
+    if (!artist?.spotify) return [];
+    const releases = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders()).catch(() => []);
+    const cutoff = since ? Date.parse(since) : NaN;
+    return releases
+        .filter(r => {
+            if (Number.isNaN(cutoff)) return false;   // only for a RETURN visit
+            const at = Date.parse(r.releaseDate ?? "");
+            return !Number.isNaN(at) && at > cutoff;
+        })
+        .map(r => ({ name: r.name }));
 }
 
 /** A post scraped or a record released since they last told us anything. */
@@ -127,6 +155,24 @@ async function pickQuestions(
         .slice(0, QUESTION_COUNT)
         .map(q => ({ key: q.key, question: q.question }));
 
+    // A RELEASE WITH NO POSTS BEHIND IT STILL DESERVES A QUESTION. Releases
+    // trigger the invite, but the generator reads captions — so an artist who
+    // put out a record and said nothing about it on Instagram produced no
+    // questions at all, and the invite was suppressed. The release trigger did
+    // nothing, silently, which is the half of the design that would have looked
+    // like it worked.
+    if (picked.length < QUESTION_COUNT) {
+        for (const r of await newReleasesSince(artistId, since)) {
+            if (picked.length >= QUESTION_COUNT) break;
+            const key = `release_${r.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`.slice(0, 120);
+            if (answeredKeys.has(key)) continue;
+            // Not generated: we know the title and the date and nothing else,
+            // and inventing a detail about a record we have not heard is how
+            // this goes wrong. The question is plain and true.
+            picked.push({ key, question: `You put out "${r.name}" — what would you want somebody to notice about it first?` });
+        }
+    }
+
     // The static bank only fills a FIRST interview. Coming back with "what got
     // you started?" when the artist has just released a record is exactly the
     // generic re-ask this design exists to avoid — better to stay quiet.
@@ -166,7 +212,7 @@ export async function answerInterviewQuestion(input: {
             artistId: input.artistId,
             questionKey: input.questionKey,
             question,
-            answer: input.answer?.trim() || null,
+            answer: input.answer?.trim().slice(0, MAX_ANSWER_CHARS) || null,
             // "followup" is what the column was always for; the first sitting
             // through this surface is still a follow-up to the auto-build,
             // which is what actually happened.
@@ -193,6 +239,39 @@ export async function finishInterview(artistId: string): Promise<{ success: bool
         return { success: true };
     } catch (e) {
         console.error("[finishInterview] Error:", e);
+        return { success: false };
+    }
+}
+
+/**
+ * They closed the offer without answering.
+ *
+ * Recorded as skips, one row per question, for the same reason the panel
+ * records a skipped question: without a row the identical three come back on
+ * the next page load, which is the nagging the whole design is built to avoid.
+ * Pete's rule is that we return when there is something NEW — and something new
+ * produces new questions, so nothing is lost by closing the door on these.
+ */
+export async function declineInterview(
+    artistId: string,
+    questions: InterviewQuestion[],
+): Promise<{ success: boolean }> {
+    const session = await getServerAuthSession() ?? await getDevSession();
+    if (!session) return { success: false };
+    try {
+        if (!(await canEditArtist(session.user.id, artistId))) return { success: false };
+        for (const q of questions.slice(0, QUESTION_COUNT)) {
+            await upsertInterviewAnswer({
+                artistId,
+                questionKey: q.key,
+                question: q.question.trim().slice(0, 500),
+                answer: null,
+                source: "followup",
+            });
+        }
+        return { success: true };
+    } catch (e) {
+        console.error("[declineInterview] Error:", e);
         return { success: false };
     }
 }

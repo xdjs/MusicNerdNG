@@ -191,10 +191,15 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
         byPost.set(st.url, at);
     }
     const pairs = [...byPost.entries()]
-        // Only posts where a credit and something the artist SAID sit together.
-        // Two credits alone is a personnel list; a credit beside a sentence
-        // about the work is a question.
-        .filter(([, v]) => v.credits.length > 0 && v.statements.length > 0)
+        // EXACTLY ONE CREDIT. A post with several is a roundup — Pete Rango has
+        // one covering a day in New York that names nine people across a
+        // rehearsal, a house party, a trombonist he heard in the street and a
+        // bar — and picking the first credit and the first statement out of
+        // that pairs two things at random.
+        //
+        // One credit beside something the artist said is unambiguous: there is
+        // only one person in the post and only one thing to be talking about.
+        .filter(([, v]) => v.credits.length === 1 && v.statements.length > 0)
         .slice(0, TOP_SAME_POST);
     for (const [url, v] of pairs) {
         const credit = v.credits[0];
@@ -205,7 +210,14 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
             kind: "same_post",
             key: `social_same_post_${shortCodeFromUrl(url)}`,
             authoredBy: "artist",
-            material: `IN ONE POST, ${artistName} credited ${subject} as "${credit.role}" AND wrote, about ${statement.topic}: "${statement.quote}". Both are from that same post, so they are genuinely about the same piece of work.`,
+            // STATES THE JOIN AND NOTHING MORE. The first version ended "so
+            // they are genuinely about the same piece of work", which is an
+            // inference, not the join — and asserting it in the material handed
+            // the fact-checker a falsehood as evidence, so it could not
+            // possibly have caught it. Co-occurrence in one post is the fact.
+            // Whether they are about the same record is the artist's to say,
+            // which is what makes it a question worth asking.
+            material: `IN ONE POST, ${artistName} credited ${subject} as "${credit.role}" and also wrote, about ${statement.topic}: "${statement.quote}". The only thing this establishes is that they said both in the same post. It does NOT establish that ${subject} worked on whatever the writing is about — ask about that rather than asserting it.`,
             sourceUrls: [url],
         });
     }
