@@ -43,6 +43,15 @@ jest.mock('@/server/utils/socialIngest', () => ({
 jest.mock('@/lib/sourceTypes', () => ({ inferTypeFromUrl: jest.fn().mockReturnValue('article') }));
 jest.mock('@/server/utils/artistLinkService', () => ({ setArtistLink: jest.fn().mockResolvedValue({ oldValue: null, artistName: 'Nova' }), clearArtistLink: jest.fn().mockResolvedValue({ oldValue: 'x' }) }));
 jest.mock('@/server/utils/services', () => ({ extractArtistId: jest.fn() }));
+// Mocked so a test can assert THIS module is reached from the auto-build. The
+// last change added these guards, added tests for the guard functions, and
+// never wired them to the only caller that needed them — a gap function-level
+// tests are structurally unable to see.
+jest.mock('@/server/utils/artistIdentityGuards', () => ({
+    nameIsAmbiguousInDirectory: jest.fn().mockResolvedValue(false),
+    handleBelongsToAnotherArtist: jest.fn().mockResolvedValue(false),
+    contradictsScrapedPosts: jest.fn().mockResolvedValue(false),
+}));
 jest.mock('@/server/utils/profileDiscovery', () => ({
     // titleMatchesArtist stays the REAL implementation — turnHandlers reuses
     // this exact helper for the website-to-vault ownership check, and the
@@ -135,6 +144,63 @@ describe('runOnboardingTurn', () => {
         expect(labels.some(l => /profiles/i.test(l))).toBe(true);
         expect(labels.some(l => /written about you|sources/i.test(l))).toBe(true);
         expect(labels.some(l => /About/i.test(l))).toBe(true);
+    });
+
+    it('the auto-build runs every identity guard before writing a discovered link, and refuses one they reject', async () => {
+        // The guards existed, had their own passing tests, and NOTHING CALLED
+        // THEM on this path — the commit that added them said this call site
+        // passed `verifyIdentity` and it did not. So this asserts the wiring,
+        // not the guards: that the auto-build reaches the module at all, and
+        // that a rejection actually stops the write.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+        const guards = await import('@/server/utils/artistIdentityGuards');
+
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'found', profile: {
+                siteName: 'instagram', displayName: 'Instagram', value: 'blackdave',
+                profileUrl: 'https://instagram.com/blackdave', logoUrl: null, colorHex: null,
+                previewImage: null, reasoning: 'derived from artist name',
+            } };
+        });
+        extractArtistId.mockResolvedValue({ siteName: 'instagram', id: 'blackdave' });
+        // The real failure this reproduces: the handle is already recorded
+        // against a different artist in the directory.
+        guards.handleBelongsToAnotherArtist.mockResolvedValue(true);
+
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        expect(guards.handleBelongsToAnotherArtist).toHaveBeenCalledWith('a1', 'instagram', 'blackdave');
+        expect(setArtistLink).not.toHaveBeenCalledWith('a1', 'instagram', 'blackdave');
+    });
+
+    it('a link the ARTIST typed is never identity-guarded — only the unattended auto-build is', async () => {
+        // The other half of the same rule. Blocking somebody from adding their
+        // own Instagram because a similarly named act is in the directory is a
+        // worse bug than the one the guards fix, so `confirm_profiles` (and
+        // `find_more_profiles`) must stay unguarded. Without this, the obvious
+        // "just turn the guards on everywhere" edit passes the test above.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+        const guards = await import('@/server/utils/artistIdentityGuards');
+        extractArtistId.mockResolvedValue({ siteName: 'instagram', id: 'blackdave' });
+        guards.handleBelongsToAnotherArtist.mockResolvedValue(true);
+
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', {
+            type: 'confirm_profiles',
+            addedLinks: [{ url: 'https://instagram.com/blackdave' }],
+            removedSiteNames: [],
+        }));
+
+        expect(guards.handleBelongsToAnotherArtist).not.toHaveBeenCalled();
+        expect(setArtistLink).toHaveBeenCalledWith('a1', 'instagram', 'blackdave');
     });
 
     it('a RESUME does not auto-build — it hands back the step the artist stopped on', async () => {

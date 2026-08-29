@@ -1046,7 +1046,20 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         console.error("[onboarding] auto-build discovery failed:", e);
     }
     if (discovered.length > 0) {
-        await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
+        // `verifyIdentity: true` — this is the ONLY caller that turns it on,
+        // and the whole reason the flag exists. Nobody has looked at these
+        // links: they are whatever discovery guessed, written straight to the
+        // artist's row. The other two callers pass links the ARTIST typed and
+        // must stay unguarded.
+        //
+        // The commit that added the flag claimed this line already passed it.
+        // It did not — the only caller passing it was the benchmark, so the
+        // guards ran in measurement and nowhere else. A guard nothing calls is
+        // the exact shape of the bug it was written to fix, one level up.
+        // `runAutoBuild wires the identity guards` in turnHandlers.test.ts
+        // asserts this call site specifically, because a test of the guard
+        // functions themselves is what let it through.
+        await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), [], { verifyIdentity: true });
     }
 
     // The Instagram ingest and the caption extraction, on the path most artists
