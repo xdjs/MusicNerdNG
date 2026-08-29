@@ -561,6 +561,29 @@ async function runHandleProbe(
         // every other tier in this file already follows.
         const preview = await fetchLinkPreview(url);
         const residual = preview.title ? stripHandleAndBoilerplate(preview.title, probe.handle) : "";
+        // A THROTTLED PLATFORM LOOKS EXACTLY LIKE AN ABSENT PROFILE, and only
+        // one of those is true. Probe Instagram hard enough and it stops
+        // serving profile metadata and returns a login wall titled plainly
+        // "Instagram", with an og:image, for every handle including real ones.
+        // The name cross-check below correctly refuses it — "Instagram" is not
+        // "Black Dave MK2" — so nothing wrong is ever written. What it cannot
+        // do is tell the difference between "this artist has no Instagram" and
+        // "we were rate-limited", and it reports both as the former.
+        //
+        // Measured 2026-08-29: after one benchmark run's probes, every
+        // instagram.com/<handle> fetch from this machine came back titled
+        // "Instagram". The two cases that run LAST scored zero Instagram
+        // findings and the three before them scored theirs — a result that
+        // reads as a recall problem and is a rate limit.
+        //
+        // Logged, not acted on. Suppressing the miss would mean claiming to
+        // know something we do not, and trusting the image alone is how a
+        // login wall becomes a confirmed profile. This just makes a run that
+        // was throttled distinguishable from a run that found nothing.
+        const platformName = urlmapBySiteName.get(probe.platform)?.cardPlatformName ?? probe.platform;
+        if (residual && normalizeForCompare(residual) === normalizeForCompare(platformName)) {
+            console.warn(`[profileDiscovery] ${probe.platform} served its own name as the page title for @${probe.handle} — a wall or a rate limit, not evidence this handle is absent`);
+        }
         if (residual) {
             // Real name text survived stripping — cross-check IT against the
             // artist name (never the raw title, which is nearly always
