@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { isReservedHandle } from "@/lib/platformHandles";
 import { isBlockedSourceHost } from "@/lib/sourceAuthority";
 import { setArtistLink } from "@/server/utils/artistLinkService";
+import { artistRowProperty } from "@/server/db/artistRowProperties";
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
@@ -819,7 +820,13 @@ function isKnownProfileUrl(url: string, artist: Record<string, unknown>): boolea
     }
     const haystack = url.toLowerCase();
     return PROFILE_LINK_COLUMNS.some(col => {
-        const value = artist[col];
+        // BY ROW PROPERTY, NOT BY COLUMN NAME. The column is `facebookID` and
+        // the Drizzle property is `facebookId`, so indexing by the column read
+        // undefined and an artist's own numeric Facebook profile was never
+        // recognised as one we already hold — it could still be filed as press
+        // about them. The same list the link writer uses, rather than a third
+        // copy of it.
+        const value = artist[artistRowProperty(col)];
         if (typeof value !== "string") return false;
         const v = value.trim().toLowerCase().replace(/^@/, "");
         if (v.length < IDENTITY_MATCH_MIN_LENGTH) return false;
@@ -1145,7 +1152,7 @@ export async function searchAndPopulateVault(
             })()
             : { releases: [] as string[], topTracks: [] as string[] };
         const identifiers = IDENTITY_ANCHOR_COLUMNS.flatMap(col => {
-            const v = (artist as unknown as Record<string, unknown>)[col];
+            const v = (artist as unknown as Record<string, unknown>)[artistRowProperty(col)];
             return typeof v === "string" && v ? [`${col}: ${v}`] : [];
         });
         if (outOfBudget("relevance judging")) return [];

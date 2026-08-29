@@ -57,8 +57,10 @@ async function main() {
     const sources = (rows.rows ?? rows) as { id: string; url: string; title: string | null; extracted_text: string | null }[];
     if (!sources.length) { console.log("No approved sources."); process.exit(0); }
 
+    const { artistRowProperty } = await import("@/server/db/artistRowProperties");
     const identifiers = IDENTITY_ANCHOR_COLUMNS.flatMap((col: string) => {
-        const v = artist[col];
+        // By row property: the column is `facebookID`, the property `facebookId`.
+        const v = artist[artistRowProperty(col)];
         return typeof v === "string" && v ? [`${col}: ${v}`] : [];
     });
 

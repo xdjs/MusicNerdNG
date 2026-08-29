@@ -15,6 +15,8 @@ import {
     PLATFORM_DOMAINS,
     IDENTITY_ANCHOR_COLUMNS,
 } from "@/server/utils/queries/vaultWebSearch";
+import { artistRowProperty } from "@/server/db/artistRowProperties";
+import { artists } from "@/server/db/schema";
 
 describe("platform classification", () => {
     it("gives every known profile column a domain", () => {
@@ -61,5 +63,18 @@ describe("platform classification", () => {
         // shipped a subtler version of the bug it was meant to fix.
         expect(PLATFORM_DOMAINS.spotify).toContain("spotify.com");
         expect(PLATFORM_DOMAINS.bandcamp).toContain("bandcamp.com");
+    });
+
+    it("names every platform by something the artist row actually has", () => {
+        // The check my own coverage script could not make. It compared urlmap
+        // to information_schema COLUMN names, but the code indexes the Drizzle
+        // ROW — and the property can differ. `facebookID` is the column,
+        // `facebookId` the property, so the lookup read undefined and an
+        // artist's own numeric Facebook profile was never recognised as one we
+        // already hold; it could still be filed as press about them.
+        const onTheRow = new Set(Object.keys(artists));
+        const unreadable = PROFILE_LINK_COLUMNS.filter(
+            col => !onTheRow.has(artistRowProperty(col)));
+        expect(unreadable).toEqual([]);
     });
 });
