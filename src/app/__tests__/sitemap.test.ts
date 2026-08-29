@@ -48,15 +48,31 @@ describe('sitemap', () => {
         expect(out[0].url).toBe('https://www.musicnerd.xyz/');
     });
 
-    it('asks only for pages with something to say', async () => {
-        // Of 41,988 artists, 262 have a real About and three have an approved
-        // source; the rest are a name and some links. Submitting forty thousand
-        // near-empty pages is a quality signal against the whole domain, and it
-        // would bury the pages we want cited under the ones we do not.
+    it('asks for pages with anything on them, not only pages with prose', async () => {
+        // The first version admitted 262 of 41,988 — prose only — on a rule
+        // about auto-generated filler that does not describe a database record.
+        // A page carrying an artist's links across three platforms, with
+        // JSON-LD sameAs, is the answer to "where do I find X", which is what
+        // this directory is for.
         const execute = jest.fn(async () => ({ rows: [] }));
         await build(execute);
         const query = JSON.stringify(execute.mock.calls[0][0]);
         expect(query).toContain('bio');
         expect(query).toContain('approved');
+        expect(query).toContain('spotify');       // the link count
+    });
+
+    it('leaves out rows that are not artists', async () => {
+        // "nonexistentartist123" is in the directory, and a crawler meeting it
+        // first is the impression we would be making.
+        const execute = jest.fn(async () => ({ rows: [] }));
+        await build(execute);
+        expect(JSON.stringify(execute.mock.calls[0][0])).toContain('nonexistent');
+    });
+
+    it('rejects the cached empty-state About, which is long enough to pass on length', async () => {
+        const execute = jest.fn(async () => ({ rows: [] }));
+        await build(execute);
+        expect(JSON.stringify(execute.mock.calls[0][0])).toContain("don't have enough verified information");
     });
 });

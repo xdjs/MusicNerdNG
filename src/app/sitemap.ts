@@ -29,29 +29,64 @@ const BASE = "https://www.musicnerd.xyz";
 
 /**
  * A page is worth crawling when it says something a search engine or an
- * assistant could use: prose about who the artist is, or press we verified.
+ * assistant could use.
  *
- * Links alone are deliberately NOT enough. Thirty-eight thousand pages carry a
- * platform link and nothing else; that is a redirect with a logo on it, and at
- * that volume it is the thin-content problem rather than a directory.
+ * THE FIRST VERSION OF THIS WAS TOO STRICT, and the reasoning was borrowed
+ * rather than earned. It admitted only pages with prose — 262 of 41,988 — on
+ * the argument that thin content at scale is a quality signal against the
+ * domain. That rule is about auto-generated filler and doorway pages. It is not
+ * about database records: Discogs and MusicBrainz carry millions of sparse
+ * entries and rank fine, because a verified entry IS the product.
  *
- * To widen this — say, once most pages have been built out — add to the OR.
+ * A page with an artist's links across three or more platforms, and JSON-LD
+ * sameAs making that identity machine-readable, is the answer to "where do I
+ * find X" — which is a question assistants are asked constantly, and the one
+ * this directory exists to answer. Excluding thirty thousand of them to protect
+ * two hundred is the wrong trade, and being invisible for 41,726 artists
+ * defeats the point of wanting to be cited.
+ *
+ * A sitemap is also a discovery aid rather than an index guarantee: crawlers
+ * decide what to keep. What we owe them is a list without junk in it.
+ *
+ * SO THE BAR IS "IS THERE ANYTHING HERE", not "is there prose here":
+ *   - a real About, which is not the cached empty state; or
+ *   - press we verified; or
+ *   - a usable set of verified links.
+ *
+ * Which leaves out the pages with genuinely nothing on them — 1,237 with
+ * neither a link nor a bio — and the test rows.
  */
+
+/** Below this a page is a name and a stray handle rather than a record worth
+ *  sending anybody to. */
+const MIN_PLATFORM_LINKS = 3;
+
+const LINK_COUNT = sql`(
+    (a.spotify IS NOT NULL)::int + (a.instagram IS NOT NULL)::int + (a.x IS NOT NULL)::int
+  + (a.youtube IS NOT NULL)::int + (a.soundcloud IS NOT NULL)::int + (a.bandcamp IS NOT NULL)::int
+  + (a.deezer IS NOT NULL)::int + (a.facebook IS NOT NULL)::int + (a.tiktok IS NOT NULL)::int
+)`;
+
 const WORTH_CRAWLING = sql`
     (
-        a.bio IS NOT NULL
-        AND length(a.bio) > 120
-        -- LENGTH IS NOT SUBSTANCE. artistBioQuery caches the claim-nudge empty
-        -- state into artists.bio for a thin artist, and it runs to well over a
-        -- hundred characters while explicitly saying there is nothing verified
-        -- here — so the filter would have admitted exactly the pages it exists
-        -- to keep out, more of them every day.
-        AND btrim(a.bio) <> ${ABOUT_EMPTY_STATE}
+        (
+            a.bio IS NOT NULL
+            AND length(a.bio) > 120
+            -- LENGTH IS NOT SUBSTANCE. artistBioQuery caches the claim-nudge
+            -- empty state into artists.bio for a thin artist, and it runs well
+            -- past a hundred characters while explicitly saying there is
+            -- nothing verified here.
+            AND btrim(a.bio) <> ${ABOUT_EMPTY_STATE}
+        )
+        OR EXISTS (
+            SELECT 1 FROM artist_vault_sources s
+             WHERE s.artist_id = a.id AND s.status = 'approved'
+        )
+        OR ${LINK_COUNT} >= ${MIN_PLATFORM_LINKS}
     )
-    OR EXISTS (
-        SELECT 1 FROM artist_vault_sources s
-         WHERE s.artist_id = a.id AND s.status = 'approved'
-    )`;
+    -- Rows that are not artists. "nonexistentartist123" is in here, and a
+    -- crawler meeting it first is the impression we would be making.
+    AND a.name !~* '(^|[^a-z])(test artist|nonexistent|asdf)'`;
 
 /** Sitemaps cap at 50,000 urls. Well clear today; if the bar ever widens far
  *  enough to approach it, this needs splitting into an index. */
