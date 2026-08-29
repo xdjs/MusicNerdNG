@@ -30,6 +30,9 @@ import {
     upsertArtistDocSources,
 } from "@/server/utils/queries/onboardingQueries";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
+import {
+    contradictsScrapedPosts, handleBelongsToAnotherArtist, nameIsAmbiguousInDirectory,
+} from "@/server/utils/artistIdentityGuards";
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import {
@@ -790,6 +793,10 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
 /** What applying an artist's profile-card decisions produced, bucketed by what
  *  went wrong — each bucket gets different copy (see the build*Message helpers). */
 interface ProfileLinkOutcome {
+    /** Recognised as a platform profile and refused because we could not prove
+     *  it belongs to this artist. Distinct from `writeRejected`, which is a
+     *  database failure — this one is a judgement. */
+    identityBlocked: string[];
     unrecognized: string[];
     writeRejected: string[];
     routedToVaultApproved: string[];
@@ -810,10 +817,23 @@ interface ProfileLinkOutcome {
  *
  * Only `confirm_profiles` advances the step; this function never does.
  */
-async function applyProfileLinkDecisions(
+/** Exported so the benchmark can run the same sequence onboarding does —
+ *  discover, then write, then search for sources. It used to run only the last
+ *  of those and was quoted as the product's score. */
+export async function applyProfileLinkDecisions(
     artistId: string,
     addedLinks: { url: string }[],
     removedSiteNames: string[],
+    /**
+     * Check that each handle really belongs to this artist before writing it.
+     *
+     * OFF BY DEFAULT, and the default is the point: two of the three callers
+     * pass links the ARTIST typed, and an artist adding their own Instagram
+     * must not be blocked because somebody with a similar name is also in the
+     * directory. Only the auto-build — which writes whatever profile discovery
+     * guessed, with nobody looking — turns this on.
+     */
+    opts?: { verifyIdentity?: boolean },
 ): Promise<ProfileLinkOutcome> {
     for (const siteName of removedSiteNames) {
         try {
@@ -841,6 +861,8 @@ async function applyProfileLinkDecisions(
     // threw — a real DB failure, not an "unrecognized" link. Distinct
     // bucket so the copy doesn't misreport what actually went wrong.
     const vaultInsertFailed: string[] = [];
+    /** Recognised fine, and refused because we could not prove it is theirs. */
+    const identityBlocked: string[] = [];
     // Only needed for the ownership cross-check below, which no
     // platform-recognized URL ever reaches — fetched at most once, so a
     // turn with no failed-extraction URLs never pays for it.
@@ -943,6 +965,24 @@ async function applyProfileLinkDecisions(
             }
             continue;
         }
+        // THE SAME CHECKS THE VAULT PATH HAS ALWAYS APPLIED. They guarded
+        // adoption from a search result and nothing else, so the auto-build —
+        // the path every artist takes — wrote whatever discovery guessed. With
+        // three Black Daves in this directory, that gave Black Dave another
+        // one's Instagram and Black Dave MK2 a third person's. The benchmark
+        // could not see it because it never ran this half of the flow.
+        if (opts?.verifyIdentity) {
+            if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
+            const blocked =
+                await nameIsAmbiguousInDirectory(artistId, artistName)
+                || await handleBelongsToAnotherArtist(artistId, extracted.siteName, String(extracted.id))
+                || await contradictsScrapedPosts(artistId, extracted.siteName, String(extracted.id));
+            if (blocked) {
+                console.log(`[onboarding] Not writing ${extracted.siteName}=${extracted.id} — identity checks did not clear it`);
+                identityBlocked.push(raw.url);
+                continue;
+            }
+        }
         try {
             await setArtistLink(artistId, extracted.siteName, extracted.id);
         } catch (e) {
@@ -951,7 +991,7 @@ async function applyProfileLinkDecisions(
         }
     }
 
-    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed };
+    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed, identityBlocked };
 }
 
 export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): AsyncGenerator<TurnEvent> {

@@ -143,6 +143,8 @@ type Score = {
     case: string; name: string;
     linksCorrect: string[]; linksWrong: string[]; linksMissed: string[];
     sourcesKept: number; sourcesForbidden: string[]; sourcesBlocked: string[];
+    /** How many the FIRST half found, so a regression is attributable. */
+    profileLinks: number;
     seconds: number;
 };
 
@@ -167,6 +169,17 @@ async function main() {
     const { db } = await import("@/server/db/drizzle");
     const { sql } = await import("drizzle-orm");
     const { searchAndPopulateVault } = await import("@/server/utils/queries/vaultWebSearch");
+    // THE FLOW AN ARTIST ACTUALLY RUNS, not one component of it.
+    //
+    // This called searchAndPopulateVault and nothing else, while onboarding
+    // runs profile discovery FIRST and writes what it finds, then searches for
+    // sources. So the benchmark scored half the pipeline and I quoted it as the
+    // product's number for days: measured on Pete Rango from a cold start,
+    // vault search alone finds 3 of 7 handles and profile discovery finds 7 of
+    // 7 in five seconds. A change to the component doing most of the work could
+    // not have moved this gate at all, which is worse than a noisy gate.
+    const { discoverArtistProfilesStream } = await import("@/server/utils/profileDiscovery");
+    const { applyProfileLinkDecisions } = await import("@/server/utils/onboarding/turnHandlers");
 
     const ALL = ["instagram", "x", "youtube", "tiktok", "facebook", "soundcloud", "bandcamp", "twitch"];
     const scores: Score[] = [];
@@ -197,7 +210,34 @@ async function main() {
         await db.execute(sql`delete from artist_vault_sources where artist_id = ${c.id}::uuid`);
 
         const started = Date.now();
-        await searchAndPopulateVault(c.id).catch(e => console.error(`  [${c.key}] discovery threw:`, e?.message));
+
+        // 1 — profile discovery, and writing what it finds. The order and the
+        // calls mirror the auto-build in turnHandlers; if that changes, this
+        // has to change with it or the gate stops describing the product.
+        const discovered: string[] = [];
+        try {
+            for await (const event of discoverArtistProfilesStream(c.id)) {
+                if (event.kind === "found") discovered.push(event.profile.profileUrl);
+            }
+            if (discovered.length > 0) {
+                // verifyIdentity mirrors the auto-build. Without it this ran
+                // the unguarded path and reported wrong links that the product
+                // does not actually write — a gate that lies in the other
+                // direction is no better than one that lies in this one.
+                await applyProfileLinkDecisions(c.id, discovered.map(url => ({ url })), [], { verifyIdentity: true });
+            }
+        } catch (e: any) {
+            console.error(`  [${c.key}] profile discovery threw:`, e?.message);
+        }
+        // Scored separately so a regression can be attributed to the half that
+        // caused it rather than to "discovery".
+        const afterProfiles: any = await db.execute(sql.raw(
+            `select ${ALL.join(", ")} from artists where id = '${c.id}'`));
+        const profileLinks = Object.entries(c.expect).filter(([platform, want]) =>
+            String((afterProfiles.rows ?? afterProfiles)[0]?.[platform] ?? "").toLowerCase() === want.toLowerCase()).length;
+
+        // 2 — sources, and the handle propagation that rides along with them.
+        await searchAndPopulateVault(c.id).catch(e => console.error(`  [${c.key}] vault search threw:`, e?.message));
         const seconds = Math.round((Date.now() - started) / 100) / 10;
 
         const after: any = await db.execute(sql.raw(
@@ -245,11 +285,11 @@ async function main() {
         const sourcesBlocked = urls.filter((u: string) => isBlockedSourceHost(u));
 
         scores.push({ case: c.key, name: c.name, linksCorrect, linksWrong, linksMissed,
-                      sourcesKept: urls.length, sourcesForbidden, sourcesBlocked, seconds });
+                      profileLinks, sourcesKept: urls.length, sourcesForbidden, sourcesBlocked, seconds });
 
         const want = Object.keys(c.expect).length;
         console.log(`\n${c.name}  (${seconds}s)`);
-        console.log(`  links     ${linksCorrect.length}/${want} correct` +
+        console.log(`  links     ${linksCorrect.length}/${want} correct   (profile discovery found ${profileLinks}, source search added ${linksCorrect.length - profileLinks})` +
                     `${linksWrong.length ? `, ${linksWrong.length} WRONG` : ""}` +
                     `${linksMissed.length ? `, ${linksMissed.length} missed` : ""}`);
         if (linksWrong.length) for (const w of linksWrong) console.log(`              ! ${w}`);

@@ -11,7 +11,16 @@ import { sql } from "drizzle-orm";
 import { isReservedHandle } from "@/lib/platformHandles";
 import { isBlockedSourceHost } from "@/lib/sourceAuthority";
 import { setArtistLink } from "@/server/utils/artistLinkService";
+import {
+    PROFILE_LINK_COLUMNS, PLATFORM_DOMAINS, IDENTITY_ANCHOR_COLUMNS,
+} from "@/server/utils/artistPlatforms";
+import {
+    contradictsScrapedPosts, handleBelongsToAnotherArtist, nameIsAmbiguousInDirectory,
+} from "@/server/utils/artistIdentityGuards";
 import { artistRowProperty } from "@/server/db/artistRowProperties";
+
+// Re-exported: several callers and scripts import these from here.
+export { PROFILE_LINK_COLUMNS, PLATFORM_DOMAINS, IDENTITY_ANCHOR_COLUMNS };
 import { getSpotifyHeaders, getSpotifyCatalogNames } from "@/server/utils/queries/externalApiQueries";
 import type { ArtistVaultSource } from "@/server/db/DbTypes";
 
@@ -114,75 +123,7 @@ const ACCOUNT_PLATFORMS = new Set([
     "soundcloud", "bandcamp", "twitch", "facebook", "spotify", "deezer",
 ]);
 
-/**
- * Every platform we store an id for, and where that id lives.
- *
- * WAS ELEVEN OF THIRTY. urlmap configures thirty platforms and this listed
- * eleven, so discovery was blind to nineteen — including discogs (22,862
- * artists), wikipedia (7,606), imdb (5,201) and linktree (2,238). The visible
- * cost: an artist's own Linktree could be filed as press about them, because
- * the "is this a profile we already hold" check had never heard of linktree.
- *
- * NOT DERIVED FROM urlmap, though it is checked against it. Deriving the host
- * from the url template gives the wrong answer for the platforms that matter
- * most: bandcamp's template is `%@.bandcamp.com`, so a substituted host reads
- * `x.bandcamp.com`; spotify's resolves to `open.spotify.com`, which is
- * NARROWER than the correct `spotify.com` and would stop matching the bare
- * domain. `ens` and `wallet` carry placeholder urls. Derivation would have
- * shipped a subtler version of the bug it was meant to fix.
- *
- * So it stays explicit, and scripts/check-platform-coverage.ts fails loudly
- * when urlmap holds a platform this does not classify — drift becomes a
- * failure rather than a silence.
- */
-const PLATFORM_DOMAINS_EXTRA: Record<string, string[]> = {
-    audius: ["audius.co"],
-    bandsintown: ["bandsintown.com"],
-    bluesky: ["bsky.app"],
-    catalog: ["catalog.works"],
-    discogs: ["discogs.com"],
-    facebookID: ["facebook.com", "fb.com"],
-    farcaster: ["farcaster.xyz", "warpcast.com"],
-    foundation: ["foundation.app"],
-    imdb: ["imdb.com"],
-    lens: ["hey.xyz", "lens.xyz"],
-    linktree: ["linktr.ee"],
-    mirror: ["mirror.xyz"],
-    patreon: ["patreon.com"],
-    soundxyz: ["sound.xyz"],
-    subvert: ["subvert.fm"],
-    supercollector: ["supercollector.xyz"],
-    wikipedia: ["wikipedia.org"],
-    zora: ["zora.co"],
-};
 
-export const PROFILE_LINK_COLUMNS = [
-    "spotify", "deezer", "instagram", "tiktok", "x", "youtube",
-    "youtubechannel", "soundcloud", "bandcamp", "twitch", "facebook",
-    ...Object.keys(PLATFORM_DOMAINS_EXTRA),
-] as const;
-
-/**
- * The subset worth handing the relevance judge as evidence of WHO the artist is.
- *
- * Narrower than the list above on purpose, and the reason is mentionDensity:
- * it treats every identifier as a handle to look for in a page's paragraphs, so
- * an opaque value poisons the count. discogs is `1967268` and facebookID is
- * `399778650221956` — any page containing that digit string would read as
- * being about the artist. imdb is `nm8483808`, which is not a name either.
- *
- * What is in here is name-shaped, checked against real rows: wikipedia is
- * `Billie_Eilish`, bandsintown is `12895856-billie-eilish`, and the rest are
- * handles a person chose. Crypto identities (ens, mirror, zora, lens,
- * farcaster) are left out: they are wallet names rather than artist names, and
- * ".eth" appearing in a paragraph says nothing about whose page it is.
- */
-export const IDENTITY_ANCHOR_COLUMNS = [
-    "spotify", "deezer", "instagram", "tiktok", "x", "youtube",
-    "youtubechannel", "soundcloud", "bandcamp", "twitch", "facebook",
-    "wikipedia", "bandsintown", "linktree", "audius", "catalog",
-    "patreon", "supercollector", "subvert", "soundxyz",
-] as const;
 
 const TYPE_ALIASES: Record<string, SourceType> = {
     news: "article",
@@ -300,51 +241,6 @@ function isArtistOwnDomain(url: string, artistName: string): boolean {
     }
 }
 
-/** Is this (platform, handle) already recorded against a DIFFERENT artist?
- *
- *  Names collide and page titles cannot resolve the collision — three artists
- *  called Black Dave sit in this directory. What the directory already knows can:
- *  a handle assigned to somebody else is not evidence about this artist. */
-/**
- * Does this candidate contradict the artist's own scraped posts?
- *
- * Instagram display names are free text, so an account can call itself anything.
- * A blank-slate run for Pharaoh Sistare adopted instagram=pherosistar because
- * the page title read "Pharaoh Sistare (@pherosistar)" — our verification
- * asking "does the page name the artist" was satisfied by an account that
- * merely CLAIMS to be him. His real handle is pharaohsistare.
- *
- * Requiring the handle to resemble the name would catch that and would also
- * reject p3t3rango for Pete Rango, which is his actual account. But we are not
- * short of evidence here: we have scraped his feed, and every post in it is
- * authored by pharaohsistare. That handle was established when the posts were
- * ingested. A search result cannot outrank it.
- *
- * Only speaks when it knows: no stored posts means no opinion, and a run with a
- * genuinely cold start is unaffected.
- */
-async function contradictsScrapedPosts(artistId: string, siteName: string, handle: string): Promise<boolean> {
-    if (siteName !== "instagram") return false;   // the only platform we scrape
-    try {
-        const rows = await db.execute(sql`
-            select distinct owner_username from artist_social_posts
-            where artist_id = ${artistId}::uuid and is_own_post = true
-            limit 5`);
-        const known = rowsOf(rows)
-            .map(r => String((r as { owner_username?: unknown }).owner_username ?? ""))
-            .filter(Boolean)
-            .map(normalizeHandle);
-        if (known.length === 0) return false;     // nothing scraped, no opinion
-        return !known.includes(normalizeHandle(handle));
-    } catch (e) {
-        // Fail OPEN here, unlike the ownership guard: this one only ever adds
-        // evidence we happen to hold, and treating "could not read our own
-        // posts" as "the candidate is wrong" would block adoption for every
-        // artist we have never scraped.
-        console.error("[vaultWebSearch] Scraped-post check failed:", e);
-        return false;
-    }
-}
 
 /** Rows out of a `db.execute` result, whatever shape the driver hands back.
  *
@@ -359,71 +255,7 @@ function rowsOf(result: unknown): unknown[] {
     return Array.isArray(result) ? result : [];
 }
 
-async function handleBelongsToAnotherArtist(artistId: string, siteName: string, handle: string): Promise<boolean> {
-    if (!PLATFORM_DOMAINS[siteName]) return false; // not a column we store
-    try {
-        // `siteName` is a COLUMN NAME and cannot be a bind parameter, so it is
-        // interpolated — safe only because the PLATFORM_DOMAINS guard above
-        // restricts it to a fixed set of known columns. `handle` and `artistId`
-        // are VALUES and are bound, never interpolated: both arrive from search
-        // results and page content, so hand-escaping them is not a thing we get
-        // to be right about forever.
-        const rows = await db.execute(
-            // ltrim the stored value as well as the candidate. Some rows carry
-            // the legacy "@handle" form, and comparing "@dupes" against "dupes"
-            // reported the handle as unclaimed — handing a second artist an
-            // account the directory already knew belonged to someone else,
-            // which is the one thing this guard exists to prevent.
-            sql`select 1 from artists
-                where lower(ltrim(${sql.raw(siteName)}, '@')) = lower(ltrim(${handle}, '@'))
-                  and id::text <> ${artistId}
-                limit 1`);
-        return rowsOf(rows).length > 0;
-    } catch (e) {
-        // Fail CLOSED. This used to return false — "not claimed by anyone" —
-        // so a transient database error silently switched off the exact
-        // protection this function exists to provide, and did it at the moment
-        // things were already going wrong. A gap beats a wrong link, so an
-        // unanswerable ownership question is treated as "somebody else may
-        // own this" and the candidate is skipped.
-        console.error("[vaultWebSearch] Ownership check failed, treating handle as claimed:", e);
-        return true;
-    }
-}
 
-/** Is this artist the GENERIC one among several who share a name?
- *
- *  If so, a page title that merely repeats the name proves nothing about WHICH
- *  of them it belongs to. Three Black Daves are here, and a fourth account
- *  titled "Black Dave (@black_davem)" is indistinguishable from all of them
- *  from outside — so we decline rather than assign one artist another's
- *  account. Stronger evidence still counts: a page corroborated by an id we
- *  already hold is unambiguous no matter how common the name.
- *
- *  Prefix, not equality, and the direction matters. "Black Dave" is a substring
- *  of "Black Dave MK2", so nothing a page says can prove it means the shorter
- *  one — every page about MK2 also contains "Black Dave". The reverse is not
- *  true: only MK2's own bio says "blackdave.mk2", so HE is identifiable and is
- *  not caught here. The generic name declines; the specific one does not. */
-async function nameIsAmbiguousInDirectory(artistId: string, artistName: string): Promise<boolean> {
-    const folded = artistName.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (folded.length < 4) return true; // too short to identify anyone
-    try {
-        const rows = await db.execute(sql`
-            select 1 from artists
-            where regexp_replace(lower(name), '[^a-z0-9]', '', 'g') like ${folded + "%"}
-              and id <> ${artistId}::uuid
-            limit 1`);
-        return rowsOf(rows).length > 0;
-    } catch (e) {
-        // Fail CLOSED, for the same reason as handleBelongsToAnotherArtist: a
-        // database error is not evidence that a name is unique, and answering
-        // "not ambiguous" turns the guard off exactly when the system is
-        // already unhealthy.
-        console.error("[vaultWebSearch] Ambiguity check failed, treating name as ambiguous:", e);
-        return true;
-    }
-}
 
 /**
  * Take an artist's links from MusicBrainz before inferring any from search.
@@ -796,20 +628,7 @@ const IDENTITY_MATCH_MIN_LENGTH = 4; // shorter values match far too much
 
 /** Where each stored handle actually lives. A handle only identifies a profile
  *  on its OWN platform. */
-export const PLATFORM_DOMAINS: Record<string, string[]> = {
-    spotify: ["spotify.com"],
-    deezer: ["deezer.com"],
-    instagram: ["instagram.com"],
-    tiktok: ["tiktok.com"],
-    x: ["x.com", "twitter.com"],
-    youtube: ["youtube.com", "youtu.be"],
-    youtubechannel: ["youtube.com"],
-    soundcloud: ["soundcloud.com"],
-    bandcamp: ["bandcamp.com"],
-    twitch: ["twitch.tv"],
-    facebook: ["facebook.com", "fb.com"],
-    ...PLATFORM_DOMAINS_EXTRA,
-};
+
 
 /**
  * The part of a stored value that identifies the profile.
