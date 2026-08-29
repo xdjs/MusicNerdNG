@@ -214,17 +214,23 @@ async function main() {
         // 1 — profile discovery, and writing what it finds. The order and the
         // calls mirror the auto-build in turnHandlers; if that changes, this
         // has to change with it or the gate stops describing the product.
-        const discovered: string[] = [];
+        const discovered: any[] = [];
+        let provisionalSiteNames: string[] = [];
         try {
             for await (const event of discoverArtistProfilesStream(c.id)) {
-                if (event.kind === "found") discovered.push(event.profile.profileUrl);
+                if (event.kind === "found") discovered.push(event.profile);
             }
             if (discovered.length > 0) {
                 // verifyIdentity mirrors the auto-build. Without it this ran
                 // the unguarded path and reported wrong links that the product
                 // does not actually write — a gate that lies in the other
                 // direction is no better than one that lies in this one.
-                await applyProfileLinkDecisions(c.id, discovered.map(url => ({ url })), [], { verifyIdentity: true });
+                const outcome = await applyProfileLinkDecisions(
+                    c.id, discovered.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
+                const wrote = new Set(outcome.written);
+                provisionalSiteNames = [...new Set(
+                    discovered.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
+                )];
             }
         } catch (e: any) {
             console.error(`  [${c.key}] profile discovery threw:`, e?.message);
@@ -237,7 +243,11 @@ async function main() {
             String((afterProfiles.rows ?? afterProfiles)[0]?.[platform] ?? "").toLowerCase() === want.toLowerCase()).length;
 
         // 2 — sources, and the handle propagation that rides along with them.
-        await searchAndPopulateVault(c.id).catch(e => console.error(`  [${c.key}] vault search threw:`, e?.message));
+        // `provisionalSiteNames` mirrors the auto-build too: without it the
+        // search skips every column discovery guessed into, which is the
+        // ordering defect this gate exists to catch.
+        await searchAndPopulateVault(c.id, { provisionalSiteNames })
+            .catch(e => console.error(`  [${c.key}] vault search threw:`, e?.message));
         const seconds = Math.round((Date.now() - started) / 100) / 10;
 
         const after: any = await db.execute(sql.raw(

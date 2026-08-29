@@ -178,6 +178,47 @@ describe('runOnboardingTurn', () => {
         expect(setArtistLink).not.toHaveBeenCalledWith('a1', 'instagram', 'blackdave');
     });
 
+    it('tells the vault search which columns hold a discovery GUESS, and names only the ones actually written', async () => {
+        // The ordering defect: discovery builds a handle out of the artist's
+        // name, writes it, and the vault search then skips that column under
+        // "already have it" — so its corroborated answer never lands. Black
+        // Dave MK2 got instagram=blackdavemk2 that way while blackdave.xyz,
+        // which the search alone had found on 8/27, was locked out.
+        //
+        // `written`, not `discovered`: the identity guards refuse some
+        // proposals, and offering the vault a column nothing was written to
+        // would be the same lie in the other direction.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { searchAndPopulateVault } = await import('@/server/utils/queries/vaultWebSearch');
+        const guards = await import('@/server/utils/artistIdentityGuards');
+
+        const profile = (siteName, value, provisional) => ({
+            siteName, displayName: siteName, value, provisional,
+            profileUrl: `https://${siteName}.com/${value}`,
+            logoUrl: null, colorHex: null, previewImage: null, reasoning: null,
+        });
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'found', profile: profile('instagram', 'blackdavemk2', true) };  // name-derived guess
+            yield { kind: 'found', profile: profile('youtube', 'realchannel', false) };    // propagated, an answer
+            yield { kind: 'found', profile: profile('soundcloud', 'blocked', true) };      // guessed AND refused
+        });
+        extractArtistId.mockImplementation(async (url) => {
+            const [, siteName, value] = url.match(/https:\/\/(\w+)\.com\/(.+)/);
+            return { siteName, id: value };
+        });
+        guards.handleBelongsToAnotherArtist.mockImplementation(async (_id, _site, handle) => handle === 'blocked');
+
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        expect(searchAndPopulateVault).toHaveBeenCalledWith('a1', expect.objectContaining({
+            provisionalSiteNames: ['instagram'],
+        }));
+    });
+
     it('a link the ARTIST typed is never identity-guarded — only the unattended auto-build is', async () => {
         // The other half of the same rule. Blocking somebody from adding their
         // own Instagram because a similarly named act is in the directory is a

@@ -661,6 +661,54 @@ describe("searchAndPopulateVault", () => {
       expect(adopted).not.toContain("bandcamp=dupes");
     });
 
+    it("overwrites a column the caller named as a discovery GUESS, and leaves an answered one alone", async () => {
+      // The ordering defect. The onboarding auto-build runs profile discovery
+      // first and writes what it finds, including handles built out of the
+      // artist's own name; this search then ran second and skipped those
+      // columns under "already have it". Black Dave MK2 kept
+      // instagram=blackdavemk2 that way while blackdave.xyz — which this
+      // search alone had found on 8/27 — could never land.
+      //
+      // The caller names the guessed columns. Nothing else about adoption
+      // changes: this page still has to be corroborated as the artist's own.
+      const held = {
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: "dupes", facebook: "dupes",  // both name-derived guesses on the row
+        x: null, youtube: null, soundcloud: null,
+      };
+      mockGetArtist.mockResolvedValue(held);
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      // Only instagram is declared provisional. facebook holds the identical
+      // guessed value and is NOT declared, so it must stay put — the rule is
+      // what the caller says, never a heuristic about the value.
+      await searchAndPopulateVault("a1", { provisionalSiteNames: ["instagram"] });
+
+      const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(adopted).toContain("instagram=dupesdidit");
+      expect(adopted).not.toContain("facebook=dupesdidit");
+    });
+
+    it("leaves every held column alone when the caller names none — the default is unchanged", async () => {
+      // Without this, "treat a full column as open" could quietly become the
+      // default for every other caller of this function.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: "dupes", facebook: "dupes", x: null, youtube: null, soundcloud: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(adopted).not.toContain("instagram=dupesdidit");
+      expect(adopted).not.toContain("facebook=dupesdidit");
+    });
+
     it("adopts NOTHING from a page that proves no connection to the artist", async () => {
       // The dangerous case: a magazine's footer links to the MAGAZINE's
       // Instagram. Without corroboration we would put a publication's social

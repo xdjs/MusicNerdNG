@@ -382,6 +382,32 @@ async function adoptFromMusicBrainz(
  * passes cost twice the round trips on a latency-bounded step — invisible in
  * tests, where it is mocked, and only visible in production.
  */
+/**
+ * Does the artist's row hold a real ANSWER for this platform, or a placeholder?
+ *
+ * Three passes in this file skip a platform under "already have it". That is
+ * right when the value is an answer and wrong when it is a guess — and by the
+ * time this search runs, the onboarding auto-build has already written whatever
+ * profile discovery came up with, including handles it built out of the
+ * artist's own name and nothing else.
+ *
+ * That is how Black Dave MK2 ended up with instagram=blackdavemk2. Discovery
+ * constructed the URL from his name, a real account answered (its title even
+ * reads "Black Dave MK2"), and it went to the row. This search then found
+ * blackdave.xyz — corroborated, the answer Pete confirmed — and skipped the
+ * column because it was full. First writer wins, and the first writer is the
+ * one with the least evidence. Running the search ALONE found blackdave.xyz on
+ * 8/27; running the artist's real sequence stopped finding it.
+ *
+ * So the caller names the columns holding a guess and they are treated as still
+ * open. Everything else about the passes is unchanged: a candidate still has to
+ * clear the identity guards and the name cross-check before it is written, so
+ * this widens what may be ANSWERED, never what counts as evidence.
+ */
+function holdsAnswerFor(artist: Record<string, unknown>, siteName: string, provisional?: Set<string>): boolean {
+    return !!artist[siteName] && !provisional?.has(siteName);
+}
+
 async function adoptHandlesFromOwnPage(
     artistId: string,
     outboundLinks: string[],
@@ -389,6 +415,9 @@ async function adoptHandlesFromOwnPage(
     artistName: string,
     /** The page these links came from, and what the judge made of it. */
     page?: { url: string; aboutArtist: boolean },
+    /** Columns holding a discovery guess rather than an answer — see
+     *  `holdsAnswerFor`. */
+    provisional?: Set<string>,
 ): Promise<{ adopted: number; handles: Set<string> }> {
     const resolved: { siteName: string; id: string }[] = [];
     for (const link of outboundLinks.slice(0, MAX_CORROBORATION_CHECKS)) {
@@ -474,7 +503,7 @@ async function adoptHandlesFromOwnPage(
         if (isReservedHandle(r.siteName, r.id)) continue;
         if (ambiguous.has(r.siteName)) continue;
         if (done.has(r.siteName)) continue;
-        if (artist[r.siteName]) continue; // already have it
+        if (holdsAnswerFor(artist, r.siteName, provisional)) continue; // already have it
         if (await contradictsScrapedPosts(artistId, r.siteName, r.id)) {
             console.log(`[vaultWebSearch] ${r.siteName}=${r.id} contradicts the handle their own posts are authored by, ignoring`);
             continue;
@@ -532,6 +561,9 @@ async function propagateVerifiedHandles(
     artist: Record<string, unknown>,
     artistName: string,
     callerDeadline: number = Number.POSITIVE_INFINITY,
+    /** Columns holding a discovery guess rather than an answer — see
+     *  `holdsAnswerFor`. */
+    provisional?: Set<string>,
 ): Promise<number> {
     const handles = [...verified].filter(h => h.length >= 3);
     if (handles.length === 0) return 0;
@@ -556,7 +588,7 @@ async function propagateVerifiedHandles(
 
         for (const platform of ACCOUNT_PLATFORMS) {
             if (outOfTime()) { console.log("[vaultWebSearch] Propagation budget spent, stopping"); break; }
-            if (artist[platform]) continue;                       // already have it
+            if (holdsAnswerFor(artist, platform, provisional)) continue; // already have it
             if (PROBE_BLIND_PLATFORMS.has(platform)) continue;    // serves a bot nothing
             const row = urlmap.find(u => u.siteName === platform);
             const pattern = row?.appStringFormat;
@@ -750,8 +782,16 @@ function normalizeUrl(raw: string): string {
  */
 export async function searchAndPopulateVault(
     artistId: string,
-    opts?: { deadline?: number },
+    opts?: {
+        deadline?: number;
+        /** Columns the caller wrote from a GUESS, not an answer — see
+         *  `holdsAnswerFor`. Only the onboarding auto-build passes these,
+         *  because it is the only caller that writes handles nobody has
+         *  looked at, immediately before calling this. */
+        provisionalSiteNames?: string[];
+    },
 ): Promise<ArtistVaultSource[]> {
+    const provisional = new Set(opts?.provisionalSiteNames ?? []);
     // A DEADLINE THE CALLER OWNS, rather than per-phase budgets that happen to
     // add up to less than it.
     //
@@ -1309,7 +1349,7 @@ export async function searchAndPopulateVault(
             const done = new Set<string>();
             for (const cand of ranked.slice(0, MAX_ACCOUNT_CHECKS)) {
                 if (done.has(cand.siteName)) continue;
-                if (current && (current as Record<string, unknown>)[cand.siteName]) continue;
+                if (current && holdsAnswerFor(current as Record<string, unknown>, cand.siteName, provisional)) continue;
                 // A title cannot tell three artists of the same name apart. Our
                 // own directory holds Black Dave, Black Dave MK2 and Black Dave
                 // NYC; instagram.com/blackdave is NYC's, and its title says
@@ -1411,7 +1451,7 @@ export async function searchAndPopulateVault(
                     if (outOfBudget("hub adoption")) break;
                     const { adopted, handles } = await adoptHandlesFromOwnPage(
                         artistId, outbound, current as unknown as Record<string, unknown>, artistName,
-                        { url: hub.url, aboutArtist: hub.aboutArtist });
+                        { url: hub.url, aboutArtist: hub.aboutArtist }, provisional);
                     for (const h of handles) verifiedHandles.add(h);
                     // One adoption can corroborate the next page, so refresh.
                     // Falls back to what we already hold rather than throwing:
@@ -1434,7 +1474,7 @@ export async function searchAndPopulateVault(
         } else if (verifiedHandles.size > 0) {
             const latest = await getArtistById(artistId).catch(() => undefined);
             if (latest) {
-                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>, artistName, deadline);
+                await propagateVerifiedHandles(artistId, verifiedHandles, latest as unknown as Record<string, unknown>, artistName, deadline, provisional);
             }
         }
 

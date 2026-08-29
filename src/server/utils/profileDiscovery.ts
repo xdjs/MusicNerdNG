@@ -106,6 +106,26 @@ export interface DiscoveredProfile {
     colorHex: string | null;
     previewImage: string | null;
     reasoning: string | null;
+    /**
+     * We built this URL out of the artist's own name and a real page answered.
+     *
+     * That is the weakest finding this module produces, and it is the ONLY one
+     * with no independent retrieval behind it: nothing linked the page to the
+     * artist, we constructed the address from their name and something was
+     * home. instagram.com/blackdavemk2 is titled "Black Dave MK2", so every
+     * cross-check passes — and it is not the account Black Dave MK2 uses.
+     *
+     * It is still worth writing: for a cold-start artist a name-derived slug
+     * is how most of their links are found at all (six of Pete Rango's seven).
+     * What it must not do is OUTRANK a later, better-evidenced answer purely
+     * by arriving first, which is what happened — the auto-build writes
+     * discovery's guess, then the vault search skips the column under "already
+     * have it" and its corroborated `blackdave.xyz` never lands.
+     *
+     * So the caller passes these columns to `searchAndPopulateVault`, which
+     * treats them as still-open rather than answered.
+     */
+    provisional: boolean;
 }
 
 // --- Budgets -------------------------------------------------------------
@@ -161,6 +181,9 @@ interface TierCandidate {
     url: string;
     reasoning: string | null;
     preview?: LinkPreview;
+    /** See `DiscoveredProfile.provisional`. Only tier 3's name-derived seed
+     *  probes set this. */
+    provisional?: boolean;
 }
 
 /** The handle-based platforms with no dedicated search API (Spotify and
@@ -591,6 +614,11 @@ async function* tierThreeHandleProbeStream(
 
     const toCandidate = (probe: HandleProbe, hit: { url: string; preview: LinkPreview }, propagated: boolean): TierCandidate => ({
         tier: 3,
+        // The one place provisional is set. `confirmed: false` means the handle
+        // came from `deriveNameSlugs` — a guess with nothing behind it but the
+        // artist's name. An existing link on their row, or a handle this run
+        // already confirmed on another platform, is not a guess.
+        provisional: !probe.confirmed,
         platform: probe.platform,
         url: hit.url,
         reasoning: `Handle probe: ${hit.preview.title ? `og:title matched "${artistName}"` : "og:image resolved"} for @${probe.handle}` +
@@ -1032,6 +1060,7 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
         colorHex: meta.colorHex,
         previewImage,
         reasoning: candidate.reasoning,
+        provisional: candidate.provisional ?? false,
     };
 }
 

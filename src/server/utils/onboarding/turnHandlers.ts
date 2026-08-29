@@ -793,6 +793,11 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
 /** What applying an artist's profile-card decisions produced, bucketed by what
  *  went wrong — each bucket gets different copy (see the build*Message helpers). */
 interface ProfileLinkOutcome {
+    /** siteNames actually written to the artist's row. The auto-build needs
+     *  this to tell the vault search which columns hold a discovery GUESS:
+     *  intersecting what discovery proposed with what survived the identity
+     *  guards, rather than assuming every proposal landed. */
+    written: string[];
     /** Recognised as a platform profile and refused because we could not prove
      *  it belongs to this artist. Distinct from `writeRejected`, which is a
      *  database failure — this one is a judgement. */
@@ -863,6 +868,7 @@ export async function applyProfileLinkDecisions(
     const vaultInsertFailed: string[] = [];
     /** Recognised fine, and refused because we could not prove it is theirs. */
     const identityBlocked: string[] = [];
+    const written: string[] = [];
     // Only needed for the ownership cross-check below, which no
     // platform-recognized URL ever reaches — fetched at most once, so a
     // turn with no failed-extraction URLs never pays for it.
@@ -985,13 +991,14 @@ export async function applyProfileLinkDecisions(
         }
         try {
             await setArtistLink(artistId, extracted.siteName, extracted.id);
+            written.push(extracted.siteName);
         } catch (e) {
             console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
             writeRejected.push(raw.url);
         }
     }
 
-    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed, identityBlocked };
+    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed, identityBlocked, written };
 }
 
 export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): AsyncGenerator<TurnEvent> {
@@ -1034,17 +1041,23 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
 
     // 1 — profiles
     yield { kind: "progress", label: "Finding your profiles", done: false, group: PROFILE_SEARCH_GROUP };
-    const discovered: string[] = [];
+    const discovered: DiscoveredProfile[] = [];
     try {
         for await (const event of discoverArtistProfilesStream(artistId)) {
             if (event.kind === "found") {
-                discovered.push(event.profile.profileUrl);
+                discovered.push(event.profile);
                 yield { kind: "candidate", profile: event.profile };
             }
         }
     } catch (e) {
         console.error("[onboarding] auto-build discovery failed:", e);
     }
+    /** Columns this step filled with a handle built out of the artist's NAME —
+     *  the weakest thing discovery produces (see `DiscoveredProfile.provisional`).
+     *  Handed to the vault search below so it treats them as still open instead
+     *  of skipping them under "already have it", which is what stopped Black
+     *  Dave MK2's corroborated `blackdave.xyz` from ever landing. */
+    let provisionalSiteNames: string[] = [];
     if (discovered.length > 0) {
         // `verifyIdentity: true` — this is the ONLY caller that turns it on,
         // and the whole reason the flag exists. Nobody has looked at these
@@ -1059,7 +1072,15 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // `runAutoBuild wires the identity guards` in turnHandlers.test.ts
         // asserts this call site specifically, because a test of the guard
         // functions themselves is what let it through.
-        await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), [], { verifyIdentity: true });
+        const outcome = await applyProfileLinkDecisions(
+            artistId, discovered.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
+        // What was WRITTEN, not what was proposed — the identity guards above
+        // refuse some of it, and naming a column the vault could overwrite when
+        // nothing was ever written there would be a lie in the other direction.
+        const wrote = new Set(outcome.written);
+        provisionalSiteNames = [...new Set(
+            discovered.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
+        )];
     }
 
     // The Instagram ingest and the caption extraction, on the path most artists
@@ -1100,7 +1121,7 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // Same budgeted race the vault step uses — a slow search must not hold
         // the whole build open past the route's turn deadline.
         await Promise.race([
-            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS }),
+            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS, provisionalSiteNames }),
             new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
         ]);
     } catch (e) {
