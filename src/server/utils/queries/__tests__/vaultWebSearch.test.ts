@@ -60,6 +60,12 @@ jest.mock("@/server/utils/profileDiscovery", () => ({
   },
 }));
 
+// Defaults to "no match", which is what the unmocked module effectively did
+// in this suite anyway (no network). Only the provisional-clearing test below
+// overrides it, so no existing expectation changes.
+const mockMusicBrainz = jest.fn(async () => null);
+jest.mock("@/server/utils/musicBrainzLinks", () => ({ fetchMusicBrainzLinks: (...a) => mockMusicBrainz(...a) }));
+
 const mockSetLink = jest.fn(async () => ({}));
 jest.mock("@/server/utils/artistLinkService", () => ({ setArtistLink: (...a) => mockSetLink(...a) }));
 
@@ -70,6 +76,11 @@ describe("searchAndPopulateVault", () => {
     jest.resetModules();
     mockWebSearch.mockReset();
     mockWebSearch.mockResolvedValue([]);
+    // Reset per test: a leaked MusicBrainz result feeds URLs into whatever
+    // extractArtistId the NEXT test installs, and adopts handles that test
+    // never asked for.
+    mockMusicBrainz.mockReset();
+    mockMusicBrainz.mockResolvedValue(null);
     mockGetArtist.mockResolvedValue({
       id: "a1", name: "Grimes", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
     });
@@ -689,6 +700,37 @@ describe("searchAndPopulateVault", () => {
       const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
       expect(adopted).toContain("instagram=dupesdidit");
       expect(adopted).not.toContain("facebook=dupesdidit");
+    });
+
+    it("stops treating a column as provisional the moment something writes a real answer to it", async () => {
+      // The set is built once and three passes read it in sequence. Without
+      // clearing it, a column stayed open AFTER a pass had put the right
+      // handle in it — so the account pass could replace the guess with the
+      // corroborated answer and hub adoption could then replace THAT with a
+      // third handle, inside one run. One overwrite is the fix; two is a new
+      // version of the bug.
+      //
+      // Here MusicBrainz answers first and hub adoption comes second, naming a
+      // different instagram handle. The second one must not land.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: "dupes", x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockMusicBrainz.mockResolvedValue({
+        matchedBy: "spotify", urls: ["https://www.instagram.com/frommusicbrainz"],
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("frommusicbrainz")
+          ? { siteName: "instagram", cardPlatformName: "Instagram", id: "frommusicbrainz" }
+          : resolve(url));
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1", { provisionalSiteNames: ["instagram"] });
+
+      const wrote = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(wrote).toContain("instagram=frommusicbrainz");
+      expect(wrote).not.toContain("instagram=dupesdidit");
     });
 
     it("leaves every held column alone when the caller names none — the default is unchanged", async () => {

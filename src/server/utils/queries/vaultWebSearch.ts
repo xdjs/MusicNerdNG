@@ -279,6 +279,11 @@ async function adoptFromMusicBrainz(
     artistId: string,
     artistName: string,
     artist: Record<string, unknown>,
+    /** Columns holding a discovery guess rather than an answer — see
+     *  `holdsAnswerFor`. MusicBrainz relations are the most authoritative
+     *  thing this file reads, so they certainly outrank a handle built out of
+     *  the artist's name. */
+    provisional?: Set<string>,
 ): Promise<{ handles: Set<string>; homepage: string | null; authoritative: boolean }> {
     const handles = new Set<string>();
     try {
@@ -296,7 +301,7 @@ async function adoptFromMusicBrainz(
             if (!ACCOUNT_PLATFORMS.has(match.siteName) && !REFERENCE_PLATFORMS.has(match.siteName)) continue;
             const id = String(match.id);
             if (isReservedHandle(match.siteName, id)) continue;
-            if (artist[match.siteName]) continue;
+            if (holdsAnswerFor(artist, match.siteName, provisional)) continue;
             if (await handleBelongsToAnotherArtist(artistId, match.siteName, id)) continue;
             if (await contradictsScrapedPosts(artistId, match.siteName, id)) {
                 console.log(`[vaultWebSearch] MusicBrainz lists ${match.siteName}=${id}, but their own posts are authored by a different handle — ignoring`);
@@ -330,7 +335,7 @@ async function adoptFromMusicBrainz(
                 }
             }
             try {
-                await setArtistLink(artistId, match.siteName, id);
+                await writeArtistLink(artistId, match.siteName, id, provisional);
                 console.log(`[vaultWebSearch] MusicBrainz -> ${match.siteName}=${id}`);
                 artist[match.siteName] = id; // so the search pass does not re-add it
                 handles.add(normalizeHandle(id));
@@ -406,6 +411,25 @@ async function adoptFromMusicBrainz(
  */
 function holdsAnswerFor(artist: Record<string, unknown>, siteName: string, provisional?: Set<string>): boolean {
     return !!artist[siteName] && !provisional?.has(siteName);
+}
+
+/** Write a link and stop calling that column provisional.
+ *
+ *  The set is built once, before the run, and three passes consult it in
+ *  sequence: account candidates, then hub adoption, then propagation. Without
+ *  this, a column stayed marked open AFTER one of them had put a real answer
+ *  in it — so the account pass could replace Black Dave MK2's guess with the
+ *  corroborated handle and hub adoption could then replace THAT with a third,
+ *  inside the same run. Once anything writes an answer it is an answer.
+ *
+ *  Every setArtistLink in this file goes through here for that reason: the
+ *  bookkeeping is one line and the whole point of it is that it cannot be
+ *  forgotten at one of five call sites. */
+async function writeArtistLink(
+    artistId: string, siteName: string, value: string, provisional?: Set<string>,
+): Promise<void> {
+    await setArtistLink(artistId, siteName, value);
+    provisional?.delete(siteName);
 }
 
 async function adoptHandlesFromOwnPage(
@@ -518,7 +542,7 @@ async function adoptHandlesFromOwnPage(
             continue;
         }
         try {
-            await setArtistLink(artistId, r.siteName, r.id);
+            await writeArtistLink(artistId, r.siteName, r.id, provisional);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
             done.add(r.siteName);
             adoptedHandles.add(r.id);
@@ -626,7 +650,7 @@ async function propagateVerifiedHandles(
                 continue;
             }
             try {
-                await setArtistLink(artistId, platform, resolved[0]);
+                await writeArtistLink(artistId, platform, resolved[0], provisional);
                 console.log(`[vaultWebSearch] Propagated verified handle -> ${platform}=${resolved[0]}`);
                 adopted++;
             } catch (e) {
@@ -827,7 +851,7 @@ export async function searchAndPopulateVault(
     // pass would otherwise spend a round hunting for.
     const fromMusicBrainz = outOfBudget("MusicBrainz")
         ? { handles: new Set<string>(), homepage: null, authoritative: false }
-        : await adoptFromMusicBrainz(artistId, artistName, artist as unknown as Record<string, unknown>);
+        : await adoptFromMusicBrainz(artistId, artistName, artist as unknown as Record<string, unknown>, provisional);
 
     if (outOfBudget("web search")) return [];
 
@@ -1105,6 +1129,14 @@ export async function searchAndPopulateVault(
             // judge affirmed could replace a confirmed link. A second account on
             // a platform we already have is not an upgrade; it is a different
             // account, and we have no way to tell which is theirs.
+            // `provisional` is deliberately NOT passed here, so this gate stays
+            // shut even for a column holding a guess. This is the weakest of
+            // the four adoption paths — a search result the judge called
+            // about-artist, whose URL happens to be an account URL, with no
+            // cross-check on the account page itself. The other three earn the
+            // right to replace a guess; this one does not. Stated rather than
+            // left looking like an oversight, which is how the last one of
+            // these got missed.
             const alreadyHave = isAccountUrl && !!(artist as Record<string, unknown>)[profileMatch!.siteName];
             if (alreadyHave) {
                 console.log(`[vaultWebSearch] Already have ${profileMatch!.siteName}; not replacing it with ${result.url.slice(0, 60)}`);
@@ -1125,7 +1157,7 @@ export async function searchAndPopulateVault(
             }
             if (isAccountUrl && !alreadyHave && !accountBlocked && relevance.get(result.url) === "about-artist") {
                 try {
-                    await setArtistLink(artistId, profileMatch!.siteName, profileMatch!.id);
+                    await writeArtistLink(artistId, profileMatch!.siteName, profileMatch!.id, provisional);
                     console.log(`[vaultWebSearch] ${profileMatch!.siteName} profile -> links: ${result.url.slice(0, 80)}`);
                 } catch (e) {
                     console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch!.siteName} profile:`, e);
@@ -1402,7 +1434,7 @@ export async function searchAndPopulateVault(
                     }
                 }
                 try {
-                    await setArtistLink(artistId, cand.siteName, cand.id);
+                    await writeArtistLink(artistId, cand.siteName, cand.id, provisional);
                     console.log(`[vaultWebSearch] Search found ${cand.siteName}=${cand.id}, page confirms it: "${identity.slice(0, 60)}"`);
                     done.add(cand.siteName);
                     verifiedHandles.add(normalizeHandle(cand.id));
