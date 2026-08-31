@@ -733,6 +733,38 @@ describe("searchAndPopulateVault", () => {
       expect(wrote).not.toContain("instagram=dupesdidit");
     });
 
+    it("never writes the same platform twice in one pass — the first answer stands", async () => {
+        // Sherwinn Brice ended a run with bandcamp=radicalone, another artist's
+        // Bandcamp, taken from an album page that credits him. The
+        // judge-affirmed path wrote bandcamp three times (dupes, dupes,
+        // radicalone) and the last won: its "already have it" gate reads a
+        // record fetched BEFORE the loop, which cannot see what the loop just
+        // wrote. The gate was there and was reading a stale answer.
+        mockGetArtist.mockResolvedValue({
+            id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1",
+            bandcamp: null, instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+        });
+        mockWebSearch.mockResolvedValue([
+            hit("https://dupes.bandcamp.com", "Dupes"),
+            hit("https://radicalone.bandcamp.com/album/whine-up", "Radical One"),
+        ]);
+        mockJudge.mockImplementation(async (_a, candidates) =>
+            new Map(candidates.map(c => [c.url, "about-artist"])));
+        mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: [] });
+        mockExtract.mockImplementation(async (url) =>
+            url.includes("radicalone")
+                ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "radicalone" }
+                : url.includes("bandcamp")
+                    ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" }
+                    : undefined);
+        const { searchAndPopulateVault } = await import("../vaultWebSearch");
+        await searchAndPopulateVault("a1");
+
+        const bandcampWrites = mockSetLink.mock.calls.filter(c => c[1] === "bandcamp");
+        expect(bandcampWrites).toHaveLength(1);
+        expect(bandcampWrites[0][2]).toBe("dupes");
+    });
+
     it("leaves every held column alone when the caller names none — the default is unchanged", async () => {
       // Without this, "treat a full column as open" could quietly become the
       // default for every other caller of this function.

@@ -335,9 +335,8 @@ async function adoptFromMusicBrainz(
                 }
             }
             try {
-                await writeArtistLink(artistId, match.siteName, id, provisional);
+                await writeArtistLink(artistId, match.siteName, id, provisional, artist);
                 console.log(`[vaultWebSearch] MusicBrainz -> ${match.siteName}=${id}`);
-                artist[match.siteName] = id; // so the search pass does not re-add it
                 handles.add(normalizeHandle(id));
             } catch (e) {
                 console.warn(`[vaultWebSearch] Could not save ${match.siteName} from MusicBrainz:`, e);
@@ -427,9 +426,24 @@ function holdsAnswerFor(artist: Record<string, unknown>, siteName: string, provi
  *  forgotten at one of five call sites. */
 async function writeArtistLink(
     artistId: string, siteName: string, value: string, provisional?: Set<string>,
+    /** The in-memory snapshot the gates read. Updated so a LATER gate in the
+     *  same pass can see this write.
+     *
+     *  Every "already have it" check in this file reads a record fetched before
+     *  its loop started, which cannot see what the loop itself just wrote. The
+     *  judge-affirmed account path wrote bandcamp THREE times in one run for
+     *  Sherwinn Brice — dupes, dupes again, then radicalone from an album page
+     *  crediting him — and the last one won, so he ended with another artist's
+     *  Bandcamp. The gate was there and was reading a stale answer.
+     *
+     *  The MusicBrainz path already did this by hand ("so the search pass does
+     *  not re-add it"). Doing it here means every path gets it, including the
+     *  ones nobody has hit yet. */
+    record?: Record<string, unknown>,
 ): Promise<void> {
     await setArtistLink(artistId, siteName, value);
     provisional?.delete(siteName);
+    if (record) record[siteName] = value;
 }
 
 async function adoptHandlesFromOwnPage(
@@ -542,7 +556,7 @@ async function adoptHandlesFromOwnPage(
             continue;
         }
         try {
-            await writeArtistLink(artistId, r.siteName, r.id, provisional);
+            await writeArtistLink(artistId, r.siteName, r.id, provisional, artist);
             console.log(`[vaultWebSearch] Adopted ${r.siteName}=${r.id} from the artist's own page`);
             done.add(r.siteName);
             adoptedHandles.add(r.id);
@@ -650,7 +664,7 @@ async function propagateVerifiedHandles(
                 continue;
             }
             try {
-                await writeArtistLink(artistId, platform, resolved[0], provisional);
+                await writeArtistLink(artistId, platform, resolved[0], provisional, artist);
                 console.log(`[vaultWebSearch] Propagated verified handle -> ${platform}=${resolved[0]}`);
                 adopted++;
             } catch (e) {
@@ -1157,7 +1171,7 @@ export async function searchAndPopulateVault(
             }
             if (isAccountUrl && !alreadyHave && !accountBlocked && relevance.get(result.url) === "about-artist") {
                 try {
-                    await writeArtistLink(artistId, profileMatch!.siteName, profileMatch!.id, provisional);
+                    await writeArtistLink(artistId, profileMatch!.siteName, profileMatch!.id, provisional, artist as unknown as Record<string, unknown>);
                     console.log(`[vaultWebSearch] ${profileMatch!.siteName} profile -> links: ${result.url.slice(0, 80)}`);
                 } catch (e) {
                     console.warn(`[vaultWebSearch] Could not save discovered ${profileMatch!.siteName} profile:`, e);
@@ -1434,7 +1448,7 @@ export async function searchAndPopulateVault(
                     }
                 }
                 try {
-                    await writeArtistLink(artistId, cand.siteName, cand.id, provisional);
+                    await writeArtistLink(artistId, cand.siteName, cand.id, provisional, current as unknown as Record<string, unknown> | undefined);
                     console.log(`[vaultWebSearch] Search found ${cand.siteName}=${cand.id}, page confirms it: "${identity.slice(0, 60)}"`);
                     done.add(cand.siteName);
                     verifiedHandles.add(normalizeHandle(cand.id));
