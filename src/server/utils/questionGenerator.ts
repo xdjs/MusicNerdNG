@@ -315,22 +315,28 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         // unique (artist, questionKey) index. Fixed in the partnership signal
         // and left live here, which is the half-fix this file keeps producing.
         const id = unicodeSlug(c.subject);
+        // THE SENTENCE, NOT THE LABEL.
+        //
+        // This handed over bare labels — "main production partner; added some
+        // 808s; breath church" — which is not what the artist wrote, and
+        // stripping the sentence strips the only thing that makes the label
+        // mean anything. Pete's caption says "Alan had added some 808s for the
+        // outro BUT THOSE FILES WERE LOST...so we ended up leaving as is". From
+        // the label alone the model asked which track his 808s changed the feel
+        // of. They are not on any track.
+        //
+        // Quoting the artist is also the standing instruction elsewhere in this
+        // prompt: "when in doubt, quote the artist's own words rather than
+        // paraphrasing them".
+        const quotes = [...new Set(c.quotes.map(q => q.trim()).filter(Boolean))].slice(0, 3);
         candidates.push({
             signalId: `credit_${id}`,
             kind: "credit",
             key: `social_credit_${id}`,
             authoredBy: "artist",
-            // SEPARATE OCCASIONS, SAID SO EXPLICITLY, and no count.
-            //
-            // This read "credits @zavodskyalan as: main production partner;
-            // added some 808s; breath church" — one list, no indication those
-            // came from different captions — and produced a question about
-            // being "credited with 'added some 808s' and 'breath church'".
-            // The 808s were one post, and that post says the files were lost.
-            //
-            // Same merge that `relationshipCandidates` exists to prevent, in
-            // the signal next to it.
-            material: `${artistName}'s own words for ${subject}, each from a DIFFERENT caption and each true only of the post it came from: ${c.roles.map(r => `"${r}"`).join(", ")}. Do not combine these into one description of ${subject}, and do not present a role from one post as what they generally do — if you use one, use it as the single thing it is.`,
+            material: `${artistName} wrote these about ${subject}, each in a DIFFERENT caption and each true only of the post it came from:\n`
+                + quotes.map(q => `  "${q}"`).join("\n")
+                + `\nRead what the sentences actually say — they may contradict what the phrasing suggests. Do not combine them into one description of ${subject}, and do not present something from one post as what they generally do.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -442,6 +448,19 @@ Rules:
 - NEVER COUNT ANYTHING. Not posts, not times, not years. "Across 23 posts" and "you've mentioned them repeatedly" are the same sentence a dashboard writes; a person who read the feed says "your main production partner" because that is what the artist called them. The counts in the material are for YOU, to decide what matters — they are never for the question.
 - NAME THE PARTICULAR THING. The material contains actual specifics: a named track, a role in the artist's own words, a session, a thing that went wrong. Reach into it and ask about ONE of them. "What's a specific moment where their input shaped a track?" is BANNED, along with every variant of it — "what's a specific detail", "one specific example", "a particular instance". Those are "tell me about" with a coat on: they describe a subject and then hand the artist the job of being specific, which is the job you were supposed to do.
 - EVERY QUESTION IN THE SET MUST BE A DIFFERENT SHAPE. Not just a different person — a different KIND of question. Four questions of the form "you credited @someone for X; what's a specific Y?" about four different collaborators is one question asked four times, and it reads as a template being filled. If credits are your strongest material, ask at most one or two about credits and find something else for the rest.
+- SAY IT OUT LOUD FIRST. You are talking, not writing. If a sentence would sound odd spoken across a table, it is wrong — and "where you felt that shift truly take hold" is not something any person has ever said. Real interviewers use short words and ask about things, not about qualities of things. Contractions are good. Twenty words is plenty; thirty is too many.
+
+  Rewrite anything that sounds like an essay:
+    NO  "what was the first track you made where you felt that shift truly take hold?"
+    YES "what's the first thing you made after that?"
+    NO  "what does that look like in practice for artists using the platform?"
+    YES "what does an artist actually get that they didn't have before?"
+    NO  "what was a key creative decision they made that shaped the visual identity of the project?"
+    YES "what did she want that you argued with?"
+    NO  "what truth felt most urgent to express in that period?"
+    YES "what did you finally say that you'd been sitting on?"
+
+- BAN THE ABSTRACT NOUNS. "process", "approach", "practice", "identity", "dynamic", "journey", "aspect", "element", "experience", "impact", "vision" — these are the words of somebody describing music rather than making it. Ask about a track, a room, a person, a night, a decision, a thing that broke.
 - One sentence. Plain spoken language, never clinical, never creepy, never over-familiar, and never flattering ("powerful", "amazing", "clearly struck a nerve").
 - Use ONLY signalIds from the list you were given.
 
@@ -470,6 +489,18 @@ export function boilerplateReason(question: string): string | null {
         || /\bwhat(?:'s| is| was)\s+(?:a|one)\s+(?:specific|particular)\b/i.test(question)) {
         return "asks the artist to supply the specificity";
     }
+    // Essay register. An interviewer talking across a table does not say
+    // "the conceptual identity of the project" or "your approach to
+    // songwriting" — those are the words of somebody describing music rather
+    // than making it, and they turn a question into a survey item.
+    const ABSTRACT = /\b(?:process|approach|practice|identity|dynamic|journey|aspect|element|experience|impact|vision|creative process|body of work)\b/i;
+    if (ABSTRACT.test(question)) return "uses essay-register abstractions";
+
+    // Length is the other tell. Spoken questions are short; a 38-word sentence
+    // with two subordinate clauses is written prose. Measured against real
+    // output: the good ones ran under twenty words, the bad ones over thirty.
+    if (question.trim().split(/\s+/).length > 30) return "too long to be spoken";
+
     // "What was the process like", "what was that experience like". The
     // instruction bans "what was that like" by name and the model reaches for
     // it anyway with a noun wedged in. It is the emptiest question there is:

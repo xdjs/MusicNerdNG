@@ -213,8 +213,18 @@ describe('generateGroundedQuestions', () => {
         it.each([
             "What was the process like for that track to be selected?",
             "What was that experience like?",
+        ])('rejects it one way or another — these trip the abstraction rule first: %s', async (q) => {
+            // "process" and "experience" are banned outright, so these are
+            // caught before the like-family check. Which rule fires is not the
+            // point; that it is refused is.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).not.toBeNull();
+        });
+
+        it.each([
             "what was it like working with them?",
-        ])('rejects the what-was-it-like family, noun or no noun: %s', async (q) => {
+            "What was that first night like?",
+        ])('rejects the what-was-it-like family with no abstraction to catch it: %s', async (q) => {
             // The instruction bans "what was that like" by name; the model
             // reaches for it anyway with a noun wedged in ("what was the
             // PROCESS like"). It is the emptiest question available — it asks
@@ -224,6 +234,8 @@ describe('generateGroundedQuestions', () => {
         });
 
         it.each([
+            "what does an artist actually get that they didn't have before?",
+            "what did she want that you argued with?",
             "What was the first thing you changed after he handed you those albums?",
             "What did the label want that you would not give them?",
             "You wrote that the pandemic was a blessing and a curse; who told you to slow down?",
@@ -232,6 +244,35 @@ describe('generateGroundedQuestions', () => {
         ])('keeps a question that names something real: %s', async (q) => {
             const { boilerplateReason } = await import('@/server/utils/questionGenerator');
             expect(boilerplateReason(q)).toBeNull();
+        });
+    });
+
+    describe('sounding like a person rather than an essay', () => {
+        it.each([
+            "what does that look like in practice for artists using the platform?",
+            "what was a key creative decision that shaped the visual identity of the project?",
+            "how did that change your approach to songwriting?",
+            "what has that journey been like for you?",
+        ])('rejects essay-register abstractions: %s', async (q) => {
+            // "process", "approach", "identity", "journey" — the words of
+            // somebody describing music rather than making it. Pete: "no one
+            // talks like that."
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/abstraction/);
+        });
+
+        it('rejects a question too long to say out loud', async () => {
+            // The real one, 38 words. Spoken questions are short; this is
+            // written prose with two subordinate clauses.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(
+                "You wrote that your cousin André handing you 112's Part III and Dr. Dre's 2001 shifted your perspective on how to create music; what was the first track you made where you felt that shift truly take hold?",
+            )).toMatch(/too long/);
+        });
+
+        it('keeps a short, spoken question with a concrete noun in it', async () => {
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason("You said those two albums changed how you make music — what's the first thing you made after?")).toBeNull();
         });
     });
 
@@ -626,8 +667,12 @@ describe('generateGroundedQuestions', () => {
             const credit = JSON.parse(sent.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1])
                 .find(x => x.kind === "credit");
             expect(credit.material).toMatch(/DIFFERENT caption/);
-            expect(credit.material).toMatch(/Do not combine these/);
+            expect(credit.material).toMatch(/Do not combine them/);
             expect(credit.material).not.toMatch(/\d+ post\(s\)/);
+            // THE SENTENCE, not the label. A label without its sentence loses
+            // the only thing that gives it meaning: "added some 808s" reads as
+            // a contribution until you see "but those files were lost".
+            expect(credit.material).toContain('Mixed by @p3t3rango');
         });
 
         it("offers a collaborator credited on more than one post as a relationship", async () => {

@@ -569,6 +569,11 @@ export interface CreditedCollaborator {
      * merging destroys the evidence of which post a fact came from.
      */
     recurringRoles: string[];
+    /** The artist's actual sentences, one per credit. A label without its
+     *  sentence loses the only thing that gives it meaning — "added some 808s"
+     *  reads as a contribution until you see the rest of it: "but those files
+     *  were lost...so we ended up leaving as is". */
+    quotes: string[];
     evidenceUrls: string[];
 }
 
@@ -591,11 +596,12 @@ export function creditedCollaborators(extraction: CaptionExtraction): CreditedCo
         const existing = by.get(key);
         if (existing) {
             if (!existing.roles.some(r => r.toLowerCase() === roleKey)) existing.roles.push(c.role);
+            if (c.quote && !existing.quotes.includes(c.quote)) existing.quotes.push(c.quote);
             if (!existing.evidenceUrls.includes(c.url)) existing.evidenceUrls.push(c.url);
             // A handle is more useful than a bare name; upgrade if we later see one.
             if (c.isHandle && !existing.isHandle) { existing.isHandle = true; existing.subject = c.subject; }
         } else {
-            by.set(key, { subject: c.subject, isHandle: c.isHandle, roles: [c.role], recurringRoles: [], evidenceUrls: [c.url] });
+            by.set(key, { subject: c.subject, isHandle: c.isHandle, roles: [c.role], recurringRoles: [], quotes: c.quote ? [c.quote] : [], evidenceUrls: [c.url] });
         }
     }
     for (const [key, person] of by) {
