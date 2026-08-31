@@ -557,9 +557,22 @@ const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collabora
  * material genuinely is all credits gets a full interview rather than one
  * question.
  */
-function personDraftLimit(draftTarget: number, candidates: SignalCandidate[]): number {
-    const hasOthers = candidates.some(c => !ABOUT_A_PERSON.has(c.kind));
-    return hasOthers ? Math.max(1, Math.ceil(draftTarget / 2)) : draftTarget;
+function capPersonQuestions<T extends { kind: string }>(items: T[], max: number): T[] {
+    const allowed = Math.max(1, Math.ceil(max / 2));
+    // Nothing else to offer — an artist whose material genuinely is all
+    // collaborators gets a full interview about collaborators. Pete, asked
+    // directly: that is fine.
+    if (!items.some(x => !ABOUT_A_PERSON.has(x.kind))) return items;
+    const kept: T[] = [];
+    let people = 0;
+    for (const item of items) {
+        if (ABOUT_A_PERSON.has(item.kind)) {
+            if (people >= allowed) continue;
+            people++;
+        }
+        kept.push(item);
+    }
+    return kept;
 }
 
 export function diversify<T extends { kind: string }>(items: T[], max: number): T[] {
@@ -642,6 +655,11 @@ export function forgetGroundedQuestions(artistId: string): void {
  *  exact signal materials it claims to draw on — the only thing it may assert. */
 interface DraftedQuestion extends GroundedQuestion {
     materials: string[];
+    /** Why this question reads like a template rather than a person, if it
+     *  does — see `boilerplateReason`. Kept rather than dropped: it ranks
+     *  below the clean questions and is only used to avoid falling back to a
+     *  generic one. */
+    demotedFor?: string;
 }
 
 const VERIFIER_TIMEOUT_MS = 12_000;
@@ -848,8 +866,7 @@ export async function generateGroundedQuestions(
         const answers = parseModelAnswers(text);
         const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
-        const maxPeople = personDraftLimit(draftTarget, candidates);
-        let people = 0;
+
         for (const answer of answers) {
             if (drafted.length >= draftTarget) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
@@ -867,26 +884,28 @@ export async function generateGroundedQuestions(
             if (!signalId || !question || seen.has(signalId)) continue;
             const candidate = byId.get(signalId); // only signalIds WE supplied are honored
             if (!candidate) continue;
-            // BOILERPLATE FIRST, THEN THE CAP — the order matters.
+            // BOILERPLATE DEMOTES, IT DOES NOT DELETE.
             //
-            // Counting a person-kind draft against the cap BEFORE checking
-            // whether it survives means a rejected draft still spends a slot.
-            // Three boilerplate collaborator drafts in a row would exhaust
-            // `maxPeople` and silently drop a good fourth one, with zero person
-            // questions actually in the set — the cap eating the very yield the
-            // oversample exists to recover. Found in review.
+            // These checks used to `continue`, and that made the output worse
+            // rather than better: a rejected draft is not replaced by a nicer
+            // question, it is replaced by "describe your sound". Measured on
+            // Pete Rango's own feed after the register rules went in — six
+            // drafts, three killed here, three killed by the fact-checker,
+            // ZERO grounded questions, three generic fallbacks. He tested it
+            // and said it made no sense, and he was right.
             //
-            // `seen` is already added after this check, for the same reason: a
-            // draft that did not survive has not used anything up.
+            // A slightly wordy question about a session he actually had beats
+            // a perfect-sounding question about nothing. So a flagged draft is
+            // kept and ranked BELOW the clean ones, and only surfaces when
+            // there are not enough clean ones to fill the interview.
+            // NO PERSON CAP HERE. It belonged at draft time only while
+            // boilerplate DELETED drafts — capping a finished set does nothing
+            // when every draft is about a person. Now that nothing is deleted,
+            // a draft-time cap is actively harmful: flagged collaborator drafts
+            // eat the allowance and a clean one later in the list never gets
+            // drafted at all. The cap is applied to the RANKED set below, where
+            // it can prefer the clean ones.
             const boilerplate = boilerplateReason(question);
-            if (boilerplate) {
-                console.log(`[questionGenerator] dropped a question — ${boilerplate}: ${question.slice(0, 70)}`);
-                continue;
-            }
-            if (ABOUT_A_PERSON.has(candidate.kind)) {
-                if (people >= maxPeople) continue;   // leave room for their own words
-                people++;
-            }
             seen.add(signalId);
 
             drafted.push({
@@ -896,6 +915,7 @@ export async function generateGroundedQuestions(
                 sourceUrls: candidate.sourceUrls,
                 kind: candidate.kind,
                 materials: [candidate.material],
+                demotedFor: boilerplate ?? undefined,
             });
         }
 
@@ -903,7 +923,18 @@ export async function generateGroundedQuestions(
         // `diversify` walks that ranking and takes the strongest question of
         // each kind before it takes a second of any — the set stays in the
         // model's preference order without being four versions of one question.
-        const questions = diversify(await keepOnlySupported(drafted, artistName), max);
+        // CLEAN FIRST, FLAGGED ONLY IF NEEDED. The fact-checker still has an
+        // absolute veto — a flagged question is merely inelegant, an
+        // unsupported one is wrong — so this ranks what survived verification.
+        const demoted = new Map(drafted.filter(d => d.demotedFor).map(d => [d.key, d.demotedFor!]));
+        const verified = await keepOnlySupported(drafted, artistName);
+        const clean = verified.filter(q => !demoted.has(q.key));
+        const flagged = verified.filter(q => demoted.has(q.key));
+        const questions = diversify(capPersonQuestions([...clean, ...flagged], max), max);
+        for (const q of questions) {
+            const why = demoted.get(q.key);
+            if (why) console.log(`[questionGenerator] using a question that ${why} — better than a generic fallback: ${q.question.slice(0, 70)}`);
+        }
 
         pruneGroundedQuestionsCache(now);
         groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });
