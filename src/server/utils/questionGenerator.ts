@@ -157,6 +157,10 @@ function unicodeSlug(s: string): string {
     return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "").slice(0, 60) || "x";
 }
 
+/** Exported for tests only — the key-churn guarantee is the whole reason this
+ *  regex is what it is, and it needs pinning. */
+export const slugForTest = (s: string): string => slug(s);
+
 function slug(s: string): string {
     return s
         .toLowerCase()
@@ -168,11 +172,20 @@ function slug(s: string): string {
         // other five call sites were left behind; fixing the shared helper
         // covers all of them at once.
         //
+        // UNDERSCORE STAYS IN THE CLASS. `\w` counts "_" as a word character,
+        // so it never collapsed a run containing one; a bare \p{L}\p{N} class
+        // does not, and folds "cool__guy" to "cool_guy" and "the_.kid" to
+        // "the_kid". Instagram handles mix "." and "_" freely, so that is a
+        // real shape, and a changed key silently orphans the answer stored
+        // under the old one — the very churn this was written to avoid.
+        //
         // ZERO KEY CHURN, which is why this rather than swapping call sites:
-        // for ASCII input the two classes produce identical output (verified
-        // across real topics, titles and handles), so no stored questionKey
-        // moves. `unicodeSlug` would have changed them via its longer slice.
-        .replace(/[^\p{L}\p{N}]+/gu, "_")
+        // with "_" kept, ASCII input is byte-identical to the old output, so no
+        // stored questionKey moves. `unicodeSlug` would have changed them via
+        // its longer slice. Found in review — my first version dropped the
+        // underscore and I verified byte-identity only against the strings we
+        // happen to hold, which is not the same as verifying the rule.
+        .replace(/[^\p{L}\p{N}_]+/gu, "_")
         .replace(/^_+|_+$/g, "")
         .slice(0, 40) || "x";
 }

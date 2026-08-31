@@ -247,6 +247,37 @@ describe('generateGroundedQuestions', () => {
         });
     });
 
+    describe('slug — fixes non-Latin collisions without moving any existing key', () => {
+        /** The pattern `slug` replaced, so the test compares against the thing
+         *  that actually generated the stored keys rather than a paraphrase. */
+        const previous = (x) => x.toLowerCase().normalize('NFKD')
+            .replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'x';
+
+        it.each([
+            'cool__guy', 'cool._guy', 'the_.kid', 'self-love_journey', '_kingkona',
+            'crittie_p', 'sage.breath', 'why he believes in Subvert',
+            'crying on the floor (pete rango mix)', 'Beyoncé', 'a_b',
+        ])('produces the identical key for ASCII input: %s', async (input) => {
+            // The key is persisted as questionKey under a unique (artist,
+            // questionKey) index, so a changed key silently orphans the answer
+            // stored under the old one and the interview re-asks it.
+            //
+            // My first version dropped "_" from the character class, which
+            // collapsed "cool__guy" to "cool_guy" — and I verified byte
+            // identity only against the strings we happen to hold, which is not
+            // the same as verifying the rule. Found in review.
+            const { slugForTest } = await import('@/server/utils/questionGenerator');
+            expect(slugForTest(input)).toBe(previous(input));
+        });
+
+        it.each(['日本のアーティスト', '김민준', 'Пётр'])(
+            'stops folding %s to "x", which collided two artists onto one key', async (input) => {
+                const { slugForTest } = await import('@/server/utils/questionGenerator');
+                expect(previous(input)).toBe('x');          // the bug
+                expect(slugForTest(input)).not.toBe('x');   // the fix
+            });
+    });
+
     describe('sounding like a person rather than an essay', () => {
         it.each([
             "what does that look like in practice for artists using the platform?",

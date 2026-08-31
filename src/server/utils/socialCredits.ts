@@ -253,8 +253,6 @@ export function roleIsSomebodyElsesHandle(role: string, subject: string, quote: 
         const foldedHandle = fold(handle);
         // Short handles fold into ordinary words; only the subject's own handle
         // legitimately appears in a role ("feat @someone").
-        // Short handles fold into ordinary words; only the subject's own handle
-        // legitimately appears in a role ("feat @someone").
         //
         // EXACT EQUALITY, NOT CONTAINMENT — I tried containment and took it
         // back out. The idea was that the extractor sometimes records a bare
