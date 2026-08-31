@@ -88,6 +88,7 @@ import { musicPlatformData, spotifyProvider, deezerProvider } from "@/server/uti
 import type { MusicPlatformArtist } from "@/server/utils/musicPlatform";
 import { webSearch, type WebSearchResult } from "@/server/utils/webSearch";
 import { getArtistMappings } from "@/server/utils/idMappingService";
+import { spotifyArtistFromDeezer } from "@/server/utils/isrcMatch";
 import {
     PROFILE_DISPLAY_COLUMNS,
     artistHasRawLinkValue,
@@ -303,12 +304,39 @@ async function* settleAsCompleted<K, V>(entries: [key: K, promise: Promise<V>][]
 async function* tierTwoPlatformSearchStream(
     artistName: string,
     missing: Set<ProfileDisplayColumn>,
+    record?: Record<string, unknown>,
 ): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
     const jobs: [ProfileDisplayColumn, Promise<TierCandidate | null>][] = [];
 
     if (missing.has("spotify")) {
         jobs.push(["spotify", (async (): Promise<TierCandidate | null> => {
             try {
+                // AN ID FIRST, A NAME ONLY IF THAT FAILS.
+                //
+                // The name search below finds Spotify for a Deezer-only artist
+                // and does it well for a distinctive name — measured on Pete
+                // Rango, from Deezer alone. It fails exactly where it matters:
+                // three artists here are called Black Dave, and no search of
+                // the catalogue by that name can say which entry is which of
+                // them. It either picks one or abstains.
+                //
+                // An ISRC identifies a RECORDING, not a person, so asking who
+                // Spotify credits on the records Deezer already attributes to
+                // this artist id does not depend on anyone's name being rare.
+                const deezerId = typeof record?.deezer === "string" ? record.deezer : "";
+                if (deezerId) {
+                    const viaIsrc = await spotifyArtistFromDeezer(deezerId, artistName);
+                    if (viaIsrc) {
+                        return {
+                            tier: 2, platform: "spotify",
+                            // validateCandidate re-derives the canonical URL
+                            // from urlmap, so the plain form is enough.
+                            url: `https://open.spotify.com/artist/${viaIsrc.spotifyId}`,
+                            reasoning: `Shares ${viaIsrc.recordings} recording${viaIsrc.recordings === 1 ? "" : "s"} (by ISRC) with their Deezer catalogue`
+                                + (viaIsrc.byName ? ", name confirmed among the performers" : ""),
+                        };
+                    }
+                }
                 const matches = await spotifyProvider.searchArtists(artistName, 5);
                 const best = pickExactNameMatch(matches, artistName);
                 if (!best) return null;
@@ -1209,7 +1237,7 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
     if (!pastBudget()) {
         const tier2Targets = (["spotify", "deezer"] as const).filter(p => missing.has(p));
         for (const p of tier2Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
-        for await (const [platform, candidate] of tierTwoPlatformSearchStream(artistName, missing)) {
+        for await (const [platform, candidate] of tierTwoPlatformSearchStream(artistName, missing, record)) {
             if (candidate) {
                 missing.delete(candidate.platform);
                 const profile = await validateCandidate(candidate, ctx);
