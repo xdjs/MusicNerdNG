@@ -38,6 +38,13 @@ jest.mock('@/server/utils/idMappingService', () => ({
     getArtistMappings: jest.fn().mockResolvedValue([]),
 }));
 
+// Mocked so a test can assert tier 2 REACHES it. Its own behaviour is covered
+// in isrcMatch.test.ts; what that file cannot see is whether anything calls it,
+// which is the failure this branch has produced twice.
+jest.mock('@/server/utils/isrcMatch', () => ({
+    spotifyArtistFromDeezer: jest.fn().mockResolvedValue(null),
+}));
+
 const URLMAP_ROWS = [
     { siteName: 'spotify', cardPlatformName: 'Spotify', siteImage: 'https://cdn/spotify.png', colorHex: '#1DB954', appStringFormat: 'https://open.spotify.com/artist/%@' },
     { siteName: 'deezer', cardPlatformName: 'Deezer', siteImage: 'https://cdn/deezer.png', colorHex: '#FEAA2D', appStringFormat: 'https://www.deezer.com/artist/%@' },
@@ -422,6 +429,50 @@ describe('discoverArtistProfiles', () => {
     // --- Tier 2 — platform search APIs -----------------------------------
 
     describe('tier 2 — platform search', () => {
+        it('resolves spotify from the deezer id by ISRC, and only falls back to the name search when that finds nothing', async () => {
+            // A name search cannot tell three artists called Black Dave apart.
+            // An ISRC identifies a recording, so asking who Spotify credits on
+            // the records Deezer already attributes to this artist id does not
+            // depend on the name being rare. This asserts the WIRING — that
+            // tier 2 asks at all, and prefers the answer — because a resolver
+            // nothing calls is the shape of bug this branch keeps producing.
+            const { artistQ, extractArtistId, musicPlatformData, spotifyProvider, discoverArtistProfiles } = await setup();
+            const { spotifyArtistFromDeezer } = await import('@/server/utils/isrcMatch');
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);   // deezer only
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            spotifyArtistFromDeezer.mockResolvedValue({ spotifyId: 'FROM_ISRC', recordings: 3, byName: false });
+            extractArtistId.mockImplementation(async (url: string) =>
+                url.includes('FROM_ISRC') ? { siteName: 'spotify', cardPlatformName: 'Spotify', id: 'FROM_ISRC' } : null);
+
+            const result = await discoverArtistProfiles('a1');
+
+            expect(spotifyArtistFromDeezer).toHaveBeenCalledWith('94933462', 'Pete Rango');
+            expect(result.find(r => r.siteName === 'spotify')).toMatchObject({ value: 'FROM_ISRC' });
+            // The identifier answered, so the catalogue was never searched by name.
+            expect(spotifyProvider.searchArtists).not.toHaveBeenCalled();
+        });
+
+        it('falls back to the name search when the ISRC lookup abstains', async () => {
+            // It fails closed a lot on purpose — no ISRCs, no Spotify match,
+            // tied collaborators none of whom are named like the artist. None
+            // of that may cost us the link we used to find.
+            const { artistQ, extractArtistId, musicPlatformData, spotifyProvider, discoverArtistProfiles } = await setup();
+            const { spotifyArtistFromDeezer } = await import('@/server/utils/isrcMatch');
+            artistQ.getArtistById.mockResolvedValue(BASE_ARTIST);
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            spotifyArtistFromDeezer.mockResolvedValue(null);
+            spotifyProvider.searchArtists.mockResolvedValue([
+                { name: 'Pete Rango', profileUrl: 'https://open.spotify.com/artist/BY_NAME', followerCount: 652 },
+            ]);
+            extractArtistId.mockImplementation(async (url: string) =>
+                url.includes('BY_NAME') ? { siteName: 'spotify', cardPlatformName: 'Spotify', id: 'BY_NAME' } : null);
+
+            const result = await discoverArtistProfiles('a1');
+            expect(result.find(r => r.siteName === 'spotify')).toMatchObject({ value: 'BY_NAME' });
+        });
+
         it('picks an exact case-insensitive name match found via Spotify search', async () => {
             const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, spotifyProvider, webSearch, discoverArtistProfiles } = await setup();
             artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: null, deezer: '94933462' });
