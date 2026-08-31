@@ -9,6 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { artistSocialCredits } from "@/server/db/schema";
 import type { CaptionExtraction, CaptionCredit, ArtistStatement } from "@/server/utils/socialCredits";
+import { roleIsSomebodyElsesHandle } from "@/server/utils/socialCredits";
 import { EMPTY_EXTRACTION } from "@/server/utils/socialCredits";
 
 /** Replace an artist's stored extraction with a fresh one.
@@ -129,7 +130,24 @@ export async function getSocialCredits(artistId: string): Promise<CaptionExtract
                 });
             }
         }
-        return { credits: credits.filter(c => c.subject), statements };
+        // ALSO FILTERED ON THE WAY OUT, not only on the way in.
+        //
+        // The extractor now refuses a "role" that is really another handle from
+        // the same caption ("breath church" for three people who went to
+        // @breath.church together). Rows written before that fix are still in
+        // the table, and re-extracting a 300-post feed is a seven-minute job
+        // nobody should have to run to stop being told wrong things. Reading is
+        // cheap and this makes the fix retroactive.
+        const clean = credits.filter(c => {
+            if (!c.subject) return false;
+            const borrowed = roleIsSomebodyElsesHandle(c.role, c.subject, c.quote);
+            if (borrowed) {
+                console.log(`[getSocialCredits] Ignoring stored "${c.role}" for ${c.subject} — that is @${borrowed}`);
+                return false;
+            }
+            return true;
+        });
+        return { credits: clean, statements };
     } catch (e) {
         console.error("[getSocialCredits] Error:", e);
         return EMPTY_EXTRACTION;

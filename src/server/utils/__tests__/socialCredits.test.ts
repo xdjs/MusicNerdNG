@@ -312,3 +312,40 @@ describe("captionBearingPosts", () => {
         expect(captionBearingPosts([post()])).toHaveLength(1);
     });
 });
+
+describe("roleIsSomebodyElsesHandle — co-presence is not employment", () => {
+    const subject = async () => (await import("../socialCredits")).roleIsSomebodyElsesHandle;
+
+    it.each([
+        // The one that started it: three people who went somewhere together,
+        // each given the venue as their job.
+        ["breath church", "zavodskyalan",
+         "Then I went to NY to do my very first @breath.church @physiologicnyc with @sage.breath and the boys @thegreatzandini & @zavodskyalan"],
+        ["first @breath.church", "sage.breath",
+         "Then I went to NY to do my very first @breath.church with @sage.breath"],
+        ["KIKI used for WNBA pack", "bycherele",
+         "So apparently @bycherele KIKI is being used for @wnba Legendary In Her Bag @nbatopshot Pack Opening"],
+        ["opening up for @travisscott", "whoisoyabun",
+         "@whoisoyabun opening up for @travisscott"],
+    ])("rejects %s", async (role, subj, quote) => {
+        expect(await (await subject())(role, subj, quote)).toBeTruthy();
+    });
+
+    it.each([
+        ["Mixed by", "p3t3rango", "Mixed by @p3t3rango"],
+        ["main production partner", "zavodskyalan", "@zavodskyalan has been one of my main production partners"],
+        ["added some 808s", "zavodskyalan", "Alan had added some 808s for the outro but those files were lost"],
+        ["on guitar", "someone", "@someone on guitar"],
+        // The subject's OWN handle inside the role is fine — "feat @x" is how
+        // a feature is written.
+        ["feat @dameatlas", "dameatlas", "feat @dameatlas on the second verse"],
+    ])("keeps %s", async (role, subj, quote) => {
+        expect(await (await subject())(role, subj, quote)).toBeNull();
+    });
+
+    it("ignores handles too short to be distinctive", async () => {
+        // A three-character handle folds into ordinary words and would reject
+        // half the real roles in the table.
+        expect(await (await subject())("on drums", "someone", "@abc @someone on drums")).toBeNull();
+    });
+});

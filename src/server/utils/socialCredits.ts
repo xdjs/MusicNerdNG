@@ -208,7 +208,52 @@ Rules:
 - Use only the url that was given with that caption.
 - A caption with no credit and nothing worth quoting contributes nothing. Empty arrays are the correct answer for a feed of announcements.
 - Never report a person who is not named in that caption.
+- BEING THERE IS NOT A JOB. "I did X with @a and @b" says @a and @b were there. It does NOT give them the role X. Neither does being tagged, thanked, or named alongside a place, an event, a brand or a track. A credit needs the caption to say the person DID something on the thing being made.
+    "Then I went to NY to do my very first @breath.church with @sage.breath and the boys @thegreatzandini"
+      -> NO credits. That is somewhere they went together.
+    "@whoisoyabun opening up for @travisscott"    -> NOT a credit. That is his gig, not work on ${artistName}'s record.
+    "@bycherele KIKI is being used for @wnba"     -> NOT a credit. That is her track, somewhere else.
+- A ROLE IS NEVER A USERNAME. If the words you are about to write as the role contain somebody's @handle, you have copied the sentence's subject matter instead of reading a job. Leave it out.
 `.trim();
+
+/**
+ * Is this "role" actually somebody else's @handle from the same sentence?
+ *
+ * The extractor's failure mode is co-presence read as employment. A caption
+ * naming several people around an activity gets the ACTIVITY handed to each of
+ * them as a job:
+ *
+ *   "Then I went to NY to do my very first @breath.church @physiologicnyc with
+ *    @sage.breath and the boys @thegreatzandini & @zavodskyalan"
+ *
+ * produced the role "breath church" for all three of them. It is an event they
+ * went to. The same shape gave @bycherele the role "KIKI used for WNBA pack"
+ * and @whoisoyabun "opening up for Travis Scott" — real things that happened,
+ * none of them a job on this artist's work.
+ *
+ * The tell is precise: the role text CONTAINS another handle from the caption.
+ * A genuine role ("Mixed by", "on guitar", "added some 808s") never does,
+ * because a job is not a username.
+ *
+ * Measured over Pete Rango's 672 stored credits: 11 rejected, every one of them
+ * wrong. Deliberately narrow — it is the one signal that is unambiguous, and
+ * a validator that guesses is worse than none.
+ *
+ * Returns the offending handle, or null.
+ */
+export function roleIsSomebodyElsesHandle(role: string, subject: string, quote: string): string | null {
+    const foldedRole = fold(role);
+    if (!foldedRole) return null;
+    const foldedSubject = fold(subject);
+    for (const [, handle] of quote.matchAll(/@([A-Za-z0-9._]{4,})/g)) {
+        const foldedHandle = fold(handle);
+        // Short handles fold into ordinary words; only the subject's own handle
+        // legitimately appears in a role ("feat @someone").
+        if (foldedHandle.length < 4 || foldedHandle === foldedSubject) continue;
+        if (foldedRole.includes(foldedHandle)) return handle;
+    }
+    return null;
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number = TIMEOUT_MS): Promise<T> {
     return Promise.race([
@@ -274,6 +319,13 @@ export function verifyClaims(
         if (!post) continue;                                     // cited a post we never sent
         const caption = post.caption ?? "";
         if (!containsQuote(caption, quote)) continue;            // quote is not in that caption
+
+        // Co-presence is not employment — see `roleIsSomebodyElsesHandle`.
+        const borrowed = roleIsSomebodyElsesHandle(role, subject, quote);
+        if (borrowed) {
+            console.log(`[socialCredits] Dropping "${role}" for ${subject} — that is @${borrowed}, not a job they did`);
+            continue;
+        }
 
         // The person has to be IN the post. A handle counts when Instagram
         // recorded it as a mention or when it is written in the caption; a bare
