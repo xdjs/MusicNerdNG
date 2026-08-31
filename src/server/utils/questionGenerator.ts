@@ -554,21 +554,25 @@ export function boilerplateReason(question: string): string | null {
 const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collaborator"]);
 
 /**
- * At most half the DRAFTS may be about somebody else.
+ * At most half a set may be about somebody else.
  *
  * Credits are the richest signal we have and the prompt tells the model to
  * reach for them, so left alone the interview becomes a tour of the artist's
  * contact list. Pete: "I don't want every question to always have to do with a
  * collaborator, some could just be about things the artist posted."
  *
- * ENFORCED WHILE DRAFTING, not afterwards. Capping the finished set does
- * nothing when every draft is about a person — there is then nothing left to
- * balance with, and trimming just returns a shorter tour. Refusing the sixth
- * collaborator draft is what makes room for a statement.
+ * Applied to the RANKED, VERIFIED set — clean questions first — so the
+ * collaborator questions it keeps are the best ones rather than the earliest.
+ *
+ * This is the second half of a pair. On its own it cannot work: it only sees
+ * what was drafted, so if drafting never reached a non-person answer there is
+ * nothing here to protect. `reserveForNonPeople` in the draft loop is what
+ * guarantees it has something to work with.
  *
  * Only enforced while something else is actually available: an artist whose
  * material genuinely is all credits gets a full interview rather than one
- * question.
+ * question — Pete, asked directly: "its okay if the model returns only
+ * collaborator answers."
  */
 function capPersonQuestions<T extends { kind: string }>(items: T[], max: number): T[] {
     const allowed = Math.max(1, Math.ceil(max / 2));
@@ -882,57 +886,100 @@ export async function generateGroundedQuestions(
         const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
 
+        // TWO PASSES, so a reservation cannot cost us a draft.
+        //
+        // The model is told credits are its best material, and TOP_PARTNERSHIPS
+        // plus TOP_CREDITS alone can exceed the draft ceiling — so a
+        // collaborator-heavy artist can fill every slot with person-kind
+        // answers before a single statement is considered, and the cap below
+        // then has nothing to protect. The interview goes out all-collaborator
+        // while better material sat further down the list unread.
+        //
+        // Pass one holds back roughly half the slots for anything that is not
+        // about a person. Pass two gives those slots straight back if nothing
+        // claimed them, so an artist whose answers really are all collaborators
+        // still gets a full set. Nothing is discarded either way, which is what
+        // went wrong when this was a hard draft-time cap: skipped answers were
+        // gone, and a clean one further down was lost to earlier flagged ones.
+        // RESOLVE EVERYTHING FIRST, then choose. Deciding as we walk the
+        // model's list means the order it happened to return things in decides
+        // what gets drafted — and it is told collaborators are its best
+        // material, so it returns those first.
+        const eligible: { candidate: SignalCandidate; question: string; rationale: string; boilerplate: string | null }[] = [];
+        const resolved = new Set<string>();
         for (const answer of answers) {
-            if (drafted.length >= draftTarget) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
             // ONE SIGNAL. Letting the model name two and hypothesise a link
             // between them is how it told Pharaoh Sistare that @p3t3rango
             // engineered "Hourglass & The Flame": one signal said Pharaoh
             // credits p3t3rango, another said what Hourglass sounds like, and
-            // the join was invented. Nothing anywhere connected them — they are
-            // four different posts.
+            // the join was invented. They are four different posts.
             //
             // Connections are computed in buildCandidates now, where they can
             // carry the evidence that makes them true. A model cannot invent a
             // relationship it was handed.
             const signalId = typeof answer.signalId === "string" ? answer.signalId : null;
-            if (!signalId || !question || seen.has(signalId)) continue;
-            const candidate = byId.get(signalId); // only signalIds WE supplied are honored
+            if (!signalId || !question || resolved.has(signalId)) continue;
+            const candidate = byId.get(signalId);   // only signalIds WE supplied are honored
             if (!candidate) continue;
-            // BOILERPLATE DEMOTES, IT DOES NOT DELETE.
-            //
-            // These checks used to `continue`, and that made the output worse
-            // rather than better: a rejected draft is not replaced by a nicer
-            // question, it is replaced by "describe your sound". Measured on
-            // Pete Rango's own feed after the register rules went in — six
-            // drafts, three killed here, three killed by the fact-checker,
-            // ZERO grounded questions, three generic fallbacks. He tested it
-            // and said it made no sense, and he was right.
-            //
-            // A slightly wordy question about a session he actually had beats
-            // a perfect-sounding question about nothing. So a flagged draft is
-            // kept and ranked BELOW the clean ones, and only surfaces when
-            // there are not enough clean ones to fill the interview.
-            // NO PERSON CAP HERE. It belonged at draft time only while
-            // boilerplate DELETED drafts — capping a finished set does nothing
-            // when every draft is about a person. Now that nothing is deleted,
-            // a draft-time cap is actively harmful: flagged collaborator drafts
-            // eat the allowance and a clean one later in the list never gets
-            // drafted at all. The cap is applied to the RANKED set below, where
-            // it can prefer the clean ones.
-            const boilerplate = boilerplateReason(question);
-            seen.add(signalId);
-
-            drafted.push({
-                key: candidate.key,
+            resolved.add(signalId);
+            eligible.push({
+                candidate,
                 question,
                 rationale: typeof answer.rationale === "string" ? answer.rationale : "",
-                sourceUrls: candidate.sourceUrls,
-                kind: candidate.kind,
-                materials: [candidate.material],
-                demotedFor: boilerplate ?? undefined,
+                // BOILERPLATE DEMOTES, IT DOES NOT DELETE. Dropping these made
+                // the output worse rather than better: a rejected draft is not
+                // replaced by a nicer question, it is replaced by "describe
+                // your sound". Measured on Pete Rango's feed after the register
+                // rules went in — six drafts, three killed here, three by the
+                // fact-checker, ZERO grounded questions. He tested it and said
+                // it made no sense, and he was right.
+                boilerplate: boilerplateReason(question),
             });
         }
+
+        // Clean ahead of flagged, model order preserved within each. Doing this
+        // BEFORE the reservation is what stops a clean collaborator question
+        // being deferred in favour of flagged ones the model happened to rank
+        // higher.
+        const ordered = [...eligible.filter(e => !e.boilerplate), ...eligible.filter(e => e.boilerplate)];
+
+        // HALF THE SLOTS ARE HELD FOR ANYTHING THAT IS NOT ABOUT A PERSON.
+        //
+        // TOP_PARTNERSHIPS plus TOP_CREDITS alone can exceed the draft ceiling,
+        // so a collaborator-heavy artist could fill every slot before a single
+        // statement was considered — and the cap further down, which only sees
+        // what was drafted, would then have nothing to protect and no-op. The
+        // interview went out all-collaborator while better material sat unread.
+        //
+        // Pass two hands the reserved slots straight back if nothing claimed
+        // them, so an artist whose answers really are all collaborators still
+        // gets a full set. Nothing is discarded either way.
+        const personSlots = Math.max(1, Math.ceil(draftTarget / 2));
+        const deferred: typeof ordered = [];
+        let people = 0;
+        let deferring = true;
+        const consider = (e: typeof ordered[number]): void => {
+            if (drafted.length >= draftTarget) return;
+            if (ABOUT_A_PERSON.has(e.candidate.kind)) {
+                if (deferring && people >= personSlots) { deferred.push(e); return; }
+                people++;
+            }
+            drafted.push({
+                key: e.candidate.key,
+                question: e.question,
+                rationale: e.rationale,
+                sourceUrls: e.candidate.sourceUrls,
+                kind: e.candidate.kind,
+                materials: [e.candidate.material],
+                demotedFor: e.boilerplate ?? undefined,
+            });
+        };
+
+        for (const e of ordered) consider(e);
+        // Pass two: nothing else wanted the reserved slots, so give them back.
+        deferring = false;
+        for (const e of deferred) consider(e);
 
         // The model was told best-first and the checker preserves order, so
         // `diversify` walks that ranking and takes the strongest question of

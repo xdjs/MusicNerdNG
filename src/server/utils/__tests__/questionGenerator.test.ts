@@ -352,19 +352,22 @@ describe('generateGroundedQuestions', () => {
             const out = await generateGroundedQuestions('a1', { max: 4 });
             const isPerson = q => ['partnership', 'same_post', 'credit', 'collaborator'].includes(q.kind);
             const aboutPeople = out.filter(isPerson).length;
-            expect(out.length).toBeGreaterThan(0);
-            // BEST EFFORT, not a guarantee — and deliberately so. The cap can
-            // only work with what survived verification; if every question the
-            // model offered is about a collaborator, an all-collaborator
-            // interview is the right outcome rather than a shorter one. Pete,
-            // asked directly: "its okay if the model returns only collaborator
-            // answers."
+
+            // NO `if` GUARD. The first version of this wrapped the assertion in
+            // `if (out.some(q => !isPerson(q)))`, which skips it in exactly the
+            // situation the test exists to catch: the review pointed out that
+            // three collaborators produce six person-kind candidates, matching
+            // the draft ceiling, so every draft came back person-kind, the
+            // condition was false and the test passed without ever checking the
+            // cap. A test that excuses itself when the bug is present is not a
+            // test.
             //
-            // What must hold is that the cap bites WHEN there is something else
-            // to reach for.
-            if (out.some(q => !isPerson(q))) {
-                expect(aboutPeople).toBeLessThanOrEqual(Math.ceil(4 / 2));
-            }
+            // The draft loop now reserves half the slots for anything that is
+            // not about a person, so the statements in this fixture ARE
+            // reachable and the cap has something to protect.
+            expect(out.length).toBeGreaterThan(0);
+            expect(out.some(q => !isPerson(q))).toBe(true);
+            expect(aboutPeople).toBeLessThanOrEqual(Math.ceil(4 / 2));
         });
     });
 
