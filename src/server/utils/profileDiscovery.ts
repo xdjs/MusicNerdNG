@@ -580,8 +580,20 @@ async function runHandleProbe(
         // know something we do not, and trusting the image alone is how a
         // login wall becomes a confirmed profile. This just makes a run that
         // was throttled distinguishable from a run that found nothing.
+        // AND an og:image, which is what separates a wall from a 404. Both serve
+        // the platform's own name as the title, and they mean opposite things:
+        //
+        //   twitch.tv/<handle-that-does-not-exist> -> "Twitch", NO image
+        //   instagram.com/<real handle>, throttled  -> "Instagram", image
+        //
+        // The first version of this warned on the title alone and fired four
+        // times in one Pharaoh Sistare run for Twitch handles that genuinely
+        // do not exist — noise in the exact log line added to make a real
+        // signal findable. A platform that rendered a real page and withheld
+        // the profile is the case worth flagging; one that said "no such
+        // handle" is a plain miss and always was.
         const platformName = urlmapBySiteName.get(probe.platform)?.cardPlatformName ?? probe.platform;
-        if (residual && normalizeForCompare(residual) === normalizeForCompare(platformName)) {
+        if (residual && preview.imageUrl && normalizeForCompare(residual) === normalizeForCompare(platformName)) {
             console.warn(`[profileDiscovery] ${probe.platform} served its own name as the page title for @${probe.handle} — a wall or a rate limit, not evidence this handle is absent`);
         }
         if (residual) {
