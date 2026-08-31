@@ -44,7 +44,44 @@ export interface GroundedQuestion {
 }
 
 const DEFAULT_MAX_QUESTIONS = 6;
-const GENERATION_TIMEOUT_MS = 20_000;
+
+/**
+ * How many questions to DRAFT for every one we need.
+ *
+ * The fact-checker is strict on purpose and rejects most of what it is handed —
+ * it is what stops "André introduced him to samplers and computers" reaching an
+ * artist, which is a real thing this generator produced about Pete Rango. But
+ * drafting exactly as many questions as we need means the yield is the pass
+ * rate, not the number asked for.
+ *
+ * Measured on Pete Rango: 299 posts, 672 credits and 267 statements produce
+ * roughly twenty-five candidate signals. We asked for three, three were
+ * drafted, the checker rejected two, and one survived — so the interview
+ * filled the other two slots with the generic fallbacks ("describe your
+ * sound") while hundreds of specific things sat unused. That reads as the
+ * generator having nothing to say when the truth is the opposite.
+ *
+ * Verification is ONE batched call regardless of how many questions go into
+ * it, so drafting more costs no extra round-trip.
+ */
+const DRAFT_OVERSAMPLE = 2;   // 3 asked for nine questions and blew the budget
+
+/** Ceiling on the oversample, so a large `max` cannot ask the model to write
+ *  more questions than there are good signals to write them from. */
+const MAX_DRAFTS = 6;
+/**
+ * MEASURED, not guessed. Three runs against Pete Rango's real feed took 17.8s,
+ * 21.5s and 19.8s — this was 20s, so the call was already failing about a
+ * third of the time and a timeout means ZERO grounded questions and three
+ * generic fallbacks. That is exactly the symptom Pete reported, and drafting
+ * more questions per run made it worse rather than causing it.
+ *
+ * 30s leaves real headroom above the observed spread. Worst case is this plus
+ * VERIFIER_TIMEOUT_MS (12s) = 42s, inside the onboarding turn's ~55s deadline,
+ * and both are races that degrade to "no grounded questions" rather than
+ * hanging the turn.
+ */
+const GENERATION_TIMEOUT_MS = 30_000;
 const TOP_COLLABORATORS = 3;
 const TOP_THEMES = 3;
 const TOP_STANDOUTS = 2;
@@ -183,7 +220,28 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
             kind: "partnership",
             key: `social_partnership_${id}`,
             authoredBy: "artist",
-            material: `${artistName} has credited ${subject} on ${c.evidenceUrls.length} SEPARATE posts, in their own words each time, as: ${c.roles.join("; ")}. That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, and you must not attach ${subject} to any release you were told about elsewhere.`,
+            // ONLY THE ROLES THAT RECUR, and no number.
+            //
+            // This listed every label from every post — "main production
+            // partner; created with; added some 808s; Prod by" — which
+            // presents a ONE-OFF as a description of the whole relationship.
+            // Those 808s were a single caption, and that caption says the
+            // files were LOST and never used. The question that came out
+            // asked Pete about "adding some 808s across many posts".
+            //
+            // Recurring roles are what the relationship IS. A one-off belongs
+            // to the specific post it happened on, and there is a `credit`
+            // signal for exactly that.
+            //
+            // The count is gone too. It was the source of "across 23 posts" in
+            // every question of a real run: given a number, the model recites
+            // it. `boilerplateReason` rejects that on the way out; not handing
+            // it over in the first place is better.
+            material: `${artistName} has credited ${subject} on several SEPARATE posts, in their own words each time`
+                + (c.recurringRoles.length > 0
+                    ? `, repeatedly as: ${c.recurringRoles.join("; ")}.`
+                    : `.`)
+                + ` That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, you must not attach ${subject} to any release you were told about elsewhere, and you must not describe them with a role that is not listed here.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -251,12 +309,34 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // relationship to ask him about.
     for (const c of creditedCollaborators(extraction).slice(0, TOP_CREDITS)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
+        // `unicodeSlug`, not `slug`. The ASCII one reduces a Japanese or Korean
+        // name to "x", so two such collaborators collide on signalId — byId
+        // keeps only the last, and their answers overwrite each other under the
+        // unique (artist, questionKey) index. Fixed in the partnership signal
+        // and left live here, which is the half-fix this file keeps producing.
+        const id = unicodeSlug(c.subject);
+        // THE SENTENCE, NOT THE LABEL.
+        //
+        // This handed over bare labels — "main production partner; added some
+        // 808s; breath church" — which is not what the artist wrote, and
+        // stripping the sentence strips the only thing that makes the label
+        // mean anything. Pete's caption says "Alan had added some 808s for the
+        // outro BUT THOSE FILES WERE LOST...so we ended up leaving as is". From
+        // the label alone the model asked which track his 808s changed the feel
+        // of. They are not on any track.
+        //
+        // Quoting the artist is also the standing instruction elsewhere in this
+        // prompt: "when in doubt, quote the artist's own words rather than
+        // paraphrasing them".
+        const quotes = [...new Set(c.quotes.map(q => q.trim()).filter(Boolean))].slice(0, 3);
         candidates.push({
-            signalId: `credit_${slug(c.subject)}`,
+            signalId: `credit_${id}`,
             kind: "credit",
-            key: `social_credit_${slug(c.subject)}`,
+            key: `social_credit_${id}`,
             authoredBy: "artist",
-            material: `In their own caption${c.evidenceUrls.length > 1 ? "s" : ""}, ${artistName} credits ${subject} as: ${c.roles.join("; ")}. This is ${artistName}'s own wording, on ${c.evidenceUrls.length} post(s).`,
+            material: `${artistName} wrote these about ${subject}, each in a DIFFERENT caption and each true only of the post it came from:\n`
+                + quotes.map(q => `  "${q}"`).join("\n")
+                + `\nRead what the sentences actually say — they may contradict what the phrasing suggests. Do not combine them into one description of ${subject}, and do not present something from one post as what they generally do.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -346,7 +426,7 @@ Each signal has:
 - authoredBy: "artist" if this is ${artistName}'s own post/words, or "@handle" if the material comes from SOMEONE ELSE's post (a collaborator's post that ${artistName} appears in or is connected to)
 - material: what you actually know about this signal
 
-Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
+NOT EVERY QUESTION IS ABOUT SOMEBODY ELSE. Credits and partnerships are rich, and left alone they turn an interview into a tour of the artist's contact list. At most half your questions may be about a named collaborator; the rest must come from what ${artistName} said or made — a statement in their own words, a track, a thing they posted about. Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
 
 SOME SIGNALS ARE RELATIONSHIPS, AND THEY ARE YOUR BEST MATERIAL. A signal of kind "partnership" or "same_post" is a connection we have already verified against the posts — the same person credited across several records, or two things said in one post. Reach for those: they are how you ask a question that only somebody who read everything could ask.
 
@@ -365,10 +445,125 @@ Rules:
 - Never fabricate anything beyond what "material" states. If a signal doesn't give you enough for a real, specific question, skip it entirely.
 - Never generalize a single post into a pattern — say what the post actually was, not a habit you are inferring from it.
 - No engagement-metric language. Never say a number, "plays", "likes", or "views".
+- NEVER COUNT ANYTHING. Not posts, not times, not years. "Across 23 posts" and "you've mentioned them repeatedly" are the same sentence a dashboard writes; a person who read the feed says "your main production partner" because that is what the artist called them. The counts in the material are for YOU, to decide what matters — they are never for the question.
+- NAME THE PARTICULAR THING. The material contains actual specifics: a named track, a role in the artist's own words, a session, a thing that went wrong. Reach into it and ask about ONE of them. "What's a specific moment where their input shaped a track?" is BANNED, along with every variant of it — "what's a specific detail", "one specific example", "a particular instance". Those are "tell me about" with a coat on: they describe a subject and then hand the artist the job of being specific, which is the job you were supposed to do.
+- EVERY QUESTION IN THE SET MUST BE A DIFFERENT SHAPE. Not just a different person — a different KIND of question. Four questions of the form "you credited @someone for X; what's a specific Y?" about four different collaborators is one question asked four times, and it reads as a template being filled. If credits are your strongest material, ask at most one or two about credits and find something else for the rest.
+- SAY IT OUT LOUD FIRST. You are talking, not writing. If a sentence would sound odd spoken across a table, it is wrong — and "where you felt that shift truly take hold" is not something any person has ever said. Real interviewers use short words and ask about things, not about qualities of things. Contractions are good. Twenty words is plenty; thirty is too many.
+
+  Rewrite anything that sounds like an essay:
+    NO  "what was the first track you made where you felt that shift truly take hold?"
+    YES "what's the first thing you made after that?"
+    NO  "what does that look like in practice for artists using the platform?"
+    YES "what does an artist actually get that they didn't have before?"
+    NO  "what was a key creative decision they made that shaped the visual identity of the project?"
+    YES "what did she want that you argued with?"
+    NO  "what truth felt most urgent to express in that period?"
+    YES "what did you finally say that you'd been sitting on?"
+
+- BAN THE ABSTRACT NOUNS. "process", "approach", "practice", "identity", "dynamic", "journey", "aspect", "element", "experience", "impact", "vision" — these are the words of somebody describing music rather than making it. Ask about a track, a room, a person, a night, a decision, a thing that broke.
 - One sentence. Plain spoken language, never clinical, never creepy, never over-familiar, and never flattering ("powerful", "amazing", "clearly struck a nerve").
 - Use ONLY signalIds from the list you were given.
 
 Return STRICT JSON ONLY — an array of objects: [{ "signalId": string, "question": string, "rationale": string }]. "signalId" is exactly one id, echoed exactly. "rationale" is one short internal phrase (not shown to the artist) noting why it's worth asking. Return [] if nothing in the signals is worth asking about. No markdown fences, no commentary, JSON only.`;
+
+/**
+ * The two habits the instruction bans and the model does anyway.
+ *
+ * Both were in the prompt already and both showed up in every question of a
+ * real run on Pete Rango's feed, which is the argument for checking in code:
+ * a rule the model can ignore is a preference, not a rule.
+ *
+ * Returns why a question is boilerplate, or null if it is fine.
+ */
+export function boilerplateReason(question: string): string | null {
+    // "Across 23 posts", "on 12 posts", "across many posts" — a count of how
+    // often something appears is the sentence an analytics dashboard writes.
+    // The counts exist in the material to help CHOOSE what to ask about.
+    if (/\b(?:across|over|on|in|through)\s+(?:\d+|many|multiple|several|numerous)\s+(?:posts?|captions?|times?)\b/i.test(question)
+        || /\b\d+\s+(?:posts?|captions?)\b/i.test(question)) {
+        return "counts how often something appears";
+    }
+    // "what's a specific moment", "one specific detail", "a particular instance"
+    // — describes a subject, then hands the artist the job of being specific.
+    if (/\b(?:a|one|any|some)\s+(?:specific|particular)\s+(?:moment|detail|example|instance|thing|time|challenge|decision|project|track|memory)\b/i.test(question)
+        || /\bwhat(?:'s| is| was)\s+(?:a|one)\s+(?:specific|particular)\b/i.test(question)) {
+        return "asks the artist to supply the specificity";
+    }
+    // Essay register. An interviewer talking across a table does not say
+    // "the conceptual identity of the project" or "your approach to
+    // songwriting" — those are the words of somebody describing music rather
+    // than making it, and they turn a question into a survey item.
+    const ABSTRACT = /\b(?:process|approach|practice|identity|dynamic|journey|aspect|element|experience|impact|vision|creative process|body of work)\b/i;
+    if (ABSTRACT.test(question)) return "uses essay-register abstractions";
+
+    // Length is the other tell. Spoken questions are short; a 38-word sentence
+    // with two subordinate clauses is written prose. Measured against real
+    // output: the good ones ran under twenty words, the bad ones over thirty.
+    if (question.trim().split(/\s+/).length > 30) return "too long to be spoken";
+
+    // "What was the process like", "what was that experience like". The
+    // instruction bans "what was that like" by name and the model reaches for
+    // it anyway with a noun wedged in. It is the emptiest question there is:
+    // it asks the artist to decide what the question was.
+    if (/\bwhat (?:was|is|were|are)\b[^?]{0,40}\blike\b/i.test(question)) {
+        return "asks what something was like";
+    }
+    return null;
+}
+
+/**
+ * One question per KIND of question, as far as the set allows.
+ *
+ * A real run returned four questions of the form "you credited @someone for X;
+ * what's a specific Y?" about four different collaborators — one question asked
+ * four times. The instruction already said not to; nothing enforced it.
+ *
+ * Greedy: take the best unused kind each pass, in the model's own ranking, and
+ * only start allowing repeats once every kind has had a turn. So a set stays
+ * varied when the material is varied, and an artist whose signals really are
+ * all credits still gets a full set rather than one question.
+ */
+/** Kinds that are fundamentally "a question about another person". Four
+ *  DIFFERENT kinds all ask about a collaborator, so spreading across kinds is
+ *  not enough on its own — a set can be varied by kind and still be three
+ *  questions about three of the artist's friends. */
+const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collaborator"]);
+
+/**
+ * At most half the DRAFTS may be about somebody else.
+ *
+ * Credits are the richest signal we have and the prompt tells the model to
+ * reach for them, so left alone the interview becomes a tour of the artist's
+ * contact list. Pete: "I don't want every question to always have to do with a
+ * collaborator, some could just be about things the artist posted."
+ *
+ * ENFORCED WHILE DRAFTING, not afterwards. Capping the finished set does
+ * nothing when every draft is about a person — there is then nothing left to
+ * balance with, and trimming just returns a shorter tour. Refusing the sixth
+ * collaborator draft is what makes room for a statement.
+ *
+ * Only enforced while something else is actually available: an artist whose
+ * material genuinely is all credits gets a full interview rather than one
+ * question.
+ */
+function personDraftLimit(draftTarget: number, candidates: SignalCandidate[]): number {
+    const hasOthers = candidates.some(c => !ABOUT_A_PERSON.has(c.kind));
+    return hasOthers ? Math.max(1, Math.ceil(draftTarget / 2)) : draftTarget;
+}
+
+export function diversify<T extends { kind: string }>(items: T[], max: number): T[] {
+    const picked: T[] = [];
+    const used = new Set<string>();
+    const remaining = [...items];
+    while (picked.length < max && remaining.length > 0) {
+        let i = remaining.findIndex(x => !used.has(x.kind));
+        if (i === -1) { used.clear(); i = 0; }   // every kind spent — go round again
+        const [item] = remaining.splice(i, 1);
+        used.add(item.kind);
+        picked.push(item);
+    }
+    return picked;
+}
 
 function withTimeout<T>(p: Promise<T>): Promise<T> {
     return Promise.race([
@@ -595,13 +790,17 @@ export async function generateGroundedQuestions(
         const candidates = buildCandidates(signals, artistName, extraction);
         if (candidates.length === 0) return [];
 
+        // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there
+        // are signals to draft from, so a thin artist is not asked to invent.
+        const draftTarget = Math.min(max * DRAFT_OVERSAMPLE, MAX_DRAFTS, candidates.length);
+
         const byId = new Map(candidates.map(c => [c.signalId, c]));
         const promptPayload = candidates.map(({ signalId, kind, authoredBy, material }) => ({ signalId, kind, authoredBy, material }));
 
         const response = await withTimeout(
             getGemini().models.generateContent({
                 model: GEMINI_MODEL_FLASH,
-                contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${max} of the most interesting, distinct signals and write one question each. Fewer than ${max} is fine — even zero — if the rest don't clear the bar.`,
+                contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${draftTarget} of the most interesting, distinct signals and write one question each, BEST FIRST. Fewer than ${draftTarget} is fine — even zero — if the rest don't clear the bar.`,
                 config: {
                     systemInstruction: QUESTION_SYSTEM_INSTRUCTION(artistName),
                     // Low, not zero: enough room for natural phrasing, but low
@@ -622,8 +821,10 @@ export async function generateGroundedQuestions(
         const answers = parseModelAnswers(text);
         const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
+        const maxPeople = personDraftLimit(draftTarget, candidates);
+        let people = 0;
         for (const answer of answers) {
-            if (drafted.length >= max) break;
+            if (drafted.length >= draftTarget) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
             // ONE SIGNAL. Letting the model name two and hypothesise a link
             // between them is how it told Pharaoh Sistare that @p3t3rango
@@ -639,6 +840,26 @@ export async function generateGroundedQuestions(
             if (!signalId || !question || seen.has(signalId)) continue;
             const candidate = byId.get(signalId); // only signalIds WE supplied are honored
             if (!candidate) continue;
+            // BOILERPLATE FIRST, THEN THE CAP — the order matters.
+            //
+            // Counting a person-kind draft against the cap BEFORE checking
+            // whether it survives means a rejected draft still spends a slot.
+            // Three boilerplate collaborator drafts in a row would exhaust
+            // `maxPeople` and silently drop a good fourth one, with zero person
+            // questions actually in the set — the cap eating the very yield the
+            // oversample exists to recover. Found in review.
+            //
+            // `seen` is already added after this check, for the same reason: a
+            // draft that did not survive has not used anything up.
+            const boilerplate = boilerplateReason(question);
+            if (boilerplate) {
+                console.log(`[questionGenerator] dropped a question — ${boilerplate}: ${question.slice(0, 70)}`);
+                continue;
+            }
+            if (ABOUT_A_PERSON.has(candidate.kind)) {
+                if (people >= maxPeople) continue;   // leave room for their own words
+                people++;
+            }
             seen.add(signalId);
 
             drafted.push({
@@ -651,7 +872,11 @@ export async function generateGroundedQuestions(
             });
         }
 
-        const questions = await keepOnlySupported(drafted, artistName);
+        // The model was told best-first and the checker preserves order, so
+        // `diversify` walks that ranking and takes the strongest question of
+        // each kind before it takes a second of any — the set stays in the
+        // model's preference order without being four versions of one question.
+        const questions = diversify(await keepOnlySupported(drafted, artistName), max);
 
         pruneGroundedQuestionsCache(now);
         groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });

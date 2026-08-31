@@ -257,6 +257,29 @@ describe('artistDocService', () => {
                 .toBe('Cited Lauryn Hill as an influence and Solange.');
             expect(svc.stripCitationMarkers('No markers here.')).toBe('No markers here.');
         });
+
+        it('strips GROUPED markers, which is what a sentence resting on two sources gets', async () => {
+            // The regex matched a single number only, so "[3]" went and
+            // "[3, 4]" stayed — and the model groups them whenever a sentence
+            // rests on more than one source, which is often. Pete Rango's
+            // published About read "...creative empowerment and education
+            // [3, 4]." with nothing rendering those numbers as anything.
+            //
+            // Not just cosmetic: artist.bio is what the artist page feeds to
+            // summarize() for its meta description, so the brackets reached
+            // the Google snippet.
+            const svc = await import('../artistDocService');
+            expect(svc.stripCitationMarkers('and education [3, 4]. Rango composes soundscapes [2, 3].'))
+                .toBe('and education. Rango composes soundscapes.');
+            expect(svc.stripCitationMarkers('spaced [1 , 2] and tight[4,5,6] both go'))
+                .toBe('spaced and tight both go');
+        });
+
+        it('leaves square brackets that are prose, not citations, alone', async () => {
+            const svc = await import('../artistDocService');
+            expect(svc.stripCitationMarkers('the label [now defunct] released it'))
+                .toBe('the label [now defunct] released it');
+        });
     });
 });
 

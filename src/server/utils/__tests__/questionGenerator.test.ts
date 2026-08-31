@@ -182,6 +182,346 @@ describe('generateGroundedQuestions', () => {
 
     // --- per-session cache (onboarding chat turns are stateless — the interview
     // step calls generateGroundedQuestions on every turn it re-enters) ---
+    describe('boilerplateReason — rules the prompt asked for and the model ignored', () => {
+        it.each([
+            "Across 22 posts, you've credited @bycherele for creative direction; what changed?",
+            "You've credited @zavodskyalan as your main production partner across 23 posts; what next?",
+            "You've credited @lemieu_x on 12 posts; what stuck?",
+            "You've mentioned them across many posts; what shifted?",
+        ])('rejects a question that counts how often something appears: %s', async (q) => {
+            // Every question in a real run on Pete Rango's feed opened with a
+            // post count. It is the sentence an analytics dashboard writes —
+            // a person who read the feed says "your main production partner",
+            // because that is what the artist called them. The counts are in
+            // the material to help CHOOSE, never to be repeated back.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/counts/);
+        });
+
+        it.each([
+            "You've credited @x for direction; what's a specific moment where their input shaped a project?",
+            "What's one specific detail they brought to the mix?",
+            "Can you name a particular instance where that mattered?",
+        ])('rejects a question that hands the artist the job of being specific: %s', async (q) => {
+            // "Tell me about" with a coat on: it describes a subject and then
+            // asks the artist to supply the specificity, which was the
+            // interviewer's job.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/specificity/);
+        });
+
+        it.each([
+            "What was the process like for that track to be selected?",
+            "What was that experience like?",
+        ])('rejects it one way or another — these trip the abstraction rule first: %s', async (q) => {
+            // "process" and "experience" are banned outright, so these are
+            // caught before the like-family check. Which rule fires is not the
+            // point; that it is refused is.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).not.toBeNull();
+        });
+
+        it.each([
+            "what was it like working with them?",
+            "What was that first night like?",
+        ])('rejects the what-was-it-like family with no abstraction to catch it: %s', async (q) => {
+            // The instruction bans "what was that like" by name; the model
+            // reaches for it anyway with a noun wedged in ("what was the
+            // PROCESS like"). It is the emptiest question available — it asks
+            // the artist to work out what was being asked.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/what something was like/);
+        });
+
+        it.each([
+            "what does an artist actually get that they didn't have before?",
+            "what did she want that you argued with?",
+            "What was the first thing you changed after he handed you those albums?",
+            "What did the label want that you would not give them?",
+            "You wrote that the pandemic was a blessing and a curse; who told you to slow down?",
+            "Alan's 808s for that outro were lost — did you try to rebuild them, or was leaving it the point?",
+            "You called @lemieu_x your mixer; which of their calls did you argue with?",
+        ])('keeps a question that names something real: %s', async (q) => {
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toBeNull();
+        });
+    });
+
+    describe('sounding like a person rather than an essay', () => {
+        it.each([
+            "what does that look like in practice for artists using the platform?",
+            "what was a key creative decision that shaped the visual identity of the project?",
+            "how did that change your approach to songwriting?",
+            "what has that journey been like for you?",
+        ])('rejects essay-register abstractions: %s', async (q) => {
+            // "process", "approach", "identity", "journey" — the words of
+            // somebody describing music rather than making it. Pete: "no one
+            // talks like that."
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/abstraction/);
+        });
+
+        it('rejects a question too long to say out loud', async () => {
+            // The real one, 38 words. Spoken questions are short; this is
+            // written prose with two subordinate clauses.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(
+                "You wrote that your cousin André handing you 112's Part III and Dr. Dre's 2001 shifted your perspective on how to create music; what was the first track you made where you felt that shift truly take hold?",
+            )).toMatch(/too long/);
+        });
+
+        it('keeps a short, spoken question with a concrete noun in it', async () => {
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason("You said those two albums changed how you make music — what's the first thing you made after?")).toBeNull();
+        });
+    });
+
+    describe('not every question is about somebody else', () => {
+        it('caps collaborator questions at half the set even when they are all different kinds', async () => {
+            // partnership / credit / collaborator / same_post are four
+            // different KINDS and all four ask about another person, so
+            // spreading by kind alone still produces a tour of the contact
+            // list. Pete: "some could just be about things the artist posted."
+            // Three collaborators each credited on two posts, so partnership,
+            // credit AND collaborator signals all exist — the situation Pete's
+            // feed actually produces.
+            const person = (h, url, role) => ({ subject: h, isHandle: true, isSelf: false, role, quote: `${role} @${h}`, url, postedAt: null });
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: ['alan', 'cherele', 'oyabun'].flatMap(h => [
+                        person(h, `https://www.instagram.com/p/${h}1/`, 'production partner'),
+                        person(h, `https://www.instagram.com/p/${h}2/`, 'production partner'),
+                    ]),
+                    statements: [
+                        { quote: 'the pandemic was a blessing and a curse', topic: 'the pandemic', url: 'https://www.instagram.com/p/S1/', postedAt: null },
+                        { quote: 'house has been therapy for me', topic: 'house music', url: 'https://www.instagram.com/p/S2/', postedAt: null },
+                    ],
+                })),
+            }));
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    // Ranks every person-signal first, which is exactly what
+                    // the real model does — the prompt tells it to prefer them.
+                    const people = ['partnership', 'same_post', 'credit', 'collaborator'];
+                    const ranked = [...signals].sort((a, b) =>
+                        (people.includes(a.kind) ? 0 : 1) - (people.includes(b.kind) ? 0 : 1));
+                    return { text: JSON.stringify(ranked.map((sig, i) => ({
+                        signalId: sig.signalId, question: `Who pushed back on that, ${i}?`, rationale: 'r',
+                    }))) };
+                }),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 4 });
+            const aboutPeople = out.filter(q =>
+                ['partnership', 'same_post', 'credit', 'collaborator'].includes(q.kind)).length;
+            expect(out.length).toBeGreaterThan(0);
+            expect(aboutPeople).toBeLessThanOrEqual(Math.ceil(4 / 2));
+            expect(out.length).toBeGreaterThan(aboutPeople);   // something that isn't a person
+        });
+    });
+
+    describe('diversify — one question per kind before a second of any', () => {
+        it('spreads across kinds instead of returning four of the strongest one', async () => {
+            // A real run returned FOUR "you credited @someone; what's a
+            // specific X?" questions about four different collaborators — one
+            // question asked four times. The instruction said not to and
+            // nothing enforced it.
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            const items = [
+                { kind: 'partnership', id: 1 }, { kind: 'partnership', id: 2 },
+                { kind: 'partnership', id: 3 }, { kind: 'statement', id: 4 },
+                { kind: 'music', id: 5 },
+            ];
+            expect(diversify(items, 3).map(x => x.kind)).toEqual(['partnership', 'statement', 'music']);
+        });
+
+        it('keeps the model ranking within a kind', async () => {
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            const items = [{ kind: 'credit', id: 1 }, { kind: 'credit', id: 2 }];
+            expect(diversify(items, 2).map(x => x.id)).toEqual([1, 2]);
+        });
+
+        it('still fills the set when an artist genuinely only has one kind', async () => {
+            // Somebody whose signals really are all credits gets a full
+            // interview, not a single question.
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            const items = [{ kind: 'credit', id: 1 }, { kind: 'credit', id: 2 }, { kind: 'credit', id: 3 }];
+            expect(diversify(items, 3)).toHaveLength(3);
+        });
+
+        it('never returns more than asked for', async () => {
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            expect(diversify([{ kind: 'a' }, { kind: 'b' }, { kind: 'c' }], 2)).toHaveLength(2);
+        });
+    });
+
+    describe('drafting enough to survive the fact-checker', () => {
+        /** Answers with the REAL signalIds out of the prompt — the generator
+         *  only honours ids it supplied, so invented ones are all dropped. */
+        const echoRealSignals = (onAsk, verdictFor) => jest.fn(async (req) => {
+            const sys = String(req?.config?.systemInstruction ?? "");
+            const contents = String(req?.contents ?? "");
+            if (sys.startsWith("You are fact-checking")) {
+                const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: verdictFor(i), problem: '' }))) };
+            }
+            const asked = Number(contents.match(/at most (\d+)/)?.[1] ?? 0);
+            const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+            onAsk(asked, signals.length);
+            // EVERY signal, not the first `asked` — the real model sees them
+            // all and the draft loop is what applies the caps. Slicing here
+            // hid the person cap behind an empty pool.
+            void asked;
+            return { text: JSON.stringify(signals.map((sig, i) => ({
+                signalId: sig.signalId, question: `Q${i}?`, rationale: 'r',
+            }))) };
+        });
+
+        it('recovers the yield the fact-checker used to eat', async () => {
+            // The checker is strict on purpose — it is what stops "André
+            // introduced him to samplers and computers" reaching an artist.
+            // Drafting exactly `max` therefore made the YIELD the pass rate:
+            // measured on Pete Rango, 299 posts produced three drafts, the
+            // checker rejected two, ONE survived, and the interview filled the
+            // other two slots with "describe your sound" while hundreds of
+            // specific signals sat unused.
+            //
+            // With the same one-in-three pass rate, drafting only `max` can
+            // return at most one. More than one proves the oversample.
+            let asked = 0;
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals((a) => { asked = a; }, i => i % 3 === 0),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+
+            expect(asked).toBeGreaterThan(3);
+            expect(out.length).toBeGreaterThan(1);
+            expect(out.length).toBeLessThanOrEqual(3);
+        });
+
+        it('APPLIES the boilerplate check and the diversity rule, not just exports them', async () => {
+            // Both guards were mutation-tested green while nothing called
+            // them — the same "it exists and has no caller" failure this
+            // branch has now produced three times. So this drives the real
+            // pipeline: every draft the model returns is boilerplate except
+            // one, and the drafts are deliberately all one kind.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    return { text: JSON.stringify(signals.map((sig, i) => ({
+                        signalId: sig.signalId,
+                        // All but one count posts — the banned dashboard phrasing.
+                        question: i === 0 ? 'Who pushed back on that?' : `Across ${i + 4} posts you did things; what changed?`,
+                        rationale: 'r',
+                    }))) };
+                }),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+            // Only the non-boilerplate one survives the draft filter.
+            expect(out).toHaveLength(1);
+            expect(out[0].question).toBe('Who pushed back on that?');
+        });
+
+        it('a REJECTED collaborator draft does not spend a slot from the person cap', async () => {
+            // The cap counted a person-kind draft before checking whether it
+            // survived, so boilerplate collaborator drafts exhausted it and a
+            // later good one was dropped with zero person questions in the set
+            // — the cap eating the yield the oversample exists to recover.
+            // Found in review.
+            //
+            // Here every person-kind draft but the LAST counts posts, which is
+            // rejected. The last one must still get through.
+            const person = (h, url, role) => ({ subject: h, isHandle: true, isSelf: false, role, quote: `${role} @${h}`, url, postedAt: null });
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: ['alan', 'cherele', 'oyabun', 'lemieux'].flatMap(h => [
+                        person(h, `https://www.instagram.com/p/${h}1/`, 'production partner'),
+                        person(h, `https://www.instagram.com/p/${h}2/`, 'production partner'),
+                    ]),
+                    statements: [],
+                })),
+            }));
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    // The good question must sit on the LAST PERSON-kind
+                    // signal: only a person-kind draft is subject to the cap,
+                    // so putting it on a theme or a track would sail past the
+                    // bug entirely — which is exactly how the first version of
+                    // this test passed against the broken ordering.
+                    const people = ['partnership', 'same_post', 'credit', 'collaborator'];
+                    const personIds = signals.filter(x => people.includes(x.kind)).map(x => x.signalId);
+                    const good = personIds[personIds.length - 1];
+                    expect(personIds.length).toBeGreaterThan(3);   // enough to exhaust a cap of 3
+                    return { text: JSON.stringify(signals.map((sig, i) => ({
+                        signalId: sig.signalId,
+                        question: sig.signalId === good
+                            ? 'Who pushed back on that?'                                    // the good one
+                            : `Across ${i + 5} posts you worked together; what changed?`,    // rejected
+                        rationale: 'r',
+                    }))) };
+                }),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+            expect(out.map(q => q.question)).toContain('Who pushed back on that?');
+        });
+
+        it('does not return the same KIND of question repeatedly when other kinds are available', async () => {
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals(() => {}, () => true),
+            });
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+            // Not "all distinct" — the person cap can leave fewer kinds
+            // available than slots, and repeating then is correct rather than
+            // returning a short set. What must never happen is a set that is
+            // one kind over and over.
+            expect(out.length).toBeGreaterThan(1);
+            expect(new Set(out.map(q => q.kind)).size).toBeGreaterThan(1);
+        });
+
+        it('still returns no more than the caller asked for', async () => {
+            // Oversampling is about surviving rejection, not about handing the
+            // artist nine questions.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals(() => {}, () => true),
+            });
+            await expect(generateGroundedQuestions('a1', { max: 3 })).resolves.toHaveLength(3);
+        });
+
+        it('never asks for more than there are signals to build from', async () => {
+            // A thin artist must not be pushed to invent questions.
+            let asked = 0, available = 0;
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals((a, n) => { asked = a; available = n; }, () => true),
+            });
+            await generateGroundedQuestions('a1', { max: 50 });
+            expect(asked).toBeGreaterThan(0);
+            expect(asked).toBeLessThanOrEqual(available);
+        });
+    });
+
     describe('per-artist TTL cache', () => {
         const geminiText = JSON.stringify([
             { signalId: 'collab_dameatlas', question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
@@ -335,12 +675,67 @@ describe('generateGroundedQuestions', () => {
         const promptFrom = (mock) => String(mock.mock.calls.find(c =>
             !String(c[0]?.config?.systemInstruction ?? "").startsWith("You are fact-checking"))[0].contents);
 
+        it("describes a partnership by the roles that RECUR, never by a one-off", async () => {
+            // Pete Rango credited @zavodskyalan across 23 posts as his "main
+            // production partner", and ONCE for having "added some 808s" —
+            // 808s whose files that same caption says were lost and never
+            // used. Flattening every label into one list presented the one-off
+            // as a description of the relationship, and the question asked him
+            // about "adding some 808s across many posts".
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [
+                        { subject: "zavodskyalan", isHandle: true, isSelf: false, role: "production partner",
+                          quote: "my production partner", url: "https://www.instagram.com/p/A/", postedAt: null },
+                        { subject: "zavodskyalan", isHandle: true, isSelf: false, role: "production partner",
+                          quote: "production partner again", url: "https://www.instagram.com/p/B/", postedAt: null },
+                        { subject: "zavodskyalan", isHandle: true, isSelf: false, role: "added some 808s",
+                          quote: "added some 808s but those files were lost", url: "https://www.instagram.com/p/C/", postedAt: null },
+                    ],
+                })),
+            }));
+            const { generateGroundedQuestions, generateContent } = await setup({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            const sent = promptFrom(generateContent);
+            const partnership = JSON.parse(sent.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1])
+                .find(x => x.kind === "partnership");
+            expect(partnership.material).toContain("production partner");
+            expect(partnership.material).not.toContain("808s");
+        });
+
+        it("marks a collaborator's roles as separate occasions, and carries no post count", async () => {
+            // The credit signal listed every label in one run-on list with a
+            // count on the end — "credits @zavodskyalan as: main production
+            // partner; added some 808s; breath church ... on 23 post(s)". The
+            // model then asked about being "credited with 'added some 808s'
+            // and 'breath church'", merging three unrelated captions into one
+            // description of the person. The count is also where "across 23
+            // posts" came from.
+            const { generateGroundedQuestions, generateContent } = await withExtraction({ geminiText: "[]" });
+            await generateGroundedQuestions("a1");
+            const sent = promptFrom(generateContent);
+            const credit = JSON.parse(sent.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1])
+                .find(x => x.kind === "credit");
+            expect(credit.material).toMatch(/DIFFERENT caption/);
+            expect(credit.material).toMatch(/Do not combine them/);
+            expect(credit.material).not.toMatch(/\d+ post\(s\)/);
+            // THE SENTENCE, not the label. A label without its sentence loses
+            // the only thing that gives it meaning: "added some 808s" reads as
+            // a contribution until you see "but those files were lost".
+            expect(credit.material).toContain('Mixed by @p3t3rango');
+        });
+
         it("offers a collaborator credited on more than one post as a relationship", async () => {
             const { generateGroundedQuestions, generateContent } = await withExtraction({ geminiText: "[]" });
             await generateGroundedQuestions("a1");
             const sent = promptFrom(generateContent);
             expect(sent).toContain("partnership_p3t3rango");
-            expect(sent).toContain("2 SEPARATE posts");
+            expect(sent).toContain("several SEPARATE posts");
+            // No count. The material said "on 23 SEPARATE posts" for Pete
+            // Rango and the model recited it into every question — "across 23
+            // posts, you've credited...". Given a number it uses the number.
+            expect(sent).not.toMatch(/on \d+ SEPARATE posts/);
         });
 
         it("warns, in the material, against attaching that person to other releases", async () => {

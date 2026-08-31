@@ -208,7 +208,52 @@ Rules:
 - Use only the url that was given with that caption.
 - A caption with no credit and nothing worth quoting contributes nothing. Empty arrays are the correct answer for a feed of announcements.
 - Never report a person who is not named in that caption.
+- BEING THERE IS NOT A JOB. "I did X with @a and @b" says @a and @b were there. It does NOT give them the role X. Neither does being tagged, thanked, or named alongside a place, an event, a brand or a track. A credit needs the caption to say the person DID something on the thing being made.
+    "Then I went to NY to do my very first @breath.church with @sage.breath and the boys @thegreatzandini"
+      -> NO credits. That is somewhere they went together.
+    "@whoisoyabun opening up for @travisscott"    -> NOT a credit. That is his gig, not work on ${artistName}'s record.
+    "@bycherele KIKI is being used for @wnba"     -> NOT a credit. That is her track, somewhere else.
+- A ROLE IS NEVER A USERNAME. If the words you are about to write as the role contain somebody's @handle, you have copied the sentence's subject matter instead of reading a job. Leave it out.
 `.trim();
+
+/**
+ * Is this "role" actually somebody else's @handle from the same sentence?
+ *
+ * The extractor's failure mode is co-presence read as employment. A caption
+ * naming several people around an activity gets the ACTIVITY handed to each of
+ * them as a job:
+ *
+ *   "Then I went to NY to do my very first @breath.church @physiologicnyc with
+ *    @sage.breath and the boys @thegreatzandini & @zavodskyalan"
+ *
+ * produced the role "breath church" for all three of them. It is an event they
+ * went to. The same shape gave @bycherele the role "KIKI used for WNBA pack"
+ * and @whoisoyabun "opening up for Travis Scott" — real things that happened,
+ * none of them a job on this artist's work.
+ *
+ * The tell is precise: the role text CONTAINS another handle from the caption.
+ * A genuine role ("Mixed by", "on guitar", "added some 808s") never does,
+ * because a job is not a username.
+ *
+ * Measured over Pete Rango's 672 stored credits: 11 rejected, every one of them
+ * wrong. Deliberately narrow — it is the one signal that is unambiguous, and
+ * a validator that guesses is worse than none.
+ *
+ * Returns the offending handle, or null.
+ */
+export function roleIsSomebodyElsesHandle(role: string, subject: string, quote: string): string | null {
+    const foldedRole = fold(role);
+    if (!foldedRole) return null;
+    const foldedSubject = fold(subject);
+    for (const [, handle] of quote.matchAll(/@([A-Za-z0-9._]{4,})/g)) {
+        const foldedHandle = fold(handle);
+        // Short handles fold into ordinary words; only the subject's own handle
+        // legitimately appears in a role ("feat @someone").
+        if (foldedHandle.length < 4 || foldedHandle === foldedSubject) continue;
+        if (foldedRole.includes(foldedHandle)) return handle;
+    }
+    return null;
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number = TIMEOUT_MS): Promise<T> {
     return Promise.race([
@@ -274,6 +319,13 @@ export function verifyClaims(
         if (!post) continue;                                     // cited a post we never sent
         const caption = post.caption ?? "";
         if (!containsQuote(caption, quote)) continue;            // quote is not in that caption
+
+        // Co-presence is not employment — see `roleIsSomebodyElsesHandle`.
+        const borrowed = roleIsSomebodyElsesHandle(role, subject, quote);
+        if (borrowed) {
+            console.log(`[socialCredits] Dropping "${role}" for ${subject} — that is @${borrowed}, not a job they did`);
+            continue;
+        }
 
         // The person has to be IN the post. A handle counts when Instagram
         // recorded it as a mention or when it is written in the caption; a bare
@@ -552,24 +604,61 @@ export interface CreditedCollaborator {
     isHandle: boolean;
     /** Every distinct role the artist has given them, in their words. */
     roles: string[];
+    /**
+     * The roles they were given on MORE THAN ONE post — what the working
+     * relationship actually is, as opposed to what happened once.
+     *
+     * `roles` flattens every label across every post and loses which post each
+     * came from, so a one-off reads as a description of the whole
+     * relationship. Pete Rango credited @zavodskyalan across 23 posts as his
+     * "main production partner", and once, on a single post, for having "added
+     * some 808s" — 808s whose files were then LOST and never used. The flat
+     * list produced "credited as production partner and for adding some 808s
+     * across many posts", asking him about a contribution that never made the
+     * record.
+     *
+     * Same shape as the bug `relationshipCandidates` was written to fix:
+     * merging destroys the evidence of which post a fact came from.
+     */
+    recurringRoles: string[];
+    /** The artist's actual sentences, one per credit. A label without its
+     *  sentence loses the only thing that gives it meaning — "added some 808s"
+     *  reads as a contribution until you see the rest of it: "but those files
+     *  were lost...so we ended up leaving as is". */
+    quotes: string[];
     evidenceUrls: string[];
 }
 
 export function creditedCollaborators(extraction: CaptionExtraction): CreditedCollaborator[] {
     const by = new Map<string, CreditedCollaborator>();
+    /** person -> role -> the distinct posts that role was given on. A role is
+     *  only "recurring" if it appears on more than one POST; the same caption
+     *  parsed into two rows is still one occasion. */
+    const roleUrls = new Map<string, Map<string, Set<string>>>();
     for (const c of extraction.credits) {
         if (c.isSelf) continue;                                  // a fact about them, not an edge
         const key = fold(c.subject);
         if (!key) continue;
+
+        const roleKey = c.role.toLowerCase();
+        const forPerson = roleUrls.get(key) ?? new Map<string, Set<string>>();
+        (forPerson.get(roleKey) ?? forPerson.set(roleKey, new Set()).get(roleKey)!).add(c.url);
+        roleUrls.set(key, forPerson);
+
         const existing = by.get(key);
         if (existing) {
-            if (!existing.roles.some(r => r.toLowerCase() === c.role.toLowerCase())) existing.roles.push(c.role);
+            if (!existing.roles.some(r => r.toLowerCase() === roleKey)) existing.roles.push(c.role);
+            if (c.quote && !existing.quotes.includes(c.quote)) existing.quotes.push(c.quote);
             if (!existing.evidenceUrls.includes(c.url)) existing.evidenceUrls.push(c.url);
             // A handle is more useful than a bare name; upgrade if we later see one.
             if (c.isHandle && !existing.isHandle) { existing.isHandle = true; existing.subject = c.subject; }
         } else {
-            by.set(key, { subject: c.subject, isHandle: c.isHandle, roles: [c.role], evidenceUrls: [c.url] });
+            by.set(key, { subject: c.subject, isHandle: c.isHandle, roles: [c.role], recurringRoles: [], quotes: c.quote ? [c.quote] : [], evidenceUrls: [c.url] });
         }
+    }
+    for (const [key, person] of by) {
+        const counts = roleUrls.get(key);
+        person.recurringRoles = person.roles.filter(r => (counts?.get(r.toLowerCase())?.size ?? 0) >= 2);
     }
     return [...by.values()].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length);
 }
