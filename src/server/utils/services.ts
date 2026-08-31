@@ -53,9 +53,13 @@ export async function extractArtistId(artistUrl: string) {
     // MusicBrainz returned `https://twitter.com/p3t3rango` for Pete Rango and
     // we discarded it; artists' own sites and press pages are full of them.
     // Rewriting the host is safe because no other platform in urlmap uses it.
+    // Scheme optional. The `x` and `wikipedia` guards below both re-add
+    // "https://" when it is missing, so this function is expected to receive
+    // bare domains — and a scheme-gated rewrite would silently drop
+    // `twitter.com/someuser`, the exact bug it exists to fix. Found in review.
     decodedUrl = decodedUrl.replace(
-        /^(https?:\/\/)(?:www\.|mobile\.|m\.)?twitter\.com(?=[/?#]|$)/i,
-        "$1x.com",
+        /^(https?:\/\/)?(?:www\.|mobile\.|m\.)?twitter\.com(?=[/?#]|$)/i,
+        (_m, scheme) => `${scheme ?? ""}x.com`,
     );
 
     const allLinks = await getAllLinks();

@@ -1,4 +1,5 @@
 import { getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
+import { foldName } from "@/server/utils/nameFold";
 
 /**
  * Which Spotify artist is this, given their Deezer id?
@@ -37,8 +38,6 @@ const MAX_TRACKS = 5;
  *  the onboarding turn. */
 const FETCH_TIMEOUT_MS = 4_000;
 
-const fold = (s: string): string =>
-    s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 
 async function getJson(url: string, headers?: Record<string, string>): Promise<Record<string, unknown> | null> {
     const controller = new AbortController();
@@ -110,20 +109,32 @@ export async function spotifyArtistFromDeezer(
         const [topId, top] = ranked[0];
         const contested = ranked.filter(([, v]) => v.n === top.n);
 
-        // A clear winner across recordings is the artist: a guest features once,
-        // the artist is on all of them.
-        if (contested.length === 1) return { spotifyId: topId, recordings: top.n, byName: false };
+        // AGREEMENT ACROSS RECORDINGS IS THE STRONG EVIDENCE — the artist is on
+        // all of them and a guest features once — and it means nothing at all
+        // when there is only one recording to agree. `top.n >= 2` is the whole
+        // point of the rule.
+        //
+        // Without that clause a single resolvable ISRC crediting a single
+        // artist was "uncontested" and got returned with no name check
+        // whatsoever, which is the opposite of what this module's own comment
+        // promises. Not hypothetical: Pete Rango has exactly ONE resolvable
+        // ISRC, and it was only verified because that track happens to credit
+        // two people. A solo track — or a cover, a remix credited to the
+        // remixer, a Deezer mis-attribution — would have been written straight
+        // onto the artist. Found in review.
+        if (contested.length === 1 && top.n >= 2) return { spotifyId: topId, recordings: top.n, byName: false };
 
-        // Tied — which happens whenever there is only one usable recording, the
-        // case that put Dame Atlas level with Pete Rango. Break it on the name,
-        // over a set that already only contains people who perform this
-        // artist's records.
-        const want = fold(artistName);
-        const named = contested.filter(([, v]) => fold(v.name) === want);
+        // Everything else has to be confirmed by the name: a tie, or a single
+        // recording. Still far stronger than searching the catalogue by name,
+        // because this set only contains people who perform this artist's
+        // records.
+        const want = foldName(artistName);
+        const named = contested.filter(([, v]) => foldName(v.name) === want);
         if (named.length === 1) return { spotifyId: named[0][0], recordings: named[0][1].n, byName: true };
 
-        // Several collaborators, none of them named like the artist, or two
-        // with the same name. Nothing here identifies them.
+        // A single recording whose credited artist is not named like ours, several
+        // collaborators with none of them named like ours, or two with the same
+        // name. Nothing here identifies them.
         return null;
     } catch (e) {
         console.error("[isrcMatch] Deezer -> Spotify resolution failed:", e);

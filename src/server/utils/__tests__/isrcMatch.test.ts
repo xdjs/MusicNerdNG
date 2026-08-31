@@ -61,6 +61,31 @@ describe('spotifyArtistFromDeezer', () => {
             .toEqual({ spotifyId: 'them', recordings: 3, byName: false });
     });
 
+    it('will not accept a lone recording by a lone artist without checking the name', async () => {
+        // Found in review, and the coverage gap was real: every "trusted" case
+        // here was either three-recordings-agree or a genuine tie broken by
+        // name, so nothing exercised ONE recording crediting ONE artist. That
+        // path returned `byName: false` with no name check at all — the
+        // opposite of what this module promises.
+        //
+        // Agreement across recordings is the evidence, and one recording cannot
+        // agree with itself. Pete Rango has exactly one resolvable ISRC.
+        stubApis({
+            top: [1], tracks: { 1: 'AAA' },
+            isrcs: { AAA: [{ id: 'someone-else', name: 'Somebody Entirely Different' }] },
+        });
+        expect(await (await subject())('1', 'Pete Rango')).toBeNull();
+    });
+
+    it('accepts a lone recording when its lone artist IS the artist', async () => {
+        stubApis({
+            top: [1], tracks: { 1: 'AAA' },
+            isrcs: { AAA: [{ id: 'them', name: 'Pete Rango' }] },
+        });
+        expect(await (await subject())('1', 'Pete Rango'))
+            .toEqual({ spotifyId: 'them', recordings: 1, byName: true });
+    });
+
     it('abstains when tied collaborators include nobody with the artist name', async () => {
         // Two names, neither theirs. A gap beats a wrong link.
         stubApis({

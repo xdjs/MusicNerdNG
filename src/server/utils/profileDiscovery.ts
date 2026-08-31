@@ -89,6 +89,7 @@ import type { MusicPlatformArtist } from "@/server/utils/musicPlatform";
 import { webSearch, type WebSearchResult } from "@/server/utils/webSearch";
 import { getArtistMappings } from "@/server/utils/idMappingService";
 import { spotifyArtistFromDeezer } from "@/server/utils/isrcMatch";
+import { foldName } from "@/server/utils/nameFold";
 import {
     PROFILE_DISPLAY_COLUMNS,
     artistHasRawLinkValue,
@@ -449,9 +450,9 @@ export function deriveNameSlugs(artistName: string): string[] {
     return slugs.slice(0, MAX_DERIVED_SLUGS);
 }
 
-function normalizeForCompare(s: string): string {
-    return s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-}
+/** Shared with isrcMatch — see `foldName`. It was copied there and the two
+ *  answer the same question about the same artist, so they must not drift. */
+const normalizeForCompare = foldName;
 
 /** Loose containment check, either direction — an og:title is rarely an
  *  exact match (platforms append taglines, e.g. `"Pete Rango (@p3t3rango) •
