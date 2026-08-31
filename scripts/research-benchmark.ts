@@ -242,12 +242,27 @@ async function main() {
                 // the unguarded path and reported wrong links that the product
                 // does not actually write — a gate that lies in the other
                 // direction is no better than one that lies in this one.
+                // ONE WRITE PER PLATFORM, mirroring the auto-build. Discovery
+                // returns up to two accounts per platform now; handing both to
+                // applyProfileLinkDecisions lets the LAST one win, which is the
+                // silent arbitrary pick the product no longer makes. The
+                // alternative is a question for the artist, and a benchmark run
+                // has nobody to ask — so it scores the primary, same as an
+                // artist who closes the tab before answering.
+                const seenPlatform = new Set<string>();
+                const primaries = discovered.filter(p => {
+                    if (seenPlatform.has(p.siteName)) return false;
+                    seenPlatform.add(p.siteName);
+                    return true;
+                });
                 const outcome = await applyProfileLinkDecisions(
-                    c.id, discovered.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
+                    c.id, primaries.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
                 const wrote = new Set(outcome.written);
                 provisionalSiteNames = [...new Set(
-                    discovered.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
+                    primaries.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
                 )];
+                const alternatives = discovered.length - primaries.length;
+                if (alternatives > 0) console.log(`  [${c.key}] ${alternatives} second account(s) offered as a choice, not scored`);
             }
         } catch (e: any) {
             console.error(`  [${c.key}] profile discovery threw:`, e?.message);
