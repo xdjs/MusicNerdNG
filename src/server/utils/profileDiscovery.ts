@@ -556,6 +556,10 @@ async function runHandleProbe(
     probe: HandleProbe,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
     artistName: string,
+    /** Platforms that answered with a wall rather than a profile — see the
+     *  detection below. Recorded so the caller can say "couldn't check"
+     *  instead of "not found", which are not the same claim. */
+    walled?: Set<ProfileDisplayColumn>,
 ): Promise<{ url: string; preview: LinkPreview } | null> {
     const row = urlmapBySiteName.get(probe.platform);
     if (!row?.appStringFormat) return null;
@@ -602,6 +606,7 @@ async function runHandleProbe(
         const platformName = urlmapBySiteName.get(probe.platform)?.cardPlatformName ?? probe.platform;
         if (residual && preview.imageUrl && normalizeForCompare(residual) === normalizeForCompare(platformName)) {
             console.warn(`[profileDiscovery] ${probe.platform} served its own name as the page title for @${probe.handle} — a wall or a rate limit, not evidence this handle is absent`);
+            walled?.add(probe.platform);
         }
         if (residual) {
             // Real name text survived stripping — cross-check IT against the
@@ -645,6 +650,7 @@ async function* tierThreeHandleProbeStream(
     record: Record<string, unknown>,
     missing: Set<ProfileDisplayColumn>,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
+    walled?: Set<ProfileDisplayColumn>,
 ): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
     const handlePlatforms = Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[];
     const targets = handlePlatforms.filter(p => missing.has(p) && !PROBE_UNVERIFIABLE_PLATFORMS.has(p));
@@ -701,7 +707,7 @@ async function* tierThreeHandleProbeStream(
     }
 
     const newlyConfirmedHandles = new Set<string>();
-    for await (const [probe, hit] of mapWithConcurrency(seedJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+    for await (const [probe, hit] of mapWithConcurrency(seedJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName, walled))) {
         if (!hit || resolved.has(probe.platform)) continue; // first confirmed hit per platform wins
         const candidate = toCandidate(probe, hit, false);
         resolved.set(probe.platform, candidate);
@@ -726,7 +732,7 @@ async function* tierThreeHandleProbeStream(
                 propagationJobs.push({ platform, handle, source: "propagated", confirmed: true });
             }
         }
-        for await (const [probe, hit] of mapWithConcurrency(propagationJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+        for await (const [probe, hit] of mapWithConcurrency(propagationJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName, walled))) {
             if (!hit || resolved.has(probe.platform)) continue;
             const candidate = toCandidate(probe, hit, true);
             resolved.set(probe.platform, candidate);
@@ -1005,7 +1011,13 @@ async function* propagateConfirmedHandles(
 export type DiscoveryEvent =
     | { kind: "searching"; platform: ProfileDisplayColumn; displayName: string }
     | { kind: "checked"; platform: ProfileDisplayColumn; displayName: string }
-    | { kind: "found"; profile: DiscoveredProfile };
+    | { kind: "found"; profile: DiscoveredProfile }
+    // The platform refused to tell us anything — a login wall or a rate limit,
+    // not an answer. "We couldn't check" and "you don't have one" are different
+    // claims and only one of them is true here; reporting the second is telling
+    // the artist we looked when we were turned away. Emitted only for platforms
+    // still unresolved at the end, so a wall we recovered from is not mentioned.
+    | { kind: "unreachable"; platform: ProfileDisplayColumn; displayName: string };
 
 function platformDisplayName(platform: ProfileDisplayColumn, urlmapBySiteName: Map<string, UrlmapPresentationRow>): string {
     return urlmapBySiteName.get(platform)?.cardPlatformName || fallbackDisplayName(platform);
@@ -1139,6 +1151,8 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
  *  `profiles` onboarding turn. */
 export async function* discoverArtistProfilesStream(artistId: string): AsyncGenerator<DiscoveryEvent> {
     const startedAt = Date.now();
+    /** Platforms that answered a probe with a wall instead of a profile. */
+    const walled = new Set<ProfileDisplayColumn>();
     const pastBudget = () => Date.now() - startedAt > DISCOVERY_BUDGET_MS;
 
     let artist;
@@ -1209,7 +1223,7 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
     if (missing.size > 0 && !pastBudget()) {
         const tier3Targets = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
         for (const p of tier3Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
-        for await (const [platform, candidate] of tierThreeHandleProbeStream(artistName, record, missing, urlmapBySiteName)) {
+        for await (const [platform, candidate] of tierThreeHandleProbeStream(artistName, record, missing, urlmapBySiteName, walled)) {
             if (candidate) {
                 missing.delete(candidate.platform);
                 const profile = await validateCandidate(candidate, ctx);
@@ -1266,7 +1280,14 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
         }
     }
 
-    console.log(`[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" found=${foundCount} elapsedMs=${Date.now() - startedAt}`);
+    // Say which platforms turned us away, and say it LAST — a wall during tier
+    // 3 that tier 4 then got past is not something to report, so this is
+    // narrowed to what is still unresolved after every tier has run.
+    const stillWalled = [...walled].filter(p => missing.has(p));
+    for (const platform of stillWalled) {
+        yield { kind: "unreachable", platform, displayName: platformDisplayName(platform, urlmapBySiteName) };
+    }
+    console.log(`[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" found=${foundCount} elapsedMs=${Date.now() - startedAt}${stillWalled.length ? ` unreachable=${stillWalled.join(",")}` : ""}`);
 }
 
 /** Array-returning wrapper over `discoverArtistProfilesStream` — kept for any

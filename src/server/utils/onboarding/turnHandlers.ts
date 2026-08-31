@@ -610,6 +610,10 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             // line below still fires afterward either way, so the UI always
             // settles instead of being left mid-search forever.
             const candidates: DiscoveredProfile[] = [];
+            /** Platforms that turned the probe away rather than answering it —
+             *  carried into the payload so the card can say "couldn't check"
+             *  instead of listing them as missing. */
+            const unreachable: string[] = [];
             if (discoverProfiles) {
                 const seenPlatforms = new Set<string>();
                 try {
@@ -629,6 +633,9 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                             case "found":
                                 candidates.push(event.profile);
                                 yield { kind: "candidate", profile: event.profile };
+                                break;
+                            case "unreachable":
+                                unreachable.push(event.platform);
                                 break;
                         }
                     }
@@ -650,7 +657,7 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                 ? `${baseNarration} ${NARRATION.profilesCandidatesFound(candidates.length)}`
                 : baseNarration;
             yield { kind: "chat", text: narration };
-            yield { kind: "step", step: "profiles", payload: { ...payload, candidates } };
+            yield { kind: "step", step: "profiles", payload: { ...payload, candidates, unreachable } };
             return;
         }
         case "vault": {
@@ -1053,12 +1060,17 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     // 1 — profiles
     yield { kind: "progress", label: "Finding your profiles", done: false, group: PROFILE_SEARCH_GROUP };
     const discovered: DiscoveredProfile[] = [];
+    /** Platforms that refused to answer. The auto-build has no card to put a
+     *  hint on, so it says so in the chat — "we found nothing there" and "they
+     *  would not tell us" are different sentences and only one is true. */
+    const unreachable: string[] = [];
     try {
         for await (const event of discoverArtistProfilesStream(artistId)) {
             if (event.kind === "found") {
                 discovered.push(event.profile);
                 yield { kind: "candidate", profile: event.profile };
             }
+            if (event.kind === "unreachable") unreachable.push(event.displayName);
         }
     } catch (e) {
         console.error("[onboarding] auto-build discovery failed:", e);
@@ -1136,6 +1148,12 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     // their own budget, driven by the client while the artist is still here and
     // by a scheduler when they are not, and the document is rebuilt once the
     // extraction finishes.
+    if (unreachable.length > 0) {
+        yield {
+            kind: "chat",
+            text: `${unreachable.join(" and ")} wouldn't let us look just now, so that's not a "no" — add ${unreachable.length === 1 ? "it" : "them"} from your page any time.`,
+        };
+    }
     await requestArtistResearch(artistId);
     yield {
         kind: "progress",

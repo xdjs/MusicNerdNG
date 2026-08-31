@@ -136,6 +136,27 @@ describe('ProfilesCard — accepted-by-default', () => {
         expect(addedLinks.filter(l => l.url.includes('facebook.com'))).toHaveLength(1);
     });
 
+    it('says it could not check a platform that turned us away, instead of calling it missing', () => {
+        // Instagram walled this machine for over an hour after one benchmark
+        // run and served a login page for every handle. The name check refuses
+        // it, so no wrong link is ever written — but the card then told the
+        // artist we had looked and found nothing, which is not what happened.
+        render(<ProfilesCard
+            // instagram is already linked in `payload`; tiktok is not.
+            payload={{ ...payload, unreachable: ['tiktok', 'instagram'] }}
+            onConfirm={jest.fn()}
+            disabled={false}
+        />);
+        const notice = screen.getByTestId('profiles-unreachable').textContent ?? '';
+        expect(notice).toMatch(/Couldn't check TikTok/);
+        expect(notice).toMatch(/not a no/i);
+        // Not ALSO reported as missing — one platform, one claim.
+        expect(screen.queryByText(/still missing/i)?.textContent ?? '').not.toMatch(/TikTok/);
+        // And silent about a platform we already have: being turned away asking
+        // a question we had already answered is not news to the artist.
+        expect(notice).not.toMatch(/Instagram/);
+    });
+
     it('collects pasted links as additions', () => {
         const onConfirm = jest.fn();
         render(<ProfilesCard payload={payload} onConfirm={onConfirm} disabled={false} />);

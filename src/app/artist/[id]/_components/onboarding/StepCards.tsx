@@ -37,6 +37,10 @@ type ProfilesPayload = {
     artistName: string;
     links: ProfileLink[];
     candidates?: ProfileCandidate[];
+    /** Platforms that refused the probe — a login wall or a rate limit, not an
+     *  answer. Kept out of "Still missing", which would be us claiming to have
+     *  looked when we were turned away. */
+    unreachable?: string[];
     enrichment: { platform: string; followerCount: number | null; imageUrl: string | null } | null;
 };
 
@@ -412,7 +416,9 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
         // link he had just added.
         ...added.flatMap(platformsInUrl),
     ]);
-    const stillMissing = SUPPORTED_PLATFORMS.filter(p => !coveredSiteNames.has(p));
+    const unreachable = (payload.unreachable ?? []).filter(p => !coveredSiteNames.has(p));
+    const unreachableSet = new Set(unreachable);
+    const stillMissing = SUPPORTED_PLATFORMS.filter(p => !coveredSiteNames.has(p) && !unreachableSet.has(p));
 
     const isEmpty = payload.links.length === 0;
     // Fix 3: cap the list itself, not the whole card — the paste row and the
@@ -538,6 +544,11 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
             {stillMissing.length > 0 && (
                 <p className="text-xs text-gray-600 dark:text-gray-300 px-1">
                     Still missing: {stillMissing.map(p => SUPPORTED_PLATFORM_LABELS[p]).join(", ")} — paste a link below if you have one.
+                </p>
+            )}
+            {unreachable.length > 0 && (
+                <p data-testid="profiles-unreachable" className="text-xs text-amber-600 dark:text-amber-400 px-1">
+                    Couldn&apos;t check {unreachable.map(p => SUPPORTED_PLATFORM_LABELS[p] ?? p).join(", ")} just now — that&apos;s not a no. Paste the link below, or have another look in a minute.
                 </p>
             )}
             <div className="flex gap-2 pt-1">
