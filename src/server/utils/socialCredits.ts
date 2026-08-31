@@ -253,21 +253,27 @@ export function roleIsSomebodyElsesHandle(role: string, subject: string, quote: 
         const foldedHandle = fold(handle);
         // Short handles fold into ordinary words; only the subject's own handle
         // legitimately appears in a role ("feat @someone").
-        if (foldedHandle.length < 4) continue;
-        // THE SUBJECT'S OWN HANDLE IS NOT SOMEBODY ELSE'S. Exact equality was
-        // not enough: the extractor often records a bare display name
-        // ("Alan", isHandle false) while the caption carries that same
-        // person's @handle, so "feat @zavodskyalan" credited to "Alan" folded
-        // to alan !== zavodskyalan and a legitimate credit was thrown away.
-        // Containment either way covers the name-inside-handle case without
-        // letting an unrelated handle through — none of the eleven real
-        // rejections in Pete Rango's feed has any overlap between subject and
-        // the borrowed handle. Found in review.
-        if (foldedSubject.length >= 4
-            && (foldedHandle === foldedSubject
-                || foldedHandle.includes(foldedSubject)
-                || foldedSubject.includes(foldedHandle))) continue;
-        if (foldedHandle === foldedSubject) continue;
+        // Short handles fold into ordinary words; only the subject's own handle
+        // legitimately appears in a role ("feat @someone").
+        //
+        // EXACT EQUALITY, NOT CONTAINMENT — I tried containment and took it
+        // back out. The idea was that the extractor sometimes records a bare
+        // display name ("Alan") while the caption carries that person's handle
+        // ("@zavodskyalan"), so exact equality would discard a real credit.
+        // But containment cannot tell that two overlapping strings are the same
+        // PERSON: a subject "Cole" would have exempted an unrelated
+        // @davidcole, and a four-character floor is no protection at all for
+        // Dave, Anna, Sean, Kyle.
+        //
+        // Measured before reverting: across all 714 stored credit rows the
+        // containment branch fired ZERO times. It rescued nothing real and
+        // opened exactly the hole this function exists to close. This
+        // function's own rule — a validator that guesses is worse than none —
+        // applies to the guess I added to it. Found in review.
+        //
+        // The cost is a known, measured-absent false positive: a bare-name
+        // subject whose own handle appears inside the role is rejected.
+        if (foldedHandle.length < 4 || foldedHandle === foldedSubject) continue;
         if (foldedRole.includes(foldedHandle)) return handle;
     }
     return null;

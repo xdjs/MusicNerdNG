@@ -832,9 +832,11 @@ export async function generateGroundedQuestions(
         // drafting precisely what we need and letting the fact-checker eat it,
         // which is the bug this whole mechanism exists to fix.
         //
-        // Both callers pass 3 today so it is not live. It would go wrong the
-        // moment somebody raised the question count, and quietly. Found in
-        // review.
+        // NOT hypothetical: scripts/ingest-social.ts passes `max` straight
+        // from an optional --max flag, so running it without one lands on
+        // DEFAULT_MAX_QUESTIONS (6) and wants twelve drafts against a ceiling
+        // of six. The onboarding callers both pass 3 and are unaffected.
+        // Found in review, after I described it as latent.
         if (draftTarget < wantedDrafts && draftTarget < candidates.length) {
             console.warn(`[questionGenerator] Oversampling degraded: wanted ${wantedDrafts} drafts for ${max} question(s), capped at ${draftTarget} by the latency ceiling — expect generic fallbacks to fill the gap.`);
         }
