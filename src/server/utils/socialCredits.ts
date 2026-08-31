@@ -42,6 +42,7 @@
  */
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
+import { foldName } from "@/server/utils/nameFold";
 
 /** One person credited with a role, in the artist's own words. */
 export interface CaptionCredit extends Dated {
@@ -147,9 +148,12 @@ const EMPTY_ROLES = new Set(["for", "with", "by", "to", "and", "at", "on", "in",
 
 /** Alphanumerics only, so a display name and a handle can be compared:
  *  "Pharaoh Sistare" and "pharaohsistare" collapse to the same string. */
-function fold(value: string): string {
-    return (value ?? "").toLowerCase().replace(/^@/, "").replace(/[^a-z0-9]/g, "");
-}
+/** Shared with profileDiscovery and isrcMatch — see `foldName`. This was a
+ *  fourth copy of the same "compare two names" rule, and it was the one
+ *  WITHOUT the NFKD pass, so it folded a styled-unicode name to nothing while
+ *  the others handled it. The leading "@" needs no special case: it is not
+ *  alphanumeric, so it is stripped anyway. */
+const fold = (value: string): string => foldName(value ?? "");
 
 /** Whitespace-insensitive containment. Models reflow line breaks and collapse
  *  runs of spaces when quoting, and a quote that is otherwise verbatim should
@@ -249,6 +253,24 @@ export function roleIsSomebodyElsesHandle(role: string, subject: string, quote: 
         const foldedHandle = fold(handle);
         // Short handles fold into ordinary words; only the subject's own handle
         // legitimately appears in a role ("feat @someone").
+        //
+        // EXACT EQUALITY, NOT CONTAINMENT — I tried containment and took it
+        // back out. The idea was that the extractor sometimes records a bare
+        // display name ("Alan") while the caption carries that person's handle
+        // ("@zavodskyalan"), so exact equality would discard a real credit.
+        // But containment cannot tell that two overlapping strings are the same
+        // PERSON: a subject "Cole" would have exempted an unrelated
+        // @davidcole, and a four-character floor is no protection at all for
+        // Dave, Anna, Sean, Kyle.
+        //
+        // Measured before reverting: across all 714 stored credit rows the
+        // containment branch fired ZERO times. It rescued nothing real and
+        // opened exactly the hole this function exists to close. This
+        // function's own rule — a validator that guesses is worse than none —
+        // applies to the guess I added to it. Found in review.
+        //
+        // The cost is a known, measured-absent false positive: a bare-name
+        // subject whose own handle appears inside the role is rejected.
         if (foldedHandle.length < 4 || foldedHandle === foldedSubject) continue;
         if (foldedRole.includes(foldedHandle)) return handle;
     }

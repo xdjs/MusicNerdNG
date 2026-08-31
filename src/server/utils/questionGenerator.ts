@@ -157,11 +157,35 @@ function unicodeSlug(s: string): string {
     return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "").slice(0, 60) || "x";
 }
 
+/** Exported for tests only — the key-churn guarantee is the whole reason this
+ *  regex is what it is, and it needs pinning. */
+export const slugForTest = (s: string): string => slug(s);
+
 function slug(s: string): string {
     return s
         .toLowerCase()
         .normalize("NFKD")
-        .replace(/[^\w]+/g, "_")
+        // `\w` IS ASCII-ONLY, so every non-Latin name collapsed to "x" and two
+        // of them collided on one signalId — byId keeps the last, and their
+        // answers overwrite each other under the unique (artist, questionKey)
+        // index. The credit signal was moved to `unicodeSlug` for this and the
+        // other five call sites were left behind; fixing the shared helper
+        // covers all of them at once.
+        //
+        // UNDERSCORE STAYS IN THE CLASS. `\w` counts "_" as a word character,
+        // so it never collapsed a run containing one; a bare \p{L}\p{N} class
+        // does not, and folds "cool__guy" to "cool_guy" and "the_.kid" to
+        // "the_kid". Instagram handles mix "." and "_" freely, so that is a
+        // real shape, and a changed key silently orphans the answer stored
+        // under the old one — the very churn this was written to avoid.
+        //
+        // ZERO KEY CHURN, which is why this rather than swapping call sites:
+        // with "_" kept, ASCII input is byte-identical to the old output, so no
+        // stored questionKey moves. `unicodeSlug` would have changed them via
+        // its longer slice. Found in review — my first version dropped the
+        // underscore and I verified byte-identity only against the strings we
+        // happen to hold, which is not the same as verifying the rule.
+        .replace(/[^\p{L}\p{N}_]+/gu, "_")
         .replace(/^_+|_+$/g, "")
         .slice(0, 40) || "x";
 }
@@ -530,25 +554,47 @@ export function boilerplateReason(question: string): string | null {
 const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collaborator"]);
 
 /**
- * At most half the DRAFTS may be about somebody else.
+ * At most half a set may be about somebody else.
  *
  * Credits are the richest signal we have and the prompt tells the model to
  * reach for them, so left alone the interview becomes a tour of the artist's
  * contact list. Pete: "I don't want every question to always have to do with a
  * collaborator, some could just be about things the artist posted."
  *
- * ENFORCED WHILE DRAFTING, not afterwards. Capping the finished set does
- * nothing when every draft is about a person — there is then nothing left to
- * balance with, and trimming just returns a shorter tour. Refusing the sixth
- * collaborator draft is what makes room for a statement.
+ * Applied to the RANKED, VERIFIED set — clean questions first — so the
+ * collaborator questions it keeps are the best ones rather than the earliest.
+ *
+ * This is the second half of a pair. On its own it cannot work: it only sees
+ * what was drafted, so if drafting never reached a non-person answer there is
+ * nothing here to protect. The two-pass reservation inside
+ * `generateGroundedQuestions` — `personSlots`, `deferred`, `deferring` — is
+ * what guarantees it has something to work with.
  *
  * Only enforced while something else is actually available: an artist whose
  * material genuinely is all credits gets a full interview rather than one
- * question.
+ * question — Pete, asked directly: "its okay if the model returns only
+ * collaborator answers."
  */
-function personDraftLimit(draftTarget: number, candidates: SignalCandidate[]): number {
-    const hasOthers = candidates.some(c => !ABOUT_A_PERSON.has(c.kind));
-    return hasOthers ? Math.max(1, Math.ceil(draftTarget / 2)) : draftTarget;
+function capPersonQuestions<T extends { kind: string }>(items: T[], max: number): T[] {
+    // Rounded UP, so an odd `max` allows a bare majority: 2 of 3, 3 of 5. The
+    // alternative rounds a three-question interview down to one collaborator,
+    // which is thinner than intended when credits are the strongest material
+    // an artist has.
+    const allowed = Math.max(1, Math.ceil(max / 2));
+    // Nothing else to offer — an artist whose material genuinely is all
+    // collaborators gets a full interview about collaborators. Pete, asked
+    // directly: that is fine.
+    if (!items.some(x => !ABOUT_A_PERSON.has(x.kind))) return items;
+    const kept: T[] = [];
+    let people = 0;
+    for (const item of items) {
+        if (ABOUT_A_PERSON.has(item.kind)) {
+            if (people >= allowed) continue;
+            people++;
+        }
+        kept.push(item);
+    }
+    return kept;
 }
 
 export function diversify<T extends { kind: string }>(items: T[], max: number): T[] {
@@ -631,6 +677,11 @@ export function forgetGroundedQuestions(artistId: string): void {
  *  exact signal materials it claims to draw on — the only thing it may assert. */
 interface DraftedQuestion extends GroundedQuestion {
     materials: string[];
+    /** Why this question reads like a template rather than a person, if it
+     *  does — see `boilerplateReason`. Kept rather than dropped: it ranks
+     *  below the clean questions and is only used to avoid falling back to a
+     *  generic one. */
+    demotedFor?: string;
 }
 
 const VERIFIER_TIMEOUT_MS = 12_000;
@@ -792,7 +843,25 @@ export async function generateGroundedQuestions(
 
         // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there
         // are signals to draft from, so a thin artist is not asked to invent.
-        const draftTarget = Math.min(max * DRAFT_OVERSAMPLE, MAX_DRAFTS, candidates.length);
+        const wantedDrafts = max * DRAFT_OVERSAMPLE;
+        const draftTarget = Math.min(wantedDrafts, MAX_DRAFTS, candidates.length);
+        // SAY SO WHEN THE OVERSAMPLE IS NOT ACTUALLY HAPPENING.
+        //
+        // MAX_DRAFTS is a latency ceiling, measured: nine drafts blew the
+        // generation budget outright. But it silently swallows the oversample
+        // for any `max` above MAX_DRAFTS / DRAFT_OVERSAMPLE — at max 6, the
+        // module default, draftTarget clamps to exactly 6 and we are back to
+        // drafting precisely what we need and letting the fact-checker eat it,
+        // which is the bug this whole mechanism exists to fix.
+        //
+        // NOT hypothetical: scripts/ingest-social.ts passes `max` straight
+        // from an optional --max flag, so running it without one lands on
+        // DEFAULT_MAX_QUESTIONS (6) and wants twelve drafts against a ceiling
+        // of six. The onboarding callers both pass 3 and are unaffected.
+        // Found in review, after I described it as latent.
+        if (draftTarget < wantedDrafts && draftTarget < candidates.length) {
+            console.warn(`[questionGenerator] Oversampling degraded: wanted ${wantedDrafts} drafts for ${max} question(s), capped at ${draftTarget} by the latency ceiling — expect generic fallbacks to fill the gap.`);
+        }
 
         const byId = new Map(candidates.map(c => [c.signalId, c]));
         const promptPayload = candidates.map(({ signalId, kind, authoredBy, material }) => ({ signalId, kind, authoredBy, material }));
@@ -819,64 +888,124 @@ export async function generateGroundedQuestions(
         if (!text) return [];
 
         const answers = parseModelAnswers(text);
-        const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
-        const maxPeople = personDraftLimit(draftTarget, candidates);
-        let people = 0;
+
+        // TWO PASSES, so a reservation cannot cost us a draft.
+        //
+        // The model is told credits are its best material, and TOP_PARTNERSHIPS
+        // plus TOP_CREDITS alone can exceed the draft ceiling — so a
+        // collaborator-heavy artist can fill every slot with person-kind
+        // answers before a single statement is considered, and the cap below
+        // then has nothing to protect. The interview goes out all-collaborator
+        // while better material sat further down the list unread.
+        //
+        // Pass one holds back roughly half the slots for anything that is not
+        // about a person. Pass two gives those slots straight back if nothing
+        // claimed them, so an artist whose answers really are all collaborators
+        // still gets a full set. Nothing is discarded either way, which is what
+        // went wrong when this was a hard draft-time cap: skipped answers were
+        // gone, and a clean one further down was lost to earlier flagged ones.
+        // RESOLVE EVERYTHING FIRST, then choose. Deciding as we walk the
+        // model's list means the order it happened to return things in decides
+        // what gets drafted — and it is told collaborators are its best
+        // material, so it returns those first.
+        const eligible: { candidate: SignalCandidate; question: string; rationale: string; boilerplate: string | null }[] = [];
+        const resolved = new Set<string>();
         for (const answer of answers) {
-            if (drafted.length >= draftTarget) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
             // ONE SIGNAL. Letting the model name two and hypothesise a link
             // between them is how it told Pharaoh Sistare that @p3t3rango
             // engineered "Hourglass & The Flame": one signal said Pharaoh
             // credits p3t3rango, another said what Hourglass sounds like, and
-            // the join was invented. Nothing anywhere connected them — they are
-            // four different posts.
+            // the join was invented. They are four different posts.
             //
             // Connections are computed in buildCandidates now, where they can
             // carry the evidence that makes them true. A model cannot invent a
             // relationship it was handed.
             const signalId = typeof answer.signalId === "string" ? answer.signalId : null;
-            if (!signalId || !question || seen.has(signalId)) continue;
-            const candidate = byId.get(signalId); // only signalIds WE supplied are honored
+            if (!signalId || !question || resolved.has(signalId)) continue;
+            const candidate = byId.get(signalId);   // only signalIds WE supplied are honored
             if (!candidate) continue;
-            // BOILERPLATE FIRST, THEN THE CAP — the order matters.
-            //
-            // Counting a person-kind draft against the cap BEFORE checking
-            // whether it survives means a rejected draft still spends a slot.
-            // Three boilerplate collaborator drafts in a row would exhaust
-            // `maxPeople` and silently drop a good fourth one, with zero person
-            // questions actually in the set — the cap eating the very yield the
-            // oversample exists to recover. Found in review.
-            //
-            // `seen` is already added after this check, for the same reason: a
-            // draft that did not survive has not used anything up.
-            const boilerplate = boilerplateReason(question);
-            if (boilerplate) {
-                console.log(`[questionGenerator] dropped a question — ${boilerplate}: ${question.slice(0, 70)}`);
-                continue;
-            }
-            if (ABOUT_A_PERSON.has(candidate.kind)) {
-                if (people >= maxPeople) continue;   // leave room for their own words
-                people++;
-            }
-            seen.add(signalId);
-
-            drafted.push({
-                key: candidate.key,
+            resolved.add(signalId);
+            eligible.push({
+                candidate,
                 question,
                 rationale: typeof answer.rationale === "string" ? answer.rationale : "",
-                sourceUrls: candidate.sourceUrls,
-                kind: candidate.kind,
-                materials: [candidate.material],
+                // BOILERPLATE DEMOTES, IT DOES NOT DELETE. Dropping these made
+                // the output worse rather than better: a rejected draft is not
+                // replaced by a nicer question, it is replaced by "describe
+                // your sound". Measured on Pete Rango's feed after the register
+                // rules went in — six drafts, three killed here, three by the
+                // fact-checker, ZERO grounded questions. He tested it and said
+                // it made no sense, and he was right.
+                boilerplate: boilerplateReason(question),
             });
         }
+
+        // Clean ahead of flagged, model order preserved within each. Doing this
+        // BEFORE the reservation is what stops a clean collaborator question
+        // being deferred in favour of flagged ones the model happened to rank
+        // higher.
+        const ordered = [...eligible.filter(e => !e.boilerplate), ...eligible.filter(e => e.boilerplate)];
+
+        // HALF THE SLOTS ARE HELD FOR ANYTHING THAT IS NOT ABOUT A PERSON.
+        //
+        // TOP_PARTNERSHIPS plus TOP_CREDITS alone can exceed the draft ceiling,
+        // so a collaborator-heavy artist could fill every slot before a single
+        // statement was considered — and the cap further down, which only sees
+        // what was drafted, would then have nothing to protect and no-op. The
+        // interview went out all-collaborator while better material sat unread.
+        //
+        // Pass two hands the reserved slots straight back if nothing claimed
+        // them, so an artist whose answers really are all collaborators still
+        // gets a full set. Nothing is discarded either way.
+        const personSlots = Math.max(1, Math.ceil(draftTarget / 2));
+        const deferred: typeof ordered = [];
+        let people = 0;
+        let deferring = true;
+        const consider = (e: typeof ordered[number]): void => {
+            if (drafted.length >= draftTarget) return;
+            if (ABOUT_A_PERSON.has(e.candidate.kind)) {
+                if (deferring && people >= personSlots) { deferred.push(e); return; }
+                people++;
+            }
+            drafted.push({
+                key: e.candidate.key,
+                question: e.question,
+                rationale: e.rationale,
+                sourceUrls: e.candidate.sourceUrls,
+                kind: e.candidate.kind,
+                materials: [e.candidate.material],
+                demotedFor: e.boilerplate ?? undefined,
+            });
+        };
+
+        for (const e of ordered) consider(e);
+        // Pass two: nothing else wanted the reserved slots, so give them back.
+        deferring = false;
+        for (const e of deferred) consider(e);
 
         // The model was told best-first and the checker preserves order, so
         // `diversify` walks that ranking and takes the strongest question of
         // each kind before it takes a second of any — the set stays in the
         // model's preference order without being four versions of one question.
-        const questions = diversify(await keepOnlySupported(drafted, artistName), max);
+        // CLEAN FIRST, FLAGGED ONLY IF NEEDED. The fact-checker still has an
+        // absolute veto — a flagged question is merely inelegant, an
+        // unsupported one is wrong — so this ranks what survived verification.
+        //
+        // AND IT IS THIS SPLIT THAT RE-ESTABLISHES THE ORDER, not the draft
+        // array: the two-pass reservation interleaves clean and flagged as it
+        // fills and gives back slots, so `drafted` carries no ranking of its
+        // own. Removing the split would silently lose the guarantee.
+        const demoted = new Map(drafted.filter(d => d.demotedFor).map(d => [d.key, d.demotedFor!]));
+        const verified = await keepOnlySupported(drafted, artistName);
+        const clean = verified.filter(q => !demoted.has(q.key));
+        const flagged = verified.filter(q => demoted.has(q.key));
+        const questions = diversify(capPersonQuestions([...clean, ...flagged], max), max);
+        for (const q of questions) {
+            const why = demoted.get(q.key);
+            if (why) console.log(`[questionGenerator] using a question that ${why} — better than a generic fallback: ${q.question.slice(0, 70)}`);
+        }
 
         pruneGroundedQuestionsCache(now);
         groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });

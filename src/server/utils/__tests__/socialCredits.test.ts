@@ -343,6 +343,36 @@ describe("roleIsSomebodyElsesHandle — co-presence is not employment", () => {
         expect(await (await subject())(role, subj, quote)).toBeNull();
     });
 
+    it("rejects an unrelated handle that merely contains the subject's name", async () => {
+        // A containment exemption was added here so a bare display name
+        // ("Alan") would not treat its own handle ("@zavodskyalan") as
+        // somebody else's. It was reverted: containment cannot tell that two
+        // overlapping strings are the same PERSON, so subject "Cole" would
+        // have exempted an unrelated @davidcole, and a four-character floor is
+        // no protection for Dave, Anna, Sean, Kyle.
+        //
+        // Measured before reverting: across all 714 stored credit rows the
+        // containment branch fired ZERO times. It rescued nothing and opened
+        // the hole this function exists to close.
+        expect(await (await subject())(
+            "the @davidcole session", "Cole", "the @davidcole session with @Cole")).toBe("davidcole");
+    });
+
+    it("keeps the subject's own handle inside a role", async () => {
+        // Exact equality still covers the ordinary case, which is how a
+        // feature is written.
+        expect(await (await subject())("feat @dameatlas", "dameatlas", "feat @dameatlas")).toBeNull();
+    });
+
+    it("KNOWN LIMITATION: a bare name whose own handle is in the role is rejected", async () => {
+        // The cost of reverting the exemption, pinned so it is a decision
+        // rather than a surprise. Measured absent from every stored credit row
+        // we have; if it ever shows up in real data, that measurement is the
+        // thing to redo.
+        expect(await (await subject())(
+            "feat @zavodskyalan", "Alan", "feat @zavodskyalan on the second verse")).toBe("zavodskyalan");
+    });
+
     it("ignores handles too short to be distinctive", async () => {
         // A three-character handle folds into ordinary words and would reject
         // half the real roles in the table.

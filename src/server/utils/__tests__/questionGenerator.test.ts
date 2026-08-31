@@ -247,6 +247,37 @@ describe('generateGroundedQuestions', () => {
         });
     });
 
+    describe('slug — fixes non-Latin collisions without moving any existing key', () => {
+        /** The pattern `slug` replaced, so the test compares against the thing
+         *  that actually generated the stored keys rather than a paraphrase. */
+        const previous = (x) => x.toLowerCase().normalize('NFKD')
+            .replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'x';
+
+        it.each([
+            'cool__guy', 'cool._guy', 'the_.kid', 'self-love_journey', '_kingkona',
+            'crittie_p', 'sage.breath', 'why he believes in Subvert',
+            'crying on the floor (pete rango mix)', 'Beyoncé', 'a_b',
+        ])('produces the identical key for ASCII input: %s', async (input) => {
+            // The key is persisted as questionKey under a unique (artist,
+            // questionKey) index, so a changed key silently orphans the answer
+            // stored under the old one and the interview re-asks it.
+            //
+            // My first version dropped "_" from the character class, which
+            // collapsed "cool__guy" to "cool_guy" — and I verified byte
+            // identity only against the strings we happen to hold, which is not
+            // the same as verifying the rule. Found in review.
+            const { slugForTest } = await import('@/server/utils/questionGenerator');
+            expect(slugForTest(input)).toBe(previous(input));
+        });
+
+        it.each(['日本のアーティスト', '김민준', 'Пётр'])(
+            'stops folding %s to "x", which collided two artists onto one key', async (input) => {
+                const { slugForTest } = await import('@/server/utils/questionGenerator');
+                expect(previous(input)).toBe('x');          // the bug
+                expect(slugForTest(input)).not.toBe('x');   // the fix
+            });
+    });
+
     describe('sounding like a person rather than an essay', () => {
         it.each([
             "what does that look like in practice for artists using the platform?",
@@ -319,11 +350,24 @@ describe('generateGroundedQuestions', () => {
             });
 
             const out = await generateGroundedQuestions('a1', { max: 4 });
-            const aboutPeople = out.filter(q =>
-                ['partnership', 'same_post', 'credit', 'collaborator'].includes(q.kind)).length;
+            const isPerson = q => ['partnership', 'same_post', 'credit', 'collaborator'].includes(q.kind);
+            const aboutPeople = out.filter(isPerson).length;
+
+            // NO `if` GUARD. The first version of this wrapped the assertion in
+            // `if (out.some(q => !isPerson(q)))`, which skips it in exactly the
+            // situation the test exists to catch: the review pointed out that
+            // three collaborators produce six person-kind candidates, matching
+            // the draft ceiling, so every draft came back person-kind, the
+            // condition was false and the test passed without ever checking the
+            // cap. A test that excuses itself when the bug is present is not a
+            // test.
+            //
+            // The draft loop now reserves half the slots for anything that is
+            // not about a person, so the statements in this fixture ARE
+            // reachable and the cap has something to protect.
             expect(out.length).toBeGreaterThan(0);
+            expect(out.some(q => !isPerson(q))).toBe(true);
             expect(aboutPeople).toBeLessThanOrEqual(Math.ceil(4 / 2));
-            expect(out.length).toBeGreaterThan(aboutPeople);   // something that isn't a person
         });
     });
 
@@ -432,12 +476,18 @@ describe('generateGroundedQuestions', () => {
             });
 
             const out = await generateGroundedQuestions('a1', { max: 3 });
-            // Only the non-boilerplate one survives the draft filter.
-            expect(out).toHaveLength(1);
+            // The clean one RANKS FIRST. It used to be the only survivor, and
+            // that made the output worse: a dropped draft is not replaced by a
+            // nicer question, it is replaced by "describe your sound". On Pete
+            // Rango's real feed that produced zero grounded questions and three
+            // generic fallbacks.
             expect(out[0].question).toBe('Who pushed back on that?');
+            // …and the flagged ones are still available behind it rather than
+            // thrown away.
+            expect(out.length).toBeGreaterThan(1);
         });
 
-        it('a REJECTED collaborator draft does not spend a slot from the person cap', async () => {
+        it('prefers a clean collaborator question over flagged ones about other collaborators', async () => {
             // The cap counted a person-kind draft before checking whether it
             // survived, so boilerplate collaborator drafts exhausted it and a
             // later good one was dropped with zero person questions in the set
@@ -446,10 +496,14 @@ describe('generateGroundedQuestions', () => {
             //
             // Here every person-kind draft but the LAST counts posts, which is
             // rejected. The last one must still get through.
+            // TWO collaborators, not four. The draft target is bounded by the
+            // latency ceiling, so a fixture with more person signals than that
+            // never reaches the last one and the test would be measuring the
+            // bound rather than the ranking.
             const person = (h, url, role) => ({ subject: h, isHandle: true, isSelf: false, role, quote: `${role} @${h}`, url, postedAt: null });
             jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
                 getSocialCredits: jest.fn(async () => ({
-                    credits: ['alan', 'cherele', 'oyabun', 'lemieux'].flatMap(h => [
+                    credits: ['alan', 'cherele'].flatMap(h => [
                         person(h, `https://www.instagram.com/p/${h}1/`, 'production partner'),
                         person(h, `https://www.instagram.com/p/${h}2/`, 'production partner'),
                     ]),
@@ -473,7 +527,7 @@ describe('generateGroundedQuestions', () => {
                     const people = ['partnership', 'same_post', 'credit', 'collaborator'];
                     const personIds = signals.filter(x => people.includes(x.kind)).map(x => x.signalId);
                     const good = personIds[personIds.length - 1];
-                    expect(personIds.length).toBeGreaterThan(3);   // enough to exhaust a cap of 3
+                    expect(personIds.length).toBeGreaterThan(1);
                     return { text: JSON.stringify(signals.map((sig, i) => ({
                         signalId: sig.signalId,
                         question: sig.signalId === good
@@ -485,7 +539,9 @@ describe('generateGroundedQuestions', () => {
             });
 
             const out = await generateGroundedQuestions('a1', { max: 3 });
-            expect(out.map(q => q.question)).toContain('Who pushed back on that?');
+            // The good one is not merely present — it comes FIRST, ahead of
+            // every flagged draft, even though the model ranked it last.
+            expect(out[0].question).toBe('Who pushed back on that?');
         });
 
         it('does not return the same KIND of question repeatedly when other kinds are available', async () => {
@@ -508,6 +564,39 @@ describe('generateGroundedQuestions', () => {
                 generateContentImpl: echoRealSignals(() => {}, () => true),
             });
             await expect(generateGroundedQuestions('a1', { max: 3 })).resolves.toHaveLength(3);
+        });
+
+        it('warns rather than silently dropping the oversample when max outgrows the latency ceiling', async () => {
+            // MAX_DRAFTS is a measured latency ceiling, and it silently
+            // swallowed the oversample for any max above MAX_DRAFTS /
+            // DRAFT_OVERSAMPLE — at the module default of 6 the draft target
+            // clamps to exactly 6, which is drafting precisely what we need and
+            // letting the fact-checker eat it. That is the bug this mechanism
+            // exists to fix, reappearing the moment somebody raises the count.
+            // Found in review.
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const { generateGroundedQuestions } = await setup({
+                    generateContentImpl: echoRealSignals(() => {}, () => true),
+                });
+                await generateGroundedQuestions('a1', { max: 6 });
+                expect(warn.mock.calls.flat().join(' ')).toMatch(/Oversampling degraded/);
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
+        it('is quiet when the oversample actually happens', async () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const { generateGroundedQuestions } = await setup({
+                    generateContentImpl: echoRealSignals(() => {}, () => true),
+                });
+                await generateGroundedQuestions('a1', { max: 3 });
+                expect(warn.mock.calls.flat().join(' ')).not.toMatch(/Oversampling degraded/);
+            } finally {
+                warn.mockRestore();
+            }
         });
 
         it('never asks for more than there are signals to build from', async () => {
