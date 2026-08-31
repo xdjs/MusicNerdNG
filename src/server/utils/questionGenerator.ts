@@ -566,8 +566,9 @@ const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collabora
  *
  * This is the second half of a pair. On its own it cannot work: it only sees
  * what was drafted, so if drafting never reached a non-person answer there is
- * nothing here to protect. `reserveForNonPeople` in the draft loop is what
- * guarantees it has something to work with.
+ * nothing here to protect. The two-pass reservation inside
+ * `generateGroundedQuestions` — `personSlots`, `deferred`, `deferring` — is
+ * what guarantees it has something to work with.
  *
  * Only enforced while something else is actually available: an artist whose
  * material genuinely is all credits gets a full interview rather than one
@@ -575,6 +576,10 @@ const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collabora
  * collaborator answers."
  */
 function capPersonQuestions<T extends { kind: string }>(items: T[], max: number): T[] {
+    // Rounded UP, so an odd `max` allows a bare majority: 2 of 3, 3 of 5. The
+    // alternative rounds a three-question interview down to one collaborator,
+    // which is thinner than intended when credits are the strongest material
+    // an artist has.
     const allowed = Math.max(1, Math.ceil(max / 2));
     // Nothing else to offer — an artist whose material genuinely is all
     // collaborators gets a full interview about collaborators. Pete, asked
@@ -883,7 +888,6 @@ export async function generateGroundedQuestions(
         if (!text) return [];
 
         const answers = parseModelAnswers(text);
-        const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
 
         // TWO PASSES, so a reservation cannot cost us a draft.
@@ -988,6 +992,11 @@ export async function generateGroundedQuestions(
         // CLEAN FIRST, FLAGGED ONLY IF NEEDED. The fact-checker still has an
         // absolute veto — a flagged question is merely inelegant, an
         // unsupported one is wrong — so this ranks what survived verification.
+        //
+        // AND IT IS THIS SPLIT THAT RE-ESTABLISHES THE ORDER, not the draft
+        // array: the two-pass reservation interleaves clean and flagged as it
+        // fills and gives back slots, so `drafted` carries no ranking of its
+        // own. Removing the split would silently lose the guarantee.
         const demoted = new Map(drafted.filter(d => d.demotedFor).map(d => [d.key, d.demotedFor!]));
         const verified = await keepOnlySupported(drafted, artistName);
         const clean = verified.filter(q => !demoted.has(q.key));
