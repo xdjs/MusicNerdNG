@@ -33,7 +33,12 @@ type Case = {
     id: string;
     name: string;
     /** Handles verified against a live page. The pipeline should find these. */
-    expect: Record<string, string>;
+    /** Platform -> the handle we know is theirs, or several when more than one
+     *  genuinely is. Black Dave MK2 runs both @blackdavemk2 and @blackdave.xyz
+     *  and confirmed both; scoring one of them as a miss measured our
+     *  preference, not his identity. The FIRST entry is the primary — the one
+     *  a picker should default to — and any of them counts as correct. */
+    expect: Record<string, string | string[]>;
     /** Left in place at reset — what an artist actually arrives holding. */
     seed: string[];
     /** Hosts that are a DIFFERENT subject. Any of these stored is a failure. */
@@ -117,16 +122,28 @@ const CASES: Case[] = [
         id: "011645a7-a9c2-494c-a81f-2c10cdf1b756",
         name: "Black Dave MK2",
         seed: ["spotify", "deezer"],
-        // Confirmed by Pete, 8/26. Currently UNREACHABLE from outside, and kept
-        // here deliberately as a standing miss: searching his name never returns
-        // it, his metalabel page links METALABEL's socials rather than his own,
-        // blackdavemk2.bandcamp.com exposes none, readdork 403s, and three Black
-        // Daves share the name so a page title cannot disambiguate.
+        // NOT a standing miss any more, and the reason it looked like one was
+        // wrong. This said his Instagram was "UNREACHABLE from outside" and
+        // scored anything but blackdave.xyz as a failure. He runs BOTH
+        // @blackdave.xyz (4,553 followers) and @blackdavemk2 (173) and
+        // confirmed both, 8/31 — so the pipeline finding blackdavemk2 was never
+        // a wrong link. It was us picking one of two real answers and throwing
+        // the other away, which is the thing to fix in the product rather than
+        // score as recall.
         //
-        // The boundary is real. For a heavily-namesaked artist with no site of
-        // their own, the artist is the only reliable source — an argument for
-        // ASKING during the claim, not for a cleverer probe.
-        expect: { instagram: "blackdave.xyz" },
+        // x and twitch both confirmed his, same day. They were being found and
+        // credited to nobody: absent from `expect` they scored nothing, and
+        // absent from `forbidHandles` a wrong one would have scored nothing
+        // either. A handle the benchmark cannot see is a handle it cannot
+        // defend.
+        //
+        // Worth knowing about twitch=BlackDave: nothing on that page says whose
+        // it is ("blackdave - Twitch", no name text). It arrived by propagating
+        // his confirmed X handle on the strength of an og:image alone, on a
+        // name three artists in this directory share. It is right, and it was
+        // not reasoned to — do not read this passing as evidence that rule is
+        // sound.
+        expect: { instagram: ["blackdave.xyz", "blackdavemk2"], x: "BlackDave", twitch: "BlackDave" },
         forbidHosts: ["head-fi.org", "theguardian.com", "chordelectronics.co.uk", "whathifi.com",
                       "thrashermagazine.com", "quartersnacks.com"], // the OTHER Black Dave's skate press
         // The sharpest case in the set: same name as two other artists we hold.
@@ -135,7 +152,7 @@ const CASES: Case[] = [
             x: ["blackdavenyc"], soundcloud: ["blackdaveblackdave", "blackdavenyc"],
             bandcamp: ["black-dave"], twitch: ["black_davem"],
         },
-        note: "Must not inherit the skater-rapper Black Dave's press or handles.",
+        note: "Must not inherit the skater-rapper Black Dave's press or handles. Runs two Instagrams; both are his.",
     },
 ];
 
@@ -239,8 +256,10 @@ async function main() {
         // caused it rather than to "discovery".
         const afterProfiles: any = await db.execute(sql.raw(
             `select ${ALL.join(", ")} from artists where id = '${c.id}'`));
-        const profileLinks = Object.entries(c.expect).filter(([platform, want]) =>
-            String((afterProfiles.rows ?? afterProfiles)[0]?.[platform] ?? "").toLowerCase() === want.toLowerCase()).length;
+        const profileLinks = Object.entries(c.expect).filter(([platform, want]) => {
+            const got = String((afterProfiles.rows ?? afterProfiles)[0]?.[platform] ?? "").toLowerCase();
+            return !!got && (Array.isArray(want) ? want : [want]).some(w => w.toLowerCase() === got);
+        }).length;
 
         // 2 — sources, and the handle propagation that rides along with them.
         // `provisionalSiteNames` mirrors the auto-build too: without it the
@@ -260,10 +279,11 @@ async function main() {
 
         const linksCorrect: string[] = [], linksWrong: string[] = [], linksMissed: string[] = [];
         for (const [platform, want] of Object.entries(c.expect)) {
+            const accepted = Array.isArray(want) ? want : [want];
             const got = links[platform];
-            if (!got) linksMissed.push(`${platform}=${want}`);
-            else if (String(got).toLowerCase() === want.toLowerCase()) linksCorrect.push(`${platform}=${got}`);
-            else linksWrong.push(`${platform}=${got} (want ${want})`);
+            if (!got) linksMissed.push(`${platform}=${accepted[0]}`);
+            else if (accepted.some(w => String(got).toLowerCase() === w.toLowerCase())) linksCorrect.push(`${platform}=${got}`);
+            else linksWrong.push(`${platform}=${got} (want ${accepted.join(" or ")})`);
         }
         // Somebody else's handle is worse than a missing one — and it is ONE
         // wrong platform, not two. A handle that both differs from the expected
