@@ -161,7 +161,18 @@ function slug(s: string): string {
     return s
         .toLowerCase()
         .normalize("NFKD")
-        .replace(/[^\w]+/g, "_")
+        // `\w` IS ASCII-ONLY, so every non-Latin name collapsed to "x" and two
+        // of them collided on one signalId — byId keeps the last, and their
+        // answers overwrite each other under the unique (artist, questionKey)
+        // index. The credit signal was moved to `unicodeSlug` for this and the
+        // other five call sites were left behind; fixing the shared helper
+        // covers all of them at once.
+        //
+        // ZERO KEY CHURN, which is why this rather than swapping call sites:
+        // for ASCII input the two classes produce identical output (verified
+        // across real topics, titles and handles), so no stored questionKey
+        // moves. `unicodeSlug` would have changed them via its longer slice.
+        .replace(/[^\p{L}\p{N}]+/gu, "_")
         .replace(/^_+|_+$/g, "")
         .slice(0, 40) || "x";
 }
@@ -792,7 +803,23 @@ export async function generateGroundedQuestions(
 
         // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there
         // are signals to draft from, so a thin artist is not asked to invent.
-        const draftTarget = Math.min(max * DRAFT_OVERSAMPLE, MAX_DRAFTS, candidates.length);
+        const wantedDrafts = max * DRAFT_OVERSAMPLE;
+        const draftTarget = Math.min(wantedDrafts, MAX_DRAFTS, candidates.length);
+        // SAY SO WHEN THE OVERSAMPLE IS NOT ACTUALLY HAPPENING.
+        //
+        // MAX_DRAFTS is a latency ceiling, measured: nine drafts blew the
+        // generation budget outright. But it silently swallows the oversample
+        // for any `max` above MAX_DRAFTS / DRAFT_OVERSAMPLE — at max 6, the
+        // module default, draftTarget clamps to exactly 6 and we are back to
+        // drafting precisely what we need and letting the fact-checker eat it,
+        // which is the bug this whole mechanism exists to fix.
+        //
+        // Both callers pass 3 today so it is not live. It would go wrong the
+        // moment somebody raised the question count, and quietly. Found in
+        // review.
+        if (draftTarget < wantedDrafts && draftTarget < candidates.length) {
+            console.warn(`[questionGenerator] Oversampling degraded: wanted ${wantedDrafts} drafts for ${max} question(s), capped at ${draftTarget} by the latency ceiling — expect generic fallbacks to fill the gap.`);
+        }
 
         const byId = new Map(candidates.map(c => [c.signalId, c]));
         const promptPayload = candidates.map(({ signalId, kind, authoredBy, material }) => ({ signalId, kind, authoredBy, material }));

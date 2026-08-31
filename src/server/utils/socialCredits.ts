@@ -42,6 +42,7 @@
  */
 import { getGemini, GEMINI_MODEL_FLASH } from "@/server/lib/gemini";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
+import { foldName } from "@/server/utils/nameFold";
 
 /** One person credited with a role, in the artist's own words. */
 export interface CaptionCredit extends Dated {
@@ -147,9 +148,12 @@ const EMPTY_ROLES = new Set(["for", "with", "by", "to", "and", "at", "on", "in",
 
 /** Alphanumerics only, so a display name and a handle can be compared:
  *  "Pharaoh Sistare" and "pharaohsistare" collapse to the same string. */
-function fold(value: string): string {
-    return (value ?? "").toLowerCase().replace(/^@/, "").replace(/[^a-z0-9]/g, "");
-}
+/** Shared with profileDiscovery and isrcMatch — see `foldName`. This was a
+ *  fourth copy of the same "compare two names" rule, and it was the one
+ *  WITHOUT the NFKD pass, so it folded a styled-unicode name to nothing while
+ *  the others handled it. The leading "@" needs no special case: it is not
+ *  alphanumeric, so it is stripped anyway. */
+const fold = (value: string): string => foldName(value ?? "");
 
 /** Whitespace-insensitive containment. Models reflow line breaks and collapse
  *  runs of spaces when quoting, and a quote that is otherwise verbatim should
@@ -249,7 +253,21 @@ export function roleIsSomebodyElsesHandle(role: string, subject: string, quote: 
         const foldedHandle = fold(handle);
         // Short handles fold into ordinary words; only the subject's own handle
         // legitimately appears in a role ("feat @someone").
-        if (foldedHandle.length < 4 || foldedHandle === foldedSubject) continue;
+        if (foldedHandle.length < 4) continue;
+        // THE SUBJECT'S OWN HANDLE IS NOT SOMEBODY ELSE'S. Exact equality was
+        // not enough: the extractor often records a bare display name
+        // ("Alan", isHandle false) while the caption carries that same
+        // person's @handle, so "feat @zavodskyalan" credited to "Alan" folded
+        // to alan !== zavodskyalan and a legitimate credit was thrown away.
+        // Containment either way covers the name-inside-handle case without
+        // letting an unrelated handle through — none of the eleven real
+        // rejections in Pete Rango's feed has any overlap between subject and
+        // the borrowed handle. Found in review.
+        if (foldedSubject.length >= 4
+            && (foldedHandle === foldedSubject
+                || foldedHandle.includes(foldedSubject)
+                || foldedSubject.includes(foldedHandle))) continue;
+        if (foldedHandle === foldedSubject) continue;
         if (foldedRole.includes(foldedHandle)) return handle;
     }
     return null;
