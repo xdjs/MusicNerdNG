@@ -437,6 +437,57 @@ describe('generateGroundedQuestions', () => {
             expect(out[0].question).toBe('Who pushed back on that?');
         });
 
+        it('a REJECTED collaborator draft does not spend a slot from the person cap', async () => {
+            // The cap counted a person-kind draft before checking whether it
+            // survived, so boilerplate collaborator drafts exhausted it and a
+            // later good one was dropped with zero person questions in the set
+            // — the cap eating the yield the oversample exists to recover.
+            // Found in review.
+            //
+            // Here every person-kind draft but the LAST counts posts, which is
+            // rejected. The last one must still get through.
+            const person = (h, url, role) => ({ subject: h, isHandle: true, isSelf: false, role, quote: `${role} @${h}`, url, postedAt: null });
+            jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: ['alan', 'cherele', 'oyabun', 'lemieux'].flatMap(h => [
+                        person(h, `https://www.instagram.com/p/${h}1/`, 'production partner'),
+                        person(h, `https://www.instagram.com/p/${h}2/`, 'production partner'),
+                    ]),
+                    statements: [],
+                })),
+            }));
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    // The good question must sit on the LAST PERSON-kind
+                    // signal: only a person-kind draft is subject to the cap,
+                    // so putting it on a theme or a track would sail past the
+                    // bug entirely — which is exactly how the first version of
+                    // this test passed against the broken ordering.
+                    const people = ['partnership', 'same_post', 'credit', 'collaborator'];
+                    const personIds = signals.filter(x => people.includes(x.kind)).map(x => x.signalId);
+                    const good = personIds[personIds.length - 1];
+                    expect(personIds.length).toBeGreaterThan(3);   // enough to exhaust a cap of 3
+                    return { text: JSON.stringify(signals.map((sig, i) => ({
+                        signalId: sig.signalId,
+                        question: sig.signalId === good
+                            ? 'Who pushed back on that?'                                    // the good one
+                            : `Across ${i + 5} posts you worked together; what changed?`,    // rejected
+                        rationale: 'r',
+                    }))) };
+                }),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+            expect(out.map(q => q.question)).toContain('Who pushed back on that?');
+        });
+
         it('does not return the same KIND of question repeatedly when other kinds are available', async () => {
             const { generateGroundedQuestions } = await setup({
                 generateContentImpl: echoRealSignals(() => {}, () => true),

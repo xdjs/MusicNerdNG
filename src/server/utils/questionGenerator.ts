@@ -840,14 +840,25 @@ export async function generateGroundedQuestions(
             if (!signalId || !question || seen.has(signalId)) continue;
             const candidate = byId.get(signalId); // only signalIds WE supplied are honored
             if (!candidate) continue;
-            if (ABOUT_A_PERSON.has(candidate.kind)) {
-                if (people >= maxPeople) continue;   // leave room for their own words
-                people++;
-            }
+            // BOILERPLATE FIRST, THEN THE CAP — the order matters.
+            //
+            // Counting a person-kind draft against the cap BEFORE checking
+            // whether it survives means a rejected draft still spends a slot.
+            // Three boilerplate collaborator drafts in a row would exhaust
+            // `maxPeople` and silently drop a good fourth one, with zero person
+            // questions actually in the set — the cap eating the very yield the
+            // oversample exists to recover. Found in review.
+            //
+            // `seen` is already added after this check, for the same reason: a
+            // draft that did not survive has not used anything up.
             const boilerplate = boilerplateReason(question);
             if (boilerplate) {
                 console.log(`[questionGenerator] dropped a question — ${boilerplate}: ${question.slice(0, 70)}`);
                 continue;
+            }
+            if (ABOUT_A_PERSON.has(candidate.kind)) {
+                if (people >= maxPeople) continue;   // leave room for their own words
+                people++;
             }
             seen.add(signalId);
 
