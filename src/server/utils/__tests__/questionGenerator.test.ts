@@ -319,11 +319,21 @@ describe('generateGroundedQuestions', () => {
             });
 
             const out = await generateGroundedQuestions('a1', { max: 4 });
-            const aboutPeople = out.filter(q =>
-                ['partnership', 'same_post', 'credit', 'collaborator'].includes(q.kind)).length;
+            const isPerson = q => ['partnership', 'same_post', 'credit', 'collaborator'].includes(q.kind);
+            const aboutPeople = out.filter(isPerson).length;
             expect(out.length).toBeGreaterThan(0);
-            expect(aboutPeople).toBeLessThanOrEqual(Math.ceil(4 / 2));
-            expect(out.length).toBeGreaterThan(aboutPeople);   // something that isn't a person
+            // BEST EFFORT, not a guarantee — and deliberately so. The cap can
+            // only work with what survived verification; if every question the
+            // model offered is about a collaborator, an all-collaborator
+            // interview is the right outcome rather than a shorter one. Pete,
+            // asked directly: "its okay if the model returns only collaborator
+            // answers."
+            //
+            // What must hold is that the cap bites WHEN there is something else
+            // to reach for.
+            if (out.some(q => !isPerson(q))) {
+                expect(aboutPeople).toBeLessThanOrEqual(Math.ceil(4 / 2));
+            }
         });
     });
 
@@ -432,12 +442,18 @@ describe('generateGroundedQuestions', () => {
             });
 
             const out = await generateGroundedQuestions('a1', { max: 3 });
-            // Only the non-boilerplate one survives the draft filter.
-            expect(out).toHaveLength(1);
+            // The clean one RANKS FIRST. It used to be the only survivor, and
+            // that made the output worse: a dropped draft is not replaced by a
+            // nicer question, it is replaced by "describe your sound". On Pete
+            // Rango's real feed that produced zero grounded questions and three
+            // generic fallbacks.
             expect(out[0].question).toBe('Who pushed back on that?');
+            // …and the flagged ones are still available behind it rather than
+            // thrown away.
+            expect(out.length).toBeGreaterThan(1);
         });
 
-        it('a REJECTED collaborator draft does not spend a slot from the person cap', async () => {
+        it('prefers a clean collaborator question over flagged ones about other collaborators', async () => {
             // The cap counted a person-kind draft before checking whether it
             // survived, so boilerplate collaborator drafts exhausted it and a
             // later good one was dropped with zero person questions in the set
@@ -446,10 +462,14 @@ describe('generateGroundedQuestions', () => {
             //
             // Here every person-kind draft but the LAST counts posts, which is
             // rejected. The last one must still get through.
+            // TWO collaborators, not four. The draft target is bounded by the
+            // latency ceiling, so a fixture with more person signals than that
+            // never reaches the last one and the test would be measuring the
+            // bound rather than the ranking.
             const person = (h, url, role) => ({ subject: h, isHandle: true, isSelf: false, role, quote: `${role} @${h}`, url, postedAt: null });
             jest.doMock("@/server/utils/queries/socialCreditQueries", () => ({
                 getSocialCredits: jest.fn(async () => ({
-                    credits: ['alan', 'cherele', 'oyabun', 'lemieux'].flatMap(h => [
+                    credits: ['alan', 'cherele'].flatMap(h => [
                         person(h, `https://www.instagram.com/p/${h}1/`, 'production partner'),
                         person(h, `https://www.instagram.com/p/${h}2/`, 'production partner'),
                     ]),
@@ -473,7 +493,7 @@ describe('generateGroundedQuestions', () => {
                     const people = ['partnership', 'same_post', 'credit', 'collaborator'];
                     const personIds = signals.filter(x => people.includes(x.kind)).map(x => x.signalId);
                     const good = personIds[personIds.length - 1];
-                    expect(personIds.length).toBeGreaterThan(3);   // enough to exhaust a cap of 3
+                    expect(personIds.length).toBeGreaterThan(1);
                     return { text: JSON.stringify(signals.map((sig, i) => ({
                         signalId: sig.signalId,
                         question: sig.signalId === good
@@ -485,7 +505,9 @@ describe('generateGroundedQuestions', () => {
             });
 
             const out = await generateGroundedQuestions('a1', { max: 3 });
-            expect(out.map(q => q.question)).toContain('Who pushed back on that?');
+            // The good one is not merely present — it comes FIRST, ahead of
+            // every flagged draft, even though the model ranked it last.
+            expect(out[0].question).toBe('Who pushed back on that?');
         });
 
         it('does not return the same KIND of question repeatedly when other kinds are available', async () => {
