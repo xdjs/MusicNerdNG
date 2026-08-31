@@ -64,12 +64,24 @@ const DEFAULT_MAX_QUESTIONS = 6;
  * Verification is ONE batched call regardless of how many questions go into
  * it, so drafting more costs no extra round-trip.
  */
-const DRAFT_OVERSAMPLE = 3;
+const DRAFT_OVERSAMPLE = 2;   // 3 asked for nine questions and blew the budget
 
 /** Ceiling on the oversample, so a large `max` cannot ask the model to write
  *  more questions than there are good signals to write them from. */
-const MAX_DRAFTS = 9;
-const GENERATION_TIMEOUT_MS = 20_000;
+const MAX_DRAFTS = 6;
+/**
+ * MEASURED, not guessed. Three runs against Pete Rango's real feed took 17.8s,
+ * 21.5s and 19.8s — this was 20s, so the call was already failing about a
+ * third of the time and a timeout means ZERO grounded questions and three
+ * generic fallbacks. That is exactly the symptom Pete reported, and drafting
+ * more questions per run made it worse rather than causing it.
+ *
+ * 30s leaves real headroom above the observed spread. Worst case is this plus
+ * VERIFIER_TIMEOUT_MS (12s) = 42s, inside the onboarding turn's ~55s deadline,
+ * and both are races that degrade to "no grounded questions" rather than
+ * hanging the turn.
+ */
+const GENERATION_TIMEOUT_MS = 30_000;
 const TOP_COLLABORATORS = 3;
 const TOP_THEMES = 3;
 const TOP_STANDOUTS = 2;
@@ -208,7 +220,28 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
             kind: "partnership",
             key: `social_partnership_${id}`,
             authoredBy: "artist",
-            material: `${artistName} has credited ${subject} on ${c.evidenceUrls.length} SEPARATE posts, in their own words each time, as: ${c.roles.join("; ")}. That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, and you must not attach ${subject} to any release you were told about elsewhere.`,
+            // ONLY THE ROLES THAT RECUR, and no number.
+            //
+            // This listed every label from every post — "main production
+            // partner; created with; added some 808s; Prod by" — which
+            // presents a ONE-OFF as a description of the whole relationship.
+            // Those 808s were a single caption, and that caption says the
+            // files were LOST and never used. The question that came out
+            // asked Pete about "adding some 808s across many posts".
+            //
+            // Recurring roles are what the relationship IS. A one-off belongs
+            // to the specific post it happened on, and there is a `credit`
+            // signal for exactly that.
+            //
+            // The count is gone too. It was the source of "across 23 posts" in
+            // every question of a real run: given a number, the model recites
+            // it. `boilerplateReason` rejects that on the way out; not handing
+            // it over in the first place is better.
+            material: `${artistName} has credited ${subject} on several SEPARATE posts, in their own words each time`
+                + (c.recurringRoles.length > 0
+                    ? `, repeatedly as: ${c.recurringRoles.join("; ")}.`
+                    : `.`)
+                + ` That is a working relationship rather than a one-off. NOTE: this says only that ${subject} was credited on those posts — it does NOT say which records those posts were about, you must not attach ${subject} to any release you were told about elsewhere, and you must not describe them with a role that is not listed here.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -276,12 +309,28 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // relationship to ask him about.
     for (const c of creditedCollaborators(extraction).slice(0, TOP_CREDITS)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
+        // `unicodeSlug`, not `slug`. The ASCII one reduces a Japanese or Korean
+        // name to "x", so two such collaborators collide on signalId — byId
+        // keeps only the last, and their answers overwrite each other under the
+        // unique (artist, questionKey) index. Fixed in the partnership signal
+        // and left live here, which is the half-fix this file keeps producing.
+        const id = unicodeSlug(c.subject);
         candidates.push({
-            signalId: `credit_${slug(c.subject)}`,
+            signalId: `credit_${id}`,
             kind: "credit",
-            key: `social_credit_${slug(c.subject)}`,
+            key: `social_credit_${id}`,
             authoredBy: "artist",
-            material: `In their own caption${c.evidenceUrls.length > 1 ? "s" : ""}, ${artistName} credits ${subject} as: ${c.roles.join("; ")}. This is ${artistName}'s own wording, on ${c.evidenceUrls.length} post(s).`,
+            // SEPARATE OCCASIONS, SAID SO EXPLICITLY, and no count.
+            //
+            // This read "credits @zavodskyalan as: main production partner;
+            // added some 808s; breath church" — one list, no indication those
+            // came from different captions — and produced a question about
+            // being "credited with 'added some 808s' and 'breath church'".
+            // The 808s were one post, and that post says the files were lost.
+            //
+            // Same merge that `relationshipCandidates` exists to prevent, in
+            // the signal next to it.
+            material: `${artistName}'s own words for ${subject}, each from a DIFFERENT caption and each true only of the post it came from: ${c.roles.map(r => `"${r}"`).join(", ")}. Do not combine these into one description of ${subject}, and do not present a role from one post as what they generally do — if you use one, use it as the single thing it is.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -371,7 +420,7 @@ Each signal has:
 - authoredBy: "artist" if this is ${artistName}'s own post/words, or "@handle" if the material comes from SOMEONE ELSE's post (a collaborator's post that ${artistName} appears in or is connected to)
 - material: what you actually know about this signal
 
-Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
+NOT EVERY QUESTION IS ABOUT SOMEBODY ELSE. Credits and partnerships are rich, and left alone they turn an interview into a tour of the artist's contact list. At most half your questions may be about a named collaborator; the rest must come from what ${artistName} said or made — a statement in their own words, a track, a thing they posted about. Prefer "credit" and "statement" signals over the others. A credit is a named person doing a stated job in ${artistName}'s own words; a statement is something ${artistName} actually wrote about their own work. Both are far better material than a term that merely recurred, and a good interviewer would reach for them first.
 
 SOME SIGNALS ARE RELATIONSHIPS, AND THEY ARE YOUR BEST MATERIAL. A signal of kind "partnership" or "same_post" is a connection we have already verified against the posts — the same person credited across several records, or two things said in one post. Reach for those: they are how you ask a question that only somebody who read everything could ask.
 
@@ -421,6 +470,13 @@ export function boilerplateReason(question: string): string | null {
         || /\bwhat(?:'s| is| was)\s+(?:a|one)\s+(?:specific|particular)\b/i.test(question)) {
         return "asks the artist to supply the specificity";
     }
+    // "What was the process like", "what was that experience like". The
+    // instruction bans "what was that like" by name and the model reaches for
+    // it anyway with a noun wedged in. It is the emptiest question there is:
+    // it asks the artist to decide what the question was.
+    if (/\bwhat (?:was|is|were|are)\b[^?]{0,40}\blike\b/i.test(question)) {
+        return "asks what something was like";
+    }
     return null;
 }
 
@@ -436,6 +492,34 @@ export function boilerplateReason(question: string): string | null {
  * varied when the material is varied, and an artist whose signals really are
  * all credits still gets a full set rather than one question.
  */
+/** Kinds that are fundamentally "a question about another person". Four
+ *  DIFFERENT kinds all ask about a collaborator, so spreading across kinds is
+ *  not enough on its own — a set can be varied by kind and still be three
+ *  questions about three of the artist's friends. */
+const ABOUT_A_PERSON = new Set(["partnership", "same_post", "credit", "collaborator"]);
+
+/**
+ * At most half the DRAFTS may be about somebody else.
+ *
+ * Credits are the richest signal we have and the prompt tells the model to
+ * reach for them, so left alone the interview becomes a tour of the artist's
+ * contact list. Pete: "I don't want every question to always have to do with a
+ * collaborator, some could just be about things the artist posted."
+ *
+ * ENFORCED WHILE DRAFTING, not afterwards. Capping the finished set does
+ * nothing when every draft is about a person — there is then nothing left to
+ * balance with, and trimming just returns a shorter tour. Refusing the sixth
+ * collaborator draft is what makes room for a statement.
+ *
+ * Only enforced while something else is actually available: an artist whose
+ * material genuinely is all credits gets a full interview rather than one
+ * question.
+ */
+function personDraftLimit(draftTarget: number, candidates: SignalCandidate[]): number {
+    const hasOthers = candidates.some(c => !ABOUT_A_PERSON.has(c.kind));
+    return hasOthers ? Math.max(1, Math.ceil(draftTarget / 2)) : draftTarget;
+}
+
 export function diversify<T extends { kind: string }>(items: T[], max: number): T[] {
     const picked: T[] = [];
     const used = new Set<string>();
@@ -706,6 +790,8 @@ export async function generateGroundedQuestions(
         const answers = parseModelAnswers(text);
         const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
+        const maxPeople = personDraftLimit(draftTarget, candidates);
+        let people = 0;
         for (const answer of answers) {
             if (drafted.length >= draftTarget) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
@@ -723,6 +809,10 @@ export async function generateGroundedQuestions(
             if (!signalId || !question || seen.has(signalId)) continue;
             const candidate = byId.get(signalId); // only signalIds WE supplied are honored
             if (!candidate) continue;
+            if (ABOUT_A_PERSON.has(candidate.kind)) {
+                if (people >= maxPeople) continue;   // leave room for their own words
+                people++;
+            }
             const boilerplate = boilerplateReason(question);
             if (boilerplate) {
                 console.log(`[questionGenerator] dropped a question — ${boilerplate}: ${question.slice(0, 70)}`);

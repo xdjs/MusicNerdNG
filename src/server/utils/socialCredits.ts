@@ -552,24 +552,55 @@ export interface CreditedCollaborator {
     isHandle: boolean;
     /** Every distinct role the artist has given them, in their words. */
     roles: string[];
+    /**
+     * The roles they were given on MORE THAN ONE post — what the working
+     * relationship actually is, as opposed to what happened once.
+     *
+     * `roles` flattens every label across every post and loses which post each
+     * came from, so a one-off reads as a description of the whole
+     * relationship. Pete Rango credited @zavodskyalan across 23 posts as his
+     * "main production partner", and once, on a single post, for having "added
+     * some 808s" — 808s whose files were then LOST and never used. The flat
+     * list produced "credited as production partner and for adding some 808s
+     * across many posts", asking him about a contribution that never made the
+     * record.
+     *
+     * Same shape as the bug `relationshipCandidates` was written to fix:
+     * merging destroys the evidence of which post a fact came from.
+     */
+    recurringRoles: string[];
     evidenceUrls: string[];
 }
 
 export function creditedCollaborators(extraction: CaptionExtraction): CreditedCollaborator[] {
     const by = new Map<string, CreditedCollaborator>();
+    /** person -> role -> the distinct posts that role was given on. A role is
+     *  only "recurring" if it appears on more than one POST; the same caption
+     *  parsed into two rows is still one occasion. */
+    const roleUrls = new Map<string, Map<string, Set<string>>>();
     for (const c of extraction.credits) {
         if (c.isSelf) continue;                                  // a fact about them, not an edge
         const key = fold(c.subject);
         if (!key) continue;
+
+        const roleKey = c.role.toLowerCase();
+        const forPerson = roleUrls.get(key) ?? new Map<string, Set<string>>();
+        (forPerson.get(roleKey) ?? forPerson.set(roleKey, new Set()).get(roleKey)!).add(c.url);
+        roleUrls.set(key, forPerson);
+
         const existing = by.get(key);
         if (existing) {
-            if (!existing.roles.some(r => r.toLowerCase() === c.role.toLowerCase())) existing.roles.push(c.role);
+            if (!existing.roles.some(r => r.toLowerCase() === roleKey)) existing.roles.push(c.role);
             if (!existing.evidenceUrls.includes(c.url)) existing.evidenceUrls.push(c.url);
             // A handle is more useful than a bare name; upgrade if we later see one.
             if (c.isHandle && !existing.isHandle) { existing.isHandle = true; existing.subject = c.subject; }
         } else {
-            by.set(key, { subject: c.subject, isHandle: c.isHandle, roles: [c.role], evidenceUrls: [c.url] });
+            by.set(key, { subject: c.subject, isHandle: c.isHandle, roles: [c.role], recurringRoles: [], evidenceUrls: [c.url] });
         }
+    }
+    for (const [key, person] of by) {
+        const counts = roleUrls.get(key);
+        person.recurringRoles = person.roles.filter(r => (counts?.get(r.toLowerCase())?.size ?? 0) >= 2);
     }
     return [...by.values()].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length);
 }
