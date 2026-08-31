@@ -44,6 +44,31 @@ export interface GroundedQuestion {
 }
 
 const DEFAULT_MAX_QUESTIONS = 6;
+
+/**
+ * How many questions to DRAFT for every one we need.
+ *
+ * The fact-checker is strict on purpose and rejects most of what it is handed —
+ * it is what stops "André introduced him to samplers and computers" reaching an
+ * artist, which is a real thing this generator produced about Pete Rango. But
+ * drafting exactly as many questions as we need means the yield is the pass
+ * rate, not the number asked for.
+ *
+ * Measured on Pete Rango: 299 posts, 672 credits and 267 statements produce
+ * roughly twenty-five candidate signals. We asked for three, three were
+ * drafted, the checker rejected two, and one survived — so the interview
+ * filled the other two slots with the generic fallbacks ("describe your
+ * sound") while hundreds of specific things sat unused. That reads as the
+ * generator having nothing to say when the truth is the opposite.
+ *
+ * Verification is ONE batched call regardless of how many questions go into
+ * it, so drafting more costs no extra round-trip.
+ */
+const DRAFT_OVERSAMPLE = 3;
+
+/** Ceiling on the oversample, so a large `max` cannot ask the model to write
+ *  more questions than there are good signals to write them from. */
+const MAX_DRAFTS = 9;
 const GENERATION_TIMEOUT_MS = 20_000;
 const TOP_COLLABORATORS = 3;
 const TOP_THEMES = 3;
@@ -595,13 +620,17 @@ export async function generateGroundedQuestions(
         const candidates = buildCandidates(signals, artistName, extraction);
         if (candidates.length === 0) return [];
 
+        // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there
+        // are signals to draft from, so a thin artist is not asked to invent.
+        const draftTarget = Math.min(max * DRAFT_OVERSAMPLE, MAX_DRAFTS, candidates.length);
+
         const byId = new Map(candidates.map(c => [c.signalId, c]));
         const promptPayload = candidates.map(({ signalId, kind, authoredBy, material }) => ({ signalId, kind, authoredBy, material }));
 
         const response = await withTimeout(
             getGemini().models.generateContent({
                 model: GEMINI_MODEL_FLASH,
-                contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${max} of the most interesting, distinct signals and write one question each. Fewer than ${max} is fine — even zero — if the rest don't clear the bar.`,
+                contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${draftTarget} of the most interesting, distinct signals and write one question each, BEST FIRST. Fewer than ${draftTarget} is fine — even zero — if the rest don't clear the bar.`,
                 config: {
                     systemInstruction: QUESTION_SYSTEM_INSTRUCTION(artistName),
                     // Low, not zero: enough room for natural phrasing, but low
@@ -623,7 +652,7 @@ export async function generateGroundedQuestions(
         const seen = new Set<string>();
         const drafted: DraftedQuestion[] = [];
         for (const answer of answers) {
-            if (drafted.length >= max) break;
+            if (drafted.length >= draftTarget) break;
             const question = typeof answer.question === "string" ? answer.question.trim() : "";
             // ONE SIGNAL. Letting the model name two and hypothesise a link
             // between them is how it told Pharaoh Sistare that @p3t3rango
@@ -651,7 +680,10 @@ export async function generateGroundedQuestions(
             });
         }
 
-        const questions = await keepOnlySupported(drafted, artistName);
+        // The model was told best-first, and the checker preserves order, so
+        // taking the first `max` survivors keeps its ranking rather than
+        // whatever happened to clear verification last.
+        const questions = (await keepOnlySupported(drafted, artistName)).slice(0, max);
 
         pruneGroundedQuestionsCache(now);
         groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });

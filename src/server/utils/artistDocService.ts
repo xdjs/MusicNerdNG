@@ -276,7 +276,17 @@ export function stripCitationMarkers(text: string): string {
     // Only spaces and tabs are eaten before a marker, never newlines: a marker at
     // the start of a line must not pull the paragraph break out with it.
     return text
-        .replace(/[ \t]*\[\d+\]/g, "")
+        // GROUPED MARKERS TOO. This matched a single number only, so "[3]" was
+        // removed and "[3, 4]" was not — and the model writes grouped markers
+        // whenever a sentence rests on more than one source, which is often.
+        // They then survive into the PUBLISHED About, where nothing renders
+        // them as anything: Pete Rango's read "...creative empowerment and
+        // education [3, 4]." with no link under it.
+        //
+        // Worse than cosmetic. `artist.bio` is what page.tsx feeds to
+        // `summarize()` for the page's meta description, so those brackets go
+        // into the artist's Google snippet.
+        .replace(/[ \t]*\[\d+(?:\s*,\s*\d+)*\]/g, "")
         .replace(/[ \t]+([.,;:!?)\]])/g, "$1")
         // A marker that opened a line leaves its trailing space behind.
         .replace(/(^|\n)[ \t]+/g, "$1")

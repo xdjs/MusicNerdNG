@@ -182,6 +182,68 @@ describe('generateGroundedQuestions', () => {
 
     // --- per-session cache (onboarding chat turns are stateless — the interview
     // step calls generateGroundedQuestions on every turn it re-enters) ---
+    describe('drafting enough to survive the fact-checker', () => {
+        /** Answers with the REAL signalIds out of the prompt — the generator
+         *  only honours ids it supplied, so invented ones are all dropped. */
+        const echoRealSignals = (onAsk, verdictFor) => jest.fn(async (req) => {
+            const sys = String(req?.config?.systemInstruction ?? "");
+            const contents = String(req?.contents ?? "");
+            if (sys.startsWith("You are fact-checking")) {
+                const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: verdictFor(i), problem: '' }))) };
+            }
+            const asked = Number(contents.match(/at most (\d+)/)?.[1] ?? 0);
+            const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+            onAsk(asked, signals.length);
+            return { text: JSON.stringify(signals.slice(0, asked).map((sig, i) => ({
+                signalId: sig.signalId, question: `Q${i}?`, rationale: 'r',
+            }))) };
+        });
+
+        it('recovers the yield the fact-checker used to eat', async () => {
+            // The checker is strict on purpose — it is what stops "André
+            // introduced him to samplers and computers" reaching an artist.
+            // Drafting exactly `max` therefore made the YIELD the pass rate:
+            // measured on Pete Rango, 299 posts produced three drafts, the
+            // checker rejected two, ONE survived, and the interview filled the
+            // other two slots with "describe your sound" while hundreds of
+            // specific signals sat unused.
+            //
+            // With the same one-in-three pass rate, drafting only `max` can
+            // return at most one. More than one proves the oversample.
+            let asked = 0;
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals((a) => { asked = a; }, i => i % 3 === 0),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+
+            expect(asked).toBeGreaterThan(3);
+            expect(out.length).toBeGreaterThan(1);
+            expect(out.length).toBeLessThanOrEqual(3);
+        });
+
+        it('still returns no more than the caller asked for', async () => {
+            // Oversampling is about surviving rejection, not about handing the
+            // artist nine questions.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals(() => {}, () => true),
+            });
+            await expect(generateGroundedQuestions('a1', { max: 3 })).resolves.toHaveLength(3);
+        });
+
+        it('never asks for more than there are signals to build from', async () => {
+            // A thin artist must not be pushed to invent questions.
+            let asked = 0, available = 0;
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals((a, n) => { asked = a; available = n; }, () => true),
+            });
+            await generateGroundedQuestions('a1', { max: 50 });
+            expect(asked).toBeGreaterThan(0);
+            expect(asked).toBeLessThanOrEqual(available);
+        });
+    });
+
     describe('per-artist TTL cache', () => {
         const geminiText = JSON.stringify([
             { signalId: 'collab_dameatlas', question: 'You and @dameatlas dropped a track together — what\'s the story?', rationale: 'real collab' },
