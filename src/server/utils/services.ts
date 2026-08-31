@@ -47,10 +47,41 @@ export async function extractArtistId(artistUrl: string) {
     } catch {
         // Ignore decoding errors and continue with original string
     }
+    // TWITTER.COM IS NOT A DIFFERENT SITE. urlmap's X pattern only matches
+    // `x.com`, so every legacy twitter.com link was dropped as an unrecognised
+    // platform — and legacy is what the sources we read actually carry.
+    // MusicBrainz returned `https://twitter.com/p3t3rango` for Pete Rango and
+    // we discarded it; artists' own sites and press pages are full of them.
+    // Rewriting the host is safe because no other platform in urlmap uses it.
+    // Scheme optional. The `x` and `wikipedia` guards below both re-add
+    // "https://" when it is missing, so this function is expected to receive
+    // bare domains — and a scheme-gated rewrite would silently drop
+    // `twitter.com/someuser`, the exact bug it exists to fix. Found in review.
+    decodedUrl = decodedUrl.replace(
+        /^(https?:\/\/)?(?:www\.|mobile\.|m\.)?twitter\.com(?=[/?#]|$)/i,
+        (_m, scheme) => `${scheme ?? ""}x.com`,
+    );
+
     const allLinks = await getAllLinks();
 
     // First attempt existing regex-based matching
     for (const { regex, siteName, cardPlatformName } of allLinks) {
+        // X's stored pattern is `[^/]*x\.[^/]+`, which matches any host with
+        // an "x." anywhere in it: max.com/movie resolves to x=movie and
+        // linux.org/thread to x=thread. That is not a missed link, it is a
+        // WRONG one — a stranger's URL written onto an artist as their X
+        // handle. Guarded here the same way `wikipedia` below guards its
+        // domain, because the pattern lives in the database and fixing it
+        // there needs a migration run against every environment.
+        if (siteName === 'x') {
+            try {
+                const provisional = decodedUrl.startsWith('http') ? decodedUrl : `https://${decodedUrl}`;
+                const hostname = new URL(provisional).hostname.toLowerCase();
+                if (!(hostname === 'x.com' || hostname.endsWith('.x.com'))) continue;
+            } catch {
+                continue;
+            }
+        }
         // Enforce English-only Wikipedia domains
         if (siteName === 'wikipedia') {
             try {

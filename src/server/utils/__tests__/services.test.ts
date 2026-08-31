@@ -13,7 +13,11 @@ jest.mock("../queries/queriesTS", () => ({
   // Provide deterministic regex patterns for a few platforms
   getAllLinks: jest.fn().mockResolvedValue([
     {
-      regex: /https?:\/\/twitter\.com\/([^/?]+)/,
+      // THE PATTERN URLMAP ACTUALLY STORES. This mock used to carry
+      // `twitter.com/([^/?]+)`, which is the pattern from before the rename —
+      // so every test here passed against a regex production has not used for
+      // years, and the real one's defect (below) was invisible.
+      regex: /https:\/\/[^/]*x\.[^/]+\/([^/]+)(?:\/.*)?$/,
       siteName: "x",
       cardPlatformName: "Twitter",
     },
@@ -187,7 +191,37 @@ describe("utils/services", () => {
   });
 
   describe("extractArtistId", () => {
-    it("extracts twitter username", async () => {
+    it.each([
+      ["https://x.com/someuser", "x.com"],
+      ["https://twitter.com/someuser", "legacy twitter.com"],
+      ["https://www.twitter.com/someuser", "www.twitter.com"],
+      ["https://mobile.twitter.com/someuser", "mobile.twitter.com"],
+    ])("extracts an X handle from %s (%s)", async (url) => {
+      // urlmap's pattern only matches x.com, so every legacy twitter.com link
+      // was dropped as an unrecognised platform — and legacy is what the
+      // sources we read carry. MusicBrainz returned twitter.com/p3t3rango for
+      // Pete Rango and we discarded it.
+      const res = await extractArtistId(url);
+      expect(res).toEqual({
+        siteName: "x",
+        cardPlatformName: "Twitter",
+        id: "someuser",
+      });
+    });
+
+    it.each([
+      "https://max.com/movie",
+      "https://linux.org/thread",
+    ])("does not read %s as an X handle", async (url) => {
+      // The stored pattern is `[^/]*x\.[^/]+` — an "x." ANYWHERE in the host.
+      // max.com/movie resolved to x=movie and linux.org/thread to x=thread.
+      // Not a missed link: a stranger's URL written onto an artist as their
+      // X handle.
+      const res = await extractArtistId(url);
+      expect(res?.siteName).not.toBe("x");
+    });
+
+    it("still extracts a twitter username", async () => {
       const res = await extractArtistId("https://twitter.com/someuser");
       expect(res).toEqual({
         siteName: "x",
