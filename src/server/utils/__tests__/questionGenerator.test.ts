@@ -182,6 +182,79 @@ describe('generateGroundedQuestions', () => {
 
     // --- per-session cache (onboarding chat turns are stateless — the interview
     // step calls generateGroundedQuestions on every turn it re-enters) ---
+    describe('boilerplateReason — rules the prompt asked for and the model ignored', () => {
+        it.each([
+            "Across 22 posts, you've credited @bycherele for creative direction; what changed?",
+            "You've credited @zavodskyalan as your main production partner across 23 posts; what next?",
+            "You've credited @lemieu_x on 12 posts; what stuck?",
+            "You've mentioned them across many posts; what shifted?",
+        ])('rejects a question that counts how often something appears: %s', async (q) => {
+            // Every question in a real run on Pete Rango's feed opened with a
+            // post count. It is the sentence an analytics dashboard writes —
+            // a person who read the feed says "your main production partner",
+            // because that is what the artist called them. The counts are in
+            // the material to help CHOOSE, never to be repeated back.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/counts/);
+        });
+
+        it.each([
+            "You've credited @x for direction; what's a specific moment where their input shaped a project?",
+            "What's one specific detail they brought to the mix?",
+            "Can you name a particular instance where that mattered?",
+        ])('rejects a question that hands the artist the job of being specific: %s', async (q) => {
+            // "Tell me about" with a coat on: it describes a subject and then
+            // asks the artist to supply the specificity, which was the
+            // interviewer's job.
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toMatch(/specificity/);
+        });
+
+        it.each([
+            "You wrote that the pandemic was a blessing and a curse; who told you to slow down?",
+            "Alan's 808s for that outro were lost — did you try to rebuild them, or was leaving it the point?",
+            "You called @lemieu_x your mixer; which of their calls did you argue with?",
+        ])('keeps a question that names something real: %s', async (q) => {
+            const { boilerplateReason } = await import('@/server/utils/questionGenerator');
+            expect(boilerplateReason(q)).toBeNull();
+        });
+    });
+
+    describe('diversify — one question per kind before a second of any', () => {
+        it('spreads across kinds instead of returning four of the strongest one', async () => {
+            // A real run returned FOUR "you credited @someone; what's a
+            // specific X?" questions about four different collaborators — one
+            // question asked four times. The instruction said not to and
+            // nothing enforced it.
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            const items = [
+                { kind: 'partnership', id: 1 }, { kind: 'partnership', id: 2 },
+                { kind: 'partnership', id: 3 }, { kind: 'statement', id: 4 },
+                { kind: 'music', id: 5 },
+            ];
+            expect(diversify(items, 3).map(x => x.kind)).toEqual(['partnership', 'statement', 'music']);
+        });
+
+        it('keeps the model ranking within a kind', async () => {
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            const items = [{ kind: 'credit', id: 1 }, { kind: 'credit', id: 2 }];
+            expect(diversify(items, 2).map(x => x.id)).toEqual([1, 2]);
+        });
+
+        it('still fills the set when an artist genuinely only has one kind', async () => {
+            // Somebody whose signals really are all credits gets a full
+            // interview, not a single question.
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            const items = [{ kind: 'credit', id: 1 }, { kind: 'credit', id: 2 }, { kind: 'credit', id: 3 }];
+            expect(diversify(items, 3)).toHaveLength(3);
+        });
+
+        it('never returns more than asked for', async () => {
+            const { diversify } = await import('@/server/utils/questionGenerator');
+            expect(diversify([{ kind: 'a' }, { kind: 'b' }, { kind: 'c' }], 2)).toHaveLength(2);
+        });
+    });
+
     describe('drafting enough to survive the fact-checker', () => {
         /** Answers with the REAL signalIds out of the prompt — the generator
          *  only honours ids it supplied, so invented ones are all dropped. */
@@ -221,6 +294,44 @@ describe('generateGroundedQuestions', () => {
             expect(asked).toBeGreaterThan(3);
             expect(out.length).toBeGreaterThan(1);
             expect(out.length).toBeLessThanOrEqual(3);
+        });
+
+        it('APPLIES the boilerplate check and the diversity rule, not just exports them', async () => {
+            // Both guards were mutation-tested green while nothing called
+            // them — the same "it exists and has no caller" failure this
+            // branch has now produced three times. So this drives the real
+            // pipeline: every draft the model returns is boilerplate except
+            // one, and the drafts are deliberately all one kind.
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    const signals = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    return { text: JSON.stringify(signals.map((sig, i) => ({
+                        signalId: sig.signalId,
+                        // All but one count posts — the banned dashboard phrasing.
+                        question: i === 0 ? 'Who pushed back on that?' : `Across ${i + 4} posts you did things; what changed?`,
+                        rationale: 'r',
+                    }))) };
+                }),
+            });
+
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+            // Only the non-boilerplate one survives the draft filter.
+            expect(out).toHaveLength(1);
+            expect(out[0].question).toBe('Who pushed back on that?');
+        });
+
+        it('does not return the same KIND of question repeatedly when other kinds are available', async () => {
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: echoRealSignals(() => {}, () => true),
+            });
+            const out = await generateGroundedQuestions('a1', { max: 3 });
+            expect(new Set(out.map(q => q.kind)).size).toBe(out.length);
         });
 
         it('still returns no more than the caller asked for', async () => {

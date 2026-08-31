@@ -390,10 +390,65 @@ Rules:
 - Never fabricate anything beyond what "material" states. If a signal doesn't give you enough for a real, specific question, skip it entirely.
 - Never generalize a single post into a pattern — say what the post actually was, not a habit you are inferring from it.
 - No engagement-metric language. Never say a number, "plays", "likes", or "views".
+- NEVER COUNT ANYTHING. Not posts, not times, not years. "Across 23 posts" and "you've mentioned them repeatedly" are the same sentence a dashboard writes; a person who read the feed says "your main production partner" because that is what the artist called them. The counts in the material are for YOU, to decide what matters — they are never for the question.
+- NAME THE PARTICULAR THING. The material contains actual specifics: a named track, a role in the artist's own words, a session, a thing that went wrong. Reach into it and ask about ONE of them. "What's a specific moment where their input shaped a track?" is BANNED, along with every variant of it — "what's a specific detail", "one specific example", "a particular instance". Those are "tell me about" with a coat on: they describe a subject and then hand the artist the job of being specific, which is the job you were supposed to do.
+- EVERY QUESTION IN THE SET MUST BE A DIFFERENT SHAPE. Not just a different person — a different KIND of question. Four questions of the form "you credited @someone for X; what's a specific Y?" about four different collaborators is one question asked four times, and it reads as a template being filled. If credits are your strongest material, ask at most one or two about credits and find something else for the rest.
 - One sentence. Plain spoken language, never clinical, never creepy, never over-familiar, and never flattering ("powerful", "amazing", "clearly struck a nerve").
 - Use ONLY signalIds from the list you were given.
 
 Return STRICT JSON ONLY — an array of objects: [{ "signalId": string, "question": string, "rationale": string }]. "signalId" is exactly one id, echoed exactly. "rationale" is one short internal phrase (not shown to the artist) noting why it's worth asking. Return [] if nothing in the signals is worth asking about. No markdown fences, no commentary, JSON only.`;
+
+/**
+ * The two habits the instruction bans and the model does anyway.
+ *
+ * Both were in the prompt already and both showed up in every question of a
+ * real run on Pete Rango's feed, which is the argument for checking in code:
+ * a rule the model can ignore is a preference, not a rule.
+ *
+ * Returns why a question is boilerplate, or null if it is fine.
+ */
+export function boilerplateReason(question: string): string | null {
+    // "Across 23 posts", "on 12 posts", "across many posts" — a count of how
+    // often something appears is the sentence an analytics dashboard writes.
+    // The counts exist in the material to help CHOOSE what to ask about.
+    if (/\b(?:across|over|on|in|through)\s+(?:\d+|many|multiple|several|numerous)\s+(?:posts?|captions?|times?)\b/i.test(question)
+        || /\b\d+\s+(?:posts?|captions?)\b/i.test(question)) {
+        return "counts how often something appears";
+    }
+    // "what's a specific moment", "one specific detail", "a particular instance"
+    // — describes a subject, then hands the artist the job of being specific.
+    if (/\b(?:a|one|any|some)\s+(?:specific|particular)\s+(?:moment|detail|example|instance|thing|time|challenge|decision|project|track|memory)\b/i.test(question)
+        || /\bwhat(?:'s| is| was)\s+(?:a|one)\s+(?:specific|particular)\b/i.test(question)) {
+        return "asks the artist to supply the specificity";
+    }
+    return null;
+}
+
+/**
+ * One question per KIND of question, as far as the set allows.
+ *
+ * A real run returned four questions of the form "you credited @someone for X;
+ * what's a specific Y?" about four different collaborators — one question asked
+ * four times. The instruction already said not to; nothing enforced it.
+ *
+ * Greedy: take the best unused kind each pass, in the model's own ranking, and
+ * only start allowing repeats once every kind has had a turn. So a set stays
+ * varied when the material is varied, and an artist whose signals really are
+ * all credits still gets a full set rather than one question.
+ */
+export function diversify<T extends { kind: string }>(items: T[], max: number): T[] {
+    const picked: T[] = [];
+    const used = new Set<string>();
+    const remaining = [...items];
+    while (picked.length < max && remaining.length > 0) {
+        let i = remaining.findIndex(x => !used.has(x.kind));
+        if (i === -1) { used.clear(); i = 0; }   // every kind spent — go round again
+        const [item] = remaining.splice(i, 1);
+        used.add(item.kind);
+        picked.push(item);
+    }
+    return picked;
+}
 
 function withTimeout<T>(p: Promise<T>): Promise<T> {
     return Promise.race([
@@ -668,6 +723,11 @@ export async function generateGroundedQuestions(
             if (!signalId || !question || seen.has(signalId)) continue;
             const candidate = byId.get(signalId); // only signalIds WE supplied are honored
             if (!candidate) continue;
+            const boilerplate = boilerplateReason(question);
+            if (boilerplate) {
+                console.log(`[questionGenerator] dropped a question — ${boilerplate}: ${question.slice(0, 70)}`);
+                continue;
+            }
             seen.add(signalId);
 
             drafted.push({
@@ -680,10 +740,11 @@ export async function generateGroundedQuestions(
             });
         }
 
-        // The model was told best-first, and the checker preserves order, so
-        // taking the first `max` survivors keeps its ranking rather than
-        // whatever happened to clear verification last.
-        const questions = (await keepOnlySupported(drafted, artistName)).slice(0, max);
+        // The model was told best-first and the checker preserves order, so
+        // `diversify` walks that ranking and takes the strongest question of
+        // each kind before it takes a second of any — the set stays in the
+        // model's preference order without being four versions of one question.
+        const questions = diversify(await keepOnlySupported(drafted, artistName), max);
 
         pruneGroundedQuestionsCache(now);
         groundedQuestionsCache.set(cacheKey, { value: questions, expiresAt: now + GROUNDED_QUESTIONS_CACHE_TTL_MS });
