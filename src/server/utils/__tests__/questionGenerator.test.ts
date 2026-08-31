@@ -510,6 +510,39 @@ describe('generateGroundedQuestions', () => {
             await expect(generateGroundedQuestions('a1', { max: 3 })).resolves.toHaveLength(3);
         });
 
+        it('warns rather than silently dropping the oversample when max outgrows the latency ceiling', async () => {
+            // MAX_DRAFTS is a measured latency ceiling, and it silently
+            // swallowed the oversample for any max above MAX_DRAFTS /
+            // DRAFT_OVERSAMPLE — at the module default of 6 the draft target
+            // clamps to exactly 6, which is drafting precisely what we need and
+            // letting the fact-checker eat it. That is the bug this mechanism
+            // exists to fix, reappearing the moment somebody raises the count.
+            // Found in review.
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const { generateGroundedQuestions } = await setup({
+                    generateContentImpl: echoRealSignals(() => {}, () => true),
+                });
+                await generateGroundedQuestions('a1', { max: 6 });
+                expect(warn.mock.calls.flat().join(' ')).toMatch(/Oversampling degraded/);
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
+        it('is quiet when the oversample actually happens', async () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const { generateGroundedQuestions } = await setup({
+                    generateContentImpl: echoRealSignals(() => {}, () => true),
+                });
+                await generateGroundedQuestions('a1', { max: 3 });
+                expect(warn.mock.calls.flat().join(' ')).not.toMatch(/Oversampling degraded/);
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
         it('never asks for more than there are signals to build from', async () => {
             // A thin artist must not be pushed to invent questions.
             let asked = 0, available = 0;

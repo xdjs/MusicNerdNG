@@ -343,6 +343,26 @@ describe("roleIsSomebodyElsesHandle — co-presence is not employment", () => {
         expect(await (await subject())(role, subj, quote)).toBeNull();
     });
 
+    it.each([
+        // The extractor often records a bare display NAME while the caption
+        // carries that person's @handle. Exact-equality alone treated their
+        // own handle as somebody else's and threw the credit away.
+        ["feat @zavodskyalan", "Alan", "feat @zavodskyalan on the second verse"],
+        ["mixed by @dameatlas", "Dame Atlas", "mixed by @dameatlas"],
+    ])("keeps %s when the subject is the same person under a different form", async (role, subj, quote) => {
+        expect(await (await subject())(role, subj, quote)).toBeNull();
+    });
+
+    it("still rejects the real cases after that exemption", async () => {
+        // The exemption must not weaken the guard: none of the eleven genuine
+        // rejections has any overlap between subject and borrowed handle.
+        const f = await subject();
+        expect(await f("breath church", "zavodskyalan",
+            "very first @breath.church with @sage.breath and the boys @zavodskyalan")).toBeTruthy();
+        expect(await f("opening up for @travisscott", "whoisoyabun",
+            "@whoisoyabun opening up for @travisscott")).toBeTruthy();
+    });
+
     it("ignores handles too short to be distinctive", async () => {
         // A three-character handle folds into ordinary words and would reject
         // half the real roles in the table.
