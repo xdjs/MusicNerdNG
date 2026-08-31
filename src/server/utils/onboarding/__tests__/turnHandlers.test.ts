@@ -259,6 +259,78 @@ describe('runOnboardingTurn', () => {
         expect(events.filter(e => e.kind === 'choices')).toHaveLength(1);
     });
 
+    it('asks about the second account when the VAULT SEARCH replaces what discovery guessed', async () => {
+        // The case that actually happens, and the one the discovery-side
+        // grouping cannot see. Discovery structurally yields at most one
+        // candidate per platform — tier 3 keeps the first confirmed hit, and
+        // `missing.delete` stops later tiers revisiting a resolved platform —
+        // so Black Dave MK2's two Instagrams never meet inside discovery. One
+        // is discovery's name-derived guess (blackdavemk2), the other is the
+        // vault search's corroborated find (blackdave.xyz). They meet in his
+        // row and nowhere else.
+        //
+        // Without this the picker was unreachable in production while its unit
+        // test passed, because that test mocks the stream to yield two.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { extractArtistId } = await import('@/server/utils/services');
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'found', profile: {
+                siteName: 'instagram', displayName: 'Instagram', value: 'blackdavemk2',
+                profileUrl: 'https://instagram.com/blackdavemk2', provisional: true,
+                logoUrl: null, colorHex: null, previewImage: null, reasoning: null,
+            } };
+        });
+        extractArtistId.mockResolvedValue({ siteName: 'instagram', id: 'blackdavemk2' });
+        artistQ.getAllLinks.mockResolvedValue([
+            { siteName: 'instagram', cardPlatformName: 'Instagram', appStringFormat: 'https://instagram.com/%@' },
+        ]);
+        // The row as re-read AFTER the vault search has overwritten the guess.
+        artistQ.getArtistById.mockResolvedValue({
+            id: 'a1', name: 'Black Dave MK2', instagram: 'blackdave.xyz',
+        });
+
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        const choice = events.find(e => e.kind === 'choices');
+        expect(choice).toBeTruthy();
+        expect(choice.platform).toBe('instagram');
+        expect(choice.chosen).toBe('blackdave.xyz');          // what the search corroborated
+        expect(choice.options.map(o => o.value).sort()).toEqual(['blackdave.xyz', 'blackdavemk2']);
+        expect(choice.options.map(o => o.profileUrl)).toContain('https://instagram.com/blackdavemk2');
+    });
+
+    it('does not ask when the vault search left the discovered handle alone', async () => {
+        // No question to put: one account, one answer. Asking anyway would turn
+        // every ordinary build into a quiz.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { extractArtistId } = await import('@/server/utils/services');
+        const artistQ = await import('@/server/utils/queries/artistQueries');
+
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'found', profile: {
+                siteName: 'instagram', displayName: 'Instagram', value: 'nova',
+                profileUrl: 'https://instagram.com/nova', provisional: true,
+                logoUrl: null, colorHex: null, previewImage: null, reasoning: null,
+            } };
+        });
+        extractArtistId.mockResolvedValue({ siteName: 'instagram', id: 'nova' });
+        artistQ.getAllLinks.mockResolvedValue([
+            { siteName: 'instagram', cardPlatformName: 'Instagram', appStringFormat: 'https://instagram.com/%@' },
+        ]);
+        artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Nova Reyes', instagram: 'nova' });
+
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+        expect(events.some(e => e.kind === 'choices')).toBe(false);
+    });
+
     it('a link the ARTIST typed is never identity-guarded — only the unattended auto-build is', async () => {
         // The other half of the same rule. Blocking somebody from adding their
         // own Instagram because a similarly named act is in the directory is a

@@ -1081,6 +1081,7 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
      *  of skipping them under "already have it", which is what stopped Black
      *  Dave MK2's corroborated `blackdave.xyz` from ever landing. */
     let provisionalSiteNames: string[] = [];
+    const discoveredBySiteName = new Map<string, DiscoveredProfile>();
     if (discovered.length > 0) {
         // `verifyIdentity: true` — this is the ONLY caller that turns it on,
         // and the whole reason the flag exists. Nobody has looked at these
@@ -1116,6 +1117,9 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         provisionalSiteNames = [...new Set(
             primaries.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
         )];
+        // Kept so the vault's answer can be compared against what discovery
+        // actually wrote, once the search has run.
+        for (const p of primaries) if (wrote.has(p.siteName)) discoveredBySiteName.set(p.siteName, p);
         // Only where the write actually landed. Asking "which of these two is
         // yours" about a platform whose primary the identity guards refused
         // would be offering the artist a choice we already declined to make.
@@ -1174,6 +1178,47 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         ]);
     } catch (e) {
         console.error("[onboarding] auto-build source discovery failed:", e);
+    }
+
+    // THE TWO-ACCOUNT CASE THAT ACTUALLY HAPPENS.
+    //
+    // Grouping discovery's own output finds nothing, because discovery cannot
+    // produce two candidates for one platform: tier 3 keeps the first confirmed
+    // hit per platform, and `missing.delete` stops every later tier revisiting a
+    // platform an earlier one resolved. The two accounts come from DIFFERENT
+    // SYSTEMS — discovery guessed `blackdavemk2` from the artist's name, the
+    // vault search found `blackdave.xyz` and corroborated it — and they only
+    // ever meet in the artist's row.
+    //
+    // So the moment to ask is here: a column discovery filled with a guess, that
+    // the search has since replaced with something better evidenced. Both are
+    // real accounts, both were Black Dave MK2's, and picking one without asking
+    // is what this whole change exists to stop.
+    if (provisionalSiteNames.length > 0) {
+        try {
+            const after = (await getArtistById(artistId)) as unknown as Record<string, unknown> | undefined;
+            const urlmapBySiteName = new Map((await getAllLinks()).map(l => [l.siteName, l]));
+            for (const siteName of provisionalSiteNames) {
+                const guessed = discoveredBySiteName.get(siteName);
+                const now = after?.[siteName];
+                if (!guessed || typeof now !== "string" || !now || now === guessed.value) continue;
+                const meta = buildLinkPresentationMeta(urlmapBySiteName.get(siteName), siteName, now);
+                if (!meta.profileUrl) continue;   // nothing to click through to; do not ask half a question
+                yield {
+                    kind: "choices",
+                    platform: siteName,
+                    chosen: now,
+                    options: [
+                        { ...guessed, value: now, profileUrl: meta.profileUrl, displayName: meta.displayName },
+                        guessed,
+                    ],
+                };
+            }
+        } catch (e) {
+            // Never worth failing a build over. The better-evidenced handle is
+            // already written either way; the artist just is not asked.
+            console.error("[onboarding] could not offer the second-account choice:", e);
+        }
     }
     const pending = await getVaultSourcesByArtistId(artistId, "pending");
     for (const source of pending) {
