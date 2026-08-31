@@ -5,7 +5,7 @@ import type { ProfileCandidate, DocSource } from "./StepCards";
 
 export type ChatItem = {
     id: string;
-    kind: "bot" | "user" | "progress" | "step" | "draft" | "complete" | "error" | "candidates";
+    kind: "bot" | "user" | "progress" | "step" | "draft" | "complete" | "error" | "candidates" | "choices";
     text?: string;
     step?: string;
     payload?: unknown;
@@ -28,6 +28,10 @@ export type ChatItem = {
     // `candidate` SSE events arrive, one at a time, ahead of the terminal
     // `step` event (see the `push` reconciliation logic below).
     candidates?: ProfileCandidate[];
+    // `choices` only: the platform with more than one account, and the handle
+    // the build already linked. `candidates` carries every option including it.
+    platform?: string;
+    chosen?: string;
     // Set only on "progress" items that belong to a collapsible batch (e.g.
     // the profiles step's per-platform search) — see the `push` reconciliation
     // logic below. Undefined for every standalone progress chip.
@@ -105,7 +109,12 @@ export function useOnboardingChat(artistId: string) {
                     const incoming = item.candidates ?? [];
                     const merged = [...existing];
                     for (const c of incoming) {
-                        if (!merged.some(m => m.siteName === c.siteName)) merged.push(c);
+                        // Keyed by platform AND handle. Keyed by platform alone
+                        // this quietly dropped the second of two real accounts
+                        // — the third and last place the alternative was being
+                        // discarded, after discovery's dedupe and the profiles
+                        // card's "hide anything ambiguous" rule.
+                        if (!merged.some(m => m.siteName === c.siteName && m.value === c.value)) merged.push(c);
                     }
                     next[idx] = { ...next[idx], candidates: merged };
                     return next;
@@ -177,6 +186,7 @@ export function useOnboardingChat(artistId: string) {
                             // `error` still correctly falls into the
                             // no-terminal-frame error path below.
                             case "candidate": push({ kind: "candidates", candidates: [event.profile] }); break;
+                            case "choices": push({ kind: "choices", platform: event.platform, chosen: event.chosen, candidates: event.options }); break;
                             case "step": push({ kind: "step", step: event.step, payload: event.payload }); receivedTerminalFrame = true; break;
                             case "draft": push({ kind: "draft", stage: event.stage ?? "about", doc: event.doc, about: event.about, sources: event.sources, selfWrite: event.selfWrite }); receivedTerminalFrame = true; break;
                             case "complete": push({ kind: "complete" }); receivedTerminalFrame = true; break;

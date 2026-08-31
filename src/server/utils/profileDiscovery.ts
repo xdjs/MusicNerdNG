@@ -371,6 +371,13 @@ const PROBE_CONCURRENCY = 8;
  *  many slugs, not one per permutation). */
 const MAX_DERIVED_SLUGS = 4;
 
+/** How many candidates one platform may offer. TWO, because this exists to ask
+ *  "which of these is yours" and that is a question with two answers; a list of
+ *  five is a research task handed back to the artist. The first validated hit
+ *  is the primary — tiers run in authority order, so it is also the
+ *  best-evidenced one. */
+const MAX_CANDIDATES_PER_PLATFORM = 2;
+
 /** Query strings and fragments are never part of a handle. Search results carry
  *  tracking params (?hl=en, ?igsh=...), and extractArtistId captures the first
  *  path segment verbatim, so they otherwise end up inside the stored handle. */
@@ -1008,9 +1015,20 @@ interface ValidationContext {
     artistId: string;
     record: Record<string, unknown>;
     urlmapBySiteName: Map<string, UrlmapPresentationRow>;
-    /** Shared across the WHOLE run (all tiers) — dedupe gate (d): first
-     *  validated hit for a siteName wins, a later one is dropped. */
-    seen: Set<string>;
+    /** Shared across the WHOLE run (all tiers) — gate (d). The first validated
+     *  hit for a siteName is the primary; the next ones are ALTERNATIVES, not
+     *  rubbish.
+     *
+     *  This used to be a Set and a later hit for the same platform was dropped
+     *  on the floor. Black Dave MK2 runs two real Instagram accounts and
+     *  confirmed both; we found one, discarded the other and never mentioned
+     *  it. Worse, the profiles card already had a branch for "several
+     *  candidates for one platform" — it hid them and told the artist the
+     *  platform was still missing — and that branch could never fire, because
+     *  nothing downstream ever saw more than one.
+     *
+     *  Bounded: the point is to offer a choice, not a list. */
+    seen: Map<string, number>;
 }
 
 /** Runs a single raw tier candidate through every validation gate a
@@ -1053,8 +1071,9 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
     if (siteName !== candidate.platform) return null; // gate (0) — tier-scoping mismatch
     if (!(PROFILE_DISPLAY_COLUMNS as readonly string[]).includes(siteName)) return null; // gate (b)
     if (artistHasRawLinkValue(ctx.record, siteName)) return null; // gate (c)
-    if (ctx.seen.has(siteName)) return null; // gate (d)
-    ctx.seen.add(siteName);
+    const already = ctx.seen.get(siteName) ?? 0;
+    if (already >= MAX_CANDIDATES_PER_PLATFORM) return null; // gate (d)
+    ctx.seen.set(siteName, already + 1);
 
     // Build the canonical profile URL from urlmap (matches confirmed-link
     // presentation exactly), but verify it round-trips back through
@@ -1143,7 +1162,7 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
         console.error("[profileDiscovery] getAllLinks failed, presentation metadata will degrade:", e);
     }
     const urlmapBySiteName = new Map<string, UrlmapPresentationRow>(allLinks.map(l => [l.siteName, l]));
-    const ctx: ValidationContext = { artistId, record, urlmapBySiteName, seen: new Set<string>() };
+    const ctx: ValidationContext = { artistId, record, urlmapBySiteName, seen: new Map<string, number>() };
     let foundCount = 0;
 
     // --- Tier 1 — free, instant, authoritative ----------------------------

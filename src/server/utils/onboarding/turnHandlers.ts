@@ -114,6 +114,17 @@ export type TurnEvent =
     // reload/resume), so a client that ignores `candidate` entirely still
     // renders correctly, just without the live-discovery feel.
     | { kind: "candidate"; profile: DiscoveredProfile }
+    // Platforms where discovery found MORE THAN ONE account that survived every
+    // check, so there is a real question to put to the artist: which of these
+    // is yours? `chosen` is what the build actually wrote (the primary — tiers
+    // run in authority order); `options` is every candidate including it.
+    //
+    // The auto-build cannot ask, because nobody is watching it. It writes the
+    // primary so the page is complete, and sends the alternatives here for the
+    // client to raise once the artist is looking. Held in memory only: if they
+    // leave before answering, the primary stands and nothing is broken — the
+    // artist is never left with an empty platform waiting on a question.
+    | { kind: "choices"; platform: string; chosen: string; options: DiscoveredProfile[] }
     // `sources` is the numbered citation manifest ([n] markers in `doc`/`about`
     // resolve into this list) narrowed to just the ids either text actually
     // cites — see extractCitedIds. Empty when nothing was citable.
@@ -1072,15 +1083,34 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // `runAutoBuild wires the identity guards` in turnHandlers.test.ts
         // asserts this call site specifically, because a test of the guard
         // functions themselves is what let it through.
+        // ONE WRITE PER PLATFORM. Discovery may now return two accounts for a
+        // platform, and applyProfileLinkDecisions writes every URL it is handed
+        // — so passing both made the LAST one win, which is the silent
+        // arbitrary pick this whole change exists to remove. The primary is the
+        // first yielded: tiers run in authority order.
+        const primaries: DiscoveredProfile[] = [];
+        const byPlatform = new Map<string, DiscoveredProfile[]>();
+        for (const p of discovered) {
+            const group = byPlatform.get(p.siteName);
+            if (group) group.push(p);
+            else { byPlatform.set(p.siteName, [p]); primaries.push(p); }
+        }
         const outcome = await applyProfileLinkDecisions(
-            artistId, discovered.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
+            artistId, primaries.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
         // What was WRITTEN, not what was proposed — the identity guards above
         // refuse some of it, and naming a column the vault could overwrite when
         // nothing was ever written there would be a lie in the other direction.
         const wrote = new Set(outcome.written);
         provisionalSiteNames = [...new Set(
-            discovered.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
+            primaries.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
         )];
+        // Only where the write actually landed. Asking "which of these two is
+        // yours" about a platform whose primary the identity guards refused
+        // would be offering the artist a choice we already declined to make.
+        for (const [platform, options] of byPlatform) {
+            if (options.length < 2 || !wrote.has(platform)) continue;
+            yield { kind: "choices", platform, chosen: options[0].value, options };
+        }
     }
 
     // The Instagram ingest and the caption extraction, on the path most artists

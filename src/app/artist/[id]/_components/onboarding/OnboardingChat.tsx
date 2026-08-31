@@ -6,6 +6,7 @@ import BuildStatus from "./BuildStatus";
 import { useOnboardingChat, type ChatItem } from "./useOnboardingChat";
 import { useResearchPump } from "./useResearchPump";
 import { ProfilesCard, VaultCard, InterviewInput, AboutDraftCard, DocReviewCard, LiveDiscoveryFeed, type InterviewPayload } from "./StepCards";
+import ProfileChoice from "./ProfileChoice";
 import MusicNerdLoader from "@/app/_components/MusicNerdLoader";
 
 type Props = { artistId: string; artistName: string; onSkip: () => void; onFinish: () => void };
@@ -184,6 +185,15 @@ export default function OnboardingChat({ artistId, artistName, onSkip, onFinish 
                 );
             case "candidates":
                 return <LiveDiscoveryFeed candidates={item.candidates ?? []} />;
+            case "choices":
+                return (
+                    <ProfileChoice
+                        artistId={artistId}
+                        platform={item.platform ?? ""}
+                        chosen={item.chosen ?? ""}
+                        options={item.candidates ?? []}
+                    />
+                );
             case "error":
                 return (
                     <div className="self-start flex flex-col items-start gap-1.5">

@@ -219,6 +219,46 @@ describe('runOnboardingTurn', () => {
         }));
     });
 
+    it('writes ONE account per platform and offers the other as a choice', async () => {
+        // Discovery can now return two accounts for one platform. Passing both
+        // to applyProfileLinkDecisions made the LAST one win — the silent
+        // arbitrary pick this change exists to remove — so the primary is
+        // written and the alternative is sent to the client to ask about.
+        const oq = await import('@/server/utils/queries/onboardingQueries');
+        oq.getOnboardingState.mockResolvedValue({ complete: false, currentStep: 'profiles' });
+        const { discoverArtistProfilesStream } = await import('@/server/utils/profileDiscovery');
+        const { extractArtistId } = await import('@/server/utils/services');
+        const { setArtistLink } = await import('@/server/utils/artistLinkService');
+
+        const p = (siteName, value) => ({
+            siteName, displayName: siteName, value, provisional: false,
+            profileUrl: `https://${siteName}.com/${value}`,
+            logoUrl: null, colorHex: null, previewImage: null, reasoning: null,
+        });
+        discoverArtistProfilesStream.mockImplementationOnce(async function* () {
+            yield { kind: 'found', profile: p('instagram', 'blackdave.xyz') };   // primary
+            yield { kind: 'found', profile: p('instagram', 'blackdavemk2') };    // alternative
+            yield { kind: 'found', profile: p('youtube', 'only-one') };
+        });
+        extractArtistId.mockImplementation(async (url) => {
+            const [, siteName, value] = url.match(/https:\/\/(\w+)\.com\/(.+)/);
+            return { siteName, id: value };
+        });
+
+        const { runOnboardingTurn } = await import('../turnHandlers');
+        const events = await collect(runOnboardingTurn('a1', { type: 'open' }));
+
+        const wrote = setArtistLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+        expect(wrote).toContain('instagram=blackdave.xyz');
+        expect(wrote).not.toContain('instagram=blackdavemk2');
+
+        const choice = events.find(e => e.kind === 'choices');
+        expect(choice).toMatchObject({ platform: 'instagram', chosen: 'blackdave.xyz' });
+        expect(choice.options.map(o => o.value)).toEqual(['blackdave.xyz', 'blackdavemk2']);
+        // A platform with one candidate is not a question.
+        expect(events.filter(e => e.kind === 'choices')).toHaveLength(1);
+    });
+
     it('a link the ARTIST typed is never identity-guarded — only the unattended auto-build is', async () => {
         // The other half of the same rule. Blocking somebody from adding their
         // own Instagram because a similarly named act is in the directory is a

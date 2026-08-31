@@ -51,11 +51,29 @@ const SUPPORTED_PLATFORM_LABELS: Record<string, string> = {
 };
 const SUPPORTED_PLATFORMS = Object.keys(SUPPORTED_PLATFORM_LABELS);
 
+/** A candidate's identity. Keyed by siteName ALONE everywhere until now, which
+ *  is why two accounts on one platform could not be told apart: accepting one
+ *  accepted both, and they collided as React keys. */
+function candidateKey(c: { siteName: string; value: string }): string {
+    return `${c.siteName}:${c.value}`;
+}
+
 /** siteNames we found exactly one candidate for — the confident matches. */
 function unambiguousCandidateSiteNames(candidates: { siteName: string }[]): string[] {
     const counts = new Map<string, number>();
     for (const c of candidates) counts.set(c.siteName, (counts.get(c.siteName) ?? 0) + 1);
     return [...counts.entries()].filter(([, n]) => n === 1).map(([siteName]) => siteName);
+}
+
+/** Candidates grouped by platform, preserving discovery's order — the first in
+ *  each group is the best-evidenced (tiers run in authority order). */
+function groupByPlatform(candidates: ProfileCandidate[]): Map<string, ProfileCandidate[]> {
+    const groups = new Map<string, ProfileCandidate[]>();
+    for (const c of candidates) {
+        const g = groups.get(c.siteName);
+        if (g) g.push(c); else groups.set(c.siteName, [c]);
+    }
+    return groups;
 }
 
 /** Which supported platforms a pasted URL covers, by host.
@@ -306,15 +324,25 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
     // it". He read that, left the card alone, completed all four steps, and
     // ended with only the Deezer link he started with.
     //
-    // Platforms with SEVERAL candidates are excluded entirely rather than
-    // pre-accepted — CY, same meeting: unchecking your own old profiles feels
-    // worse than adding the right one. They fall through to "Still missing", so
-    // the artist is asked to paste the correct one. (This also avoids a real
-    // defect: `accepted` is keyed by siteName, so accepting one of two
-    // same-platform candidates would have saved both, and they collide as React
-    // keys besides.)
+    // A platform with SEVERAL candidates is a QUESTION, and it now gets asked.
+    // It used to be hidden: those candidates were dropped from the card and the
+    // platform was listed under "Still missing", so we told an artist we had
+    // found nothing on a platform where we had found two of his accounts.
+    // Black Dave MK2 runs two real Instagrams and confirmed both.
+    //
+    // None of a multi-candidate group is pre-selected — CY, 2026-08-20:
+    // unchecking your own old profile feels worse than adding the right one,
+    // and that applies double when we are the ones who cannot tell which is
+    // which. A single candidate is still pre-accepted, unchanged.
+    //
+    // Keyed by candidate, not by platform. Keying by siteName is what made two
+    // same-platform accounts indistinguishable: accepting one accepted both,
+    // and they collided as React keys.
     const [accepted, setAccepted] = useState<Set<string>>(
-        () => new Set(unambiguousCandidateSiteNames(payload.candidates ?? [])),
+        () => {
+            const single = new Set(unambiguousCandidateSiteNames(payload.candidates ?? []));
+            return new Set((payload.candidates ?? []).filter(c => single.has(c.siteName)).map(candidateKey));
+        },
     );
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
@@ -326,44 +354,51 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
         });
     };
 
-    const toggleAccepted = (siteName: string) => {
+    /** Accepting one account on a platform deselects its sibling. One column
+     *  per platform holds one handle, so offering these as independent
+     *  checkboxes would let the artist tick two and silently keep whichever
+     *  was written last — the arbitrary pick this card exists to replace. */
+    const toggleAccepted = (candidate: ProfileCandidate) => {
+        const key = candidateKey(candidate);
         setAccepted(prev => {
             const next = new Set(prev);
-            if (next.has(siteName)) next.delete(siteName); else next.add(siteName);
+            if (next.has(key)) { next.delete(key); return next; }
+            for (const c of allCandidates) {
+                if (c.siteName === candidate.siteName) next.delete(candidateKey(c));
+            }
+            next.add(key);
             return next;
         });
     };
 
-    const dismissCandidate = (siteName: string) => {
-        setDismissed(prev => new Set(prev).add(siteName));
+    const dismissCandidate = (candidate: ProfileCandidate) => {
+        const key = candidateKey(candidate);
+        setDismissed(prev => new Set(prev).add(key));
         // Dismissing an already-accepted suggestion must also un-accept it —
         // a dismissed candidate can never end up in the submitted payload.
         setAccepted(prev => {
-            if (!prev.has(siteName)) return prev;
+            if (!prev.has(key)) return prev;
             const next = new Set(prev);
-            next.delete(siteName);
+            next.delete(key);
             return next;
         });
     };
 
-    // Only the confident matches are shown. A platform with several candidates
-    // is dropped here rather than offered — see the `accepted` note above — so
-    // it surfaces in "Still missing" and the artist pastes the right one.
+    // Every candidate is shown now, including the platforms with more than one.
     const allCandidates = payload.candidates ?? [];
-    const unambiguous = new Set(unambiguousCandidateSiteNames(allCandidates));
-    const candidates = allCandidates.filter(c => unambiguous.has(c.siteName));
+    const candidates = allCandidates;
     /** The artist's decisions, in the shape both buttons send. Built in ONE place
      *  so "Looks good, continue" and "Look for more" can never disagree about
      *  what the artist just told us. */
     const decisions = () => ({
         addedLinks: [
             ...added.map(url => ({ url })),
-            ...candidates.filter(c => accepted.has(c.siteName)).map(c => ({ url: c.profileUrl })),
+            ...candidates.filter(c => accepted.has(candidateKey(c))).map(c => ({ url: c.profileUrl })),
         ],
         removedSiteNames: [...removed],
     });
 
-    const visibleCandidates = candidates.filter(c => !dismissed.has(c.siteName));
+    const visibleCandidates = candidates.filter(c => !dismissed.has(candidateKey(c)));
 
     // "Still missing" hint: platforms with neither a confirmed link nor even
     // a discovered lead — makes the paste-a-link ask concrete instead of
@@ -458,15 +493,41 @@ export function ProfilesCard({ payload, onConfirm, onFindMore, disabled }: {
                         <div className="h-px flex-1 bg-black/10 dark:bg-white/10" />
                     </div>
                     <div data-testid="profiles-candidate-list" className="space-y-2">
-                        {visibleCandidates.map(candidate => (
-                            <CandidateRow
-                                key={candidate.siteName}
-                                candidate={candidate}
-                                accepted={accepted.has(candidate.siteName)}
-                                onToggleAccept={() => toggleAccepted(candidate.siteName)}
-                                onDismiss={() => dismissCandidate(candidate.siteName)}
-                                disabled={disabled}
-                            />
+                        {[...groupByPlatform(visibleCandidates)].map(([siteName, group]) => (
+                            group.length === 1 ? (
+                                <CandidateRow
+                                    key={candidateKey(group[0])}
+                                    candidate={group[0]}
+                                    accepted={accepted.has(candidateKey(group[0]))}
+                                    onToggleAccept={() => toggleAccepted(group[0])}
+                                    onDismiss={() => dismissCandidate(group[0])}
+                                    disabled={disabled}
+                                />
+                            ) : (
+                                // Two accounts on one platform. Asked as a
+                                // question, because it IS one and we cannot
+                                // answer it: both pages can carry the artist's
+                                // name and only they know which they use.
+                                <div
+                                    key={siteName}
+                                    data-testid={`profiles-candidate-choice-${siteName}`}
+                                    className="rounded-xl border border-dashed border-black/15 dark:border-white/15 p-2.5 space-y-2"
+                                >
+                                    <p className="px-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                                        Two {SUPPORTED_PLATFORM_LABELS[siteName] ?? group[0].displayName} accounts look like yours — which one should we link?
+                                    </p>
+                                    {group.map(candidate => (
+                                        <CandidateRow
+                                            key={candidateKey(candidate)}
+                                            candidate={candidate}
+                                            accepted={accepted.has(candidateKey(candidate))}
+                                            onToggleAccept={() => toggleAccepted(candidate)}
+                                            onDismiss={() => dismissCandidate(candidate)}
+                                            disabled={disabled}
+                                        />
+                                    ))}
+                                </div>
+                            )
                         ))}
                     </div>
                 </div>

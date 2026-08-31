@@ -84,28 +84,56 @@ describe('ProfilesCard — accepted-by-default', () => {
         });
     });
 
-    it('does not offer several candidates for the same platform at all', () => {
-        // CY, 2026-08-20: unchecking your own old profiles feels worse than
-        // adding the right one. Ambiguous platforms drop through to "Still
-        // missing" so the artist pastes the correct one instead.
+    const ambiguousPayload = {
+        candidates: [
+            { siteName: 'facebook', displayName: 'Facebook', value: 'a', profileUrl: 'https://facebook.com/a' },
+            { siteName: 'facebook', displayName: 'Facebook', value: 'b', profileUrl: 'https://facebook.com/b' },
+            { siteName: 'bandcamp', displayName: 'Bandcamp', value: 'nova', profileUrl: 'https://nova.bandcamp.com' },
+        ],
+    };
+
+    it('asks which of two same-platform accounts is theirs, and saves neither until they say', () => {
+        // This used to hide both and list Facebook under "Still missing" — we
+        // told an artist we had found nothing on a platform where we had found
+        // two of his accounts. Black Dave MK2 runs two real Instagrams and
+        // confirmed both are his.
+        //
+        // Still not pre-selected (CY, 2026-08-20: unchecking your own old
+        // profile feels worse than adding the right one), so leaving the card
+        // alone saves only the unambiguous candidate — the old outcome, reached
+        // by asking rather than by hiding.
         const onConfirm = jest.fn();
-        const ambiguous = {
-            ...payload,
-            candidates: [
-                { siteName: 'facebook', displayName: 'Facebook', value: 'a', profileUrl: 'https://facebook.com/a' },
-                { siteName: 'facebook', displayName: 'Facebook', value: 'b', profileUrl: 'https://facebook.com/b' },
-                { siteName: 'bandcamp', displayName: 'Bandcamp', value: 'nova', profileUrl: 'https://nova.bandcamp.com' },
-            ],
-        };
-        render(<ProfilesCard payload={ambiguous} onConfirm={onConfirm} disabled={false} />);
+        render(<ProfilesCard payload={{ ...payload, ...ambiguousPayload }} onConfirm={onConfirm} disabled={false} />);
+
+        expect(screen.getByTestId('profiles-candidate-choice-facebook')).toBeTruthy();
+        expect(screen.getByText(/which one should we link/i)).toBeTruthy();
+        // No longer a lie: we have leads for Facebook.
+        expect(screen.queryByText(/still missing/i)?.textContent ?? '').not.toMatch(/Facebook/);
+
         fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
-        // Only the unambiguous one is saved; neither Facebook is.
         expect(onConfirm).toHaveBeenCalledWith({
             addedLinks: [{ url: 'https://nova.bandcamp.com' }],
             removedSiteNames: [],
         });
-        // …and the artist is told Facebook is still missing.
-        expect(screen.getByText(/still missing/i).textContent).toMatch(/Facebook/);
+    });
+
+    it('saves the one they pick, and picking the other swaps it rather than adding both', () => {
+        // One column per platform holds one handle. Independent checkboxes
+        // would let an artist tick both and silently keep whichever was written
+        // last — the arbitrary pick this card exists to replace.
+        const onConfirm = jest.fn();
+        render(<ProfilesCard payload={{ ...payload, ...ambiguousPayload }} onConfirm={onConfirm} disabled={false} />);
+        const group = screen.getByTestId('profiles-candidate-choice-facebook');
+        const [addA, addB] = Array.from(group.querySelectorAll('button')).filter(b => /add/i.test(b.textContent ?? ''));
+
+        fireEvent.click(addA);
+        fireEvent.click(addB);   // switching, not accumulating
+        fireEvent.click(screen.getByRole('button', { name: /looks good/i }));
+
+        const { addedLinks } = onConfirm.mock.calls.at(-1)[0];
+        expect(addedLinks).toContainEqual({ url: 'https://facebook.com/b' });
+        expect(addedLinks).not.toContainEqual({ url: 'https://facebook.com/a' });
+        expect(addedLinks.filter(l => l.url.includes('facebook.com'))).toHaveLength(1);
     });
 
     it('collects pasted links as additions', () => {
