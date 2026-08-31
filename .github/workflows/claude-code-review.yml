@@ -65,3 +65,46 @@ jobs:
           # denials across 6 turns and then errored with no comments at all.
           claude_args: '--allowed-tools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
 
+      # THE REVIEW THAT REPORTS SUCCESS WITHOUT RUNNING.
+      #
+      # claude-code-action refuses to run when this file differs from the copy
+      # on the DEFAULT branch — a real protection, since a pull request could
+      # otherwise edit the workflow to read secrets. What it does next is the
+      # problem: it logs "Exiting due to workflow validation skip" and exits
+      # SUCCESS, so the PR shows a green check for a review that never happened.
+      #
+      # PR #1179 improved claude_args and merged to STAGING on 2026-08-26.
+      # Staging's copy never reached main, so every PR into staging failed
+      # validation from that day on. Seven merged unreviewed, all green. The
+      # change that broke the reviewer was the change that fixed the reviewer.
+      #
+      # This turns that silence into a failure. It does NOT ask the action
+      # whether it skipped — it checks the CAUSE directly, so it keeps working
+      # if the action's internals change.
+      #
+      # A PR that CHANGES this file is exempt, and has to be: it necessarily
+      # differs from main, and without the exemption the one-file PR that
+      # restores the reviewer could never merge itself.
+      - name: Fail if the reviewer was skipped instead of run
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILE: .github/workflows/claude-code-review.yml
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          # GitHub's contents API returns the git blob sha, which is exactly
+          # what hash-object produces locally — directly comparable, and needs
+          # no deeper fetch than the checkout above already did.
+          MAIN_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${FILE}?ref=main" --jq .sha 2>/dev/null || echo "")
+          LOCAL_SHA=$(git hash-object "$FILE")
+          if [ "$MAIN_SHA" = "$LOCAL_SHA" ]; then
+            echo "Review workflow matches main — the reviewer ran."
+            exit 0
+          fi
+          if gh pr view "$PR" --json files --jq '.files[].path' | grep -qx "$FILE"; then
+            echo "::warning::This PR changes the review workflow, so the reviewer skipped itself. Expected — it starts working once this lands on main."
+            exit 0
+          fi
+          echo "::error::The Claude review did NOT run. ${FILE} differs from the copy on main, so the action skipped validation and exited success. Land the workflow file on main to re-enable reviews."
+          exit 1

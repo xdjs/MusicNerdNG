@@ -33,7 +33,12 @@ type Case = {
     id: string;
     name: string;
     /** Handles verified against a live page. The pipeline should find these. */
-    expect: Record<string, string>;
+    /** Platform -> the handle we know is theirs, or several when more than one
+     *  genuinely is. Black Dave MK2 runs both @blackdavemk2 and @blackdave.xyz
+     *  and confirmed both; scoring one of them as a miss measured our
+     *  preference, not his identity. The FIRST entry is the primary — the one
+     *  a picker should default to — and any of them counts as correct. */
+    expect: Record<string, string | string[]>;
     /** Left in place at reset — what an artist actually arrives holding. */
     seed: string[];
     /** Hosts that are a DIFFERENT subject. Any of these stored is a failure. */
@@ -117,16 +122,28 @@ const CASES: Case[] = [
         id: "011645a7-a9c2-494c-a81f-2c10cdf1b756",
         name: "Black Dave MK2",
         seed: ["spotify", "deezer"],
-        // Confirmed by Pete, 8/26. Currently UNREACHABLE from outside, and kept
-        // here deliberately as a standing miss: searching his name never returns
-        // it, his metalabel page links METALABEL's socials rather than his own,
-        // blackdavemk2.bandcamp.com exposes none, readdork 403s, and three Black
-        // Daves share the name so a page title cannot disambiguate.
+        // NOT a standing miss any more, and the reason it looked like one was
+        // wrong. This said his Instagram was "UNREACHABLE from outside" and
+        // scored anything but blackdave.xyz as a failure. He runs BOTH
+        // @blackdave.xyz (4,553 followers) and @blackdavemk2 (173) and
+        // confirmed both, 8/31 — so the pipeline finding blackdavemk2 was never
+        // a wrong link. It was us picking one of two real answers and throwing
+        // the other away, which is the thing to fix in the product rather than
+        // score as recall.
         //
-        // The boundary is real. For a heavily-namesaked artist with no site of
-        // their own, the artist is the only reliable source — an argument for
-        // ASKING during the claim, not for a cleverer probe.
-        expect: { instagram: "blackdave.xyz" },
+        // x and twitch both confirmed his, same day. They were being found and
+        // credited to nobody: absent from `expect` they scored nothing, and
+        // absent from `forbidHandles` a wrong one would have scored nothing
+        // either. A handle the benchmark cannot see is a handle it cannot
+        // defend.
+        //
+        // Worth knowing about twitch=BlackDave: nothing on that page says whose
+        // it is ("blackdave - Twitch", no name text). It arrived by propagating
+        // his confirmed X handle on the strength of an og:image alone, on a
+        // name three artists in this directory share. It is right, and it was
+        // not reasoned to — do not read this passing as evidence that rule is
+        // sound.
+        expect: { instagram: ["blackdave.xyz", "blackdavemk2"], x: "BlackDave", twitch: "BlackDave" },
         forbidHosts: ["head-fi.org", "theguardian.com", "chordelectronics.co.uk", "whathifi.com",
                       "thrashermagazine.com", "quartersnacks.com"], // the OTHER Black Dave's skate press
         // The sharpest case in the set: same name as two other artists we hold.
@@ -135,7 +152,7 @@ const CASES: Case[] = [
             x: ["blackdavenyc"], soundcloud: ["blackdaveblackdave", "blackdavenyc"],
             bandcamp: ["black-dave"], twitch: ["black_davem"],
         },
-        note: "Must not inherit the skater-rapper Black Dave's press or handles.",
+        note: "Must not inherit the skater-rapper Black Dave's press or handles. Runs two Instagrams; both are his.",
     },
 ];
 
@@ -143,6 +160,8 @@ type Score = {
     case: string; name: string;
     linksCorrect: string[]; linksWrong: string[]; linksMissed: string[];
     sourcesKept: number; sourcesForbidden: string[]; sourcesBlocked: string[];
+    /** How many the FIRST half found, so a regression is attributable. */
+    profileLinks: number;
     seconds: number;
 };
 
@@ -167,6 +186,17 @@ async function main() {
     const { db } = await import("@/server/db/drizzle");
     const { sql } = await import("drizzle-orm");
     const { searchAndPopulateVault } = await import("@/server/utils/queries/vaultWebSearch");
+    // THE FLOW AN ARTIST ACTUALLY RUNS, not one component of it.
+    //
+    // This called searchAndPopulateVault and nothing else, while onboarding
+    // runs profile discovery FIRST and writes what it finds, then searches for
+    // sources. So the benchmark scored half the pipeline and I quoted it as the
+    // product's number for days: measured on Pete Rango from a cold start,
+    // vault search alone finds 3 of 7 handles and profile discovery finds 7 of
+    // 7 in five seconds. A change to the component doing most of the work could
+    // not have moved this gate at all, which is worse than a noisy gate.
+    const { discoverArtistProfilesStream } = await import("@/server/utils/profileDiscovery");
+    const { applyProfileLinkDecisions } = await import("@/server/utils/onboarding/turnHandlers");
 
     const ALL = ["instagram", "x", "youtube", "tiktok", "facebook", "soundcloud", "bandcamp", "twitch"];
     const scores: Score[] = [];
@@ -197,7 +227,61 @@ async function main() {
         await db.execute(sql`delete from artist_vault_sources where artist_id = ${c.id}::uuid`);
 
         const started = Date.now();
-        await searchAndPopulateVault(c.id).catch(e => console.error(`  [${c.key}] discovery threw:`, e?.message));
+
+        // 1 — profile discovery, and writing what it finds. The order and the
+        // calls mirror the auto-build in turnHandlers; if that changes, this
+        // has to change with it or the gate stops describing the product.
+        const discovered: any[] = [];
+        let provisionalSiteNames: string[] = [];
+        try {
+            for await (const event of discoverArtistProfilesStream(c.id)) {
+                if (event.kind === "found") discovered.push(event.profile);
+            }
+            if (discovered.length > 0) {
+                // verifyIdentity mirrors the auto-build. Without it this ran
+                // the unguarded path and reported wrong links that the product
+                // does not actually write — a gate that lies in the other
+                // direction is no better than one that lies in this one.
+                // ONE WRITE PER PLATFORM, mirroring the auto-build. Discovery
+                // returns up to two accounts per platform now; handing both to
+                // applyProfileLinkDecisions lets the LAST one win, which is the
+                // silent arbitrary pick the product no longer makes. The
+                // alternative is a question for the artist, and a benchmark run
+                // has nobody to ask — so it scores the primary, same as an
+                // artist who closes the tab before answering.
+                const seenPlatform = new Set<string>();
+                const primaries = discovered.filter(p => {
+                    if (seenPlatform.has(p.siteName)) return false;
+                    seenPlatform.add(p.siteName);
+                    return true;
+                });
+                const outcome = await applyProfileLinkDecisions(
+                    c.id, primaries.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
+                const wrote = new Set(outcome.written);
+                provisionalSiteNames = [...new Set(
+                    primaries.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
+                )];
+                const alternatives = discovered.length - primaries.length;
+                if (alternatives > 0) console.log(`  [${c.key}] ${alternatives} second account(s) offered as a choice, not scored`);
+            }
+        } catch (e: any) {
+            console.error(`  [${c.key}] profile discovery threw:`, e?.message);
+        }
+        // Scored separately so a regression can be attributed to the half that
+        // caused it rather than to "discovery".
+        const afterProfiles: any = await db.execute(sql.raw(
+            `select ${ALL.join(", ")} from artists where id = '${c.id}'`));
+        const profileLinks = Object.entries(c.expect).filter(([platform, want]) => {
+            const got = String((afterProfiles.rows ?? afterProfiles)[0]?.[platform] ?? "").toLowerCase();
+            return !!got && (Array.isArray(want) ? want : [want]).some(w => w.toLowerCase() === got);
+        }).length;
+
+        // 2 — sources, and the handle propagation that rides along with them.
+        // `provisionalSiteNames` mirrors the auto-build too: without it the
+        // search skips every column discovery guessed into, which is the
+        // ordering defect this gate exists to catch.
+        await searchAndPopulateVault(c.id, { provisionalSiteNames })
+            .catch(e => console.error(`  [${c.key}] vault search threw:`, e?.message));
         const seconds = Math.round((Date.now() - started) / 100) / 10;
 
         const after: any = await db.execute(sql.raw(
@@ -210,10 +294,11 @@ async function main() {
 
         const linksCorrect: string[] = [], linksWrong: string[] = [], linksMissed: string[] = [];
         for (const [platform, want] of Object.entries(c.expect)) {
+            const accepted = Array.isArray(want) ? want : [want];
             const got = links[platform];
-            if (!got) linksMissed.push(`${platform}=${want}`);
-            else if (String(got).toLowerCase() === want.toLowerCase()) linksCorrect.push(`${platform}=${got}`);
-            else linksWrong.push(`${platform}=${got} (want ${want})`);
+            if (!got) linksMissed.push(`${platform}=${accepted[0]}`);
+            else if (accepted.some(w => String(got).toLowerCase() === w.toLowerCase())) linksCorrect.push(`${platform}=${got}`);
+            else linksWrong.push(`${platform}=${got} (want ${accepted.join(" or ")})`);
         }
         // Somebody else's handle is worse than a missing one — and it is ONE
         // wrong platform, not two. A handle that both differs from the expected
@@ -245,11 +330,11 @@ async function main() {
         const sourcesBlocked = urls.filter((u: string) => isBlockedSourceHost(u));
 
         scores.push({ case: c.key, name: c.name, linksCorrect, linksWrong, linksMissed,
-                      sourcesKept: urls.length, sourcesForbidden, sourcesBlocked, seconds });
+                      profileLinks, sourcesKept: urls.length, sourcesForbidden, sourcesBlocked, seconds });
 
         const want = Object.keys(c.expect).length;
         console.log(`\n${c.name}  (${seconds}s)`);
-        console.log(`  links     ${linksCorrect.length}/${want} correct` +
+        console.log(`  links     ${linksCorrect.length}/${want} correct   (profile discovery found ${profileLinks}, source search added ${linksCorrect.length - profileLinks})` +
                     `${linksWrong.length ? `, ${linksWrong.length} WRONG` : ""}` +
                     `${linksMissed.length ? `, ${linksMissed.length} missed` : ""}`);
         if (linksWrong.length) for (const w of linksWrong) console.log(`              ! ${w}`);

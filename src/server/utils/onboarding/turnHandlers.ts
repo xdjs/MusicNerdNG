@@ -30,6 +30,9 @@ import {
     upsertArtistDocSources,
 } from "@/server/utils/queries/onboardingQueries";
 import { setArtistLink, clearArtistLink } from "@/server/utils/artistLinkService";
+import {
+    contradictsScrapedPosts, handleBelongsToAnotherArtist, nameIsAmbiguousInDirectory,
+} from "@/server/utils/artistIdentityGuards";
 import { extractArtistId } from "@/server/utils/services";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import {
@@ -111,6 +114,17 @@ export type TurnEvent =
     // reload/resume), so a client that ignores `candidate` entirely still
     // renders correctly, just without the live-discovery feel.
     | { kind: "candidate"; profile: DiscoveredProfile }
+    // Platforms where discovery found MORE THAN ONE account that survived every
+    // check, so there is a real question to put to the artist: which of these
+    // is yours? `chosen` is what the build actually wrote (the primary — tiers
+    // run in authority order); `options` is every candidate including it.
+    //
+    // The auto-build cannot ask, because nobody is watching it. It writes the
+    // primary so the page is complete, and sends the alternatives here for the
+    // client to raise once the artist is looking. Held in memory only: if they
+    // leave before answering, the primary stands and nothing is broken — the
+    // artist is never left with an empty platform waiting on a question.
+    | { kind: "choices"; platform: string; chosen: string; options: DiscoveredProfile[] }
     // `sources` is the numbered citation manifest ([n] markers in `doc`/`about`
     // resolve into this list) narrowed to just the ids either text actually
     // cites — see extractCitedIds. Empty when nothing was citable.
@@ -596,6 +610,10 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
             // line below still fires afterward either way, so the UI always
             // settles instead of being left mid-search forever.
             const candidates: DiscoveredProfile[] = [];
+            /** Platforms that turned the probe away rather than answering it —
+             *  carried into the payload so the card can say "couldn't check"
+             *  instead of listing them as missing. */
+            const unreachable: string[] = [];
             if (discoverProfiles) {
                 const seenPlatforms = new Set<string>();
                 try {
@@ -615,6 +633,9 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                             case "found":
                                 candidates.push(event.profile);
                                 yield { kind: "candidate", profile: event.profile };
+                                break;
+                            case "unreachable":
+                                unreachable.push(event.platform);
                                 break;
                         }
                     }
@@ -636,7 +657,7 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
                 ? `${baseNarration} ${NARRATION.profilesCandidatesFound(candidates.length)}`
                 : baseNarration;
             yield { kind: "chat", text: narration };
-            yield { kind: "step", step: "profiles", payload: { ...payload, candidates } };
+            yield { kind: "step", step: "profiles", payload: { ...payload, candidates, unreachable } };
             return;
         }
         case "vault": {
@@ -790,6 +811,15 @@ async function* emitStep(artistId: string, step: OnboardingStep, discoverProfile
 /** What applying an artist's profile-card decisions produced, bucketed by what
  *  went wrong — each bucket gets different copy (see the build*Message helpers). */
 interface ProfileLinkOutcome {
+    /** siteNames actually written to the artist's row. The auto-build needs
+     *  this to tell the vault search which columns hold a discovery GUESS:
+     *  intersecting what discovery proposed with what survived the identity
+     *  guards, rather than assuming every proposal landed. */
+    written: string[];
+    /** Recognised as a platform profile and refused because we could not prove
+     *  it belongs to this artist. Distinct from `writeRejected`, which is a
+     *  database failure — this one is a judgement. */
+    identityBlocked: string[];
     unrecognized: string[];
     writeRejected: string[];
     routedToVaultApproved: string[];
@@ -810,10 +840,23 @@ interface ProfileLinkOutcome {
  *
  * Only `confirm_profiles` advances the step; this function never does.
  */
-async function applyProfileLinkDecisions(
+/** Exported so the benchmark can run the same sequence onboarding does —
+ *  discover, then write, then search for sources. It used to run only the last
+ *  of those and was quoted as the product's score. */
+export async function applyProfileLinkDecisions(
     artistId: string,
     addedLinks: { url: string }[],
     removedSiteNames: string[],
+    /**
+     * Check that each handle really belongs to this artist before writing it.
+     *
+     * OFF BY DEFAULT, and the default is the point: two of the three callers
+     * pass links the ARTIST typed, and an artist adding their own Instagram
+     * must not be blocked because somebody with a similar name is also in the
+     * directory. Only the auto-build — which writes whatever profile discovery
+     * guessed, with nobody looking — turns this on.
+     */
+    opts?: { verifyIdentity?: boolean },
 ): Promise<ProfileLinkOutcome> {
     for (const siteName of removedSiteNames) {
         try {
@@ -841,6 +884,9 @@ async function applyProfileLinkDecisions(
     // threw — a real DB failure, not an "unrecognized" link. Distinct
     // bucket so the copy doesn't misreport what actually went wrong.
     const vaultInsertFailed: string[] = [];
+    /** Recognised fine, and refused because we could not prove it is theirs. */
+    const identityBlocked: string[] = [];
+    const written: string[] = [];
     // Only needed for the ownership cross-check below, which no
     // platform-recognized URL ever reaches — fetched at most once, so a
     // turn with no failed-extraction URLs never pays for it.
@@ -943,15 +989,34 @@ async function applyProfileLinkDecisions(
             }
             continue;
         }
+        // THE SAME CHECKS THE VAULT PATH HAS ALWAYS APPLIED. They guarded
+        // adoption from a search result and nothing else, so the auto-build —
+        // the path every artist takes — wrote whatever discovery guessed. With
+        // three Black Daves in this directory, that gave Black Dave another
+        // one's Instagram and Black Dave MK2 a third person's. The benchmark
+        // could not see it because it never ran this half of the flow.
+        if (opts?.verifyIdentity) {
+            if (artistName === undefined) artistName = (await getArtistById(artistId))?.name ?? "";
+            const blocked =
+                await nameIsAmbiguousInDirectory(artistId, artistName)
+                || await handleBelongsToAnotherArtist(artistId, extracted.siteName, String(extracted.id))
+                || await contradictsScrapedPosts(artistId, extracted.siteName, String(extracted.id));
+            if (blocked) {
+                console.log(`[onboarding] Not writing ${extracted.siteName}=${extracted.id} — identity checks did not clear it`);
+                identityBlocked.push(raw.url);
+                continue;
+            }
+        }
         try {
             await setArtistLink(artistId, extracted.siteName, extracted.id);
+            written.push(extracted.siteName);
         } catch (e) {
             console.error(`[onboarding] setArtistLink failed for ${raw.url}:`, e);
             writeRejected.push(raw.url);
         }
     }
 
-    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed };
+    return { unrecognized, writeRejected, routedToVaultApproved, routedToVaultPending, vaultInsertFailed, identityBlocked, written };
 }
 
 export async function* runOnboardingTurn(artistId: string, turn: ClientTurn): AsyncGenerator<TurnEvent> {
@@ -994,19 +1059,74 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
 
     // 1 — profiles
     yield { kind: "progress", label: "Finding your profiles", done: false, group: PROFILE_SEARCH_GROUP };
-    const discovered: string[] = [];
+    const discovered: DiscoveredProfile[] = [];
+    /** Platforms that refused to answer. The auto-build has no card to put a
+     *  hint on, so it says so in the chat — "we found nothing there" and "they
+     *  would not tell us" are different sentences and only one is true. */
+    const unreachable: string[] = [];
     try {
         for await (const event of discoverArtistProfilesStream(artistId)) {
             if (event.kind === "found") {
-                discovered.push(event.profile.profileUrl);
+                discovered.push(event.profile);
                 yield { kind: "candidate", profile: event.profile };
             }
+            if (event.kind === "unreachable") unreachable.push(event.displayName);
         }
     } catch (e) {
         console.error("[onboarding] auto-build discovery failed:", e);
     }
+    /** Columns this step filled with a handle built out of the artist's NAME —
+     *  the weakest thing discovery produces (see `DiscoveredProfile.provisional`).
+     *  Handed to the vault search below so it treats them as still open instead
+     *  of skipping them under "already have it", which is what stopped Black
+     *  Dave MK2's corroborated `blackdave.xyz` from ever landing. */
+    let provisionalSiteNames: string[] = [];
+    const discoveredBySiteName = new Map<string, DiscoveredProfile>();
     if (discovered.length > 0) {
-        await applyProfileLinkDecisions(artistId, discovered.map(url => ({ url })), []);
+        // `verifyIdentity: true` — this is the ONLY caller that turns it on,
+        // and the whole reason the flag exists. Nobody has looked at these
+        // links: they are whatever discovery guessed, written straight to the
+        // artist's row. The other two callers pass links the ARTIST typed and
+        // must stay unguarded.
+        //
+        // The commit that added the flag claimed this line already passed it.
+        // It did not — the only caller passing it was the benchmark, so the
+        // guards ran in measurement and nowhere else. A guard nothing calls is
+        // the exact shape of the bug it was written to fix, one level up.
+        // `runAutoBuild wires the identity guards` in turnHandlers.test.ts
+        // asserts this call site specifically, because a test of the guard
+        // functions themselves is what let it through.
+        // ONE WRITE PER PLATFORM. Discovery may now return two accounts for a
+        // platform, and applyProfileLinkDecisions writes every URL it is handed
+        // — so passing both made the LAST one win, which is the silent
+        // arbitrary pick this whole change exists to remove. The primary is the
+        // first yielded: tiers run in authority order.
+        const primaries: DiscoveredProfile[] = [];
+        const byPlatform = new Map<string, DiscoveredProfile[]>();
+        for (const p of discovered) {
+            const group = byPlatform.get(p.siteName);
+            if (group) group.push(p);
+            else { byPlatform.set(p.siteName, [p]); primaries.push(p); }
+        }
+        const outcome = await applyProfileLinkDecisions(
+            artistId, primaries.map(p => ({ url: p.profileUrl })), [], { verifyIdentity: true });
+        // What was WRITTEN, not what was proposed — the identity guards above
+        // refuse some of it, and naming a column the vault could overwrite when
+        // nothing was ever written there would be a lie in the other direction.
+        const wrote = new Set(outcome.written);
+        provisionalSiteNames = [...new Set(
+            primaries.filter(p => p.provisional && wrote.has(p.siteName)).map(p => p.siteName),
+        )];
+        // Kept so the vault's answer can be compared against what discovery
+        // actually wrote, once the search has run.
+        for (const p of primaries) if (wrote.has(p.siteName)) discoveredBySiteName.set(p.siteName, p);
+        // Only where the write actually landed. Asking "which of these two is
+        // yours" about a platform whose primary the identity guards refused
+        // would be offering the artist a choice we already declined to make.
+        for (const [platform, options] of byPlatform) {
+            if (options.length < 2 || !wrote.has(platform)) continue;
+            yield { kind: "choices", platform, chosen: options[0].value, options };
+        }
     }
 
     // The Instagram ingest and the caption extraction, on the path most artists
@@ -1032,6 +1152,12 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
     // their own budget, driven by the client while the artist is still here and
     // by a scheduler when they are not, and the document is rebuilt once the
     // extraction finishes.
+    if (unreachable.length > 0) {
+        yield {
+            kind: "chat",
+            text: `${unreachable.join(" and ")} wouldn't let us look just now, so that's not a "no" — add ${unreachable.length === 1 ? "it" : "them"} from your page any time.`,
+        };
+    }
     await requestArtistResearch(artistId);
     yield {
         kind: "progress",
@@ -1047,11 +1173,52 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
         // Same budgeted race the vault step uses — a slow search must not hold
         // the whole build open past the route's turn deadline.
         await Promise.race([
-            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS }),
+            searchAndPopulateVault(artistId, { deadline: Date.now() + VAULT_DISCOVERY_BUDGET_MS, provisionalSiteNames }),
             new Promise(resolve => setTimeout(resolve, VAULT_DISCOVERY_BUDGET_MS)),
         ]);
     } catch (e) {
         console.error("[onboarding] auto-build source discovery failed:", e);
+    }
+
+    // THE TWO-ACCOUNT CASE THAT ACTUALLY HAPPENS.
+    //
+    // Grouping discovery's own output finds nothing, because discovery cannot
+    // produce two candidates for one platform: tier 3 keeps the first confirmed
+    // hit per platform, and `missing.delete` stops every later tier revisiting a
+    // platform an earlier one resolved. The two accounts come from DIFFERENT
+    // SYSTEMS — discovery guessed `blackdavemk2` from the artist's name, the
+    // vault search found `blackdave.xyz` and corroborated it — and they only
+    // ever meet in the artist's row.
+    //
+    // So the moment to ask is here: a column discovery filled with a guess, that
+    // the search has since replaced with something better evidenced. Both are
+    // real accounts, both were Black Dave MK2's, and picking one without asking
+    // is what this whole change exists to stop.
+    if (provisionalSiteNames.length > 0) {
+        try {
+            const after = (await getArtistById(artistId)) as unknown as Record<string, unknown> | undefined;
+            const urlmapBySiteName = new Map((await getAllLinks()).map(l => [l.siteName, l]));
+            for (const siteName of provisionalSiteNames) {
+                const guessed = discoveredBySiteName.get(siteName);
+                const now = after?.[siteName];
+                if (!guessed || typeof now !== "string" || !now || now === guessed.value) continue;
+                const meta = buildLinkPresentationMeta(urlmapBySiteName.get(siteName), siteName, now);
+                if (!meta.profileUrl) continue;   // nothing to click through to; do not ask half a question
+                yield {
+                    kind: "choices",
+                    platform: siteName,
+                    chosen: now,
+                    options: [
+                        { ...guessed, value: now, profileUrl: meta.profileUrl, displayName: meta.displayName },
+                        guessed,
+                    ],
+                };
+            }
+        } catch (e) {
+            // Never worth failing a build over. The better-evidenced handle is
+            // already written either way; the artist just is not asked.
+            console.error("[onboarding] could not offer the second-account choice:", e);
+        }
     }
     const pending = await getVaultSourcesByArtistId(artistId, "pending");
     for (const source of pending) {

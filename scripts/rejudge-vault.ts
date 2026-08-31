@@ -40,7 +40,9 @@ async function main() {
     const { judgeSourceRelevance, mentionDensity } = await import("@/server/utils/sourceRelevance");
     const { refreshArtistDoc } = await import("@/server/utils/artistDocService");
     // Same column list discovery uses, so the anchor here cannot drift from it.
-    const { PROFILE_LINK_COLUMNS } = await import("@/server/utils/queries/vaultWebSearch");
+    // The narrow list: this is an identity anchor, and an opaque id poisons
+    // mentionDensity's paragraph count. Same reason as the discovery path.
+    const { IDENTITY_ANCHOR_COLUMNS } = await import("@/server/utils/queries/vaultWebSearch");
 
     const isUuid = /^[0-9a-f-]{36}$/i.test(target);
     const found: any = await db.execute(isUuid
@@ -55,8 +57,10 @@ async function main() {
     const sources = (rows.rows ?? rows) as { id: string; url: string; title: string | null; extracted_text: string | null }[];
     if (!sources.length) { console.log("No approved sources."); process.exit(0); }
 
-    const identifiers = PROFILE_LINK_COLUMNS.flatMap((col: string) => {
-        const v = artist[col];
+    const { artistRowProperty } = await import("@/server/db/artistRowProperties");
+    const identifiers = IDENTITY_ANCHOR_COLUMNS.flatMap((col: string) => {
+        // By row property: the column is `facebookID`, the property `facebookId`.
+        const v = artist[artistRowProperty(col)];
         return typeof v === "string" && v ? [`${col}: ${v}`] : [];
     });
 

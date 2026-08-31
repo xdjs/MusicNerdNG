@@ -308,6 +308,9 @@ describe('discoverArtistProfiles', () => {
             colorHex: '#E1306C',
             previewImage: 'https://cdn/preview.jpg',
             reasoning: 'Handle probe: og:title matched "Pete Rango" for @peterango (derived from artist name)',
+            // Derived from the name, so it is a guess the vault search may
+            // overwrite — see the `provisional` test below.
+            provisional: true,
         }]);
     });
 
@@ -375,6 +378,8 @@ describe('discoverArtistProfiles', () => {
                 colorHex: '#FEAA2D',
                 previewImage: null,
                 reasoning: 'Cross-platform ID mapping (high confidence, source: wikidata)',
+                // An authoritative id mapping is not a guess.
+                provisional: false,
             }]);
             // deezer was fully satisfied by tier 1 and every other column is
             // already present — nothing left for tier 2/3/4 to do.
@@ -923,6 +928,41 @@ describe('discoverArtistProfiles', () => {
             const result = await discoverArtistProfiles('a1');
             expect(result).toHaveLength(1);
             expect(result[0]).toMatchObject({ siteName: 'youtube', value: 'peterango' });
+        });
+
+        it('marks a NAME-DERIVED hit provisional and a propagated one not, so a guess never outranks an answer', async () => {
+            // The only thing behind a name-derived hit is that we built the URL
+            // out of the artist's name and something was home. Black Dave MK2's
+            // instagram.com/blackdavemk2 is titled "Black Dave MK2" and is not
+            // his account — every cross-check in this module passes it.
+            //
+            // It still gets written (six of Pete Rango's seven links start
+            // here). What it must not do is lock the column against the vault
+            // search's corroborated answer, which is what `provisional` tells
+            // the caller. A handle that came off the artist's own row and
+            // propagated is an answer and is not marked.
+            const { artistQ, extractArtistId, fetchLinkPreview, musicPlatformData, discoverArtistProfiles } = await setup();
+            // twitch=p3t3rango is an existing link (an answer); "peterango" is
+            // derived from the name (a guess). Both confirm, on different
+            // platforms, in one run.
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', deezer: '94933462', twitch: 'p3t3rango' });
+            artistQ.getAllLinks.mockResolvedValue(URLMAP_ROWS);
+            musicPlatformData.getArtist.mockResolvedValue(ENRICHMENT);
+            fetchLinkPreview.mockImplementation(async (url: string) => {
+                if (url === 'https://youtube.com/@peterango') return { imageUrl: null, title: 'Pete Rango - Topic' };
+                if (url === 'https://instagram.com/p3t3rango') return { imageUrl: 'https://cdn/real.jpg', title: null };
+                return { imageUrl: null, title: null };
+            });
+            extractArtistId.mockImplementation(async (url: string) => {
+                if (url === 'https://youtube.com/@peterango') return { siteName: 'youtube', cardPlatformName: 'YouTube', id: 'peterango' };
+                if (url === 'https://instagram.com/p3t3rango') return { siteName: 'instagram', cardPlatformName: 'Instagram', id: 'p3t3rango' };
+                return null;
+            });
+
+            const result = await discoverArtistProfiles('a1');
+            const by = Object.fromEntries(result.map(r => [r.siteName, r]));
+            expect(by.youtube).toMatchObject({ value: 'peterango', provisional: true });
+            expect(by.instagram).toMatchObject({ value: 'p3t3rango', provisional: false });
         });
 
         it('does not confirm a candidate when the probe title clearly belongs to a different person', async () => {

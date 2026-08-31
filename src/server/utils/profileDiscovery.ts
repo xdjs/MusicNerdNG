@@ -106,6 +106,26 @@ export interface DiscoveredProfile {
     colorHex: string | null;
     previewImage: string | null;
     reasoning: string | null;
+    /**
+     * We built this URL out of the artist's own name and a real page answered.
+     *
+     * That is the weakest finding this module produces, and it is the ONLY one
+     * with no independent retrieval behind it: nothing linked the page to the
+     * artist, we constructed the address from their name and something was
+     * home. instagram.com/blackdavemk2 is titled "Black Dave MK2", so every
+     * cross-check passes — and it is not the account Black Dave MK2 uses.
+     *
+     * It is still worth writing: for a cold-start artist a name-derived slug
+     * is how most of their links are found at all (six of Pete Rango's seven).
+     * What it must not do is OUTRANK a later, better-evidenced answer purely
+     * by arriving first, which is what happened — the auto-build writes
+     * discovery's guess, then the vault search skips the column under "already
+     * have it" and its corroborated `blackdave.xyz` never lands.
+     *
+     * So the caller passes these columns to `searchAndPopulateVault`, which
+     * treats them as still-open rather than answered.
+     */
+    provisional: boolean;
 }
 
 // --- Budgets -------------------------------------------------------------
@@ -161,6 +181,9 @@ interface TierCandidate {
     url: string;
     reasoning: string | null;
     preview?: LinkPreview;
+    /** See `DiscoveredProfile.provisional`. Only tier 3's name-derived seed
+     *  probes set this. */
+    provisional?: boolean;
 }
 
 /** The handle-based platforms with no dedicated search API (Spotify and
@@ -348,6 +371,13 @@ const PROBE_CONCURRENCY = 8;
  *  many slugs, not one per permutation). */
 const MAX_DERIVED_SLUGS = 4;
 
+/** How many candidates one platform may offer. TWO, because this exists to ask
+ *  "which of these is yours" and that is a question with two answers; a list of
+ *  five is a research task handed back to the artist. The first validated hit
+ *  is the primary — tiers run in authority order, so it is also the
+ *  best-evidenced one. */
+const MAX_CANDIDATES_PER_PLATFORM = 2;
+
 /** Query strings and fragments are never part of a handle. Search results carry
  *  tracking params (?hl=en, ?igsh=...), and extractArtistId captures the first
  *  path segment verbatim, so they otherwise end up inside the stored handle. */
@@ -526,6 +556,10 @@ async function runHandleProbe(
     probe: HandleProbe,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
     artistName: string,
+    /** Platforms that answered with a wall rather than a profile — see the
+     *  detection below. Recorded so the caller can say "couldn't check"
+     *  instead of "not found", which are not the same claim. */
+    walled?: Set<ProfileDisplayColumn>,
 ): Promise<{ url: string; preview: LinkPreview } | null> {
     const row = urlmapBySiteName.get(probe.platform);
     if (!row?.appStringFormat) return null;
@@ -538,6 +572,42 @@ async function runHandleProbe(
         // every other tier in this file already follows.
         const preview = await fetchLinkPreview(url);
         const residual = preview.title ? stripHandleAndBoilerplate(preview.title, probe.handle) : "";
+        // A THROTTLED PLATFORM LOOKS EXACTLY LIKE AN ABSENT PROFILE, and only
+        // one of those is true. Probe Instagram hard enough and it stops
+        // serving profile metadata and returns a login wall titled plainly
+        // "Instagram", with an og:image, for every handle including real ones.
+        // The name cross-check below correctly refuses it — "Instagram" is not
+        // "Black Dave MK2" — so nothing wrong is ever written. What it cannot
+        // do is tell the difference between "this artist has no Instagram" and
+        // "we were rate-limited", and it reports both as the former.
+        //
+        // Measured 2026-08-29: after one benchmark run's probes, every
+        // instagram.com/<handle> fetch from this machine came back titled
+        // "Instagram". The two cases that run LAST scored zero Instagram
+        // findings and the three before them scored theirs — a result that
+        // reads as a recall problem and is a rate limit.
+        //
+        // Logged, not acted on. Suppressing the miss would mean claiming to
+        // know something we do not, and trusting the image alone is how a
+        // login wall becomes a confirmed profile. This just makes a run that
+        // was throttled distinguishable from a run that found nothing.
+        // AND an og:image, which is what separates a wall from a 404. Both serve
+        // the platform's own name as the title, and they mean opposite things:
+        //
+        //   twitch.tv/<handle-that-does-not-exist> -> "Twitch", NO image
+        //   instagram.com/<real handle>, throttled  -> "Instagram", image
+        //
+        // The first version of this warned on the title alone and fired four
+        // times in one Pharaoh Sistare run for Twitch handles that genuinely
+        // do not exist — noise in the exact log line added to make a real
+        // signal findable. A platform that rendered a real page and withheld
+        // the profile is the case worth flagging; one that said "no such
+        // handle" is a plain miss and always was.
+        const platformName = urlmapBySiteName.get(probe.platform)?.cardPlatformName ?? probe.platform;
+        if (residual && preview.imageUrl && normalizeForCompare(residual) === normalizeForCompare(platformName)) {
+            console.warn(`[profileDiscovery] ${probe.platform} served its own name as the page title for @${probe.handle} — a wall or a rate limit, not evidence this handle is absent`);
+            walled?.add(probe.platform);
+        }
         if (residual) {
             // Real name text survived stripping — cross-check IT against the
             // artist name (never the raw title, which is nearly always
@@ -580,6 +650,7 @@ async function* tierThreeHandleProbeStream(
     record: Record<string, unknown>,
     missing: Set<ProfileDisplayColumn>,
     urlmapBySiteName: Map<string, UrlmapPresentationRow>,
+    walled?: Set<ProfileDisplayColumn>,
 ): AsyncGenerator<[ProfileDisplayColumn, TierCandidate | null]> {
     const handlePlatforms = Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[];
     const targets = handlePlatforms.filter(p => missing.has(p) && !PROBE_UNVERIFIABLE_PLATFORMS.has(p));
@@ -591,6 +662,11 @@ async function* tierThreeHandleProbeStream(
 
     const toCandidate = (probe: HandleProbe, hit: { url: string; preview: LinkPreview }, propagated: boolean): TierCandidate => ({
         tier: 3,
+        // The one place provisional is set. `confirmed: false` means the handle
+        // came from `deriveNameSlugs` — a guess with nothing behind it but the
+        // artist's name. An existing link on their row, or a handle this run
+        // already confirmed on another platform, is not a guess.
+        provisional: !probe.confirmed,
         platform: probe.platform,
         url: hit.url,
         reasoning: `Handle probe: ${hit.preview.title ? `og:title matched "${artistName}"` : "og:image resolved"} for @${probe.handle}` +
@@ -631,7 +707,7 @@ async function* tierThreeHandleProbeStream(
     }
 
     const newlyConfirmedHandles = new Set<string>();
-    for await (const [probe, hit] of mapWithConcurrency(seedJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+    for await (const [probe, hit] of mapWithConcurrency(seedJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName, walled))) {
         if (!hit || resolved.has(probe.platform)) continue; // first confirmed hit per platform wins
         const candidate = toCandidate(probe, hit, false);
         resolved.set(probe.platform, candidate);
@@ -656,7 +732,7 @@ async function* tierThreeHandleProbeStream(
                 propagationJobs.push({ platform, handle, source: "propagated", confirmed: true });
             }
         }
-        for await (const [probe, hit] of mapWithConcurrency(propagationJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName))) {
+        for await (const [probe, hit] of mapWithConcurrency(propagationJobs, PROBE_CONCURRENCY, p => runHandleProbe(p, urlmapBySiteName, artistName, walled))) {
             if (!hit || resolved.has(probe.platform)) continue;
             const candidate = toCandidate(probe, hit, true);
             resolved.set(probe.platform, candidate);
@@ -935,7 +1011,13 @@ async function* propagateConfirmedHandles(
 export type DiscoveryEvent =
     | { kind: "searching"; platform: ProfileDisplayColumn; displayName: string }
     | { kind: "checked"; platform: ProfileDisplayColumn; displayName: string }
-    | { kind: "found"; profile: DiscoveredProfile };
+    | { kind: "found"; profile: DiscoveredProfile }
+    // The platform refused to tell us anything — a login wall or a rate limit,
+    // not an answer. "We couldn't check" and "you don't have one" are different
+    // claims and only one of them is true here; reporting the second is telling
+    // the artist we looked when we were turned away. Emitted only for platforms
+    // still unresolved at the end, so a wall we recovered from is not mentioned.
+    | { kind: "unreachable"; platform: ProfileDisplayColumn; displayName: string };
 
 function platformDisplayName(platform: ProfileDisplayColumn, urlmapBySiteName: Map<string, UrlmapPresentationRow>): string {
     return urlmapBySiteName.get(platform)?.cardPlatformName || fallbackDisplayName(platform);
@@ -945,9 +1027,20 @@ interface ValidationContext {
     artistId: string;
     record: Record<string, unknown>;
     urlmapBySiteName: Map<string, UrlmapPresentationRow>;
-    /** Shared across the WHOLE run (all tiers) — dedupe gate (d): first
-     *  validated hit for a siteName wins, a later one is dropped. */
-    seen: Set<string>;
+    /** Shared across the WHOLE run (all tiers) — gate (d). The first validated
+     *  hit for a siteName is the primary; the next ones are ALTERNATIVES, not
+     *  rubbish.
+     *
+     *  This used to be a Set and a later hit for the same platform was dropped
+     *  on the floor. Black Dave MK2 runs two real Instagram accounts and
+     *  confirmed both; we found one, discarded the other and never mentioned
+     *  it. Worse, the profiles card already had a branch for "several
+     *  candidates for one platform" — it hid them and told the artist the
+     *  platform was still missing — and that branch could never fire, because
+     *  nothing downstream ever saw more than one.
+     *
+     *  Bounded: the point is to offer a choice, not a list. */
+    seen: Map<string, number>;
 }
 
 /** Runs a single raw tier candidate through every validation gate a
@@ -990,8 +1083,9 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
     if (siteName !== candidate.platform) return null; // gate (0) — tier-scoping mismatch
     if (!(PROFILE_DISPLAY_COLUMNS as readonly string[]).includes(siteName)) return null; // gate (b)
     if (artistHasRawLinkValue(ctx.record, siteName)) return null; // gate (c)
-    if (ctx.seen.has(siteName)) return null; // gate (d)
-    ctx.seen.add(siteName);
+    const already = ctx.seen.get(siteName) ?? 0;
+    if (already >= MAX_CANDIDATES_PER_PLATFORM) return null; // gate (d)
+    ctx.seen.set(siteName, already + 1);
 
     // Build the canonical profile URL from urlmap (matches confirmed-link
     // presentation exactly), but verify it round-trips back through
@@ -1032,6 +1126,7 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
         colorHex: meta.colorHex,
         previewImage,
         reasoning: candidate.reasoning,
+        provisional: candidate.provisional ?? false,
     };
 }
 
@@ -1056,6 +1151,8 @@ async function validateCandidate(candidate: TierCandidate, ctx: ValidationContex
  *  `profiles` onboarding turn. */
 export async function* discoverArtistProfilesStream(artistId: string): AsyncGenerator<DiscoveryEvent> {
     const startedAt = Date.now();
+    /** Platforms that answered a probe with a wall instead of a profile. */
+    const walled = new Set<ProfileDisplayColumn>();
     const pastBudget = () => Date.now() - startedAt > DISCOVERY_BUDGET_MS;
 
     let artist;
@@ -1079,7 +1176,7 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
         console.error("[profileDiscovery] getAllLinks failed, presentation metadata will degrade:", e);
     }
     const urlmapBySiteName = new Map<string, UrlmapPresentationRow>(allLinks.map(l => [l.siteName, l]));
-    const ctx: ValidationContext = { artistId, record, urlmapBySiteName, seen: new Set<string>() };
+    const ctx: ValidationContext = { artistId, record, urlmapBySiteName, seen: new Map<string, number>() };
     let foundCount = 0;
 
     // --- Tier 1 — free, instant, authoritative ----------------------------
@@ -1126,7 +1223,7 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
     if (missing.size > 0 && !pastBudget()) {
         const tier3Targets = (Object.keys(HANDLE_BASED_PLATFORM_DOMAINS) as ProfileDisplayColumn[]).filter(p => missing.has(p));
         for (const p of tier3Targets) yield { kind: "searching", platform: p, displayName: platformDisplayName(p, urlmapBySiteName) };
-        for await (const [platform, candidate] of tierThreeHandleProbeStream(artistName, record, missing, urlmapBySiteName)) {
+        for await (const [platform, candidate] of tierThreeHandleProbeStream(artistName, record, missing, urlmapBySiteName, walled)) {
             if (candidate) {
                 missing.delete(candidate.platform);
                 const profile = await validateCandidate(candidate, ctx);
@@ -1183,7 +1280,14 @@ export async function* discoverArtistProfilesStream(artistId: string): AsyncGene
         }
     }
 
-    console.log(`[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" found=${foundCount} elapsedMs=${Date.now() - startedAt}`);
+    // Say which platforms turned us away, and say it LAST — a wall during tier
+    // 3 that tier 4 then got past is not something to report, so this is
+    // narrowed to what is still unresolved after every tier has run.
+    const stillWalled = [...walled].filter(p => missing.has(p));
+    for (const platform of stillWalled) {
+        yield { kind: "unreachable", platform, displayName: platformDisplayName(platform, urlmapBySiteName) };
+    }
+    console.log(`[profileDiscovery] artist=${artistId} name="${artist.name ?? artistName}" found=${foundCount} elapsedMs=${Date.now() - startedAt}${stillWalled.length ? ` unreachable=${stillWalled.join(",")}` : ""}`);
 }
 
 /** Array-returning wrapper over `discoverArtistProfilesStream` — kept for any

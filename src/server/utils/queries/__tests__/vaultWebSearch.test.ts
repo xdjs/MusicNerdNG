@@ -60,6 +60,12 @@ jest.mock("@/server/utils/profileDiscovery", () => ({
   },
 }));
 
+// Defaults to "no match", which is what the unmocked module effectively did
+// in this suite anyway (no network). Only the provisional-clearing test below
+// overrides it, so no existing expectation changes.
+const mockMusicBrainz = jest.fn(async () => null);
+jest.mock("@/server/utils/musicBrainzLinks", () => ({ fetchMusicBrainzLinks: (...a) => mockMusicBrainz(...a) }));
+
 const mockSetLink = jest.fn(async () => ({}));
 jest.mock("@/server/utils/artistLinkService", () => ({ setArtistLink: (...a) => mockSetLink(...a) }));
 
@@ -70,6 +76,11 @@ describe("searchAndPopulateVault", () => {
     jest.resetModules();
     mockWebSearch.mockReset();
     mockWebSearch.mockResolvedValue([]);
+    // Reset per test: a leaked MusicBrainz result feeds URLs into whatever
+    // extractArtistId the NEXT test installs, and adopts handles that test
+    // never asked for.
+    mockMusicBrainz.mockReset();
+    mockMusicBrainz.mockResolvedValue(null);
     mockGetArtist.mockResolvedValue({
       id: "a1", name: "Grimes", spotify: "sp1", instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
     });
@@ -247,6 +258,29 @@ describe("searchAndPopulateVault", () => {
     await searchAndPopulateVault("a1");
     const candidates = mockJudge.mock.calls[0][1];
     expect(candidates[0]).toHaveProperty("ownDomain");
+  });
+
+  it("recognises a profile stored as a whole url, not just as a handle", async () => {
+    // Ten rows hold a url instead of a handle — a Facebook profile saved as
+    // ".../people/Angela-Bofill/100044180243805/", a Bandcamp, a Discogs, six
+    // Farcasters. Comparing the whole stored string against the search result
+    // can essentially never match, so those artists' own profiles were not
+    // recognised as theirs and could be filed as press ABOUT them.
+    mockGetArtist.mockResolvedValueOnce({
+      id: "a1", name: "Grimes", spotify: "sp1",
+      facebookId: "https://www.facebook.com/people/Grimes/100044180243805/",
+      instagram: null, x: null, youtube: null, soundcloud: null, bandcamp: null,
+    });
+    mockWebSearch.mockResolvedValue([
+      hit("https://www.facebook.com/profile.php?id=100044180243805", "Grimes on Facebook"),
+      hit("https://example.com/real-article", "A real interview"),
+    ]);
+    const { searchAndPopulateVault } = await import("../vaultWebSearch");
+    await searchAndPopulateVault("a1");
+
+    const stored = mockInsert.mock.calls.map(c => c[0].url);
+    expect(stored).not.toContain("https://www.facebook.com/profile.php?id=100044180243805");
+    expect(stored).toContain("https://example.com/real-article");
   });
 
   it("drops an XML document served from an ordinary-looking URL", async () => {
@@ -636,6 +670,117 @@ describe("searchAndPopulateVault", () => {
       expect(adopted).toContain("facebook=dupesdidit");
       // Already held — re-writing it is pointless churn.
       expect(adopted).not.toContain("bandcamp=dupes");
+    });
+
+    it("overwrites a column the caller named as a discovery GUESS, and leaves an answered one alone", async () => {
+      // The ordering defect. The onboarding auto-build runs profile discovery
+      // first and writes what it finds, including handles built out of the
+      // artist's own name; this search then ran second and skipped those
+      // columns under "already have it". Black Dave MK2 kept
+      // instagram=blackdavemk2 that way while blackdave.xyz — which this
+      // search alone had found on 8/27 — could never land.
+      //
+      // The caller names the guessed columns. Nothing else about adoption
+      // changes: this page still has to be corroborated as the artist's own.
+      const held = {
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: "dupes", facebook: "dupes",  // both name-derived guesses on the row
+        x: null, youtube: null, soundcloud: null,
+      };
+      mockGetArtist.mockResolvedValue(held);
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      // Only instagram is declared provisional. facebook holds the identical
+      // guessed value and is NOT declared, so it must stay put — the rule is
+      // what the caller says, never a heuristic about the value.
+      await searchAndPopulateVault("a1", { provisionalSiteNames: ["instagram"] });
+
+      const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(adopted).toContain("instagram=dupesdidit");
+      expect(adopted).not.toContain("facebook=dupesdidit");
+    });
+
+    it("stops treating a column as provisional the moment something writes a real answer to it", async () => {
+      // The set is built once and three passes read it in sequence. Without
+      // clearing it, a column stayed open AFTER a pass had put the right
+      // handle in it — so the account pass could replace the guess with the
+      // corroborated answer and hub adoption could then replace THAT with a
+      // third handle, inside one run. One overwrite is the fix; two is a new
+      // version of the bug.
+      //
+      // Here MusicBrainz answers first and hub adoption comes second, naming a
+      // different instagram handle. The second one must not land.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: "dupes", x: null, youtube: null, soundcloud: null, facebook: null,
+      });
+      mockMusicBrainz.mockResolvedValue({
+        matchedBy: "spotify", urls: ["https://www.instagram.com/frommusicbrainz"],
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(async (url) =>
+        url.includes("frommusicbrainz")
+          ? { siteName: "instagram", cardPlatformName: "Instagram", id: "frommusicbrainz" }
+          : resolve(url));
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1", { provisionalSiteNames: ["instagram"] });
+
+      const wrote = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(wrote).toContain("instagram=frommusicbrainz");
+      expect(wrote).not.toContain("instagram=dupesdidit");
+    });
+
+    it("never writes the same platform twice in one pass — the first answer stands", async () => {
+        // Sherwinn Brice ended a run with bandcamp=radicalone, another artist's
+        // Bandcamp, taken from an album page that credits him. The
+        // judge-affirmed path wrote bandcamp three times (dupes, dupes,
+        // radicalone) and the last won: its "already have it" gate reads a
+        // record fetched BEFORE the loop, which cannot see what the loop just
+        // wrote. The gate was there and was reading a stale answer.
+        mockGetArtist.mockResolvedValue({
+            id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1",
+            bandcamp: null, instagram: null, x: null, youtube: null, soundcloud: null, facebook: null,
+        });
+        mockWebSearch.mockResolvedValue([
+            hit("https://dupes.bandcamp.com", "Dupes"),
+            hit("https://radicalone.bandcamp.com/album/whine-up", "Radical One"),
+        ]);
+        mockJudge.mockImplementation(async (_a, candidates) =>
+            new Map(candidates.map(c => [c.url, "about-artist"])));
+        mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: [] });
+        mockExtract.mockImplementation(async (url) =>
+            url.includes("radicalone")
+                ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "radicalone" }
+                : url.includes("bandcamp")
+                    ? { siteName: "bandcamp", cardPlatformName: "Bandcamp", id: "dupes" }
+                    : undefined);
+        const { searchAndPopulateVault } = await import("../vaultWebSearch");
+        await searchAndPopulateVault("a1");
+
+        const bandcampWrites = mockSetLink.mock.calls.filter(c => c[1] === "bandcamp");
+        expect(bandcampWrites).toHaveLength(1);
+        expect(bandcampWrites[0][2]).toBe("dupes");
+    });
+
+    it("leaves every held column alone when the caller names none — the default is unchanged", async () => {
+      // Without this, "treat a full column as open" could quietly become the
+      // default for every other caller of this function.
+      mockGetArtist.mockResolvedValue({
+        id: "a1", name: "Sherwinn Dupes Brice", spotify: "sp1", bandcamp: "dupes",
+        instagram: "dupes", facebook: "dupes", x: null, youtube: null, soundcloud: null,
+      });
+      mockWebSearch.mockResolvedValue([hit(OWN_SITE, "Dupes")]);
+      mockFetchPage.mockResolvedValue({ ...goodPage, outboundLinks: OUTBOUND });
+      mockExtract.mockImplementation(resolve);
+      const { searchAndPopulateVault } = await import("../vaultWebSearch");
+      await searchAndPopulateVault("a1");
+
+      const adopted = mockSetLink.mock.calls.map(c => `${c[1]}=${c[2]}`);
+      expect(adopted).not.toContain("instagram=dupesdidit");
+      expect(adopted).not.toContain("facebook=dupesdidit");
     });
 
     it("adopts NOTHING from a page that proves no connection to the artist", async () => {
