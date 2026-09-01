@@ -911,20 +911,38 @@ async function keepOnlySupported(
  * link to the wrong post is the artist reading somebody else's caption.
  */
 export async function sourceUrlForQuestionKey(artistId: string, key: string): Promise<string | undefined> {
-    const embedded = key.match(/^social_(?:statement|standout|same_post)_([A-Za-z0-9_-]+?)(?:_|$)/);
-    if (embedded?.[1]) return `https://www.instagram.com/p/${embedded[1]}/`;
+    // NO SUFFIX on these two, so the rest of the key IS the shortcode and a
+    // greedy match to the end is exact.
+    const wholeTail = key.match(/^social_(?:standout|same_post)_(.+)$/);
+    if (wholeTail?.[1]) return `https://www.instagram.com/p/${wholeTail[1]}/`;
 
+    // A STATEMENT KEY CANNOT BE SPLIT BY REGEX. It is
+    // `social_statement_<shortcode>_<topic>` and BOTH halves can contain
+    // underscores — 29 of the 267 shortcodes in this database do, and a
+    // non-greedy match turned "Czb_V_lxFMA" into "Czb", linking the artist to
+    // instagram.com/p/Czb/. A wrong link is worse than no link, which is the
+    // rule this function is written to.
+    //
+    // So it is resolved by rebuilding the key from each stored statement and
+    // comparing — the same discipline as the person lookup below, and it
+    // cannot drift from the format because it uses the format.
+    const statement = key.startsWith("social_statement_");
     const person = key.match(/^social_(?:partnership|credit|collaborator)_(.+)$/);
-    if (!person?.[1]) return undefined;
+    if (!statement && !person?.[1]) return undefined;
     try {
-        const { credits } = await getSocialCredits(artistId);
+        const { credits, statements } = await getSocialCredits(artistId);
+        if (statement) {
+            const hit = statements.find(
+                st => `social_statement_${shortCodeFromUrl(st.url)}_${slug(st.topic)}` === key);
+            return hit?.url;
+        }
         // FIRST MATCH IN STORED ORDER, deliberately not the newest.
         // `creditedCollaborators` collects evidenceUrls in exactly this order
         // and the question was built from evidenceUrls[0], so this returns the
         // post the question actually came from. Sorting by recency instead sent
         // a question about "those first two tracks" to a post from years later
         // — a real link to the wrong moment, which is worse than no link.
-        const match = credits.find(c => !c.isSelf && unicodeSlug(c.subject) === person[1]);
+        const match = credits.find(c => !c.isSelf && unicodeSlug(c.subject) === person![1]);
         return match?.url;
     } catch (e) {
         console.error("[sourceUrlForQuestionKey] Could not resolve:", e);

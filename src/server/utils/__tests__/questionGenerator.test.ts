@@ -339,15 +339,36 @@ describe('generateGroundedQuestions', () => {
         const resolve = async () => (await import('@/server/utils/questionGenerator')).sourceUrlForQuestionKey;
 
         it.each([
-            ['social_statement_CdIyI8fAB1b_meaning_of_ioi', 'https://www.instagram.com/p/CdIyI8fAB1b/'],
+            // Real shortcodes from this database. 29 of 267 contain an
+            // underscore and 26 contain a dash.
             ['social_standout_DYKorIdloLG', 'https://www.instagram.com/p/DYKorIdloLG/'],
             ['social_same_post_B-M1HpNgeEO', 'https://www.instagram.com/p/B-M1HpNgeEO/'],
+            ['social_standout_Czb_V_lxFMA', 'https://www.instagram.com/p/Czb_V_lxFMA/'],
+            ['social_same_post_C_jaGxfuXrD', 'https://www.instagram.com/p/C_jaGxfuXrD/'],
         ])('rebuilds %s from the key alone, with no query', async (key, expected) => {
             // A resumed question is rebuilt from the stored key and text, so
             // the panel had no post to link to — and I said that needed a new
             // column. Pete: "don't we have links to all the posts in our
             // database?" The key carries the shortcode.
             expect(await (await resolve())('a1', key)).toBe(expected);
+        });
+
+        it('resolves a STATEMENT key by rebuilding it, because a shortcode can contain underscores', async () => {
+            // `social_statement_<shortcode>_<topic>` — both halves can contain
+            // "_", so no regex can split it. A non-greedy match turned the real
+            // shortcode "Czb_V_lxFMA" into "Czb" and would have sent the artist
+            // to instagram.com/p/Czb/. 29 of 267 shortcodes here are that shape.
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: [],
+                    statements: [
+                        { quote: 'q', topic: 'meaning of IOI', url: 'https://www.instagram.com/p/Czb_V_lxFMA/', postedAt: null },
+                    ],
+                })),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', 'social_statement_Czb_V_lxFMA_meaning_of_ioi'))
+                .toBe('https://www.instagram.com/p/Czb_V_lxFMA/');
         });
 
         it('looks a person-keyed question up in the credits, in the order the question was built from', async () => {
