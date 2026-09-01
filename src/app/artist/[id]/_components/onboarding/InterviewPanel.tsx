@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { ExternalLink, Loader2, X } from "lucide-react";
 import {
     answerInterviewQuestion,
     finishInterview,
@@ -136,6 +136,27 @@ export default function InterviewPanel({
                             {index + 1} of {questions.length}
                         </p>
                         <p className="text-sm font-medium text-black dark:text-white">{current.question}</p>
+                        {/* THE POST IT CAME FROM.
+                          *
+                          * These questions are about things the artist wrote,
+                          * sometimes years ago — "your cousin André handed you
+                          * 112's Part III and Dr. Dre's 2001" is precise and
+                          * still may not be placeable from memory. Pete, on his
+                          * own interview: "I may not remember at that moment."
+                          *
+                          * Only shown when there is one: the static bank has no
+                          * post behind it, and neither does a resumed question. */}
+                        {current.sourceUrl && (
+                            <a
+                                href={current.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 underline underline-offset-2 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            >
+                                <ExternalLink size={11} />
+                                See the post this came from
+                            </a>
+                        )}
                         <textarea
                             value={answer}
                             onChange={e => setAnswer(e.target.value)}

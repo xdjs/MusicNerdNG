@@ -8,7 +8,7 @@ import {
     recordInterviewOffered,
     upsertInterviewAnswer,
 } from "@/server/utils/queries/onboardingQueries";
-import { generateGroundedQuestions } from "@/server/utils/questionGenerator";
+import { generateGroundedQuestions, sourceUrlForQuestionKey } from "@/server/utils/questionGenerator";
 import { ONBOARDING_QUESTIONS } from "@/server/utils/onboarding/questions";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
@@ -39,7 +39,26 @@ const QUESTION_COUNT = 3;
  *  submission would break both for that artist until somebody noticed. */
 const MAX_ANSWER_CHARS = 2_000;
 
-export type InterviewQuestion = { key: string; question: string };
+export type InterviewQuestion = {
+    key: string;
+    question: string;
+    /**
+     * The post the question was written from, when there is one.
+     *
+     * The generator has always produced these and this type dropped them. An
+     * artist reading "your cousin André handed you 112's Part III and Dr. Dre's
+     * 2001" may not remember which post that was, and a question you cannot
+     * place is a question you cannot answer — Pete, on his own interview: "I
+     * may not remember at that moment."
+     *
+     * Absent only for the static bank, which has no post behind it. A RESUMED
+     * question recovers its post from the stored key — see
+     * `sourceUrlForQuestionKey`. I had said that needed a new column; it does
+     * not, because the key already carries the shortcode or the credits table
+     * has the post.
+     */
+    sourceUrl?: string;
+};
 
 export type InterviewInvite =
     | { show: false }
@@ -112,7 +131,21 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // hoping the same keys come back leaves an outstanding question orphaned
         // whenever the model picks differently — and an orphaned open row keeps
         // every later invite unscoped and labelled a first interview, forever.
-        const resumed: InterviewQuestion[] = stillOpen.map(r => ({ key: r.questionKey, question: r.question }));
+        // The post is recovered from the stored key — see
+        // `sourceUrlForQuestionKey`. A resumed question used to arrive without
+        // one, and I had put that down to needing a new column; the key
+        // already carries the shortcode, or the credits table has the post.
+        // EACH LINK FAILS ALONE. A rejection inside Promise.all rejects the
+        // whole thing, and this sits inside the outer catch that returns
+        // { show: false } — so a hiccup resolving a link would have cost the
+        // artist the entire interview rather than one underline.
+        const resumed: InterviewQuestion[] = await Promise.all(
+            stillOpen.map(async r => ({
+                key: r.questionKey,
+                question: r.question,
+                sourceUrl: await sourceUrlForQuestionKey(artistId, r.questionKey).catch(() => undefined),
+            })),
+        );
         const generated = resumed.length >= QUESTION_COUNT
             ? []
             : await pickQuestions(artistId, since, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
@@ -181,7 +214,10 @@ async function pickQuestions(
     const picked: InterviewQuestion[] = grounded
         .filter(q => !answeredKeys.has(q.key))
         .slice(0, QUESTION_COUNT)
-        .map(q => ({ key: q.key, question: q.question }));
+        // Optional chain: the type says sourceUrls is always there, and a
+        // question that arrives without one must still be askable rather than
+        // throwing and costing the artist the whole interview.
+        .map(q => ({ key: q.key, question: q.question, sourceUrl: q.sourceUrls?.[0] }));
 
     // A RELEASE WITH NO POSTS BEHIND IT STILL DESERVES A QUESTION. Releases
     // trigger the invite, but the generator reads captions — so an artist who

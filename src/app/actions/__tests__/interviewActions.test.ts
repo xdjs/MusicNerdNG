@@ -26,8 +26,15 @@ jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     upsertInterviewAnswer: (...a) => upsertInterviewAnswer(...a),
     recordInterviewOffered: (...a) => recordInterviewOffered(...a),
 }));
+// Both exports. Mocking only `generateGroundedQuestions` left
+// `sourceUrlForQuestionKey` undefined, and calling it threw inside
+// getInterviewInvite's try — which returns { show: false }, so every resume
+// test failed with "questions is undefined" rather than anything about links.
+const sourceUrlForQuestionKey = jest.fn(async (_artistId, key) =>
+    key.startsWith('social_') ? `https://www.instagram.com/p/${key}/` : undefined);
 jest.mock('@/server/utils/questionGenerator', () => ({
     generateGroundedQuestions: (...a) => generateGroundedQuestions(...a),
+    sourceUrlForQuestionKey: (...a) => sourceUrlForQuestionKey(...a),
 }));
 jest.mock('@/server/utils/socialIngest', () => ({
     getSocialPostsForArtist: (...a) => getSocialPostsForArtist(...a),
@@ -71,13 +78,23 @@ describe('getInterviewInvite', () => {
 
     it('offers a first interview when nothing has ever been answered', async () => {
         getInterviewAnswers.mockResolvedValue([]);
-        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_1', question: 'Who mixed it?' }]);
+        generateGroundedQuestions.mockResolvedValue([{
+            key: 'social_credit_1', question: 'Who mixed it?',
+            sourceUrls: ['https://www.instagram.com/p/ABC/'],
+        }]);
         const out = await invite();
         expect(out.show).toBe(true);
         expect(out.reason).toBe('first');
         // Grounded first, then the static bank fills the sitting out to three.
         expect(out.questions).toHaveLength(3);
         expect(out.questions[0].question).toBe('Who mixed it?');
+        // THE POST TRAVELS WITH THE QUESTION. The generator always produced
+        // sourceUrls and this type dropped them, so the panel had no way to
+        // show the artist where a question came from. Pete, reading his own:
+        // "I may not remember at that moment."
+        expect(out.questions[0].sourceUrl).toBe('https://www.instagram.com/p/ABC/');
+        // The static bank has no post behind it, and must not pretend to.
+        expect(out.questions[1].sourceUrl).toBeUndefined();
     });
 
     it('stays quiet when they have answered and nothing has happened since', async () => {
@@ -289,6 +306,11 @@ describe('getInterviewInvite', () => {
         generateGroundedQuestions.mockResolvedValue([{ key: 'something_else', question: 'a different one' }]);
 
         const out = await invite();
-        expect(out.questions[0]).toEqual({ key: 'social_theme_7', question: 'the one still open' });
+        expect(out.questions[0]).toEqual({
+            key: 'social_theme_7',
+            question: 'the one still open',
+            // A resumed question carries its post too, recovered from the key.
+            sourceUrl: 'https://www.instagram.com/p/social_theme_7/',
+        });
     });
 });

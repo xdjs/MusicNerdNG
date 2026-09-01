@@ -83,8 +83,18 @@ const MAX_DRAFTS = 6;
  */
 const GENERATION_TIMEOUT_MS = 30_000;
 const TOP_COLLABORATORS = 3;
-const TOP_THEMES = 3;
-const TOP_STANDOUTS = 2;
+/** ONE, not three. Pete Rango's top recurring caption words are "music" (6
+ *  posts), "artists" (5), "artist creative" (3) — a musician using the word
+ *  "music" is the job, not a signal, and the instruction already tells the
+ *  model to drop "a common word that just happens to repeat". Three of about
+ *  twenty-five candidate slots went on material we had told it to reject.
+ *  One rather than zero: the extraction is fine, the MATERIAL is thin, and
+ *  that is worth revisiting rather than deleting. */
+const TOP_THEMES = 1;
+/** Raised with a slot the themes gave back. These are the strongest
+ *  single-post signals — on Pete's feed the Colombia earthquake page (7.6x his
+ *  usual plays) and losing his cousin André (3.1x likes) — and they got two. */
+const TOP_STANDOUTS = 3;
 const TOP_MUSIC = 3;
 /** Credits are the strongest material we have — a named person, a stated role,
  *  in the artist's own words — so more of them are offered than of any counted
@@ -96,6 +106,11 @@ const TOP_CREDITS = 4;
  *  the first four in database order, forever. Widened so the model has a real
  *  choice to make. */
 const TOP_STATEMENTS = 10;
+
+/** No caption owns the window. One of Pete's produced twelve separate
+ *  "statements" — the same reflection re-topiced — and would have taken the
+ *  whole slice on its own. */
+const MAX_STATEMENTS_PER_POST = 2;
 
 // Short-lived in-process cache for generateGroundedQuestions, keyed by
 // artistId (+ requested `max`, see below). Onboarding chat turns are
@@ -207,6 +222,67 @@ function shortCodeFromUrl(url: string): string {
  *  crowds out everything else. */
 const TOP_PARTNERSHIPS = 3;
 const TOP_SAME_POST = 3;
+
+/**
+ * Which of an artist's statements are worth asking about, and in what order.
+ *
+ * This was `statements.slice(0, 4)` — no ranking, no dedup, whatever order
+ * Postgres returned. Pete Rango has 268 statements and the same four were
+ * offered on every run forever, which is exactly what he saw: "it just seems
+ * like I'm getting the same questions every time."
+ *
+ * TWO PROBLEMS, and dedup is the bigger one. Those 268 come from 115 posts —
+ * 2.33 per caption — and 88 repeat a quote already stored. One caption produced
+ * TWELVE: "discovery of web3 and its impact", "...and its impact on art",
+ * "...and its impact on creative process" — one sentence sliced three ways.
+ * Any window spends its slots on the same caption rephrased.
+ *
+ * THE ORDER, measured against four candidates on Pete's real feed and chosen by
+ * him: statements that NAME SOMEBODY or say something SUBSTANTIAL first, newest
+ * breaking the tie. Naming a person is what turns "his philosophy on self" into
+ * "why he chose SuperCollector" or "running a Hammond XB-2" — a decision only
+ * the artist can explain. Length is a weak proxy for having actually said
+ * something, so it ranks below naming and is bucketed rather than compared
+ * outright: three long captions must not crowd out three interesting ones.
+ *
+ * Recency alone was rejected on the evidence — it clusters, and on this feed it
+ * returned four near-identical statements about the same recent bereavement.
+ */
+export function rankStatements(statements: ArtistStatement[]): ArtistStatement[] {
+    const seenQuote: string[] = [];
+    const perPost = new Map<string, number>();
+    const deduped: ArtistStatement[] = [];
+    /** One of these is a re-cut of the other when either starts with the other.
+     *  A fixed-length prefix key is not enough: the extractor's copies differ
+     *  by where it stopped, so "...changed how I think about art" and
+     *  "...changed how I think about art entirely" hash differently and both
+     *  survive. The floor stops two genuinely different short statements
+     *  collapsing because they open the same way. */
+    const isRecutOf = (a: string, b: string): boolean =>
+        Math.min(a.length, b.length) >= 40 && (a.startsWith(b) || b.startsWith(a));
+    for (const s of statements) {
+        const key = (s.quote ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!key || seenQuote.some(k => k === key || isRecutOf(k, key))) continue;
+        // AND A CEILING PER CAPTION. Deduping quotes alone still let one post
+        // contribute a dozen genuinely different sentences and crowd out 114
+        // other posts.
+        const used = perPost.get(s.url) ?? 0;
+        if (used >= MAX_STATEMENTS_PER_POST) continue;
+        seenQuote.push(key);
+        perPost.set(s.url, used + 1);
+        deduped.push(s);
+    }
+
+    const namesSomebody = (s: ArtistStatement): boolean => /@[A-Za-z0-9._]{3,}/.test(s.quote ?? "");
+    const substance = (s: ArtistStatement): number => {
+        const n = (s.quote ?? "").length;
+        return n > 300 ? 2 : n > 120 ? 1 : 0;
+    };
+    const score = (s: ArtistStatement): number => (namesSomebody(s) ? 3 : 0) + substance(s);
+    return [...deduped].sort((a, b) =>
+        score(b) - score(a)
+        || String(b.postedAt ?? "").localeCompare(String(a.postedAt ?? "")));
+}
 
 /**
  * Relationships, joined here rather than guessed by the model.
@@ -373,7 +449,7 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // Things the artist said about their own work. The material IS the quote,
     // so a question built from it can respond to what they actually wrote
     // rather than to a word that appeared often.
-    for (const s of extraction.statements.slice(0, TOP_STATEMENTS)) {
+    for (const s of rankStatements(extraction.statements).slice(0, TOP_STATEMENTS)) {
         candidates.push({
             signalId: `statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`,
             kind: "statement",
@@ -467,7 +543,15 @@ Rules:
 - You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced.
 - ONLY the ones that clear the bar. One excellent question is a better outcome than three even ones, and returning fewer is correct rather than a failure. Padding to reach a count is the failure. Look hard for distinct collisions before settling — different pairs, different corners of their work, never three versions of the same question.
 - BANNED, because they are what an interviewer who did not do the reading says: "what's the story behind", "what was that like", "what motivated you", "how did that come about", "tell me about", "can you talk about", "what inspired you", "walk me through", "what has that experience been like".
-- DO NOT RECAP THEIR POST BACK TO THEM. They know what they posted. At most one short clause of context — roughly a dozen words — then the question. If you are quoting more than about ten words you are stalling.
+- DO NOT RECAP THEIR POST BACK TO THEM. They know what they posted. At most one short clause of context — roughly a dozen words — then the question. If you are quoting more than about ten words you are stalling. Written as a rule this gets ignored, so here it is as rewrites of real output:
+    NO  "You wrote that your cousin André introduced you to 112's 'Part III' and Dr. Dre's '2001', which shifted your perspective on how to create music and brought samplers and computers into your process; what was the first thing you made after that?"
+    YES "Your cousin André handed you 112's 'Part III' and Dr. Dre's '2001' — what's the first thing you made after?"
+    NO  "You mentioned being a co-owner of Subvert feels like building the music ecosystem artists need; what does an artist actually get there that they didn't have before?"
+    YES "You co-own Subvert — what does an artist get there they couldn't get anywhere else?"
+    NO  "You described @zavodskyalan as one of your main production partners for years, going back to your first two tracks together; what do you remember about making those first two?"
+    YES "@zavodskyalan has been your production partner for years — what do you remember about the first two tracks?"
+
+  CUT THE INTERPRETATION, KEEP THE SPECIFICS. What goes is the part telling the artist what their own words meant — "which shifted your perspective", "which brought samplers into your process". What STAYS is every name, title, date and detail, because that is what lets them place the moment. "Those two albums" is not shorter, it is vaguer: they posted hundreds of times and may not remember which two you mean. Shortening is not the goal — being answerable is, and a question they cannot place is a question they cannot answer.
 - Ask something ANSWERABLE and specific: a decision, a moment, a disagreement, a cost, a person. "Who pushed back on that?" beats "what was that process like". You may risk a hypothesis they can confirm or reject — being slightly wrong is better than being vacuous — but phrase it as a question about a possible connection, never as an assertion that the connection exists.
 - If authoredBy is "artist", you may quote their own words.
 - If authoredBy is "@handle" (NOT the artist), you must NEVER say or imply that ${artistName} wrote, said, or posted that caption/material — it belongs to the other account. Frame the question around the relationship instead.
@@ -805,6 +889,47 @@ async function keepOnlySupported(
         }
     }
     return drafted.filter((_, i) => byIndex.get(i) === true).map(strip);
+}
+
+/**
+ * The post a stored question came from, recovered from its key.
+ *
+ * A RESUMED question is rebuilt from the `questionKey` and text on its row, so
+ * the panel had no post to link to and I claimed that needed a new column.
+ * Pete: "don't we have links to all the posts in our database? why is that not
+ * possible?" It is — the key already carries it, or the credits table does.
+ *
+ * TWO ROUTES, cheapest first:
+ *  - `statement`, `standout` and `same_post` keys embed the Instagram
+ *    shortcode, so the url rebuilds with no query at all.
+ *  - `partnership`, `credit`, `collaborator` and `music` are keyed on a person
+ *    or a track rather than a post. Those are looked up in the stored credits
+ *    by re-deriving the same slug from each subject — the same function that
+ *    built the key, so the two cannot drift.
+ *
+ * Returns undefined rather than guessing. A missing link is a small loss; a
+ * link to the wrong post is the artist reading somebody else's caption.
+ */
+export async function sourceUrlForQuestionKey(artistId: string, key: string): Promise<string | undefined> {
+    const embedded = key.match(/^social_(?:statement|standout|same_post)_([A-Za-z0-9_-]+?)(?:_|$)/);
+    if (embedded?.[1]) return `https://www.instagram.com/p/${embedded[1]}/`;
+
+    const person = key.match(/^social_(?:partnership|credit|collaborator)_(.+)$/);
+    if (!person?.[1]) return undefined;
+    try {
+        const { credits } = await getSocialCredits(artistId);
+        // FIRST MATCH IN STORED ORDER, deliberately not the newest.
+        // `creditedCollaborators` collects evidenceUrls in exactly this order
+        // and the question was built from evidenceUrls[0], so this returns the
+        // post the question actually came from. Sorting by recency instead sent
+        // a question about "those first two tracks" to a post from years later
+        // — a real link to the wrong moment, which is worse than no link.
+        const match = credits.find(c => !c.isSelf && unicodeSlug(c.subject) === person[1]);
+        return match?.url;
+    } catch (e) {
+        console.error("[sourceUrlForQuestionKey] Could not resolve:", e);
+        return undefined;
+    }
 }
 
 export async function generateGroundedQuestions(

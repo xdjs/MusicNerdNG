@@ -278,6 +278,109 @@ describe('generateGroundedQuestions', () => {
             });
     });
 
+    describe('rankStatements — 268 of them, and the same four forever', () => {
+        const st = (over) => ({ quote: 'a statement about something', topic: 't', url: 'https://p/1', postedAt: '2026-01-01', ...over });
+        const rank = async () => (await import('@/server/utils/questionGenerator')).rankStatements;
+
+        it('drops a statement whose quote repeats one already kept', async () => {
+            // 88 of Pete Rango's 268 repeat a quote already stored — the
+            // extractor re-topics one sentence several ways ("discovery of web3
+            // and its impact" / "...and its impact on art"). Keyed on the
+            // OPENING, because the copies differ only in where they were cut.
+            const out = await (await rank())([
+                st({ quote: 'I discovered web3 and it changed how I think about art entirely', topic: 'a' }),
+                st({ quote: 'I discovered web3 and it changed how I think about art', topic: 'b', url: 'https://p/2' }),
+            ]);
+            expect(out).toHaveLength(1);
+        });
+
+        it('lets no single caption own the window', async () => {
+            // One of his posts produced TWELVE statements and would have taken
+            // the whole slice on its own, crowding out 114 other posts.
+            const many = Array.from({ length: 12 }, (_, i) =>
+                st({ quote: `distinct sentence number ${i} about the record`, topic: `t${i}` }));
+            expect(await (await rank())(many)).toHaveLength(2);
+        });
+
+        it('puts a statement that names somebody ahead of one that does not', async () => {
+            // Naming a person is what turns "his philosophy on self" into "why
+            // he chose SuperCollector" — a decision only the artist can explain.
+            const out = await (await rank())([
+                st({ quote: 'some thoughts about music in general', topic: 'vague', url: 'https://p/1' }),
+                st({ quote: 'I cut this with @zavodskyalan in one night', topic: 'named', url: 'https://p/2' }),
+            ]);
+            expect(out[0].topic).toBe('named');
+        });
+
+        it('prefers a substantial statement over a throwaway, and newest breaks a tie', async () => {
+            const long = 'x'.repeat(400);
+            const out = await (await rank())([
+                st({ quote: 'short one', topic: 'short', url: 'https://p/1', postedAt: '2020-01-01' }),
+                st({ quote: long, topic: 'long', url: 'https://p/2', postedAt: '2019-01-01' }),
+                st({ quote: 'also short', topic: 'newer-short', url: 'https://p/3', postedAt: '2026-01-01' }),
+            ]);
+            expect(out[0].topic).toBe('long');
+            expect(out[1].topic).toBe('newer-short');   // tie on score, newest first
+        });
+
+        it('does not rank by recency alone, which clusters on one event', async () => {
+            // Recency was one of the four candidates measured on Pete's feed and
+            // was rejected on the evidence: it returned four near-identical
+            // statements about the same recent bereavement.
+            const out = await (await rank())([
+                st({ quote: 'recent thought one', topic: 'recentA', url: 'https://p/1', postedAt: '2026-05-10' }),
+                st({ quote: 'older but I made this with @someone specific', topic: 'named-old', url: 'https://p/2', postedAt: '2020-01-01' }),
+            ]);
+            expect(out[0].topic).toBe('named-old');
+        });
+    });
+
+    describe('sourceUrlForQuestionKey — a resumed question keeps its post', () => {
+        const resolve = async () => (await import('@/server/utils/questionGenerator')).sourceUrlForQuestionKey;
+
+        it.each([
+            ['social_statement_CdIyI8fAB1b_meaning_of_ioi', 'https://www.instagram.com/p/CdIyI8fAB1b/'],
+            ['social_standout_DYKorIdloLG', 'https://www.instagram.com/p/DYKorIdloLG/'],
+            ['social_same_post_B-M1HpNgeEO', 'https://www.instagram.com/p/B-M1HpNgeEO/'],
+        ])('rebuilds %s from the key alone, with no query', async (key, expected) => {
+            // A resumed question is rebuilt from the stored key and text, so
+            // the panel had no post to link to — and I said that needed a new
+            // column. Pete: "don't we have links to all the posts in our
+            // database?" The key carries the shortcode.
+            expect(await (await resolve())('a1', key)).toBe(expected);
+        });
+
+        it('looks a person-keyed question up in the credits, in the order the question was built from', async () => {
+            // partnership/credit/collaborator are keyed on a person, not a
+            // post. `creditedCollaborators` collects evidenceUrls in stored
+            // order and the question uses evidenceUrls[0] — so this must take
+            // the FIRST match, not the newest. Sorting by recency sent a
+            // question about "those first two tracks" to a post years later.
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [
+                        { subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'production partner',
+                          quote: 'the first two tracks', url: 'https://www.instagram.com/p/FIRST/', postedAt: '2020-03-26' },
+                        { subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'Prod by',
+                          quote: 'later one', url: 'https://www.instagram.com/p/LATER/', postedAt: '2021-03-26' },
+                    ],
+                })),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', 'social_credit_zavodskyalan'))
+                .toBe('https://www.instagram.com/p/FIRST/');
+        });
+
+        it('returns nothing rather than guessing for a key with no post behind it', async () => {
+            // A link to the wrong post is the artist reading somebody else's
+            // caption — worse than no link.
+            const r = await resolve();
+            expect(await r('a1', 'describe_your_sound')).toBeUndefined();
+            expect(await r('a1', 'social_theme_hashtag_housemusic')).toBeUndefined();
+        });
+    });
+
     describe('rotation — never offer a question the artist has already answered', () => {
         it('removes excluded keys from the candidate POOL, not just from the result', async () => {
             // Filtering after generation is too late: the model has already
