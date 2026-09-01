@@ -363,9 +363,9 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
             kind: "credit",
             key: `social_credit_${id}`,
             authoredBy: "artist",
-            material: `${artistName} wrote these about ${subject}, each in a DIFFERENT caption and each true only of the post it came from:\n`
+            material: `${artistName} wrote these about ${subject}. Each line below is ONE caption:\n`
                 + quotes.map(q => `  "${q}"`).join("\n")
-                + `\nRead what the sentences actually say — they may contradict what the phrasing suggests. Do not combine them into one description of ${subject}, and do not present something from one post as what they generally do.`,
+                + `\nAnything inside a single line was written together and belongs together. Facts from DIFFERENT lines do not: they are separate posts about separate occasions, so do not merge them into one description of ${subject}, and do not present something from one post as what they generally do. Read what the sentences actually say — they may contradict what the phrasing suggests.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -701,7 +701,15 @@ Mark a question UNSUPPORTED if any factual claim in it is not in the source. Be 
 
 A question that merely ASKS about a possible connection between two things in the source is supported — "do you see these as connected?" asserts nothing. A question that ASSERTS the connection is not.
 
-Return STRICT JSON ONLY: [{ "i": number, "ok": boolean, "problem": string }]. "i" is the question's index as given. "problem" is one short phrase naming the unsupported claim, or "" when ok. No markdown.`;
+MOST QUESTIONS ARE SUPPORTED, and saying so is the normal answer. These were written FROM the source you are reading, so the usual case is that every claim in one is sitting in the text in front of you. Rejecting a supported question is not a safe default: it costs the artist a question about their actual life and replaces it with a generic one, which is a worse outcome than the question you were worried about.
+
+Only the ASSERTIONS are yours to check. The part after the semicolon is usually the question itself — asking someone what they learned, or what was hard, or who pushed back, asserts nothing and cannot be unsupported. Judge what the question CLAIMS, not what it asks.
+
+SHOW YOUR WORKING, because it is what keeps you honest:
+- ok true: "support" is the sentence from the source, copied exactly, that states the question's main claim. If you can copy such a sentence, the question IS supported and you must mark it so.
+- ok false: "problem" names the claim that is NOT in the source, and "support" is "". Do not restate a claim that IS in the source and call it a problem — if the words are there, it is supported.
+
+Return STRICT JSON ONLY: [{ "i": number, "ok": boolean, "problem": string, "support": string }]. "i" is the question's index as given. No markdown.`;
 
 /**
  * Drop any question that says something its source does not.
@@ -754,7 +762,15 @@ async function keepOnlySupported(
                     systemInstruction: VERIFIER_INSTRUCTION,
                     temperature: 0,
                     responseMimeType: "application/json",
-                    thinkingConfig: { thinkingBudget: 0 },
+                    // Thinking was OFF here, on a task that is entirely
+                    // judgement: read a caption, decide whether a sentence
+                    // states a claim. It rejected "you put together a bilingual
+                    // page to help after the earthquake" against a caption
+                    // reading "I put together a simple bilingual page with
+                    // vetted charities" — and named the supported claim as the
+                    // problem, which is what answering without reading looks
+                    // like. Small budget, because VERIFIER_TIMEOUT_MS is 12s.
+                    thinkingConfig: { thinkingBudget: 512 },
                 },
             }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("verifier timeout")), VERIFIER_TIMEOUT_MS)),
@@ -765,7 +781,7 @@ async function keepOnlySupported(
         return [];
     }
 
-    let verdicts: { i?: unknown; ok?: unknown; problem?: unknown }[];
+    let verdicts: { i?: unknown; ok?: unknown; problem?: unknown; support?: unknown }[];
     try {
         const parsed: unknown = JSON.parse(stripJsonFences(text));
         if (!Array.isArray(parsed)) throw new Error("not an array");
@@ -782,6 +798,9 @@ async function keepOnlySupported(
         if (typeof v?.i !== "number" || !Number.isInteger(v.i)) continue;
         byIndex.set(v.i, v.ok === true);
         if (v.ok !== true) {
+            // The problem text is worth logging in full now that the checker
+            // explains itself — "the albums introduced samplers, André handed
+            // him the albums" is a reviewable judgement; "unsupported" was not.
             console.log(`[questionGenerator] dropped a question: ${String(v.problem ?? "unsupported")}`);
         }
     }

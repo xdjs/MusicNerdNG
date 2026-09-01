@@ -867,8 +867,13 @@ describe('generateGroundedQuestions', () => {
             const sent = promptFrom(generateContent);
             const credit = JSON.parse(sent.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1])
                 .find(x => x.kind === "credit");
-            expect(credit.material).toMatch(/DIFFERENT caption/);
-            expect(credit.material).toMatch(/Do not combine them/);
+            // "Each line is ONE caption" — the wording matters. Saying only
+            // that the quotes come from DIFFERENT captions made the verifier
+            // refuse to combine two facts that sat in the SAME sentence, and it
+            // rejected a supported question for it.
+            expect(credit.material).toMatch(/Each line below is ONE caption/);
+            expect(credit.material).toMatch(/inside a single line .* belongs together/);
+            expect(credit.material).toMatch(/DIFFERENT lines do not/);
             expect(credit.material).not.toMatch(/\d+ post\(s\)/);
             // THE SENTENCE, not the label. A label without its sentence loses
             // the only thing that gives it meaning: "added some 808s" reads as
