@@ -95,7 +95,12 @@ describe('getInterviewInvite', () => {
         expect(out.show).toBe(true);
         expect(out.reason).toBe('new-material');
         // Scoped to what is new, so the questions are about it.
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: '2026-08-01T00:00:00Z' });
+        // `excludeKeys` is what stops a returning artist being asked the same
+        // things again: the answered keys leave the candidate POOL rather than
+        // being filtered out of the result after the model has already spent
+        // its picks on them.
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, since: '2026-08-01T00:00:00Z', excludeKeys: expect.any(Set) }));
     });
 
     it('comes back when a record has appeared', async () => {
@@ -158,7 +163,8 @@ describe('getInterviewInvite', () => {
         const out = await invite();
         expect(out.show).toBe(true);
         // Unscoped, because this is still the first sitting rather than a return.
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: null });
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, since: null, excludeKeys: expect.any(Set) }));
     });
 
     it('asks about a record even when nothing was posted about it', async () => {
@@ -215,7 +221,8 @@ describe('getInterviewInvite', () => {
 
         const out = await invite();
         expect(out.show).toBe(true);
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: null });
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, since: null, excludeKeys: expect.any(Set) }));
     });
 
     it('does not treat an open offer as an answer', async () => {

@@ -278,6 +278,67 @@ describe('generateGroundedQuestions', () => {
             });
     });
 
+    describe('rotation — never offer a question the artist has already answered', () => {
+        it('removes excluded keys from the candidate POOL, not just from the result', async () => {
+            // Filtering after generation is too late: the model has already
+            // spent its picks writing questions that get thrown away, and the
+            // static bank fills the gap. Pete, testing repeatedly: "it just
+            // seems like I'm getting the same questions every time."
+            let offered = [];
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    offered = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    return { text: '[]' };
+                }),
+            });
+
+            const all = await generateGroundedQuestions('a1', { max: 3 });
+            const everySignal = [...offered];
+            expect(everySignal.length).toBeGreaterThan(1);
+            void all;
+
+            // Ask again, excluding one of the keys the pool would have offered.
+            const { generateGroundedQuestions: again } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) return { text: '[]' };
+                    offered = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    return { text: '[]' };
+                }),
+            });
+            // signalId and key line up for every kind EXCEPT collaborator,
+            // where "collab_x" becomes "social_collaborator_x" — so pick one
+            // whose mapping is predictable rather than hand-deriving it wrong.
+            const dropped = everySignal.find(x => !String(x.signalId).startsWith('collab_')).signalId;
+            await again('a1', { max: 3, excludeKeys: [`social_${dropped}`] });
+            expect(offered.some(x => x.signalId === dropped)).toBe(false);
+            expect(offered.length).toBe(everySignal.length - 1);   // exactly one gone
+        });
+
+        it('keys the cache on the exclusion set, so a second ask is not served the first answer', async () => {
+            // Two calls that exclude different things are not the same call.
+            // Sharing a cache entry would hand back a question the artist has
+            // just answered.
+            const calls = [];
+            const impl = jest.fn(async (req) => {
+                const sys = String(req?.config?.systemInstruction ?? "");
+                if (!sys.startsWith("You are fact-checking")) calls.push(1);
+                return { text: '[]' };
+            });
+            const { generateGroundedQuestions } = await setup({ generateContentImpl: impl });
+            await generateGroundedQuestions('a1', { max: 3, excludeKeys: ['social_theme_a'] });
+            await generateGroundedQuestions('a1', { max: 3, excludeKeys: ['social_theme_b'] });
+            expect(calls.length).toBe(2);
+        });
+    });
+
     describe('sounding like a person rather than an essay', () => {
         it.each([
             "what does that look like in practice for artists using the platform?",

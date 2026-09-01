@@ -1167,7 +1167,10 @@ describe('runOnboardingTurn', () => {
             total: 3,
             sourceUrls: ['https://www.instagram.com/p/ABC123/'],
         });
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3 });
+        // excludeKeys carries what the artist has already answered, so a
+        // resumed interview asks about something new.
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, excludeKeys: expect.any(Array) }));
     });
 
     it('interview step falls back to the static bank when generation returns []', async () => {

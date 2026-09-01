@@ -90,7 +90,12 @@ const TOP_MUSIC = 3;
  *  in the artist's own words — so more of them are offered than of any counted
  *  signal. */
 const TOP_CREDITS = 4;
-const TOP_STATEMENTS = 4;
+/** Statements are the artist's own words about their own life, and they are the
+ *  most numerous signal by far — Pete Rango has 268. Four was the narrowest
+ *  window of any kind here, and unlike every other kind it was not even ranked:
+ *  the first four in database order, forever. Widened so the model has a real
+ *  choice to make. */
+const TOP_STATEMENTS = 10;
 
 // Short-lived in-process cache for generateGroundedQuestions, keyed by
 // artistId (+ requested `max`, see below). Onboarding chat turns are
@@ -785,12 +790,30 @@ async function keepOnlySupported(
 
 export async function generateGroundedQuestions(
     artistId: string,
-    opts?: { max?: number; since?: string | null },
+    opts?: {
+        max?: number;
+        since?: string | null;
+        /**
+         * Question keys this artist has already been asked. Dropped from the
+         * candidate pool BEFORE the model sees it.
+         *
+         * The callers already filtered these out of the RESULT, which is too
+         * late: the model had spent its picks writing questions that were then
+         * thrown away, and the artist got the static bank instead. Removing
+         * them from the pool is also what makes a second interview about
+         * something new rather than a re-run of the first.
+         */
+        excludeKeys?: Iterable<string>;
+    },
 ): Promise<GroundedQuestion[]> {
     const max = Math.max(0, opts?.max ?? DEFAULT_MAX_QUESTIONS);
     if (!artistId || max === 0) return [];
 
-    const cacheKey = `${artistId}::${max}::${opts?.since ?? ""}`;
+    const exclude = new Set(opts?.excludeKeys ?? []);
+    // The exclusion set is part of the identity of the request: two calls that
+    // exclude different questions are not the same call, and sharing a cache
+    // entry between them would hand back questions the artist has answered.
+    const cacheKey = `${artistId}::${max}::${opts?.since ?? ""}::${[...exclude].sort().join(",")}`;
     const now = Date.now();
     const cached = groundedQuestionsCache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
@@ -838,7 +861,8 @@ export async function generateGroundedQuestions(
             credits: newer(stored.credits),
             statements: newer(stored.statements),
         };
-        const candidates = buildCandidates(signals, artistName, extraction);
+        const candidates = buildCandidates(signals, artistName, extraction)
+            .filter(c => !exclude.has(c.key));
         if (candidates.length === 0) return [];
 
         // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there
@@ -872,13 +896,21 @@ export async function generateGroundedQuestions(
                 contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${draftTarget} of the most interesting, distinct signals and write one question each, BEST FIRST. Fewer than ${draftTarget} is fine — even zero — if the rest don't clear the bar.`,
                 config: {
                     systemInstruction: QUESTION_SYSTEM_INSTRUCTION(artistName),
-                    // Low, not zero: enough room for natural phrasing, but low
-                    // enough that WHICH signals get selected stays stable
-                    // across repeated calls in the same onboarding (the
-                    // interview step regenerates on every question — see
-                    // turnHandlers.ts — so signal-selection churn between
-                    // calls would read as the interviewer changing its mind).
-                    temperature: 0.2,
+                    // This was 0.2, to keep WHICH signals get chosen stable
+                    // across the repeated calls an interview makes — churn
+                    // between calls would read as the interviewer changing its
+                    // mind mid-conversation.
+                    //
+                    // That stability is bought elsewhere now, twice over: the
+                    // questions actually put to an artist are PERSISTED when
+                    // they are offered and resumed from those rows, and there
+                    // is a TTL cache in front of this call. So 0.2 was no
+                    // longer preventing churn, only flattening the writing —
+                    // and with the candidate pool as narrow as it was, it
+                    // guaranteed the same handful of questions forever.
+                    // Pete: "that's so low and uncreative... we can't kill
+                    // creativity."
+                    temperature: 0.8,
                     responseMimeType: "application/json",
                 },
             }),

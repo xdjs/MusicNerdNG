@@ -172,7 +172,11 @@ async function pickQuestions(
     since: string | null,
     answeredKeys: Set<string>,
 ): Promise<InterviewQuestion[]> {
-    const grounded = await generateGroundedQuestions(artistId, { max: QUESTION_COUNT, since })
+    // `excludeKeys`, not just the filter below. Passing them in removes them
+    // from the candidate POOL, so the model spends its picks on things the
+    // artist has not been asked yet — filtering afterwards threw away work
+    // already done and left the static bank to fill the gap.
+    const grounded = await generateGroundedQuestions(artistId, { max: QUESTION_COUNT, since, excludeKeys: answeredKeys })
         .catch(() => []);
     const picked: InterviewQuestion[] = grounded
         .filter(q => !answeredKeys.has(q.key))

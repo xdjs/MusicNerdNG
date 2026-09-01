@@ -277,7 +277,19 @@ async function buildInterviewQuestions(artistId: string): Promise<InterviewQuest
             // which is how this shipped broken to a real artist.
             console.warn(`[onboarding] no social posts for ${artistId} — interview falls back to static questions`);
         }
-        grounded = await generateGroundedQuestions(artistId, { max: INTERVIEW_QUESTION_CAP });
+        // Already-answered questions come out of the POOL, so a resumed
+        // interview asks about something else rather than spending the model's
+        // picks on questions that are then filtered away.
+        // `getInterviewAnswers` returns null when the read FAILED, which is
+        // deliberately distinct from "no answers". Nothing is excluded in that
+        // case — we do not know what was asked, and a repeated question is a
+        // smaller harm than suppressing every question we might ask.
+        const answered = await getInterviewAnswers(artistId).catch(() => null);
+        const alreadyAsked = (answered ?? []).map(a => a.questionKey);
+        grounded = await generateGroundedQuestions(artistId, {
+            max: INTERVIEW_QUESTION_CAP,
+            excludeKeys: alreadyAsked,
+        });
         if (havePosts && grounded.length === 0) {
             console.warn(`[onboarding] posts exist for ${artistId} but no grounded questions cleared the bar`);
         }
