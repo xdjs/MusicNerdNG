@@ -1167,10 +1167,13 @@ describe('runOnboardingTurn', () => {
             total: 3,
             sourceUrls: ['https://www.instagram.com/p/ABC123/'],
         });
-        // excludeKeys carries what the artist has already answered, so a
-        // resumed interview asks about something new.
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
-            expect.objectContaining({ max: 3, excludeKeys: expect.any(Array) }));
+        // NO excludeKeys on this path, and the exact call shape matters: the
+        // exclusion set is part of the cache key, and this runs on every chat
+        // turn. Passing it would make turns 2 and 3 of one sitting miss the
+        // cache and re-pick their questions at temperature 0.8 — the
+        // interviewer changing its mind mid-conversation. Rotation belongs to
+        // getInterviewInvite, which knows about sittings.
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3 });
     });
 
     it('interview step falls back to the static bank when generation returns []', async () => {

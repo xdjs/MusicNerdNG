@@ -277,19 +277,24 @@ async function buildInterviewQuestions(artistId: string): Promise<InterviewQuest
             // which is how this shipped broken to a real artist.
             console.warn(`[onboarding] no social posts for ${artistId} — interview falls back to static questions`);
         }
-        // Already-answered questions come out of the POOL, so a resumed
-        // interview asks about something else rather than spending the model's
-        // picks on questions that are then filtered away.
-        // `getInterviewAnswers` returns null when the read FAILED, which is
-        // deliberately distinct from "no answers". Nothing is excluded in that
-        // case — we do not know what was asked, and a repeated question is a
-        // smaller harm than suppressing every question we might ask.
-        const answered = await getInterviewAnswers(artistId).catch(() => null);
-        const alreadyAsked = (answered ?? []).map(a => a.questionKey);
-        grounded = await generateGroundedQuestions(artistId, {
-            max: INTERVIEW_QUESTION_CAP,
-            excludeKeys: alreadyAsked,
-        });
+        // NO `excludeKeys` HERE, deliberately.
+        //
+        // This runs on EVERY turn of the onboarding chat, and the exclusion set
+        // is part of the cache key. Passing the artist's answers would grow it
+        // by one per answer, so turns 2 and 3 of one sitting would each miss
+        // the cache and pay a fresh generation plus verifier — the repetition
+        // `groundedQuestionsCache` exists to prevent — and at temperature 0.8
+        // they could pick different signals than turn 1, so the interviewer
+        // would appear to change its mind mid-conversation. That is what
+        // temperature 0.2 used to guard against, and the argument for raising
+        // it was that the cache sits in front of this call. Passing exclusions
+        // here would have removed the cache and kept the argument.
+        //
+        // Rotation belongs to the RETURN visit, not the sitting in progress,
+        // and `getInterviewInvite` handles that properly: it separates
+        // questions already dealt with from ones still open, and excludes only
+        // the former.
+        grounded = await generateGroundedQuestions(artistId, { max: INTERVIEW_QUESTION_CAP });
         if (havePosts && grounded.length === 0) {
             console.warn(`[onboarding] posts exist for ${artistId} but no grounded questions cleared the bar`);
         }

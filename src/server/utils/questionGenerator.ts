@@ -902,10 +902,16 @@ async function keepOnlySupported(
  * TWO ROUTES, cheapest first:
  *  - `statement`, `standout` and `same_post` keys embed the Instagram
  *    shortcode, so the url rebuilds with no query at all.
- *  - `partnership`, `credit`, `collaborator` and `music` are keyed on a person
- *    or a track rather than a post. Those are looked up in the stored credits
- *    by re-deriving the same slug from each subject — the same function that
- *    built the key, so the two cannot drift.
+ *  - `partnership` and `credit` are keyed on a person, and are found in the
+ *    stored credits by re-deriving the same slug from each subject.
+ *  - `collaborator` and `music` are keyed on a person or a track but come from
+ *    the POSTS, via `deriveSocialSignals` — a different source entirely from
+ *    the caption-parsed credits, so they need their own lookup.
+ *  - `statement` embeds a shortcode AND a topic, both of which can contain
+ *    underscores, so it is rebuilt and compared rather than parsed.
+ *
+ *  Every branch rebuilds the key with the function that BUILT it, so the two
+ *  cannot drift apart.
  *
  * Returns undefined rather than guessing. A missing link is a small loss; a
  * link to the wrong post is the artist reading somebody else's caption.
@@ -927,9 +933,30 @@ export async function sourceUrlForQuestionKey(artistId: string, key: string): Pr
     // comparing — the same discipline as the person lookup below, and it
     // cannot drift from the format because it uses the format.
     const statement = key.startsWith("social_statement_");
-    const person = key.match(/^social_(?:partnership|credit|collaborator)_(.+)$/);
-    if (!statement && !person?.[1]) return undefined;
+    const person = key.match(/^social_(?:partnership|credit)_(.+)$/);
+    // COLLABORATOR AND MUSIC COME FROM THE POSTS, NOT THE CAPTIONS. Both are
+    // built off `deriveSocialSignals`, so looking them up in the caption-parsed
+    // credits table could never match — the docstring claimed it did, and a
+    // resumed question of either kind silently lost the link this whole change
+    // exists to add. `music` was not even in the pattern. Found in review.
+    const fromPosts = /^social_(?:collaborator|music)_/.test(key);
+    if (!statement && !person?.[1] && !fromPosts) return undefined;
     try {
+        if (fromPosts) {
+            const artist = await getArtistById(artistId);
+            if (!artist) return undefined;
+            const posts = await getSocialPostsForArtist(artistId);
+            const signals = deriveSocialSignals(posts, artist.instagram ?? "", artist.name ?? "");
+            // Rebuild-and-compare, the same discipline the statement branch
+            // uses: a two-part key like `music_<title>_<artist>` cannot be
+            // split by pattern any more than a shortcode could.
+            const collab = signals.collaborators.find(c => `social_collaborator_${slug(c.handle)}` === key);
+            if (collab) return collab.evidenceUrls[0];
+            const track = signals.musicReferences.find(
+                m => `social_music_${slug(m.title)}_${slug(m.artist)}` === key);
+            return track?.evidenceUrls[0];
+        }
+
         const { credits, statements } = await getSocialCredits(artistId);
         if (statement) {
             const hit = statements.find(

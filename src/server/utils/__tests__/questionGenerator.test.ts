@@ -393,6 +393,35 @@ describe('generateGroundedQuestions', () => {
                 .toBe('https://www.instagram.com/p/FIRST/');
         });
 
+        it.each([
+            ['social_collaborator_dameatlas', 'https://www.instagram.com/p/COLLAB/'],
+            ['social_music_rush_pete_rango', 'https://www.instagram.com/p/TRACK/'],
+        ])('resolves %s from the POSTS, which is where those signals come from', async (key, expected) => {
+            // These are keyed on a person or a track but are built from
+            // `deriveSocialSignals`, not from the caption-parsed credits — so
+            // the credits lookup could never match them, and `music` was not
+            // even in the pattern. A resumed question of either kind silently
+            // lost the link this whole change adds. Found in review.
+            // deriveSocialSignals needs the artist's own handle to tell their
+            // posts from a collaborator's.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => [
+                    { platform: 'instagram', platformPostId: '1', ownerUsername: 'dameatlas', isOwnPost: false,
+                      caption: 'with pete', url: 'https://www.instagram.com/p/COLLAB/', postedAt: '2026-01-01',
+                      likeCount: 10, commentCount: 1, playCount: 10, hashtags: [], mentions: ['p3t3rango'],
+                      coauthors: [], musicTitle: null, musicArtist: null },
+                    { platform: 'instagram', platformPostId: '2', ownerUsername: 'p3t3rango', isOwnPost: true,
+                      caption: 'out now', url: 'https://www.instagram.com/p/TRACK/', postedAt: '2026-01-02',
+                      likeCount: 10, commentCount: 1, playCount: 10, hashtags: [], mentions: [],
+                      coauthors: [], musicTitle: 'rush', musicArtist: 'Pete Rango' },
+                ]),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', key)).toBe(expected);
+        });
+
         it('returns nothing rather than guessing for a key with no post behind it', async () => {
             // A link to the wrong post is the artist reading somebody else's
             // caption — worse than no link.
