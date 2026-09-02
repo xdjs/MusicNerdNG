@@ -518,6 +518,42 @@ describe('generateGroundedQuestions', () => {
             expect(getPosts).not.toHaveBeenCalled();
         });
 
+        it('scopes BOTH branches by `since`, so a new-material sitting cannot link to an older post', async () => {
+            // The credits branch was scoped and the signals branch was not,
+            // while the docstring claimed both. Only the caller's own habits
+            // kept it from firing. The review flagged that no test covered
+            // `since` on this path at all, which is why it went unnoticed
+            // through two rounds.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => [
+                    { platform: 'instagram', platformPostId: 'old', ownerUsername: 'dameatlas', isOwnPost: false,
+                      caption: 'ancient', url: 'https://www.instagram.com/p/OLD/', postedAt: '2019-01-01',
+                      likeCount: 5, commentCount: 1, playCount: 5, hashtags: [], mentions: ['p3t3rango'],
+                      coauthors: [], musicTitle: null, musicArtist: null },
+                ]),
+            }));
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [{ subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'Prod by',
+                                quote: 'q', url: 'https://www.instagram.com/p/OLDCRED/', postedAt: '2019-01-01' }],
+                })),
+            }));
+            const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
+            const out = await sourceUrlsForQuestionKeys(
+                'a1',
+                ['social_collaborator_dameatlas', 'social_credit_zavodskyalan'],
+                { since: '2026-01-01T00:00:00Z' },
+            );
+            // Everything behind these keys predates `since`, so neither
+            // resolves — a missing link, never a link to a post the model
+            // could not have seen.
+            expect(out.get('social_collaborator_dameatlas')).toBeUndefined();
+            expect(out.get('social_credit_zavodskyalan')).toBeUndefined();
+        });
+
         it('returns nothing rather than guessing for a key with no post behind it', async () => {
             // A link to the wrong post is the artist reading somebody else's
             // caption — worse than no link.
