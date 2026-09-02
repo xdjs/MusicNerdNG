@@ -1031,7 +1031,14 @@ export async function sourceUrlsForQuestionKeys(
             ? (async () => {
                 const artist = await getArtistById(artistId);
                 if (!artist) return null;
-                const posts = await getSocialPostsForArtist(artistId);
+                // SCOPED BEFORE DERIVING, exactly as the generation path does.
+                // This read full history while the docstring claimed both
+                // branches were scoped — the credits half was, this half was
+                // not. Self-limiting in practice (signals are built
+                // most-recent-first, so an older post rarely displaces the
+                // evidence actually used) but "true by accident" is not the
+                // claim the comment was making.
+                const posts = newerThan(await getSocialPostsForArtist(artistId), opts?.since ?? null);
                 return deriveSocialSignals(posts, artist.instagram ?? "", artist.name ?? "");
             })().catch(e => {
                 console.error("[sourceUrlsForQuestionKeys] Could not derive post signals:", e);
@@ -1140,15 +1147,10 @@ export async function generateGroundedQuestions(
         // Pete Rango: a pandemic reflection surfaced in a window that started
         // six years after it.
         const stored = await getSocialCredits(artistId);
-        const newer = <T extends { postedAt?: string | null }>(rows: T[]): T[] =>
-            Number.isNaN(since) ? rows : rows.filter(r => {
-                const at = Date.parse(r.postedAt ?? "");
-                return !Number.isNaN(at) && at > since;
-            });
         const extraction = {
             ...stored,
-            credits: newer(stored.credits),
-            statements: newer(stored.statements),
+            credits: newerThan(stored.credits, opts?.since ?? null),
+            statements: newerThan(stored.statements, opts?.since ?? null),
         };
         const candidates = buildCandidates(signals, artistName, extraction, exclude);
         if (candidates.length === 0) return [];
