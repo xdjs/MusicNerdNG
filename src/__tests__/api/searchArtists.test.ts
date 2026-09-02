@@ -137,4 +137,27 @@ describe('searchArtists API route', () => {
     const body = await response.json();
     expect(body.results[0].imageUrl).toBe('https://cdn.deezer.com/1.jpg');
   });
+
+  it('does not fetch a platform image it would only discard', async () => {
+    const { POST, mockSearchDB, mockSearchExternal, mockGetImages } = await setup();
+
+    mockSearchDB.mockResolvedValue([
+      { id: '1', name: 'Epsilon One', spotify: 's1', deezer: 'd1', customImage: 'https://xyz.supabase.co/storage/own.png' },
+      { id: '2', name: 'Epsilon Two', spotify: 's2', deezer: 'd2', customImage: null },
+    ]);
+    mockSearchExternal.mockResolvedValue([]);
+    mockGetImages.mockResolvedValue(new Map([['2', 'https://cdn.deezer.com/2.jpg']]));
+
+    await POST(
+      createTestRequest('http://localhost/api/searchArtists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Epsilon' }),
+      })
+    );
+
+    // Only the artist without their own image should reach the platform call.
+    const fetchedFor = (mockGetImages.mock.calls[0][0] as Array<{ id: string }>).map((a) => a.id);
+    expect(fetchedFor).toEqual(['2']);
+  });
 });

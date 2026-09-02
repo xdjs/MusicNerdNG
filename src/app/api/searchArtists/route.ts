@@ -127,8 +127,12 @@ export async function POST(req: Request) {
           linkCount: 0,
         }));
 
-      // Fetch platform images for database artists
-      const dbArtistsTyped = (dbResults ?? []) as Artist[];
+      // Fetch platform images only for artists whose own image won't win —
+      // otherwise every claimed artist costs an outbound Deezer/Spotify call
+      // whose result is thrown away, against this route's 12s timeout.
+      const dbArtistsTyped = (dbResults ?? []).filter(
+        (artist) => !customImageUrl((artist as Artist).customImage)
+      ) as Artist[];
       let imageMap = new Map<string, string>();
       try {
         imageMap = await musicPlatformData.getArtistImages(dbArtistsTyped);

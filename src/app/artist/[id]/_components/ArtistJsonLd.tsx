@@ -1,4 +1,5 @@
 import { Artist } from "@/server/db/DbTypes";
+import { absoluteImageUrl } from "@/lib/artistImage";
 import { getArtistLinks } from "@/server/utils/queries/artistQueries";
 import { isRealBio } from "@/lib/bioConstants";
 
@@ -55,7 +56,7 @@ export default async function ArtistJsonLd({
         // profile page look like one entity.
         mainEntityOfPage: pageUrl,
     };
-    if (imageUrl) data.image = imageUrl.startsWith("http") ? imageUrl : `https://www.musicnerd.xyz${imageUrl}`;
+    if (imageUrl) data.image = absoluteImageUrl(imageUrl);
     // isRealBio rejects the placeholder text the page shows before a bio has
     // been written. Publishing that as a description would tell a crawler the
     // artist is "a musician on Music Nerd", forever.
