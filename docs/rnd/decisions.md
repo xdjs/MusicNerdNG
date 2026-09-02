@@ -8,6 +8,23 @@ file.
 
 ---
 
+## 2026-09-02 · standup
+
+**Product**
+
+- Artist profiles and user profiles stay **separate notions** for now. SoundCloud merges the two;
+  we're not doing that initially. — Carl, Pete
+- A **latest-activity section** on the artist profile, surfacing the answers artists give to
+  interview questions. These become the "nuggets" MNTv draws on, shown next to the artist's social
+  updates with a call to action back to the source post. Agreed work, next up. — Carl
+
+**How we work**
+
+- **Releases:** reviewer green light → Pete tells Carl → Carl merges `staging` to `main`. Squash,
+  per the `default` ruleset, which allows only squash and rebase and has no bypass actors.
+- **Agents must write tests for each new feature.** Raised by Carl after a week where staging
+  caught failures the local suite had missed. — Carl
+
 ## 2026-08-20 · [meeting notes](meetings/2026-08-20.md)
 
 **Onboarding** — [reasoning](meetings/2026-08-20.md#decisions)

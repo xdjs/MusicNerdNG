@@ -1,6 +1,6 @@
 # Pre-push checklist
 
-Four checks, written down after a run of PRs where the automated reviewer found
+Five checks, written down after a run of PRs where the automated reviewer found
 thirteen real defects across three rounds — most of them mine from the round
 before, and two of them the *same* mistake reappearing inside its own fix.
 
@@ -96,3 +96,22 @@ sites without churning a single stored key.
 - **A comment that overclaims is a defect.** Several of these were caught by
   reading a docstring against its own code, and several were *caused* by
   writing the docstring first and trusting it afterwards.
+
+---
+
+## 5. Verify the end state, not the statements
+
+**The failure:** counting what SQL *says* instead of reading what it *does*, twice in one
+production release.
+
+- I grepped `grant|policy|enable row level` as one bucket and reported migration `0011` as
+  carrying "14 GRANT statements." It carries eleven policies and **zero** grants. An RLS policy
+  without a table privilege behind it permits nothing — the exact shape of the 2026-07-27 prod
+  incident — so the claim that the migrations were self-sufficient was both wrong and reassuring.
+- Then I built the end-state verifier from every `CREATE INDEX` across all eleven migrations,
+  without asking which a later migration drops. It reported 11 failures against a correctly
+  migrated production database, because `0019` deliberately replaces `0017`'s indexes.
+
+Both were caught by real output disagreeing with the claim. Neither would have been caught by a
+test. Before asserting a schema is in some state, replay the statements in order and describe the
+state they leave behind — a `CREATE` is not evidence the object still exists.

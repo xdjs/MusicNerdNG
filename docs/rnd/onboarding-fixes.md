@@ -415,7 +415,7 @@ including the Shockoe Sessions interview that was the best source found for Phar
 certainly by default rather than by decision, since the vault card is keep-by-default. That is
 the clearest evidence yet for the position taken in 2.6.*
 
-### 2.12 Stale facts stated in the present tense `code done, migration pending`
+### 2.12 Stale facts stated in the present tense `done`
 Pete, 8/21, on his own About: *"it's not good to assume that Parris Pierce is my production
 partner — that interview was years ago and we don't work together anymore."*
 
@@ -507,6 +507,22 @@ Judging those on URL + title would catch all three. The counter-case is real and
 `readdork.com/artists/black-dave-mk2` is Black Dave's own artist profile and also 403s — a
 URL/title judge keeps it, but a careless one could drop a real source we simply could not read,
 and a wrong drop is unrecoverable. Not built; decide deliberately.
+
+### 2.14 An artist's own profile picture was invisible everywhere but their page `done`
+
+A claimed artist could already change their picture — the upload route, `artists.custom_image` and
+the artist page all handled it. Search never looked at the column, so the change they made showed
+up nowhere anyone would see it. `searchArtists` and `recentEdited` now prefer it over the platform
+image, and skip the Deezer/Spotify image fetch entirely for artists whose own image wins.
+
+Found alongside: the share-preview URL was built as `https://www.musicnerd.xyz${custom_image}`,
+but `custom_image` holds an absolute Supabase Storage URL, so every artist with their own picture
+had a broken social preview. `absoluteImageUrl` handles both shapes rather than assuming.
+
+The trap worth remembering: `searchForArtistByName` is raw SQL through `db.execute`, so Postgres
+column names come back verbatim and the `<Artist>` generic is an unchecked assertion. A bare
+`custom_image` would have arrived as `row.custom_image`, leaving `row.customImage` undefined with
+types passing and every route test green. Aliased, with a test asserting on the built SQL. (#1196)
 
 ### 2.3 The questions are shallow by construction `todo`
 Pete, 8/21, on *"You often use the word 'single' in your captions..."*: **"so shallow and has no
