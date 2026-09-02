@@ -1,4 +1,5 @@
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
+import { absoluteImageUrl, customImageUrl } from "@/lib/artistImage";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import ArtistLinksGrid from "@/app/_components/ArtistLinksGrid";
 import BookmarkButton from "@/app/_components/BookmarkButton";
@@ -54,8 +55,9 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
     }
 
     const platformData = await musicPlatformData.getArtist(artist);
-    const imageUrl = artist.customImage
-        ? `https://www.musicnerd.xyz${artist.customImage}`
+    const ownImage = customImageUrl(artist.customImage);
+    const imageUrl = ownImage
+        ? absoluteImageUrl(ownImage)
         : platformData?.imageUrl || "https://www.musicnerd.xyz/default_pfp_pink.png";
     const artistName = artist.name ?? "Unknown Artist";
 
@@ -151,7 +153,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
 
     const pendingSources = canEdit ? pendingSourcesRaw : [];
 
-    const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
+    const imageUrl = customImageUrl(artist.customImage) || platformImage || "/default_pfp_pink.png";
 
     return (
         <>
