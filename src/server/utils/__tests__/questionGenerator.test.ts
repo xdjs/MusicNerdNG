@@ -338,19 +338,60 @@ describe('generateGroundedQuestions', () => {
     describe('sourceUrlForQuestionKey — a resumed question keeps its post', () => {
         const resolve = async () => (await import('@/server/utils/questionGenerator')).sourceUrlForQuestionKey;
 
+        /** `target` plus a run of ordinary posts, so it can actually stand out —
+         *  a standout is measured against the artist's own typical engagement,
+         *  and one post has no baseline to beat. */
+        const withPosts = (target) => {
+            const post = (url, i, plays) => ({
+                platform: 'instagram', platformPostId: `s${i}`, ownerUsername: 'p3t3rango', isOwnPost: true,
+                caption: 'a caption', url, postedAt: `2026-01-${String(i + 1).padStart(2, '0')}`,
+                likeCount: Math.round(plays / 10), commentCount: 1, playCount: plays,
+                hashtags: [], mentions: [], coauthors: [], musicTitle: null, musicArtist: null,
+            });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => [
+                    post(target, 0, 200_000),
+                    ...Array.from({ length: 8 }, (_, i) =>
+                        post(`https://www.instagram.com/p/ORD${i}/`, i + 1, 1_000)),
+                ]),
+            }));
+        };
+
         it.each([
-            // Real shortcodes from this database. 29 of 267 contain an
-            // underscore and 26 contain a dash.
-            ['social_standout_DYKorIdloLG', 'https://www.instagram.com/p/DYKorIdloLG/'],
-            ['social_same_post_B-M1HpNgeEO', 'https://www.instagram.com/p/B-M1HpNgeEO/'],
-            ['social_standout_Czb_V_lxFMA', 'https://www.instagram.com/p/Czb_V_lxFMA/'],
-            ['social_same_post_C_jaGxfuXrD', 'https://www.instagram.com/p/C_jaGxfuXrD/'],
-        ])('rebuilds %s from the key alone, with no query', async (key, expected) => {
-            // A resumed question is rebuilt from the stored key and text, so
-            // the panel had no post to link to — and I said that needed a new
-            // column. Pete: "don't we have links to all the posts in our
-            // database?" The key carries the shortcode.
-            expect(await (await resolve())('a1', key)).toBe(expected);
+            // Real shortcodes from this database — 29 of 267 contain an
+            // underscore, 26 contain a dash.
+            ['https://www.instagram.com/p/DYKorIdloLG/'],
+            ['https://www.instagram.com/p/B-M1HpNgeEO/'],
+            ['https://www.instagram.com/p/Czb_V_lxFMA/'],
+            ['https://www.instagram.com/p/C_jaGxfuXrD/'],
+        ])('resolves a standout key back to %s', async (url) => {
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            withPosts(url);
+            const { sourceUrlForQuestionKey, slugForTest } = await import('@/server/utils/questionGenerator');
+            void slugForTest;
+            const code = url.match(/\/p\/([^/]+)/)[1];
+            expect(await sourceUrlForQuestionKey('a1', `social_standout_${code}`)).toBe(url);
+        });
+
+        it('never invents a url for a post that is not /p/<code>/', async () => {
+            // The key is built by `shortCodeFromUrl`, which falls back to
+            // slugging the WHOLE url for anything that is not already
+            // /p/<code>/ — a Reel, for instance. Rebuilding
+            // `instagram.com/p/<tail>/` from that produced
+            // instagram.com/p/https_www_instagram_com_reel_abc/ and the panel
+            // would have offered the artist that as "see the post this came
+            // from". All 359 stored posts are /p/ today, so this was latent;
+            // assuming the input shape rather than checking it is the mistake.
+            const reel = 'https://www.instagram.com/reel/DYFjIRabjS/';
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            withPosts(reel);
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            const got = await sourceUrlForQuestionKey('a1', 'social_standout_https_www_instagram_com_reel_dyfjirabjs');
+            // Either the real reel url, or nothing — never a fabricated /p/ one.
+            expect(got === undefined || got === reel).toBe(true);
+            expect(got).not.toMatch(/\/p\/https/);
         });
 
         it('resolves a STATEMENT key by rebuilding it, because a shortcode can contain underscores', async () => {
@@ -457,12 +498,23 @@ describe('generateGroundedQuestions', () => {
             expect(getPosts).toHaveBeenCalledTimes(1);
         });
 
-        it('does not read the posts at all when no key needs them', async () => {
+        it('does not read the posts when only credit-backed keys were asked for', async () => {
+            // Each source is read only if some key actually needs it. (This
+            // used to assert a standout resolved with NO read at all, by
+            // rebuilding the url from the key — that shortcut is gone, because
+            // it fabricated urls for anything not already /p/<code>/.)
             const getPosts = jest.fn(async () => []);
             jest.doMock('@/server/utils/socialIngest', () => ({ getSocialPostsForArtist: getPosts }));
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [{ subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'Prod by',
+                                quote: 'q', url: 'https://www.instagram.com/p/CRED/', postedAt: '2026-01-01' }],
+                })),
+            }));
             const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
-            const out = await sourceUrlsForQuestionKeys('a1', ['social_standout_ABC']);
-            expect(out.get('social_standout_ABC')).toBe('https://www.instagram.com/p/ABC/');
+            const out = await sourceUrlsForQuestionKeys('a1', ['social_credit_zavodskyalan']);
+            expect(out.get('social_credit_zavodskyalan')).toBe('https://www.instagram.com/p/CRED/');
             expect(getPosts).not.toHaveBeenCalled();
         });
 
