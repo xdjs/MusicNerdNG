@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { customImageUrl } from "@/lib/artistImage";
 import { getServerAuthSession } from "@/server/auth";
 import { db } from "@/server/db/drizzle";
 import { ugcresearch, artists } from "@/server/db/schema";
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
         artistName: artists.name,
         spotifyId: artists.spotify,
       deezerId: artists.deezer,
+        customImage: artists.customImage,
       })
       .from(ugcresearch)
       .leftJoin(artists, eq(artists.id, ugcresearch.artistId))
@@ -52,8 +54,8 @@ export async function GET(request: NextRequest) {
     // Enrich with platform images
     const enriched = await Promise.all(
       Object.values(unique).map(async (row) => {
-        let imageUrl: string | null = null;
-        if (row.deezerId || row.spotifyId) {
+        let imageUrl: string | null = customImageUrl(row.customImage);
+        if (!imageUrl && (row.deezerId || row.spotifyId)) {
           try {
             const partialArtist = { deezer: row.deezerId, spotify: row.spotifyId } as Artist;
             imageUrl = await musicPlatformData.getArtistImage(partialArtist);

@@ -206,6 +206,7 @@ export async function searchForArtistByName(name: string) {
             SELECT
             id, name, spotify, deezer, bandcamp, youtube, youtubechannel,
             instagram, x, facebook, tiktok,
+            custom_image AS "customImage",
             CASE WHEN lcname LIKE '%' || ${normalisedQuery} || '%' THEN 0 ELSE 1 END AS match_type
             FROM artists
             WHERE

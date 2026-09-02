@@ -1,4 +1,5 @@
 import { searchForArtistByName } from "@/server/utils/queries/artistQueries";
+import { customImageUrl } from "@/lib/artistImage";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import type { Artist } from "@/server/db/DbTypes";
 
@@ -138,7 +139,7 @@ export async function POST(req: Request) {
       const dbArtistsWithImages = (dbResults ?? []).map((artist) => ({
         ...artist,
         isExternalOnly: false,
-        imageUrl: imageMap.get(artist.id) ?? null,
+        imageUrl: customImageUrl(artist.customImage) ?? imageMap.get(artist.id) ?? null,
         matchScore: getMatchScore(artist.name || "", query),
         linkCount: getLinkCount(artist),
       }));
