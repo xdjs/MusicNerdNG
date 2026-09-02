@@ -8,7 +8,7 @@ import {
     recordInterviewOffered,
     upsertInterviewAnswer,
 } from "@/server/utils/queries/onboardingQueries";
-import { generateGroundedQuestions } from "@/server/utils/questionGenerator";
+import { generateGroundedQuestions, sourceUrlsForQuestionKeys } from "@/server/utils/questionGenerator";
 import { ONBOARDING_QUESTIONS } from "@/server/utils/onboarding/questions";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
@@ -39,7 +39,26 @@ const QUESTION_COUNT = 3;
  *  submission would break both for that artist until somebody noticed. */
 const MAX_ANSWER_CHARS = 2_000;
 
-export type InterviewQuestion = { key: string; question: string };
+export type InterviewQuestion = {
+    key: string;
+    question: string;
+    /**
+     * The post the question was written from, when there is one.
+     *
+     * The generator has always produced these and this type dropped them. An
+     * artist reading "your cousin André handed you 112's Part III and Dr. Dre's
+     * 2001" may not remember which post that was, and a question you cannot
+     * place is a question you cannot answer — Pete, on his own interview: "I
+     * may not remember at that moment."
+     *
+     * Absent only for the static bank, which has no post behind it. A RESUMED
+     * question recovers its post from the stored key — see
+     * `sourceUrlForQuestionKey`. I had said that needed a new column; it does
+     * not, because the key already carries the shortcode or the credits table
+     * has the post.
+     */
+    sourceUrl?: string;
+};
 
 export type InterviewInvite =
     | { show: false }
@@ -112,7 +131,28 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // hoping the same keys come back leaves an outstanding question orphaned
         // whenever the model picks differently — and an orphaned open row keeps
         // every later invite unscoped and labelled a first interview, forever.
-        const resumed: InterviewQuestion[] = stillOpen.map(r => ({ key: r.questionKey, question: r.question }));
+        // The post is recovered from the stored key — see
+        // `sourceUrlForQuestionKey`. A resumed question used to arrive without
+        // one, and I had put that down to needing a new column; the key
+        // already carries the shortcode, or the credits table has the post.
+        // ONE RESOLVE FOR THE WHOLE SET. Doing it per question re-read the
+        // artist's entire post history each time — three open collaborator
+        // questions meant three full fetches plus three signal derivations, on
+        // a path that runs on every page load with an open sitting.
+        //
+        // Scoped with the same `since` the questions were generated under, so a
+        // "new material" sitting cannot link back to a pre-`since` post the
+        // model never saw. And it never throws: this sits inside the catch that
+        // returns { show: false }, so a failed lookup would have cost the
+        // artist the whole interview rather than one underline.
+        const links = await sourceUrlsForQuestionKeys(
+            artistId, stillOpen.map(r => r.questionKey), { since },
+        ).catch(() => new Map<string, string>());
+        const resumed: InterviewQuestion[] = stillOpen.map(r => ({
+            key: r.questionKey,
+            question: r.question,
+            sourceUrl: links.get(r.questionKey),
+        }));
         const generated = resumed.length >= QUESTION_COUNT
             ? []
             : await pickQuestions(artistId, since, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
@@ -172,12 +212,19 @@ async function pickQuestions(
     since: string | null,
     answeredKeys: Set<string>,
 ): Promise<InterviewQuestion[]> {
-    const grounded = await generateGroundedQuestions(artistId, { max: QUESTION_COUNT, since })
+    // `excludeKeys`, not just the filter below. Passing them in removes them
+    // from the candidate POOL, so the model spends its picks on things the
+    // artist has not been asked yet — filtering afterwards threw away work
+    // already done and left the static bank to fill the gap.
+    const grounded = await generateGroundedQuestions(artistId, { max: QUESTION_COUNT, since, excludeKeys: answeredKeys })
         .catch(() => []);
     const picked: InterviewQuestion[] = grounded
         .filter(q => !answeredKeys.has(q.key))
         .slice(0, QUESTION_COUNT)
-        .map(q => ({ key: q.key, question: q.question }));
+        // Optional chain: the type says sourceUrls is always there, and a
+        // question that arrives without one must still be askable rather than
+        // throwing and costing the artist the whole interview.
+        .map(q => ({ key: q.key, question: q.question, sourceUrl: q.sourceUrls?.[0] }));
 
     // A RELEASE WITH NO POSTS BEHIND IT STILL DESERVES A QUESTION. Releases
     // trigger the invite, but the generator reads captions — so an artist who

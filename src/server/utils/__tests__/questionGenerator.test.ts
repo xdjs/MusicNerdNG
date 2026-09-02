@@ -278,6 +278,403 @@ describe('generateGroundedQuestions', () => {
             });
     });
 
+    describe('rankStatements — 268 of them, and the same four forever', () => {
+        const st = (over) => ({ quote: 'a statement about something', topic: 't', url: 'https://p/1', postedAt: '2026-01-01', ...over });
+        const rank = async () => (await import('@/server/utils/questionGenerator')).rankStatements;
+
+        it('drops a statement whose quote repeats one already kept', async () => {
+            // 88 of Pete Rango's 268 repeat a quote already stored — the
+            // extractor re-topics one sentence several ways ("discovery of web3
+            // and its impact" / "...and its impact on art"). Keyed on the
+            // OPENING, because the copies differ only in where they were cut.
+            const out = await (await rank())([
+                st({ quote: 'I discovered web3 and it changed how I think about art entirely', topic: 'a' }),
+                st({ quote: 'I discovered web3 and it changed how I think about art', topic: 'b', url: 'https://p/2' }),
+            ]);
+            expect(out).toHaveLength(1);
+        });
+
+        it('lets no single caption own the window', async () => {
+            // One of his posts produced TWELVE statements and would have taken
+            // the whole slice on its own, crowding out 114 other posts.
+            const many = Array.from({ length: 12 }, (_, i) =>
+                st({ quote: `distinct sentence number ${i} about the record`, topic: `t${i}` }));
+            expect(await (await rank())(many)).toHaveLength(2);
+        });
+
+        it('puts a statement that names somebody ahead of one that does not', async () => {
+            // Naming a person is what turns "his philosophy on self" into "why
+            // he chose SuperCollector" — a decision only the artist can explain.
+            const out = await (await rank())([
+                st({ quote: 'some thoughts about music in general', topic: 'vague', url: 'https://p/1' }),
+                st({ quote: 'I cut this with @zavodskyalan in one night', topic: 'named', url: 'https://p/2' }),
+            ]);
+            expect(out[0].topic).toBe('named');
+        });
+
+        it('prefers a substantial statement over a throwaway, and newest breaks a tie', async () => {
+            const long = 'x'.repeat(400);
+            const out = await (await rank())([
+                st({ quote: 'short one', topic: 'short', url: 'https://p/1', postedAt: '2020-01-01' }),
+                st({ quote: long, topic: 'long', url: 'https://p/2', postedAt: '2019-01-01' }),
+                st({ quote: 'also short', topic: 'newer-short', url: 'https://p/3', postedAt: '2026-01-01' }),
+            ]);
+            expect(out[0].topic).toBe('long');
+            expect(out[1].topic).toBe('newer-short');   // tie on score, newest first
+        });
+
+        it('does not rank by recency alone, which clusters on one event', async () => {
+            // Recency was one of the four candidates measured on Pete's feed and
+            // was rejected on the evidence: it returned four near-identical
+            // statements about the same recent bereavement.
+            const out = await (await rank())([
+                st({ quote: 'recent thought one', topic: 'recentA', url: 'https://p/1', postedAt: '2026-05-10' }),
+                st({ quote: 'older but I made this with @someone specific', topic: 'named-old', url: 'https://p/2', postedAt: '2020-01-01' }),
+            ]);
+            expect(out[0].topic).toBe('named-old');
+        });
+    });
+
+    describe('sourceUrlForQuestionKey — a resumed question keeps its post', () => {
+        const resolve = async () => (await import('@/server/utils/questionGenerator')).sourceUrlForQuestionKey;
+
+        /** `target` plus a run of ordinary posts, so it can actually stand out —
+         *  a standout is measured against the artist's own typical engagement,
+         *  and one post has no baseline to beat. */
+        const withPosts = (target) => {
+            const post = (url, i, plays) => ({
+                platform: 'instagram', platformPostId: `s${i}`, ownerUsername: 'p3t3rango', isOwnPost: true,
+                caption: 'a caption', url, postedAt: `2026-01-${String(i + 1).padStart(2, '0')}`,
+                likeCount: Math.round(plays / 10), commentCount: 1, playCount: plays,
+                hashtags: [], mentions: [], coauthors: [], musicTitle: null, musicArtist: null,
+            });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => [
+                    post(target, 0, 200_000),
+                    ...Array.from({ length: 8 }, (_, i) =>
+                        post(`https://www.instagram.com/p/ORD${i}/`, i + 1, 1_000)),
+                ]),
+            }));
+        };
+
+        it.each([
+            // Real shortcodes from this database — 29 of 267 contain an
+            // underscore, 26 contain a dash.
+            ['https://www.instagram.com/p/DYKorIdloLG/'],
+            ['https://www.instagram.com/p/B-M1HpNgeEO/'],
+            ['https://www.instagram.com/p/Czb_V_lxFMA/'],
+            ['https://www.instagram.com/p/C_jaGxfuXrD/'],
+        ])('resolves a standout key back to %s', async (url) => {
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            withPosts(url);
+            const { sourceUrlForQuestionKey, slugForTest } = await import('@/server/utils/questionGenerator');
+            void slugForTest;
+            const code = url.match(/\/p\/([^/]+)/)[1];
+            expect(await sourceUrlForQuestionKey('a1', `social_standout_${code}`)).toBe(url);
+        });
+
+        it('never invents a url for a post that is not /p/<code>/', async () => {
+            // The key is built by `shortCodeFromUrl`, which falls back to
+            // slugging the WHOLE url for anything that is not already
+            // /p/<code>/ — a Reel, for instance. Rebuilding
+            // `instagram.com/p/<tail>/` from that produced
+            // instagram.com/p/https_www_instagram_com_reel_abc/ and the panel
+            // would have offered the artist that as "see the post this came
+            // from". All 359 stored posts are /p/ today, so this was latent;
+            // assuming the input shape rather than checking it is the mistake.
+            const reel = 'https://www.instagram.com/reel/DYFjIRabjS/';
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            withPosts(reel);
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            const got = await sourceUrlForQuestionKey('a1', 'social_standout_https_www_instagram_com_reel_dyfjirabjs');
+            // Either the real reel url, or nothing — never a fabricated /p/ one.
+            expect(got === undefined || got === reel).toBe(true);
+            expect(got).not.toMatch(/\/p\/https/);
+        });
+
+        it('resolves a STATEMENT key by rebuilding it, because a shortcode can contain underscores', async () => {
+            // `social_statement_<shortcode>_<topic>` — both halves can contain
+            // "_", so no regex can split it. A non-greedy match turned the real
+            // shortcode "Czb_V_lxFMA" into "Czb" and would have sent the artist
+            // to instagram.com/p/Czb/. 29 of 267 shortcodes here are that shape.
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: [],
+                    statements: [
+                        { quote: 'q', topic: 'meaning of IOI', url: 'https://www.instagram.com/p/Czb_V_lxFMA/', postedAt: null },
+                    ],
+                })),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', 'social_statement_Czb_V_lxFMA_meaning_of_ioi'))
+                .toBe('https://www.instagram.com/p/Czb_V_lxFMA/');
+        });
+
+        it('looks a person-keyed question up in the credits, in the order the question was built from', async () => {
+            // partnership/credit/collaborator are keyed on a person, not a
+            // post. `creditedCollaborators` collects evidenceUrls in stored
+            // order and the question uses evidenceUrls[0] — so this must take
+            // the FIRST match, not the newest. Sorting by recency sent a
+            // question about "those first two tracks" to a post years later.
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [
+                        { subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'production partner',
+                          quote: 'the first two tracks', url: 'https://www.instagram.com/p/FIRST/', postedAt: '2020-03-26' },
+                        { subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'Prod by',
+                          quote: 'later one', url: 'https://www.instagram.com/p/LATER/', postedAt: '2021-03-26' },
+                    ],
+                })),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', 'social_credit_zavodskyalan'))
+                .toBe('https://www.instagram.com/p/FIRST/');
+        });
+
+        it.each([
+            ['social_collaborator_dameatlas', 'https://www.instagram.com/p/COLLAB/'],
+            ['social_music_rush_pete_rango', 'https://www.instagram.com/p/TRACK/'],
+        ])('resolves %s from the POSTS, which is where those signals come from', async (key, expected) => {
+            // These are keyed on a person or a track but are built from
+            // `deriveSocialSignals`, not from the caption-parsed credits — so
+            // the credits lookup could never match them, and `music` was not
+            // even in the pattern. A resumed question of either kind silently
+            // lost the link this whole change adds. Found in review.
+            // deriveSocialSignals needs the artist's own handle to tell their
+            // posts from a collaborator's.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => [
+                    { platform: 'instagram', platformPostId: '1', ownerUsername: 'dameatlas', isOwnPost: false,
+                      caption: 'with pete', url: 'https://www.instagram.com/p/COLLAB/', postedAt: '2026-01-01',
+                      likeCount: 10, commentCount: 1, playCount: 10, hashtags: [], mentions: ['p3t3rango'],
+                      coauthors: [], musicTitle: null, musicArtist: null },
+                    { platform: 'instagram', platformPostId: '2', ownerUsername: 'p3t3rango', isOwnPost: true,
+                      caption: 'out now', url: 'https://www.instagram.com/p/TRACK/', postedAt: '2026-01-02',
+                      likeCount: 10, commentCount: 1, playCount: 10, hashtags: [], mentions: [],
+                      coauthors: [], musicTitle: 'rush', musicArtist: 'Pete Rango' },
+                ]),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', key)).toBe(expected);
+        });
+
+        it('resolves a theme key, which had no branch at all', async () => {
+            // `social_theme_<kind>_<term>` matched none of the branches, so a
+            // resumed theme question lost its link even though the signal
+            // carries evidence urls. Found in review.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => Array.from({ length: 3 }, (_, i) => ({
+                    platform: 'instagram', platformPostId: `h${i}`, ownerUsername: 'p3t3rango', isOwnPost: true,
+                    caption: 'in the studio', url: `https://www.instagram.com/p/THEME${i}/`, postedAt: `2026-0${i + 1}-01`,
+                    likeCount: 10, commentCount: 1, playCount: 10, hashtags: ['housemusic'], mentions: [],
+                    coauthors: [], musicTitle: null, musicArtist: null,
+                }))),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', 'social_theme_hashtag_housemusic'))
+                .toMatch(/instagram\.com\/p\/THEME/);
+        });
+
+        it('reads each source ONCE for a whole batch of keys', async () => {
+            // Resolving per question re-read the artist's entire post history
+            // each time — three open collaborator questions meant three full
+            // fetches plus three signal derivations, on a path that runs on
+            // every page load with an open sitting.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            const getPosts = jest.fn(async () => []);
+            jest.doMock('@/server/utils/socialIngest', () => ({ getSocialPostsForArtist: getPosts }));
+            const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
+            await sourceUrlsForQuestionKeys('a1', [
+                'social_collaborator_a', 'social_music_b_c', 'social_theme_hashtag_d',
+            ]);
+            expect(getPosts).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not read the posts when only credit-backed keys were asked for', async () => {
+            // Each source is read only if some key actually needs it. (This
+            // used to assert a standout resolved with NO read at all, by
+            // rebuilding the url from the key — that shortcut is gone, because
+            // it fabricated urls for anything not already /p/<code>/.)
+            const getPosts = jest.fn(async () => []);
+            jest.doMock('@/server/utils/socialIngest', () => ({ getSocialPostsForArtist: getPosts }));
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [{ subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'Prod by',
+                                quote: 'q', url: 'https://www.instagram.com/p/CRED/', postedAt: '2026-01-01' }],
+                })),
+            }));
+            const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
+            const out = await sourceUrlsForQuestionKeys('a1', ['social_credit_zavodskyalan']);
+            expect(out.get('social_credit_zavodskyalan')).toBe('https://www.instagram.com/p/CRED/');
+            expect(getPosts).not.toHaveBeenCalled();
+        });
+
+        it('scopes BOTH branches by `since`, so a new-material sitting cannot link to an older post', async () => {
+            // The credits branch was scoped and the signals branch was not,
+            // while the docstring claimed both. Only the caller's own habits
+            // kept it from firing. The review flagged that no test covered
+            // `since` on this path at all, which is why it went unnoticed
+            // through two rounds.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => [
+                    { platform: 'instagram', platformPostId: 'old', ownerUsername: 'dameatlas', isOwnPost: false,
+                      caption: 'ancient', url: 'https://www.instagram.com/p/OLD/', postedAt: '2019-01-01',
+                      likeCount: 5, commentCount: 1, playCount: 5, hashtags: [], mentions: ['p3t3rango'],
+                      coauthors: [], musicTitle: null, musicArtist: null },
+                ]),
+            }));
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    statements: [],
+                    credits: [{ subject: 'zavodskyalan', isHandle: true, isSelf: false, role: 'Prod by',
+                                quote: 'q', url: 'https://www.instagram.com/p/OLDCRED/', postedAt: '2019-01-01' }],
+                })),
+            }));
+            const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
+            const out = await sourceUrlsForQuestionKeys(
+                'a1',
+                ['social_collaborator_dameatlas', 'social_credit_zavodskyalan'],
+                { since: '2026-01-01T00:00:00Z' },
+            );
+            // Everything behind these keys predates `since`, so neither
+            // resolves — a missing link, never a link to a post the model
+            // could not have seen.
+            expect(out.get('social_collaborator_dameatlas')).toBeUndefined();
+            expect(out.get('social_credit_zavodskyalan')).toBeUndefined();
+        });
+
+        it('returns nothing rather than guessing for a key with no post behind it', async () => {
+            // A link to the wrong post is the artist reading somebody else's
+            // caption — worse than no link.
+            const r = await resolve();
+            expect(await r('a1', 'describe_your_sound')).toBeUndefined();
+            expect(await r('a1', 'social_theme_hashtag_housemusic')).toBeUndefined();
+        });
+    });
+
+    describe('exclusion reaches the pool, not just the finished list', () => {
+        it('offers the NEXT statement once the top ones have been asked', async () => {
+            // Each kind truncates to a small TOP_N, and the exclusion used to
+            // run on the finished candidate list — so once the top-ranked items
+            // of a kind were answered, the same top-N were recomputed and
+            // stripped to zero and that kind produced nothing ever again. With
+            // TOP_THEMES at 1, one answered theme question retired themes
+            // permanently. Found in review, and it is the same mistake the
+            // exclusion was written to fix, one layer down.
+            // More statements than TOP_STATEMENTS, so there is a next rank to
+            // come forward once the first ones are excluded.
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: [],
+                    statements: Array.from({ length: 16 }, (_, i) => ({
+                        quote: `a distinct thing I said number ${i} about the record and the room`,
+                        topic: `topic ${i}`,
+                        url: `https://www.instagram.com/p/S${i}/`,
+                        postedAt: `2026-01-${String(i + 1).padStart(2, '0')}`,
+                    })),
+                })),
+            }));
+            let offered = [];
+            const capture = jest.fn(async (req) => {
+                const sys = String(req?.config?.systemInstruction ?? "");
+                const contents = String(req?.contents ?? "");
+                if (sys.startsWith("You are fact-checking")) return { text: '[]' };
+                offered = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                return { text: '[]' };
+            });
+
+            const { generateGroundedQuestions } = await setup({ generateContentImpl: capture });
+            await generateGroundedQuestions('a1', { max: 3 });
+            const before = offered.filter(x => x.kind === 'statement').map(x => x.signalId);
+            expect(before.length).toBeGreaterThan(0);
+
+            // Exclude every statement it just offered. If exclusion happened
+            // after truncation there would be nothing left; reaching the pool
+            // means the next-ranked ones come forward.
+            const { generateGroundedQuestions: again } = await setup({ generateContentImpl: capture });
+            await again('a1', { max: 3, excludeKeys: before.map(id => `social_${id}`) });
+            const after = offered.filter(x => x.kind === 'statement').map(x => x.signalId);
+            expect(after.length).toBeGreaterThan(0);
+            expect(after.some(id => before.includes(id))).toBe(false);
+        });
+    });
+
+    describe('rotation — never offer a question the artist has already answered', () => {
+        it('removes excluded keys from the candidate POOL, not just from the result', async () => {
+            // Filtering after generation is too late: the model has already
+            // spent its picks writing questions that get thrown away, and the
+            // static bank fills the gap. Pete, testing repeatedly: "it just
+            // seems like I'm getting the same questions every time."
+            let offered = [];
+            const { generateGroundedQuestions } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) {
+                        const n = (contents.match(/--- QUESTION \d+ ---/g) ?? []).length;
+                        return { text: JSON.stringify(Array.from({ length: n }, (_, i) => ({ i, ok: true, problem: '' }))) };
+                    }
+                    offered = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    return { text: '[]' };
+                }),
+            });
+
+            const all = await generateGroundedQuestions('a1', { max: 3 });
+            const everySignal = [...offered];
+            expect(everySignal.length).toBeGreaterThan(1);
+            void all;
+
+            // Ask again, excluding one of the keys the pool would have offered.
+            const { generateGroundedQuestions: again } = await setup({
+                generateContentImpl: jest.fn(async (req) => {
+                    const sys = String(req?.config?.systemInstruction ?? "");
+                    const contents = String(req?.contents ?? "");
+                    if (sys.startsWith("You are fact-checking")) return { text: '[]' };
+                    offered = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                    return { text: '[]' };
+                }),
+            });
+            // signalId and key line up for every kind EXCEPT collaborator,
+            // where "collab_x" becomes "social_collaborator_x" — so pick one
+            // whose mapping is predictable rather than hand-deriving it wrong.
+            const dropped = everySignal.find(x => !String(x.signalId).startsWith('collab_')).signalId;
+            await again('a1', { max: 3, excludeKeys: [`social_${dropped}`] });
+            expect(offered.some(x => x.signalId === dropped)).toBe(false);
+            // NOT length - 1. Exclusion now happens against each kind's full
+            // pool before it is truncated, so dropping one lets the next-ranked
+            // candidate take its place. A shrinking pool was the symptom of
+            // filtering the finished list — see the pool test above.
+            expect(offered.length).toBeGreaterThanOrEqual(everySignal.length - 1);
+        });
+
+        it('keys the cache on the exclusion set, so a second ask is not served the first answer', async () => {
+            // Two calls that exclude different things are not the same call.
+            // Sharing a cache entry would hand back a question the artist has
+            // just answered.
+            const calls = [];
+            const impl = jest.fn(async (req) => {
+                const sys = String(req?.config?.systemInstruction ?? "");
+                if (!sys.startsWith("You are fact-checking")) calls.push(1);
+                return { text: '[]' };
+            });
+            const { generateGroundedQuestions } = await setup({ generateContentImpl: impl });
+            await generateGroundedQuestions('a1', { max: 3, excludeKeys: ['social_theme_a'] });
+            await generateGroundedQuestions('a1', { max: 3, excludeKeys: ['social_theme_b'] });
+            expect(calls.length).toBe(2);
+        });
+    });
+
     describe('sounding like a person rather than an essay', () => {
         it.each([
             "what does that look like in practice for artists using the platform?",
@@ -806,8 +1203,13 @@ describe('generateGroundedQuestions', () => {
             const sent = promptFrom(generateContent);
             const credit = JSON.parse(sent.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1])
                 .find(x => x.kind === "credit");
-            expect(credit.material).toMatch(/DIFFERENT caption/);
-            expect(credit.material).toMatch(/Do not combine them/);
+            // "Each line is ONE caption" — the wording matters. Saying only
+            // that the quotes come from DIFFERENT captions made the verifier
+            // refuse to combine two facts that sat in the SAME sentence, and it
+            // rejected a supported question for it.
+            expect(credit.material).toMatch(/Each line below is ONE caption/);
+            expect(credit.material).toMatch(/inside a single line .* belongs together/);
+            expect(credit.material).toMatch(/DIFFERENT lines do not/);
             expect(credit.material).not.toMatch(/\d+ post\(s\)/);
             // THE SENTENCE, not the label. A label without its sentence loses
             // the only thing that gives it meaning: "added some 808s" reads as

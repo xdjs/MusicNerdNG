@@ -153,3 +153,51 @@ describe('webSearch', () => {
         errorSpy.mockRestore();
     });
 });
+
+describe("failures are logged, never silent", () => {
+    // Every one of these returned [] and said nothing, which reads exactly like
+    // "the web has nothing about this artist". A rate limit, an expired key or
+    // a spent plan would have degraded onboarding to no sources and no About
+    // with no trace anywhere. Pete: "just log if Tavily ever fails."
+    const withKey = async () => {
+        jest.resetModules();
+        jest.doMock("@/env", () => ({ TAVILY_API_KEY: "tvly-test", WEB_SEARCH_PROVIDER: "tavily" }));
+        return (await import("../webSearch")).webSearch;
+    };
+    afterEach(() => { jest.dontMock("@/env"); jest.resetModules(); });
+
+    it("logs the status and Tavily's reason on an HTTP error", async () => {
+        const err = jest.spyOn(console, "error").mockImplementation(() => {});
+        try {
+            global.fetch = jest.fn(async () => ({
+                ok: false, status: 432, text: async () => '{"detail":"plan limit exceeded"}',
+            }));
+            const webSearch = await withKey();
+            await expect(webSearch("anything")).resolves.toEqual([]);
+            const logged = err.mock.calls.flat().join(" ");
+            expect(logged).toMatch(/432/);
+            expect(logged).toMatch(/plan limit exceeded/);
+        } finally { err.mockRestore(); }
+    });
+
+    it("logs when Tavily does not respond at all", async () => {
+        const err = jest.spyOn(console, "error").mockImplementation(() => {});
+        try {
+            global.fetch = jest.fn(async () => { throw new Error("network down"); });
+            const webSearch = await withKey();
+            await expect(webSearch("anything")).resolves.toEqual([]);
+            expect(err.mock.calls.flat().join(" ")).toMatch(/did not respond|network/i);
+        } finally { err.mockRestore(); }
+    });
+
+    it("warns loudly when there is no key, rather than looking like an empty web", async () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            jest.resetModules();
+            jest.doMock("@/env", () => ({ TAVILY_API_KEY: "", WEB_SEARCH_PROVIDER: "tavily" }));
+            const { webSearch } = await import("../webSearch");
+            await expect(webSearch("anything")).resolves.toEqual([]);
+            expect(warn.mock.calls.flat().join(" ")).toMatch(/No TAVILY_API_KEY/);
+        } finally { warn.mockRestore(); }
+    });
+});

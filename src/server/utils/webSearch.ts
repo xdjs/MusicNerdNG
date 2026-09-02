@@ -100,15 +100,34 @@ async function tavilySearch(query: string, opts: ResolvedWebSearchOptions): Prom
             max_results: opts.maxResults,
         }),
     });
-    if (!res || !res.ok) return [];
+    // EVERY FAILURE HERE WAS SILENT. Each of these returned [] and said
+    // nothing, which is indistinguishable from "the web has nothing about this
+    // artist" — so a rate limit, an expired key or a spent quota would degrade
+    // onboarding to no sources and no About with no trace anywhere. Tavily's
+    // plan limit is a real ceiling and this is how it will announce itself.
+    if (!res) {
+        console.error(`[webSearch] Tavily did not respond (timeout or network) for: ${query.slice(0, 80)}`);
+        return [];
+    }
+    if (!res.ok) {
+        // The body carries Tavily's reason — 401 bad key, 429 rate limit, 432
+        // plan exhausted. Worth having in the log rather than just the status.
+        const detail = await res.text().catch(() => "");
+        console.error(`[webSearch] Tavily HTTP ${res.status} for "${query.slice(0, 60)}": ${detail.slice(0, 200)}`);
+        return [];
+    }
 
     let body: TavilyResponseBody;
     try {
         body = await res.json();
-    } catch {
+    } catch (e) {
+        console.error(`[webSearch] Tavily returned unparseable JSON for "${query.slice(0, 60)}":`, e);
         return [];
     }
-    if (!Array.isArray(body?.results)) return [];
+    if (!Array.isArray(body?.results)) {
+        console.error(`[webSearch] Tavily response had no results array for "${query.slice(0, 60)}"`);
+        return [];
+    }
 
     const out: WebSearchResult[] = [];
     for (const row of body.results) {
@@ -121,6 +140,11 @@ async function tavilySearch(query: string, opts: ResolvedWebSearchOptions): Prom
     }
     return out;
 }
+
+/** Latched so the missing-key warning is said once, not once per parallel
+ *  call. Module scope, so it resets with the process — a redeploy says it
+ *  again, which is when somebody is likely to be reading. */
+let warnedNoKey = false;
 
 /** Backend registry, selected by `WEB_SEARCH_PROVIDER` (default "tavily").
  *  To add Perplexity: implement `perplexitySearch` against `POST
@@ -142,7 +166,20 @@ const PROVIDERS: Record<string, (query: string, opts: ResolvedWebSearchOptions) 
  */
 export async function webSearch(query: string, opts?: WebSearchOptions): Promise<WebSearchResult[]> {
     const provider = WEB_SEARCH_PROVIDER || "tavily";
-    if (provider === "tavily" && !TAVILY_API_KEY) return [];
+    if (provider === "tavily" && !TAVILY_API_KEY) {
+        // Expected in an environment that has not configured it, and
+        // catastrophic in one that thinks it has: no key means no sources, no
+        // knowledge document and no About, with nothing in the logs to say so.
+        //
+        // ONCE PER PROCESS. Discovery calls this up to eight times in parallel
+        // per pass, so warning on every call buried the log in identical,
+        // non-actionable lines on any preview deploy without the key.
+        if (!warnedNoKey) {
+            warnedNoKey = true;
+            console.warn("[webSearch] No TAVILY_API_KEY — web search is OFF. Discovery loses its last-resort tier and the vault finds no sources.");
+        }
+        return [];
+    }
 
     const run = PROVIDERS[provider];
     if (!run) {

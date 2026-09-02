@@ -26,8 +26,19 @@ jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     upsertInterviewAnswer: (...a) => upsertInterviewAnswer(...a),
     recordInterviewOffered: (...a) => recordInterviewOffered(...a),
 }));
+// Both exports. Mocking only `generateGroundedQuestions` left
+// `sourceUrlForQuestionKey` undefined, and calling it threw inside
+// getInterviewInvite's try — which returns { show: false }, so every resume
+// test failed with "questions is undefined" rather than anything about links.
+// The BATCHED resolver — resolving per question re-read the artist's whole
+// post history for each one, on a path that runs on every page load with an
+// open sitting.
+const sourceUrlsForQuestionKeys = jest.fn(async (_artistId, keys) =>
+    new Map(keys.filter(k => k.startsWith('social_'))
+                .map(k => [k, `https://www.instagram.com/p/${k}/`])));
 jest.mock('@/server/utils/questionGenerator', () => ({
     generateGroundedQuestions: (...a) => generateGroundedQuestions(...a),
+    sourceUrlsForQuestionKeys: (...a) => sourceUrlsForQuestionKeys(...a),
 }));
 jest.mock('@/server/utils/socialIngest', () => ({
     getSocialPostsForArtist: (...a) => getSocialPostsForArtist(...a),
@@ -71,13 +82,23 @@ describe('getInterviewInvite', () => {
 
     it('offers a first interview when nothing has ever been answered', async () => {
         getInterviewAnswers.mockResolvedValue([]);
-        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_1', question: 'Who mixed it?' }]);
+        generateGroundedQuestions.mockResolvedValue([{
+            key: 'social_credit_1', question: 'Who mixed it?',
+            sourceUrls: ['https://www.instagram.com/p/ABC/'],
+        }]);
         const out = await invite();
         expect(out.show).toBe(true);
         expect(out.reason).toBe('first');
         // Grounded first, then the static bank fills the sitting out to three.
         expect(out.questions).toHaveLength(3);
         expect(out.questions[0].question).toBe('Who mixed it?');
+        // THE POST TRAVELS WITH THE QUESTION. The generator always produced
+        // sourceUrls and this type dropped them, so the panel had no way to
+        // show the artist where a question came from. Pete, reading his own:
+        // "I may not remember at that moment."
+        expect(out.questions[0].sourceUrl).toBe('https://www.instagram.com/p/ABC/');
+        // The static bank has no post behind it, and must not pretend to.
+        expect(out.questions[1].sourceUrl).toBeUndefined();
     });
 
     it('stays quiet when they have answered and nothing has happened since', async () => {
@@ -95,7 +116,12 @@ describe('getInterviewInvite', () => {
         expect(out.show).toBe(true);
         expect(out.reason).toBe('new-material');
         // Scoped to what is new, so the questions are about it.
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: '2026-08-01T00:00:00Z' });
+        // `excludeKeys` is what stops a returning artist being asked the same
+        // things again: the answered keys leave the candidate POOL rather than
+        // being filtered out of the result after the model has already spent
+        // its picks on them.
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, since: '2026-08-01T00:00:00Z', excludeKeys: expect.any(Set) }));
     });
 
     it('comes back when a record has appeared', async () => {
@@ -158,7 +184,8 @@ describe('getInterviewInvite', () => {
         const out = await invite();
         expect(out.show).toBe(true);
         // Unscoped, because this is still the first sitting rather than a return.
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: null });
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, since: null, excludeKeys: expect.any(Set) }));
     });
 
     it('asks about a record even when nothing was posted about it', async () => {
@@ -215,7 +242,8 @@ describe('getInterviewInvite', () => {
 
         const out = await invite();
         expect(out.show).toBe(true);
-        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1', { max: 3, since: null });
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ max: 3, since: null, excludeKeys: expect.any(Set) }));
     });
 
     it('does not treat an open offer as an answer', async () => {
@@ -282,6 +310,11 @@ describe('getInterviewInvite', () => {
         generateGroundedQuestions.mockResolvedValue([{ key: 'something_else', question: 'a different one' }]);
 
         const out = await invite();
-        expect(out.questions[0]).toEqual({ key: 'social_theme_7', question: 'the one still open' });
+        expect(out.questions[0]).toEqual({
+            key: 'social_theme_7',
+            question: 'the one still open',
+            // A resumed question carries its post too, recovered from the key.
+            sourceUrl: 'https://www.instagram.com/p/social_theme_7/',
+        });
     });
 });

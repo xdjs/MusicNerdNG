@@ -83,14 +83,34 @@ const MAX_DRAFTS = 6;
  */
 const GENERATION_TIMEOUT_MS = 30_000;
 const TOP_COLLABORATORS = 3;
-const TOP_THEMES = 3;
-const TOP_STANDOUTS = 2;
+/** ONE, not three. Pete Rango's top recurring caption words are "music" (6
+ *  posts), "artists" (5), "artist creative" (3) — a musician using the word
+ *  "music" is the job, not a signal, and the instruction already tells the
+ *  model to drop "a common word that just happens to repeat". Three of about
+ *  twenty-five candidate slots went on material we had told it to reject.
+ *  One rather than zero: the extraction is fine, the MATERIAL is thin, and
+ *  that is worth revisiting rather than deleting. */
+const TOP_THEMES = 1;
+/** Raised with a slot the themes gave back. These are the strongest
+ *  single-post signals — on Pete's feed the Colombia earthquake page (7.6x his
+ *  usual plays) and losing his cousin André (3.1x likes) — and they got two. */
+const TOP_STANDOUTS = 3;
 const TOP_MUSIC = 3;
 /** Credits are the strongest material we have — a named person, a stated role,
  *  in the artist's own words — so more of them are offered than of any counted
  *  signal. */
 const TOP_CREDITS = 4;
-const TOP_STATEMENTS = 4;
+/** Statements are the artist's own words about their own life, and they are the
+ *  most numerous signal by far — Pete Rango has 268. Four was the narrowest
+ *  window of any kind here, and unlike every other kind it was not even ranked:
+ *  the first four in database order, forever. Widened so the model has a real
+ *  choice to make. */
+const TOP_STATEMENTS = 10;
+
+/** No caption owns the window. One of Pete's produced twelve separate
+ *  "statements" — the same reflection re-topiced — and would have taken the
+ *  whole slice on its own. */
+const MAX_STATEMENTS_PER_POST = 2;
 
 // Short-lived in-process cache for generateGroundedQuestions, keyed by
 // artistId (+ requested `max`, see below). Onboarding chat turns are
@@ -204,6 +224,67 @@ const TOP_PARTNERSHIPS = 3;
 const TOP_SAME_POST = 3;
 
 /**
+ * Which of an artist's statements are worth asking about, and in what order.
+ *
+ * This was `statements.slice(0, 4)` — no ranking, no dedup, whatever order
+ * Postgres returned. Pete Rango has 268 statements and the same four were
+ * offered on every run forever, which is exactly what he saw: "it just seems
+ * like I'm getting the same questions every time."
+ *
+ * TWO PROBLEMS, and dedup is the bigger one. Those 268 come from 115 posts —
+ * 2.33 per caption — and 88 repeat a quote already stored. One caption produced
+ * TWELVE: "discovery of web3 and its impact", "...and its impact on art",
+ * "...and its impact on creative process" — one sentence sliced three ways.
+ * Any window spends its slots on the same caption rephrased.
+ *
+ * THE ORDER, measured against four candidates on Pete's real feed and chosen by
+ * him: statements that NAME SOMEBODY or say something SUBSTANTIAL first, newest
+ * breaking the tie. Naming a person is what turns "his philosophy on self" into
+ * "why he chose SuperCollector" or "running a Hammond XB-2" — a decision only
+ * the artist can explain. Length is a weak proxy for having actually said
+ * something, so it ranks below naming and is bucketed rather than compared
+ * outright: three long captions must not crowd out three interesting ones.
+ *
+ * Recency alone was rejected on the evidence — it clusters, and on this feed it
+ * returned four near-identical statements about the same recent bereavement.
+ */
+export function rankStatements(statements: ArtistStatement[]): ArtistStatement[] {
+    const seenQuote: string[] = [];
+    const perPost = new Map<string, number>();
+    const deduped: ArtistStatement[] = [];
+    /** One of these is a re-cut of the other when either starts with the other.
+     *  A fixed-length prefix key is not enough: the extractor's copies differ
+     *  by where it stopped, so "...changed how I think about art" and
+     *  "...changed how I think about art entirely" hash differently and both
+     *  survive. The floor stops two genuinely different short statements
+     *  collapsing because they open the same way. */
+    const isRecutOf = (a: string, b: string): boolean =>
+        Math.min(a.length, b.length) >= 40 && (a.startsWith(b) || b.startsWith(a));
+    for (const s of statements) {
+        const key = (s.quote ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!key || seenQuote.some(k => k === key || isRecutOf(k, key))) continue;
+        // AND A CEILING PER CAPTION. Deduping quotes alone still let one post
+        // contribute a dozen genuinely different sentences and crowd out 114
+        // other posts.
+        const used = perPost.get(s.url) ?? 0;
+        if (used >= MAX_STATEMENTS_PER_POST) continue;
+        seenQuote.push(key);
+        perPost.set(s.url, used + 1);
+        deduped.push(s);
+    }
+
+    const namesSomebody = (s: ArtistStatement): boolean => /@[A-Za-z0-9._]{3,}/.test(s.quote ?? "");
+    const substance = (s: ArtistStatement): number => {
+        const n = (s.quote ?? "").length;
+        return n > 300 ? 2 : n > 120 ? 1 : 0;
+    };
+    const score = (s: ArtistStatement): number => (namesSomebody(s) ? 3 : 0) + substance(s);
+    return [...deduped].sort((a, b) =>
+        score(b) - score(a)
+        || String(b.postedAt ?? "").localeCompare(String(a.postedAt ?? "")));
+}
+
+/**
  * Relationships, joined here rather than guessed by the model.
  *
  * THIS IS THE FIX FOR THE WHOLE CLASS. Letting the model pick two signals and
@@ -225,13 +306,15 @@ const TOP_SAME_POST = 3;
  * Each asserts only what the join proves. Neither can put somebody on a record
  * they were not credited on, because the evidence travels with the claim.
  */
-function relationshipCandidates(artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
+function relationshipCandidates(artistName: string, extraction: CaptionExtraction, exclude: Set<string> = new Set()): SignalCandidate[] {
     const out: SignalCandidate[] = [];
 
     // A collaborator who keeps coming back. `creditedCollaborators` already
     // groups by person and collects every post they were credited on; two or
     // more is a relationship, one is an anecdote.
-    for (const c of creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2).slice(0, TOP_PARTNERSHIPS)) {
+    for (const c of pickUnasked(
+        creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2),
+        c => `social_partnership_${unicodeSlug(c.subject)}`, TOP_PARTNERSHIPS, exclude)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
         // UNICODE. `slug` is ASCII-only and reduces a Japanese or Korean name
         // to "x", so two such collaborators would share a signalId — the byId
@@ -295,6 +378,7 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
         // One credit beside something the artist said is unambiguous: there is
         // only one person in the post and only one thing to be talking about.
         .filter(([, v]) => v.credits.length === 1 && v.statements.length > 0)
+        .filter(([url]) => !exclude.has(`social_same_post_${shortCodeFromUrl(url)}`))
         .slice(0, TOP_SAME_POST);
     for (const [url, v] of pairs) {
         const credit = v.credits[0];
@@ -319,10 +403,49 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
     return out;
 }
 
-function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
+/** Rows newer than a cutoff, tolerant of missing or unparseable dates.
+ *
+ *  Shared, because this existed twice — once for scoping a "new material"
+ *  interview and once for resolving that interview's links — and the two must
+ *  agree about the boundary. A later tweak to one copy (`>` to `>=`, say) would
+ *  silently resolve links against a different window than the questions were
+ *  generated from. */
+function newerThan<T extends { postedAt?: string | null }>(rows: T[], since: string | null): T[] {
+    const cutoff = since ? Date.parse(since) : NaN;
+    if (Number.isNaN(cutoff)) return rows;
+    return rows.filter(r => {
+        const at = Date.parse(r.postedAt ?? "");
+        return !Number.isNaN(at) && at > cutoff;
+    });
+}
+
+/**
+ * Take the first `n` items whose question has not been asked yet.
+ *
+ * EXCLUDE BEFORE TRUNCATING, which is the whole point. Every kind here slices
+ * to a small TOP_N, and `excludeKeys` used to be applied to the finished
+ * candidate list — so once an artist had answered the top-ranked items of a
+ * kind, that kind produced nothing forever, because the same top-N were
+ * recomputed and then stripped to zero. With TOP_THEMES at 1, a single answered
+ * theme question retired themes permanently.
+ *
+ * That is the same "filter the result instead of the pool" mistake this
+ * exclusion was written to fix, one layer further down. Found in review.
+ */
+function pickUnasked<T>(items: T[], keyOf: (item: T) => string, n: number, exclude: Set<string>): T[] {
+    const out: T[] = [];
+    for (const item of items) {
+        if (out.length >= n) break;
+        if (exclude.has(keyOf(item))) continue;
+        out.push(item);
+    }
+    return out;
+}
+
+function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction, exclude: Set<string> = new Set()): SignalCandidate[] {
     // Relationships first: they are the only candidates that carry a verified
     // connection, and the prompt is told to reach for them.
-    const candidates: SignalCandidate[] = relationshipCandidates(artistName, extraction);
+    const candidates: SignalCandidate[] = relationshipCandidates(artistName, extraction, exclude);
 
     // Role credits first. "Mixing & Mastering Engineer: @p3t3rango" is a named
     // person doing a stated job, written by the artist — strictly better
@@ -331,7 +454,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // evidence that exists. Self-credits are excluded by creditedCollaborators:
     // "Recording Engineer: Pharaoh Sistare" is a fact about him, not a
     // relationship to ask him about.
-    for (const c of creditedCollaborators(extraction).slice(0, TOP_CREDITS)) {
+    for (const c of pickUnasked(creditedCollaborators(extraction),
+        c => `social_credit_${unicodeSlug(c.subject)}`, TOP_CREDITS, exclude)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
         // `unicodeSlug`, not `slug`. The ASCII one reduces a Japanese or Korean
         // name to "x", so two such collaborators collide on signalId — byId
@@ -358,9 +482,9 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
             kind: "credit",
             key: `social_credit_${id}`,
             authoredBy: "artist",
-            material: `${artistName} wrote these about ${subject}, each in a DIFFERENT caption and each true only of the post it came from:\n`
+            material: `${artistName} wrote these about ${subject}. Each line below is ONE caption:\n`
                 + quotes.map(q => `  "${q}"`).join("\n")
-                + `\nRead what the sentences actually say — they may contradict what the phrasing suggests. Do not combine them into one description of ${subject}, and do not present something from one post as what they generally do.`,
+                + `\nAnything inside a single line was written together and belongs together. Facts from DIFFERENT lines do not: they are separate posts about separate occasions, so do not merge them into one description of ${subject}, and do not present something from one post as what they generally do. Read what the sentences actually say — they may contradict what the phrasing suggests.`,
             sourceUrls: c.evidenceUrls,
         });
     }
@@ -368,7 +492,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // Things the artist said about their own work. The material IS the quote,
     // so a question built from it can respond to what they actually wrote
     // rather than to a word that appeared often.
-    for (const s of extraction.statements.slice(0, TOP_STATEMENTS)) {
+    for (const s of pickUnasked(rankStatements(extraction.statements),
+        s => `social_statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`, TOP_STATEMENTS, exclude)) {
         candidates.push({
             signalId: `statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`,
             kind: "statement",
@@ -379,7 +504,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         });
     }
 
-    for (const c of [...signals.collaborators].sort((a, b) => b.postCount - a.postCount).slice(0, TOP_COLLABORATORS)) {
+    for (const c of pickUnasked([...signals.collaborators].sort((a, b) => b.postCount - a.postCount),
+        c => `social_collaborator_${slug(c.handle)}`, TOP_COLLABORATORS, exclude)) {
         candidates.push({
             signalId: `collab_${slug(c.handle)}`,
             kind: "collaborator",
@@ -403,7 +529,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
             themesByTerm.set(termKey, t);
         }
     }
-    for (const t of [...themesByTerm.values()].sort((a, b) => b.count - a.count).slice(0, TOP_THEMES)) {
+    for (const t of pickUnasked([...themesByTerm.values()].sort((a, b) => b.count - a.count),
+        t => `social_theme_${t.kind}_${slug(t.term)}`, TOP_THEMES, exclude)) {
         const termNoun = t.kind === "hashtag" ? "hashtag" : t.kind === "caption_phrase" ? "phrase" : "word";
         candidates.push({
             signalId: `theme_${t.kind}_${slug(t.term)}`,
@@ -415,7 +542,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         });
     }
 
-    for (const s of [...signals.standoutPosts].sort((a, b) => b.multiple - a.multiple).slice(0, TOP_STANDOUTS)) {
+    for (const s of pickUnasked([...signals.standoutPosts].sort((a, b) => b.multiple - a.multiple),
+        s => `social_standout_${shortCodeFromUrl(s.url)}`, TOP_STANDOUTS, exclude)) {
         candidates.push({
             signalId: `standout_${shortCodeFromUrl(s.url)}`,
             kind: "standout",
@@ -426,7 +554,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         });
     }
 
-    for (const m of [...signals.musicReferences].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length).slice(0, TOP_MUSIC)) {
+    for (const m of pickUnasked([...signals.musicReferences].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length),
+        m => `social_music_${slug(m.title)}_${slug(m.artist)}`, TOP_MUSIC, exclude)) {
         candidates.push({
             signalId: `music_${slug(m.title)}_${slug(m.artist)}`,
             kind: "music",
@@ -462,7 +591,15 @@ Rules:
 - You do NOT have to use every signal. Being grounded in a real fact is necessary but not sufficient — a signal can be 100% true and still make a bad question. DROP any signal that is technically real but would come across as a machine noticing a pattern rather than a person who actually paid attention: a common word that just happens to repeat, a burst of activity with nothing memorable to name, anything a generic analytics dashboard could have surfaced.
 - ONLY the ones that clear the bar. One excellent question is a better outcome than three even ones, and returning fewer is correct rather than a failure. Padding to reach a count is the failure. Look hard for distinct collisions before settling — different pairs, different corners of their work, never three versions of the same question.
 - BANNED, because they are what an interviewer who did not do the reading says: "what's the story behind", "what was that like", "what motivated you", "how did that come about", "tell me about", "can you talk about", "what inspired you", "walk me through", "what has that experience been like".
-- DO NOT RECAP THEIR POST BACK TO THEM. They know what they posted. At most one short clause of context — roughly a dozen words — then the question. If you are quoting more than about ten words you are stalling.
+- DO NOT RECAP THEIR POST BACK TO THEM. They know what they posted. At most one short clause of context — roughly a dozen words — then the question. If you are quoting more than about ten words you are stalling. Written as a rule this gets ignored, so here it is as rewrites of real output:
+    NO  "You wrote that your cousin André introduced you to 112's 'Part III' and Dr. Dre's '2001', which shifted your perspective on how to create music and brought samplers and computers into your process; what was the first thing you made after that?"
+    YES "Your cousin André handed you 112's 'Part III' and Dr. Dre's '2001' — what's the first thing you made after?"
+    NO  "You mentioned being a co-owner of Subvert feels like building the music ecosystem artists need; what does an artist actually get there that they didn't have before?"
+    YES "You co-own Subvert — what does an artist get there they couldn't get anywhere else?"
+    NO  "You described @zavodskyalan as one of your main production partners for years, going back to your first two tracks together; what do you remember about making those first two?"
+    YES "@zavodskyalan has been your production partner for years — what do you remember about the first two tracks?"
+
+  CUT THE INTERPRETATION, KEEP THE SPECIFICS. What goes is the part telling the artist what their own words meant — "which shifted your perspective", "which brought samplers into your process". What STAYS is every name, title, date and detail, because that is what lets them place the moment. "Those two albums" is not shorter, it is vaguer: they posted hundreds of times and may not remember which two you mean. Shortening is not the goal — being answerable is, and a question they cannot place is a question they cannot answer.
 - Ask something ANSWERABLE and specific: a decision, a moment, a disagreement, a cost, a person. "Who pushed back on that?" beats "what was that process like". You may risk a hypothesis they can confirm or reject — being slightly wrong is better than being vacuous — but phrase it as a question about a possible connection, never as an assertion that the connection exists.
 - If authoredBy is "artist", you may quote their own words.
 - If authoredBy is "@handle" (NOT the artist), you must NEVER say or imply that ${artistName} wrote, said, or posted that caption/material — it belongs to the other account. Frame the question around the relationship instead.
@@ -696,7 +833,15 @@ Mark a question UNSUPPORTED if any factual claim in it is not in the source. Be 
 
 A question that merely ASKS about a possible connection between two things in the source is supported — "do you see these as connected?" asserts nothing. A question that ASSERTS the connection is not.
 
-Return STRICT JSON ONLY: [{ "i": number, "ok": boolean, "problem": string }]. "i" is the question's index as given. "problem" is one short phrase naming the unsupported claim, or "" when ok. No markdown.`;
+MOST QUESTIONS ARE SUPPORTED, and saying so is the normal answer. These were written FROM the source you are reading, so the usual case is that every claim in one is sitting in the text in front of you. Rejecting a supported question is not a safe default: it costs the artist a question about their actual life and replaces it with a generic one, which is a worse outcome than the question you were worried about.
+
+Only the ASSERTIONS are yours to check. The part after the semicolon is usually the question itself — asking someone what they learned, or what was hard, or who pushed back, asserts nothing and cannot be unsupported. Judge what the question CLAIMS, not what it asks.
+
+SHOW YOUR WORKING, because it is what keeps you honest:
+- ok true: "support" is the sentence from the source, copied exactly, that states the question's main claim. If you can copy such a sentence, the question IS supported and you must mark it so.
+- ok false: "problem" names the claim that is NOT in the source, and "support" is "". Do not restate a claim that IS in the source and call it a problem — if the words are there, it is supported.
+
+Return STRICT JSON ONLY: [{ "i": number, "ok": boolean, "problem": string, "support": string }]. "i" is the question's index as given. No markdown.`;
 
 /**
  * Drop any question that says something its source does not.
@@ -749,7 +894,15 @@ async function keepOnlySupported(
                     systemInstruction: VERIFIER_INSTRUCTION,
                     temperature: 0,
                     responseMimeType: "application/json",
-                    thinkingConfig: { thinkingBudget: 0 },
+                    // Thinking was OFF here, on a task that is entirely
+                    // judgement: read a caption, decide whether a sentence
+                    // states a claim. It rejected "you put together a bilingual
+                    // page to help after the earthquake" against a caption
+                    // reading "I put together a simple bilingual page with
+                    // vetted charities" — and named the supported claim as the
+                    // problem, which is what answering without reading looks
+                    // like. Small budget, because VERIFIER_TIMEOUT_MS is 12s.
+                    thinkingConfig: { thinkingBudget: 512 },
                 },
             }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("verifier timeout")), VERIFIER_TIMEOUT_MS)),
@@ -760,7 +913,7 @@ async function keepOnlySupported(
         return [];
     }
 
-    let verdicts: { i?: unknown; ok?: unknown; problem?: unknown }[];
+    let verdicts: { i?: unknown; ok?: unknown; problem?: unknown; support?: unknown }[];
     try {
         const parsed: unknown = JSON.parse(stripJsonFences(text));
         if (!Array.isArray(parsed)) throw new Error("not an array");
@@ -777,20 +930,186 @@ async function keepOnlySupported(
         if (typeof v?.i !== "number" || !Number.isInteger(v.i)) continue;
         byIndex.set(v.i, v.ok === true);
         if (v.ok !== true) {
+            // The problem text is worth logging in full now that the checker
+            // explains itself — "the albums introduced samplers, André handed
+            // him the albums" is a reviewable judgement; "unsupported" was not.
             console.log(`[questionGenerator] dropped a question: ${String(v.problem ?? "unsupported")}`);
         }
     }
     return drafted.filter((_, i) => byIndex.get(i) === true).map(strip);
 }
 
+/**
+ * The post a stored question came from, recovered from its key.
+ *
+ * A RESUMED question is rebuilt from the `questionKey` and text on its row, so
+ * the panel had no post to link to and I claimed that needed a new column.
+ * Pete: "don't we have links to all the posts in our database? why is that not
+ * possible?" It is — the key already carries it, or the credits table does.
+ *
+ * TWO ROUTES, cheapest first:
+ *  - `statement`, `standout` and `same_post` keys embed the Instagram
+ *    shortcode, so the url rebuilds with no query at all.
+ *  - `partnership` and `credit` are keyed on a person, and are found in the
+ *    stored credits by re-deriving the same slug from each subject.
+ *  - `collaborator` and `music` are keyed on a person or a track but come from
+ *    the POSTS, via `deriveSocialSignals` — a different source entirely from
+ *    the caption-parsed credits, so they need their own lookup.
+ *  - `statement` embeds a shortcode AND a topic, both of which can contain
+ *    underscores, so it is rebuilt and compared rather than parsed.
+ *
+ *  Every branch rebuilds the key with the function that BUILT it, so the two
+ *  cannot drift apart.
+ *
+ * Returns undefined rather than guessing. A missing link is a small loss; a
+ * link to the wrong post is the artist reading somebody else's caption.
+ */
+export async function sourceUrlForQuestionKey(
+    artistId: string,
+    key: string,
+    opts?: { since?: string | null },
+): Promise<string | undefined> {
+    return (await sourceUrlsForQuestionKeys(artistId, [key], opts)).get(key);
+}
+
+/**
+ * The posts a set of stored questions came from, recovered from their keys.
+ *
+ * A RESUMED question is rebuilt from the `questionKey` and text on its row, so
+ * the panel had no post to link to and I claimed that needed a new column.
+ * Pete: "don't we have links to all the posts in our database? why is that not
+ * possible?" It is — the key already carries it, or the stored signals do.
+ *
+ * BATCHED, because resolving one at a time re-read the artist's whole post
+ * history per question. Three open collaborator questions meant three full
+ * fetches plus three signal derivations, on a path that runs on every page
+ * load with an open sitting. Now each source is read at most once for the
+ * whole set, and only if some key actually needs it.
+ *
+ * FOUR SHAPES, each rebuilt with the function that BUILT the key so the two
+ * cannot drift:
+ *  NOTHING IS RECONSTRUCTED FROM THE KEY. `standout` and `same_post` carry a
+ *  bare shortcode and rebuilding `instagram.com/p/<tail>/` looked free — but
+ *  `shortCodeFromUrl` falls back to slugging the WHOLE url for any post not
+ *  already in `/p/<code>/` form, so a Reel would have produced
+ *  `instagram.com/p/https_www_instagram_com_reel_abc/` and the panel would have
+ *  offered the artist that as "see the post this came from". All 359 stored
+ *  posts are `/p/` today, so it was latent — assuming the input shape instead
+ *  of checking it is the mistake, not the odds.
+ *
+ *  So every kind resolves the same way: rebuild the key from each candidate
+ *  using the function that BUILT it, and compare. It cannot produce a url that
+ *  was not already in the data. `statement`, `same_post`, `partnership` and
+ *  `credit` come from the stored credits; `standout`, `collaborator`, `music`
+ *  and `theme` from `deriveSocialSignals` over the posts — read concurrently.
+ *
+ * Returns nothing for a key it cannot place. A missing link is a small loss; a
+ * link to the wrong post is the artist reading somebody else's caption.
+ */
+export async function sourceUrlsForQuestionKeys(
+    artistId: string,
+    keys: string[],
+    opts?: { since?: string | null },
+): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    const wantsCredits = keys.filter(k => /^social_(?:statement|partnership|credit|same_post)_/.test(k));
+    const wantsSignals = keys.filter(k => /^social_(?:collaborator|music|theme|standout)_/.test(k));
+    if (wantsCredits.length === 0 && wantsSignals.length === 0) return found;
+
+    // CONCURRENTLY. A normal three-question sitting mixes kinds — one credit
+    // and one theme is enough — and these two reads are independent, so doing
+    // them in sequence paid two round trips back to back on a path that runs
+    // on every page load with an open sitting.
+    const [stored, signalsCtx] = await Promise.all([
+        wantsCredits.length > 0
+            ? getSocialCredits(artistId).catch(e => {
+                console.error("[sourceUrlsForQuestionKeys] Could not read stored credits:", e);
+                return null;
+            })
+            : Promise.resolve(null),
+        wantsSignals.length > 0
+            ? (async () => {
+                const artist = await getArtistById(artistId);
+                if (!artist) return null;
+                // SCOPED BEFORE DERIVING, exactly as the generation path does.
+                // This read full history while the docstring claimed both
+                // branches were scoped — the credits half was, this half was
+                // not. Self-limiting in practice (signals are built
+                // most-recent-first, so an older post rarely displaces the
+                // evidence actually used) but "true by accident" is not the
+                // claim the comment was making.
+                const posts = newerThan(await getSocialPostsForArtist(artistId), opts?.since ?? null);
+                return deriveSocialSignals(posts, artist.instagram ?? "", artist.name ?? "");
+            })().catch(e => {
+                console.error("[sourceUrlsForQuestionKeys] Could not derive post signals:", e);
+                return null;
+            })
+            : Promise.resolve(null),
+    ]);
+
+    const since = opts?.since ?? null;
+    const keep = (key: string, url: string | undefined) => { if (url) found.set(key, url); };
+
+    if (stored) {
+        const statements = newerThan(stored.statements, since);
+        const credits = newerThan(stored.credits, since);
+        // GROUPED, not raw rows. `creditedCollaborators` folds names and
+        // promotes a handle-form subject over a bare name, so matching raw rows
+        // skipped the earlier post that used the name and returned a later one.
+        const people = creditedCollaborators({ ...stored, credits });
+        for (const key of wantsCredits) {
+            if (key.startsWith("social_statement_")) {
+                keep(key, statements.find(
+                    st => `social_statement_${shortCodeFromUrl(st.url)}_${slug(st.topic)}` === key)?.url);
+            } else if (key.startsWith("social_same_post_")) {
+                keep(key, credits.find(c => `social_same_post_${shortCodeFromUrl(c.url)}` === key)?.url);
+            } else {
+                keep(key, people.find(c =>
+                    `social_partnership_${unicodeSlug(c.subject)}` === key
+                    || `social_credit_${unicodeSlug(c.subject)}` === key)?.evidenceUrls[0]);
+            }
+        }
+    }
+
+    if (signalsCtx) {
+        for (const key of wantsSignals) {
+            keep(key,
+                signalsCtx.standoutPosts.find(x => `social_standout_${shortCodeFromUrl(x.url)}` === key)?.url
+                ?? signalsCtx.collaborators.find(c => `social_collaborator_${slug(c.handle)}` === key)?.evidenceUrls[0]
+                ?? signalsCtx.musicReferences.find(m => `social_music_${slug(m.title)}_${slug(m.artist)}` === key)?.evidenceUrls[0]
+                ?? signalsCtx.themes.find(t => `social_theme_${t.kind}_${slug(t.term)}` === key)?.evidenceUrls[0]);
+        }
+    }
+
+    return found;
+}
+
 export async function generateGroundedQuestions(
     artistId: string,
-    opts?: { max?: number; since?: string | null },
+    opts?: {
+        max?: number;
+        since?: string | null;
+        /**
+         * Question keys this artist has already been asked. Dropped from the
+         * candidate pool BEFORE the model sees it.
+         *
+         * The callers already filtered these out of the RESULT, which is too
+         * late: the model had spent its picks writing questions that were then
+         * thrown away, and the artist got the static bank instead. Removing
+         * them from the pool is also what makes a second interview about
+         * something new rather than a re-run of the first.
+         */
+        excludeKeys?: Iterable<string>;
+    },
 ): Promise<GroundedQuestion[]> {
     const max = Math.max(0, opts?.max ?? DEFAULT_MAX_QUESTIONS);
     if (!artistId || max === 0) return [];
 
-    const cacheKey = `${artistId}::${max}::${opts?.since ?? ""}`;
+    const exclude = new Set(opts?.excludeKeys ?? []);
+    // The exclusion set is part of the identity of the request: two calls that
+    // exclude different questions are not the same call, and sharing a cache
+    // entry between them would hand back questions the artist has answered.
+    const cacheKey = `${artistId}::${max}::${opts?.since ?? ""}::${[...exclude].sort().join(",")}`;
     const now = Date.now();
     const cached = groundedQuestionsCache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
@@ -828,17 +1147,12 @@ export async function generateGroundedQuestions(
         // Pete Rango: a pandemic reflection surfaced in a window that started
         // six years after it.
         const stored = await getSocialCredits(artistId);
-        const newer = <T extends { postedAt?: string | null }>(rows: T[]): T[] =>
-            Number.isNaN(since) ? rows : rows.filter(r => {
-                const at = Date.parse(r.postedAt ?? "");
-                return !Number.isNaN(at) && at > since;
-            });
         const extraction = {
             ...stored,
-            credits: newer(stored.credits),
-            statements: newer(stored.statements),
+            credits: newerThan(stored.credits, opts?.since ?? null),
+            statements: newerThan(stored.statements, opts?.since ?? null),
         };
-        const candidates = buildCandidates(signals, artistName, extraction);
+        const candidates = buildCandidates(signals, artistName, extraction, exclude);
         if (candidates.length === 0) return [];
 
         // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there
@@ -872,13 +1186,21 @@ export async function generateGroundedQuestions(
                 contents: `SIGNALS:\n${JSON.stringify(promptPayload, null, 2)}\n\nChoose at most ${draftTarget} of the most interesting, distinct signals and write one question each, BEST FIRST. Fewer than ${draftTarget} is fine — even zero — if the rest don't clear the bar.`,
                 config: {
                     systemInstruction: QUESTION_SYSTEM_INSTRUCTION(artistName),
-                    // Low, not zero: enough room for natural phrasing, but low
-                    // enough that WHICH signals get selected stays stable
-                    // across repeated calls in the same onboarding (the
-                    // interview step regenerates on every question — see
-                    // turnHandlers.ts — so signal-selection churn between
-                    // calls would read as the interviewer changing its mind).
-                    temperature: 0.2,
+                    // This was 0.2, to keep WHICH signals get chosen stable
+                    // across the repeated calls an interview makes — churn
+                    // between calls would read as the interviewer changing its
+                    // mind mid-conversation.
+                    //
+                    // That stability is bought elsewhere now, twice over: the
+                    // questions actually put to an artist are PERSISTED when
+                    // they are offered and resumed from those rows, and there
+                    // is a TTL cache in front of this call. So 0.2 was no
+                    // longer preventing churn, only flattening the writing —
+                    // and with the candidate pool as narrow as it was, it
+                    // guaranteed the same handful of questions forever.
+                    // Pete: "that's so low and uncreative... we can't kill
+                    // creativity."
+                    temperature: 0.8,
                     responseMimeType: "application/json",
                 },
             }),
