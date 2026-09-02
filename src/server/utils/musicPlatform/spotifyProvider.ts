@@ -6,9 +6,12 @@ import {
     getNumberOfSpotifyReleases,
     getArtistTopTrackName,
     getSpotifyArtists,
+    refreshSpotifyToken,
     type SpotifyArtist,
 } from '@/server/utils/queries/externalApiQueries';
 import axios from 'axios';
+
+type SpotifyHeaderType = Awaited<ReturnType<typeof getSpotifyHeaders>>;
 
 interface SpotifySearchResponse {
     artists: {
@@ -66,18 +69,33 @@ export class SpotifyProvider implements MusicPlatformProvider {
     // Inline axios call: no search function exists in externalApiQueries.ts, and we
     // don't modify that file in Phase 1. It gets deleted entirely in Phase 5.
     async searchArtists(query: string, limit: number): Promise<MusicPlatformArtist[]> {
+        const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=${limit}`;
         try {
             const headers = await getSpotifyHeaders();
-            const response = await axios.get<SpotifySearchResponse>(
-                `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=${limit}`,
-                headers,
-            );
-            return response.data.artists.items.map((artist) =>
-                mapSpotifyArtist(artist, 0, null),
-            );
+            return await this.runSearch(url, headers);
         } catch (error) {
             console.error('SpotifyProvider.searchArtists failed:', error);
             return [];
+        }
+    }
+
+    /** Belt-and-suspenders self-heal: `getSpotifyHeaders()` above already
+     *  guards against a KNOWN-expired token, but a request can still 401 for
+     *  reasons our own expiry bookkeeping can't see (clock skew, early
+     *  revocation). On a 401, refresh once (bypassing the cache entirely, so
+     *  we don't just get handed the same token back) and retry exactly once
+     *  before giving up. */
+    private async runSearch(url: string, headers: SpotifyHeaderType): Promise<MusicPlatformArtist[]> {
+        try {
+            const response = await axios.get<SpotifySearchResponse>(url, headers);
+            return response.data.artists.items.map((artist) => mapSpotifyArtist(artist, 0, null));
+        } catch (error) {
+            const status = (error as { response?: { status?: number } })?.response?.status;
+            if (status !== 401) throw error;
+            console.debug('SpotifyProvider.searchArtists got 401 — refreshing token and retrying once');
+            const freshHeaders = await refreshSpotifyToken();
+            const response = await axios.get<SpotifySearchResponse>(url, freshHeaders);
+            return response.data.artists.items.map((artist) => mapSpotifyArtist(artist, 0, null));
         }
     }
 

@@ -9,6 +9,12 @@ import './src/test/setup/testEnv';
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
+// Polyfill ReadableStream for streaming responses (SSE, etc.)
+if (!global.ReadableStream) {
+    const { ReadableStream: NodeReadableStream } = require('stream/web');
+    global.ReadableStream = NodeReadableStream;
+}
+
 // Make React available globally for tests
 global.React = React;
 
@@ -67,6 +73,11 @@ if (typeof window !== 'undefined') {
         unobserve: jest.fn(),
         disconnect: jest.fn(),
     }));
+
+    // Mock Element.scrollTo (not implemented in JSDOM)
+    if (!window.Element.prototype.scrollTo) {
+        window.Element.prototype.scrollTo = jest.fn();
+    }
 }
 
 // Mock window.fetch
@@ -134,6 +145,11 @@ jest.mock('@/server/db/drizzle', () => {
             artistClaims: makeTable(),
             artistVaultSources: makeTable(),
             artistIdMappings: makeTable(),
+            artistDocs: makeTable(),
+            artistInterviewAnswers: makeTable(),
+            artistOnboardingSteps: makeTable(),
+            artistSocialPosts: makeTable(),
+            artistSocialProfiles: makeTable(),
         },
         insert: jest.fn(),
         update: jest.fn(),
@@ -161,7 +177,7 @@ try {
         // top-level functions
         ['insert', 'update', 'delete', 'select', 'from', 'where', 'limit', 'execute'].forEach(k => ensureFn(db, k));
 
-        const tables = ['urlmap', 'artists', 'users', 'ugcresearch', 'artistClaims', 'artistVaultSources', 'artistIdMappings'];
+        const tables = ['urlmap', 'artists', 'users', 'ugcresearch', 'artistClaims', 'artistVaultSources', 'artistIdMappings', 'artistDocs', 'artistInterviewAnswers', 'artistOnboardingSteps', 'artistSocialPosts', 'artistSocialProfiles'];
         tables.forEach(t => {
             if (!db.query[t]) db.query[t] = {};
             ['findFirst', 'findMany', 'update', 'insert', 'delete'].forEach(k => ensureFn(db.query[t], k));

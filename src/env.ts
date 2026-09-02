@@ -28,6 +28,22 @@ export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?
 // Gemini
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
 
+// Web search (profile discovery's last-resort tier — see webSearch.ts).
+// Empty TAVILY_API_KEY = webSearch() returns [] immediately, no network call.
+export const TAVILY_API_KEY = process.env.TAVILY_API_KEY ?? "";
+export const WEB_SEARCH_PROVIDER = process.env.WEB_SEARCH_PROVIDER ?? "tavily";
+
+// Resend (transactional email — approval notifications). Empty = sends are skipped.
+export const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
+
 // Privy Configuration
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 export const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET ?? "";
+
+// Apify (Instagram post ingestion — see socialIngest.ts). Empty = ingestion no-ops.
+export const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN ?? "";
+
+// The scheduler's shared secret (Vercel cron sends it as a bearer token).
+// Empty = /api/research/advance's GET stays as open as its POST already is,
+// which is what local and preview environments need.
+export const CRON_SECRET = process.env.CRON_SECRET ?? "";

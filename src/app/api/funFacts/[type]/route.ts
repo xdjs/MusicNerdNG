@@ -5,6 +5,7 @@ import { funfacts } from "@/server/db/schema";
 import { db } from "@/server/db/drizzle";
 import { eq } from "drizzle-orm";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
+import { getArtistDocContext } from "@/server/utils/artistDocService";
 
 async function getPrompts() {
   try {
@@ -80,6 +81,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
       }
     } catch (e) {
       console.error("Error fetching vault sources for fun facts:", e);
+    }
+
+    // Artist doc — its "Story hooks" section is exactly what fun facts want.
+    try {
+      const docContext = await getArtistDocContext(id);
+      if (docContext) {
+        finalPrompt += `\n\nArtist knowledge doc (compiled with the artist — prefer its "Story hooks"):\n${docContext}`;
+      }
+    } catch (e) {
+      console.error("Error fetching artist doc for fun facts:", e);
     }
 
     try {

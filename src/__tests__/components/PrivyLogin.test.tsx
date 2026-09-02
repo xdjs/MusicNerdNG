@@ -128,9 +128,6 @@ describe('PrivyLogin', () => {
       ok: true,
       json: () => Promise.resolve({ count: 0 }),
     });
-    // Mock window.location.reload - replace location with a plain object
-    delete (window as any).location;
-    (window as any).location = { reload: jest.fn(), href: 'http://localhost' };
     // Mock sessionStorage
     mockSessionStorage = {};
     Object.defineProperty(window, 'sessionStorage', {

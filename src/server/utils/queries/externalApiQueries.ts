@@ -1,7 +1,7 @@
 import { SPOTIFY_WEB_CLIENT_ID, SPOTIFY_WEB_CLIENT_SECRET } from "@/env"
 import axios from "axios";
 import queryString from 'querystring';
-import { unstable_cache } from 'next/cache';
+import { cachedOrDirect } from '@/server/lib/cachedOrDirect';
 
 
 type SpotifyHeaderType = {
@@ -20,7 +20,23 @@ export type SpotifyHeaders = {
     headers: { Authorization: string | null }
 }
 
-export const getSpotifyHeaders = unstable_cache(async () => {
+/** Helper function to check if a token is expired or about to expire. Declared
+ *  above its first use (`getSpotifyHeaders` below) since `const` bindings are
+ *  not hoisted. */
+const isTokenExpired = (headers: SpotifyHeaderType): boolean => {
+    const expiryTime = parseInt(headers.headers['x-token-expiry'] || '0');
+    // Return true if token expires in less than 5 minutes
+    return Date.now() + (5 * 60 * 1000) >= expiryTime;
+};
+
+/** The actual network round-trip to Spotify's client-credentials token
+ *  endpoint — always fetches a brand-new token, bypassing any cache. Exported
+ *  so callers that already hold a token and got a 401 anyway (a real request
+ *  can fail even when our own expiry bookkeeping says "not yet expired" —
+ *  clock skew, early revocation) can force a genuinely fresh one for a
+ *  single self-heal retry, rather than re-reading a cache that may just hand
+ *  back the same token. */
+export async function refreshSpotifyToken(): Promise<SpotifyHeaderType> {
     try {
         if (!SPOTIFY_WEB_CLIENT_ID || !SPOTIFY_WEB_CLIENT_SECRET) {
             console.error("Missing Spotify credentials");
@@ -32,7 +48,7 @@ export const getSpotifyHeaders = unstable_cache(async () => {
                 "Content-Type": "application/x-www-form-urlencoded",
             }
         };
-        
+
         const payload = {
             grant_type: "client_credentials",
             client_id: SPOTIFY_WEB_CLIENT_ID,
@@ -54,7 +70,7 @@ export const getSpotifyHeaders = unstable_cache(async () => {
         const expiresAt = Date.now() + (data.expires_in * 1000);
 
         return {
-            headers: { 
+            headers: {
                 Authorization: `Bearer ${data.access_token}`,
                 'x-token-expiry': expiresAt.toString()
             }
@@ -66,17 +82,37 @@ export const getSpotifyHeaders = unstable_cache(async () => {
         }
         throw new Error("Error fetching Spotify headers");
     }
-}, ["spotify-headers"], { 
-    tags: ["spotify-headers"], 
+}
+
+const cachedSpotifyToken = cachedOrDirect(refreshSpotifyToken, ["spotify-headers"], {
+    tags: ["spotify-headers"],
     revalidate: 3300 // 55 minutes - refresh slightly before the token expires
 });
 
-// Helper function to check if token is expired or about to expire
-const isTokenExpired = (headers: SpotifyHeaderType): boolean => {
-    const expiryTime = parseInt(headers.headers['x-token-expiry'] || '0');
-    // Return true if token expires in less than 5 minutes
-    return Date.now() + (5 * 60 * 1000) >= expiryTime;
-};
+/**
+ * Returns Spotify client-credentials auth headers.
+ *
+ * BUG THIS FIXES: `unstable_cache`'s `revalidate` option is stale-while-
+ * revalidate, not a hard TTL — once the window elapses, a read can still get
+ * back the STALE (already-expired) token while a fresh one is fetched in the
+ * background, so the caller's very next API call 401s. That was hitting the
+ * whole app (SpotifyProvider.searchArtists, artist images, follower counts,
+ * bio catalog data), not just onboarding.
+ *
+ * Fix: never trust the cache's own timing. Check the token's embedded
+ * `x-token-expiry` on every read and, whenever it's expired or within 5
+ * minutes of expiring, bypass the cache entirely for a synchronous fresh
+ * fetch — so a caller is never handed a token that's already dead or about
+ * to die mid-request.
+ */
+export async function getSpotifyHeaders(): Promise<SpotifyHeaderType> {
+    // cachedOrDirect handles the no-request-context case for us: it falls back
+    // to a direct call rather than throwing, and still rethrows anything that
+    // is not that invariant. See src/server/lib/cachedOrDirect.ts.
+    const cached = await cachedSpotifyToken();
+    if (!isTokenExpired(cached)) return cached;
+    return refreshSpotifyToken();
+}
 
 export type SpotifyArtistApiResponse = {
     error: string | null,
@@ -102,7 +138,7 @@ export type SpotifyArtist = {
     };
 }
 
-export const getSpotifyArtist = unstable_cache(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
+export const getSpotifyArtist = cachedOrDirect(async (artistId: string, headers: SpotifyHeaderType): Promise<SpotifyArtistApiResponse> => {
     try {
         console.debug("Fetching Spotify artist with ID:", artistId);
         
@@ -184,7 +220,7 @@ export const getSpotifyArtists = async (artistIds: string[], headers: SpotifyHea
     return allArtists;
   };
 
-export const getSpotifyImage = unstable_cache(async (artistSpotifyId: string | null, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> => {
+export const getSpotifyImage = cachedOrDirect(async (artistSpotifyId: string | null, artistId: string="", spotifyHeaders: SpotifyHeaderType): Promise<ArtistSpotifyImage> => {
     if(!artistSpotifyId) return { artistImage: "", artistId };
     try {
         const artistData = await axios.get(
@@ -198,7 +234,7 @@ export const getSpotifyImage = unstable_cache(async (artistSpotifyId: string | n
     }
 }, ["spotify-image"], { tags: ["spotify-image"], revalidate: 60 * 60 * 24 });
 
-export const getArtistWiki = unstable_cache(async (wikiId: string) => {
+export const getArtistWiki = cachedOrDirect(async (wikiId: string) => {
     // Decode any percent-encoded characters (e.g. Yun%C3%A8_Pinku → Yunè_Pinku)
     let decodedId = wikiId;
     try {
@@ -232,7 +268,7 @@ export const getArtistWiki = unstable_cache(async (wikiId: string) => {
     }
 }, ["wiki"], { tags: ["wiki"], revalidate: 60 * 60 * 24 });
 
-export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | null, headers: SpotifyHeaderType) => {  
+export const getNumberOfSpotifyReleases = cachedOrDirect(async (id: string | null, headers: SpotifyHeaderType) => {  
     if(!id) return 0;
     try {
       const albumData = await axios.get(
@@ -248,7 +284,7 @@ export const getNumberOfSpotifyReleases = unstable_cache(async (id: string | nul
     }
 }, ["spotify-releases"], { tags: ["spotify-releases"], revalidate: 60 * 60 * 24 });
 
-export const getArtistTopTrack = unstable_cache(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
+export const getArtistTopTrack = cachedOrDirect(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
     if(!id) return null;
     try {
         const response = await axios.get(
@@ -266,7 +302,7 @@ export const getArtistTopTrack = unstable_cache(async (id: string | null, header
     }
 }, ["spotify-top-track"], { tags: ["spotify-top-track"], revalidate: 60 * 60 * 24 });
 
-export const getArtistTopTrackName = unstable_cache(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
+export const getArtistTopTrackName = cachedOrDirect(async (id: string | null, headers: SpotifyHeaderType): Promise<string | null> => {  
     if(!id) return null;
     try {
         const response = await axios.get(
@@ -290,7 +326,70 @@ export const getArtistTopTrackName = unstable_cache(async (id: string | null, he
  * writes from the real discography instead of guessing from an open-web namesake.
  * Best-effort: returns empty arrays on any failure.
  */
-export const getSpotifyCatalogNames = unstable_cache(async (
+export type SpotifyRelease = {
+    name: string;
+    /** Spotify's `release_date`: "2025-03-01", "2025-03" or "2025". */
+    releaseDate: string | null;
+    /** "album" | "single" | "compilation" | "appears_on" */
+    kind: string | null;
+    /** The release's own page. Already in every response and thrown away until
+     *  now, which is why an answer could name a record and not link to it. */
+    url: string | null;
+};
+
+/**
+ * The artist's catalog WITH release dates, for grounding the knowledge document.
+ *
+ * `getSpotifyCatalogNames` returns titles only, which is all the relevance judge
+ * needs. The document needs dates: it was naming releases scraped out of
+ * Instagram captions and dating them by the publication year of whatever article
+ * mentioned them — so a 2019 interview made a placement "as of 2019", and the
+ * one release that did carry a date got it from a webpage rather than from the
+ * catalog.
+ *
+ * Deliberately NOT a discography for the page. The artist's Spotify and Deezer
+ * links already carry the full catalog and stay current, where a generated copy
+ * goes stale the day they release something. This exists so the document can
+ * name real titles with real dates when it has something to say about them.
+ */
+export async function getSpotifyCatalogDetail(
+    id: string | null,
+    headers: SpotifyHeaderType
+): Promise<SpotifyRelease[]> {
+    // Deliberately NOT wrapped in `unstable_cache`: the knowledge document is
+    // rebuilt from detached background work where there is no Next request
+    // context, and unstable_cache throws outright there. Document rebuilds are
+    // rare and debounced, so one uncached Spotify call is the cheaper trade.
+    if (!id) return [];
+    try {
+        const res = await axios.get(
+            `https://api.spotify.com/v1/artists/${id}/albums?include_groups=album%2Csingle%2Cappears_on&limit=50&market=US`,
+            headers,
+        );
+        const seen = new Set<string>();
+        const out: SpotifyRelease[] = [];
+        for (const a of ((res.data.items ?? []) as Array<{ name?: string; release_date?: string; album_group?: string; external_urls?: { spotify?: string } }>)) {
+            if (!a.name) continue;
+            const key = a.name.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+                name: a.name,
+                releaseDate: a.release_date ?? null,
+                kind: a.album_group ?? null,
+                url: a.external_urls?.spotify ?? null,
+            });
+        }
+        // Newest first: what an artist is asked about is usually recent.
+        out.sort((x, y) => (y.releaseDate ?? "").localeCompare(x.releaseDate ?? ""));
+        return out;
+    } catch (e) {
+        console.error("Error fetching Spotify catalog detail for artist", e);
+        return [];
+    }
+}
+
+export const getSpotifyCatalogNames = cachedOrDirect(async (
     id: string | null,
     headers: SpotifyHeaderType
 ): Promise<{ releases: string[]; topTracks: string[] }> => {

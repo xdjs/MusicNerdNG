@@ -206,6 +206,7 @@ export async function searchForArtistByName(name: string) {
             SELECT
             id, name, spotify, deezer, bandcamp, youtube, youtubechannel,
             instagram, x, facebook, tiktok,
+            custom_image AS "customImage",
             CASE WHEN lcname LIKE '%' || ${normalisedQuery} || '%' THEN 0 ELSE 1 END AS match_type
             FROM artists
             WHERE
@@ -247,13 +248,25 @@ export async function getArtistById(id: string) {
 // Links helpers
 // ----------------------------------
 
+/** The urlmap changes when someone adds a platform, which is rare, and it is
+ *  read on EVERY extractArtistId call — so discovery, which resolves dozens of
+ *  URLs per run, was doing dozens of whole-table selects. A short TTL keeps it
+ *  fresh enough for an admin adding a platform while removing the repeat cost
+ *  inside a single run. Deliberately a plain module-level memo rather than
+ *  unstable_cache: this is called from detached background work where
+ *  unstable_cache throws (see cachedOrDirect). */
+const URLMAP_TTL_MS = 60_000;
+let urlmapCache: { rows: Awaited<ReturnType<typeof db.query.urlmap.findMany>>; at: number } | null = null;
+
 export async function getAllLinks() {
+    if (urlmapCache && Date.now() - urlmapCache.at < URLMAP_TTL_MS) return urlmapCache.rows;
     const start = performance.now();
     try {
-        return await db.query.urlmap.findMany();
+        const rows = await db.query.urlmap.findMany();
+        urlmapCache = { rows, at: Date.now() };
+        return rows;
     } finally {
-        const end = performance.now();
-        console.debug(`[getAllLinks] took ${end - start}ms`);
+        console.debug(`[getAllLinks] took ${performance.now() - start}ms`);
     }
 }
 
@@ -1075,3 +1088,83 @@ function normaliseText(input: string): string {
         .replace(/[^\p{L}\p{N}\s]+/gu, '') // strip punctuation; keep letters, numbers, spaces
         .toLowerCase();
 } 
+
+/**
+ * Names that identify EXACTLY ONE artist in this directory.
+ *
+ * The ask names people it cannot link — Nia Sultana, Kilo Kish, Jesse Boykins
+ * III — because linking has only ever worked from a stored Instagram handle,
+ * and most people named in an answer arrive from prose rather than from a
+ * caption credit. A name lookup fixes that and reintroduces the hazard this
+ * whole pipeline exists to fight: three artists in here are called some version
+ * of "Black Dave".
+ *
+ * So uniqueness is the contract, not a nicety. A name matching two rows returns
+ * nothing and the reader gets plain text, which is the correct outcome — there
+ * is no way to tell from a sentence which of two artists was meant, and a
+ * confident link to the wrong person is worse than no link.
+ *
+ * Exact folded equality, never a prefix: "Dave" must not resolve to "Dave East".
+ * One query for the whole answer rather than one per name.
+ */
+export async function findUniqueArtistsByName(names: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    // Unicode, and a low floor. [^a-z0-9] emptied every name in a non-Latin
+    // script, and a four-character minimum excludes most Japanese and Korean
+    // names outright. The safety here is not length: it is uniqueness, plus the
+    // caller's rules that a name must appear in the material we supplied and
+    // that a single-word name must belong to somebody the artist has credited.
+    const fold = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const wanted = [...new Set(names.map(fold).filter(n => n.length >= 2))];
+    if (wanted.length === 0) return out;
+    try {
+        const literal = `{${wanted.map(n => `"${n.replace(/"/g, '\\"')}"`).join(",")}}`;
+        const rows = await db.execute(sql`
+            select regexp_replace(lower(name), '[^[:alnum:]]', '', 'g') as folded,
+                   min(id::text) as id,
+                   count(*) as n
+              from artists
+             where regexp_replace(lower(name), '[^[:alnum:]]', '', 'g') = any(${literal}::text[])
+             group by 1`);
+        const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]) ?? [];
+        for (const r of list as Record<string, unknown>[]) {
+            // Two artists share this name. Neither gets the link.
+            if (Number(r.n) !== 1) continue;
+            out.set(String(r.folded), String(r.id));
+        }
+        return out;
+    } catch (e) {
+        // Fail closed: a database error is not evidence that a name is unique.
+        console.error("[findUniqueArtistsByName] Error:", e);
+        return new Map();
+    }
+}
+
+/**
+ * Artists in this directory whose Instagram matches one of these handles.
+ *
+ * Used to turn a credited collaborator into a link to their own profile. Some
+ * stored handles carry a legacy leading "@", so both sides are trimmed — the
+ * same mismatch that had the collision guard report a claimed handle as free.
+ */
+export async function findArtistsByInstagram(handles: string[]): Promise<{ id: string; instagram: string | null }[]> {
+    const wanted = handles.map(h => h.toLowerCase().replace(/^@/, "")).filter(Boolean);
+    if (wanted.length === 0) return [];
+    try {
+        // Bound as a text[] literal rather than a JS array: the driver rejects
+        // a bare array here with "Array value must start with {".
+        const literal = `{${wanted.map(h => `"${h.replace(/"/g, '\\"')}"`).join(",")}}`;
+        const rows = await db.execute(sql`
+            select id, instagram from artists
+             where instagram is not null
+               and lower(ltrim(instagram, '@')) = any(${literal}::text[])`);
+        const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]) ?? [];
+        return (list as Record<string, unknown>[]).map(r => ({
+            id: String(r.id),
+            instagram: r.instagram === null || r.instagram === undefined ? null : String(r.instagram),
+        }));
+    } catch (e) {
+        console.error("[findArtistsByInstagram] Error:", e);
+        return [];
+    }
+}

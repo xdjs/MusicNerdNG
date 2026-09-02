@@ -1,4 +1,5 @@
 import { getArtistById, getAllLinks } from "@/server/utils/queries/artistQueries";
+import { absoluteImageUrl, customImageUrl } from "@/lib/artistImage";
 import { musicPlatformData } from "@/server/utils/musicPlatform";
 import ArtistLinksGrid from "@/app/_components/ArtistLinksGrid";
 import BookmarkButton from "@/app/_components/BookmarkButton";
@@ -14,13 +15,21 @@ import BlurbSection from "./_components/BlurbSection";
 import AddArtistData from "@/app/artist/[id]/_components/AddArtistData";
 import HeroSection from "./_components/HeroSection";
 import VaultSection from "./_components/VaultSection";
+import KnowledgeSection from "./_components/KnowledgeSection";
 import AskAboutArtist from "./_components/AskAboutArtist";
 import RevealSection from "./_components/RevealSection";
 import { getVaultSourcesByArtistId } from "@/server/utils/queries/dashboardQueries";
 import AutoRefresh from "@/app/_components/AutoRefresh";
 import type { Metadata } from "next";
 import SeoArtistLinks from "./_components/SeoArtistLinks";
+import ArtistJsonLd from "./_components/ArtistJsonLd";
+import OfficialSiteLinks from "./_components/OfficialSiteLinks";
+import OnboardingGate from "./_components/onboarding/OnboardingGate";
+import ProfileTour from "./_components/onboarding/ProfileTour";
+import InterviewOffer from "./_components/onboarding/InterviewOffer";
+import { getOnboardingState } from "@/server/utils/queries/onboardingQueries";
 import { buildCanonicalArtistUrl, parseSupportedArtistUrl } from "@/lib/artistProfileUrl";
+import { isRealBio } from "@/lib/bioConstants";
 
 type ArtistProfileProps = {
     params: Promise<{ id: string }>;
@@ -46,19 +55,32 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
     }
 
     const platformData = await musicPlatformData.getArtist(artist);
-    const imageUrl = artist.customImage
-        ? `https://www.musicnerd.xyz${artist.customImage}`
+    const ownImage = customImageUrl(artist.customImage);
+    const imageUrl = ownImage
+        ? absoluteImageUrl(ownImage)
         : platformData?.imageUrl || "https://www.musicnerd.xyz/default_pfp_pink.png";
     const artistName = artist.name ?? "Unknown Artist";
 
+    // The artist's own About, when one has been written, rather than the
+    // template. "Discover X's social links and streaming profiles on Music
+    // Nerd" is the same sentence on every page in the directory: it is what a
+    // search result shows, what a shared link previews as, and what an
+    // assistant quotes, and it says nothing about the artist. The About is
+    // right there and is the best 160 characters we have.
+    const description = artist.bio && isRealBio(artist.bio)
+        ? summarize(artist.bio)
+        : `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`;
+    const pageUrl = `https://www.musicnerd.xyz/artist/${id}`;
+
     return {
         title: `${artistName} | Music Nerd`,
-        description: `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`,
+        description,
+        alternates: { canonical: pageUrl },
         openGraph: {
             type: "profile",
             title: `${artistName} | Music Nerd`,
-            description: `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`,
-            url: `https://www.musicnerd.xyz/artist/${id}`,
+            description,
+            url: pageUrl,
             images: [
                 {
                     url: imageUrl,
@@ -71,10 +93,21 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
         twitter: {
             card: "summary_large_image",
             title: `${artistName} | Music Nerd`,
-            description: `Discover ${artistName}'s social links and streaming profiles on Music Nerd.`,
+            description,
             images: [imageUrl],
         },
     };
+}
+
+/** A description is a couple of sentences, not a bio. Cut on a sentence
+ *  boundary when there is one in range; a description that ends mid-clause
+ *  reads as broken rather than truncated. */
+function summarize(bio: string, max = 300): string {
+    const text = bio.trim().replace(/\s+/g, " ");
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max);
+    const lastStop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+    return lastStop > max * 0.5 ? cut.slice(0, lastStop + 1) : `${cut.trimEnd()}…`;
 }
 
 export default async function ArtistProfile({ params, searchParams }: ArtistProfileProps) {
@@ -111,15 +144,49 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
     const directEditLinks = isClaimedByUser;
     const autoApproveLinkSubmissions = isAdmin || !!dbUser?.isWhiteListed;
 
+    // Onboarding state costs a query — computed ONLY for the approved claimant.
+    // getOnboardingState returns null when the confirmed-steps read FAILED (fail
+    // CLOSED — spec C1), not just when there's nothing to show. The `onboardingState
+    // && ...` gate below already renders neither the takeover nor the banner in
+    // that case — never fall back to a default/guessed state here.
+    const onboardingState = isClaimedByUser ? await getOnboardingState(id) : null;
+
     const pendingSources = canEdit ? pendingSourcesRaw : [];
 
-    const imageUrl = artist.customImage || platformImage || "/default_pfp_pink.png";
+    const imageUrl = customImageUrl(artist.customImage) || platformImage || "/default_pfp_pink.png";
 
     return (
         <>
             <EditModeProvider canEdit={canEdit}>
             <AutoRefresh showLoading={false} />
             <div className="w-full max-w-[800px] mx-auto px-4 py-5 space-y-6">
+
+                {/* Gated on onboarding being COMPLETE, which is the only state in
+                    which a post-build tour makes sense. Without this, a stale
+                    "pending" flag from an earlier session started the tour while
+                    the build was still running — the artist watched a card say
+                    "we drafted your About" over an About that did not exist yet.
+                    Note this is the INVERSE of the gate on OnboardingGate below:
+                    once complete it stays complete, so unlike that one this
+                    cannot be unmounted out from under the tour. */}
+                {isClaimedByUser && onboardingState?.complete && <ProfileTour artistId={artist.id} />}
+
+                {/* The only part of onboarding where what lands on the page
+                    comes from the artist rather than from research. Gated the
+                    same way the tour is — onboarding finished, and their own
+                    page — and it decides for itself whether there is anything
+                    worth asking about. */}
+                {isClaimedByUser && onboardingState?.complete && (
+                    <InterviewOffer artistId={artist.id} artistName={artist.name ?? "your"} />
+                )}
+
+                {onboardingState && !onboardingState.complete && (
+                    <OnboardingGate
+                        artistId={artist.id}
+                        artistName={artist.name ?? "your profile"}
+                        currentStep={onboardingState.currentStep}
+                    />
+                )}
 
                 {/* 1. Hero Section */}
                 <HeroSection imageUrl={imageUrl} artistName={artist.name ?? "Artist"} artistId={artist.id} />
@@ -152,7 +219,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </div>
 
                 {/* 3. Bio */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-about" className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold">About</h2>
                     <BlurbSection
                         key={artist.bio ?? ""}
@@ -163,15 +230,15 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 4. Ask About Artist (AI Q&A) */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                <RevealSection id="mn-ask" className="glass p-4 sm:p-5 space-y-3">
                     <h2 className="text-black dark:text-white text-xl font-bold break-words">Ask About {artist.name}</h2>
                     <AskAboutArtist artistId={artist.id} artistName={artist.name ?? "this artist"} />
                 </RevealSection>
 
-                {/* 5. Social Links (icon grid) */}
-                <RevealSection className="glass p-4 sm:p-5 space-y-3">
+                {/* 5. Links (icon grid) */}
+                <RevealSection id="mn-links" className="glass p-4 sm:p-5 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="text-black dark:text-white text-xl font-bold">Social Links</h2>
+                        <h2 className="text-black dark:text-white text-xl font-bold">Links</h2>
                         <AddArtistData
                             artist={artist}
                             spotifyImg={platformImage ?? ""}
@@ -183,6 +250,7 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                         />
                     </div>
                     <ArtistLinksGrid isMonetized={false} artist={artist} availableLinks={urlMapList} canEdit={canEdit} />
+                    <OfficialSiteLinks sources={approvedSources} />
                 </RevealSection>
 
                 {/* 6. Support the Artist (icon grid) */}
@@ -202,11 +270,27 @@ export default async function ArtistProfile({ params, searchParams }: ArtistProf
                 </RevealSection>
 
                 {/* 7. Press & Features (vault sources) */}
+                <div id="mn-sources">
                 <VaultSection artistId={artist.id} pendingSources={pendingSources} approvedSources={approvedSources} />
+                </div>
+
+                {/* 8. What we know — the knowledge document, as correctable claims.
+                    Sits AFTER the sources deliberately, because every claim in it
+                    points back at one of them. The component owns its own gating
+                    (owner AND editing) the way VaultSection does, so it renders
+                    nothing at all the rest of the time. */}
+                <div id="mn-knowledge">
+                    <KnowledgeSection artistId={artist.id} />
+                </div>
 
             </div>
             </EditModeProvider>
             <SeoArtistLinks artist={artist} />
+            <ArtistJsonLd
+                artist={artist}
+                imageUrl={imageUrl}
+                pageUrl={`https://www.musicnerd.xyz/artist/${id}`}
+            />
         </>
     );
 }

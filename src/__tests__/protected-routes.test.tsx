@@ -52,6 +52,10 @@ jest.mock('@/app/_components/ArtistLinksGrid', () => function ArtistLinksGrid() 
 jest.mock('@/app/_components/BookmarkButton', () => function BookmarkButton() { return <div data-testid="bookmark-button" />; });
 jest.mock('@/app/_components/EditModeContext', () => ({
     EditModeProvider: function EditModeProvider({ children }: { children: React.ReactNode }) { return <>{children}</>; },
+    // A real context, not a stub: KnowledgeSection and VaultSection both call
+    // useContext on it, and useContext(undefined) throws on $$typeof. Default is
+    // a visitor — not editing — so the owner-only sections render nothing here.
+    EditModeContext: require('react').createContext({ canEdit: false, isEditing: false, setIsEditing: () => {} }),
 }));
 jest.mock('@/app/_components/EditModeToggle', () => function EditModeToggle() { return <button data-testid="edit-toggle">Edit</button>; });
 jest.mock('@/app/_components/AutoRefresh', () => function AutoRefresh() { return null; });
@@ -61,6 +65,9 @@ jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSectio
 jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return null; });
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return null; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
+// Same reason as SeoArtistLinks: an async server component that reads the link
+// table, which this suite does not stand up.
+jest.mock('@/app/artist/[id]/_components/ArtistJsonLd', () => function ArtistJsonLd() { return null; });
 jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return null; });
 jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
 jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return null; });

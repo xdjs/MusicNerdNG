@@ -3,6 +3,7 @@
  * Used by MCP tools and artistQueries.ts (approveUGC, removeArtistData).
  */
 import { db } from "@/server/db/drizzle";
+import { ARTIST_ROW_PROPERTY_BY_COLUMN } from "@/server/db/artistRowProperties";
 import { and, eq, sql } from "drizzle-orm";
 import { artists, artistIdMappings } from "@/server/db/schema";
 import {
@@ -31,11 +32,10 @@ const WRITABLE_LINK_COLUMNS = new Set([
   "supercollector", "ens", "subvert", "bluesky",
 ]);
 
-// Drizzle row properties can differ from the physical column names used in SQL.
-const ARTIST_ROW_PROPERTY_BY_COLUMN: Record<string, string> = {
-  facebookID: "facebookId",
-  tiktokID: "tiktokId",
-};
+// Drizzle row properties can differ from the physical column names used in
+// SQL. The map lives in its own module because the suite mocks this service
+// wholesale, and a constant with no behaviour has no reason to sit behind a
+// mock — see src/server/db/artistRowProperties.ts.
 
 export function sanitizeColumnName(siteName: string): string {
   return siteName.replace(/[^a-zA-Z0-9_]/g, "");

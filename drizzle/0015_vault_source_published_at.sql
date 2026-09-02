@@ -1,0 +1,15 @@
+-- When each source says it was published.
+--
+-- Without a date, everything a source contains reads as current. A real artist's
+-- profile stated "Parris Pierce is my production partner" in the present tense,
+-- taken from a VoyageMIA interview published 2019-01-10 — true about the moment
+-- it was written, and silently presented as true seven years later.
+--
+-- The knowledge document already has an anti-inflation rule telling it to scope
+-- recent-only claims in time. It could not follow that rule, because nothing in
+-- its material said when anything happened.
+--
+-- Nullable on purpose: plenty of pages never state a date, and a guessed one is
+-- worse than none — it would let the document confidently scope a claim to the
+-- wrong era. No date means the claim stays unscoped rather than mis-scoped.
+ALTER TABLE artist_vault_sources ADD COLUMN IF NOT EXISTS published_at date;

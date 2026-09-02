@@ -19,7 +19,7 @@ export default async function SeoArtistLinks({ artist }: { artist: Artist }) {
     }
 
     return (
-        <nav aria-label="Artist social links" className="sr-only">
+        <nav aria-label="Artist links" className="sr-only">
             <ul>
                 {artist.spotify && (
                     <li>

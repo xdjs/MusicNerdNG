@@ -91,8 +91,6 @@ describe('Login flow', () => {
             ok: true,
             json: () => Promise.resolve({ count: 0 }),
         });
-        delete (window as any).location;
-        (window as any).location = { reload: jest.fn(), href: 'http://localhost' };
         Object.defineProperty(window, 'sessionStorage', {
             value: {
                 getItem: jest.fn(() => null),

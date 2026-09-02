@@ -13,7 +13,11 @@ jest.mock("../queries/queriesTS", () => ({
   // Provide deterministic regex patterns for a few platforms
   getAllLinks: jest.fn().mockResolvedValue([
     {
-      regex: /https?:\/\/twitter\.com\/([^/?]+)/,
+      // THE PATTERN URLMAP ACTUALLY STORES. This mock used to carry
+      // `twitter.com/([^/?]+)`, which is the pattern from before the rename —
+      // so every test here passed against a regex production has not used for
+      // years, and the real one's defect (below) was invisible.
+      regex: /https:\/\/[^/]*x\.[^/]+\/([^/]+)(?:\/.*)?$/,
       siteName: "x",
       cardPlatformName: "Twitter",
     },
@@ -46,6 +50,20 @@ jest.mock("../queries/queriesTS", () => ({
       regex: /^https?:\/\/(?:www\.)?bsky\.app\/profile\/([^/?#]+)/,
       siteName: "bluesky",
       cardPlatformName: "Bluesky",
+    },
+    {
+      // Real urlmap Spotify regex — group 1 is the URL *type* segment
+      // (track|album|artist|playlist|episode|show), group 2 is the ID.
+      regex: /^https:\/\/open\.spotify\.com\/(track|album|artist|playlist|episode|show)\/([a-zA-Z0-9]+)(?:\?.*)?$/,
+      siteName: "spotify",
+      cardPlatformName: "Spotify",
+    },
+    {
+      // Real urlmap SoundCloud regex — group 1 is the OPTIONAL literal
+      // "www." prefix, group 2 is the real username.
+      regex: /^https:\/\/(www\.)?soundcloud\.com\/([^/]+)(?:\/.*)?$/,
+      siteName: "soundcloud",
+      cardPlatformName: "SoundCloud",
     },
   ]),
 }));
@@ -173,7 +191,37 @@ describe("utils/services", () => {
   });
 
   describe("extractArtistId", () => {
-    it("extracts twitter username", async () => {
+    it.each([
+      ["https://x.com/someuser", "x.com"],
+      ["https://twitter.com/someuser", "legacy twitter.com"],
+      ["https://www.twitter.com/someuser", "www.twitter.com"],
+      ["https://mobile.twitter.com/someuser", "mobile.twitter.com"],
+    ])("extracts an X handle from %s (%s)", async (url) => {
+      // urlmap's pattern only matches x.com, so every legacy twitter.com link
+      // was dropped as an unrecognised platform — and legacy is what the
+      // sources we read carry. MusicBrainz returned twitter.com/p3t3rango for
+      // Pete Rango and we discarded it.
+      const res = await extractArtistId(url);
+      expect(res).toEqual({
+        siteName: "x",
+        cardPlatformName: "Twitter",
+        id: "someuser",
+      });
+    });
+
+    it.each([
+      "https://max.com/movie",
+      "https://linux.org/thread",
+    ])("does not read %s as an X handle", async (url) => {
+      // The stored pattern is `[^/]*x\.[^/]+` — an "x." ANYWHERE in the host.
+      // max.com/movie resolved to x=movie and linux.org/thread to x=thread.
+      // Not a missed link: a stranger's URL written onto an artist as their
+      // X handle.
+      const res = await extractArtistId(url);
+      expect(res?.siteName).not.toBe("x");
+    });
+
+    it("still extracts a twitter username", async () => {
       const res = await extractArtistId("https://twitter.com/someuser");
       expect(res).toEqual({
         siteName: "x",
@@ -299,6 +347,75 @@ describe("utils/services", () => {
     it("returns null when url does not match any pattern", async () => {
       const res = await extractArtistId("https://unknown.com/user");
       expect(res).toBeNull();
+    });
+
+    // Bug 1 regression: the generic `match[1] || match[2] || match[3]`
+    // fallback returned the URL *type* segment ("artist") as the ID instead
+    // of the real base62 ID in match[2]. Proven to have already corrupted a
+    // production-shaped row (spotify column literally == "artist").
+    describe("Spotify links (Bug 1 regression)", () => {
+      it("extracts the real base62 artist ID from a Spotify artist URL", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
+        expect(res).toEqual({
+          siteName: "spotify",
+          cardPlatformName: "Spotify",
+          id: "3DmaZbBPnKSGnxYRpHobss",
+        });
+      });
+
+      it("still extracts the real ID when a ?si=... query string is present", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss?si=abc123def456");
+        expect(res).toEqual({
+          siteName: "spotify",
+          cardPlatformName: "Spotify",
+          id: "3DmaZbBPnKSGnxYRpHobss",
+        });
+      });
+
+      it("rejects a Spotify TRACK url — a track is not an artist profile", async () => {
+        const res = await extractArtistId("https://open.spotify.com/track/3DmaZbBPnKSGnxYRpHobss");
+        expect(res).toBeNull();
+      });
+
+      it("rejects a Spotify ALBUM url", async () => {
+        const res = await extractArtistId("https://open.spotify.com/album/3DmaZbBPnKSGnxYRpHobss");
+        expect(res).toBeNull();
+      });
+
+      it("rejects a malformed/short Spotify ID", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/short123");
+        expect(res).toBeNull();
+      });
+
+      it("never returns the literal string \"artist\" as the id (regression for Bug 1)", async () => {
+        const res = await extractArtistId("https://open.spotify.com/artist/3DmaZbBPnKSGnxYRpHobss");
+        expect(res?.id).not.toBe("artist");
+      });
+    });
+
+    describe("SoundCloud links (www.-prefix regression)", () => {
+      it("extracts the real username from a www.soundcloud.com URL, not the literal \"www.\" prefix", async () => {
+        const res = await extractArtistId("https://www.soundcloud.com/peterango");
+        expect(res).toEqual({
+          siteName: "soundcloud",
+          cardPlatformName: "SoundCloud",
+          id: "peterango",
+        });
+      });
+
+      it("still extracts the username from a soundcloud.com URL with no www. prefix", async () => {
+        const res = await extractArtistId("https://soundcloud.com/peterango");
+        expect(res).toEqual({
+          siteName: "soundcloud",
+          cardPlatformName: "SoundCloud",
+          id: "peterango",
+        });
+      });
+
+      it("never returns the literal string \"www.\" as the id (regression)", async () => {
+        const res = await extractArtistId("https://www.soundcloud.com/peterango");
+        expect(res?.id).not.toBe("www.");
+      });
     });
   });
 

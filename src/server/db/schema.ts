@@ -1,4 +1,4 @@
-import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, jsonb, numeric, index, uniqueIndex, foreignKey, integer, pgEnum, unique } from "drizzle-orm/pg-core"
+import { pgTable, pgPolicy, bigint, text, boolean, uuid, timestamp, date, jsonb, numeric, index, uniqueIndex, foreignKey, integer, pgEnum, unique } from "drizzle-orm/pg-core"
 import { relations, sql } from "drizzle-orm"
 
 export const platformType = pgEnum("platform_type", ['social', 'web3', 'listen'])
@@ -376,6 +376,11 @@ export const artistVaultSources = pgTable("artist_vault_sources", {
 	contentType: text("content_type"),
 	extractedText: text("extracted_text"),
 	ogImage: text("og_image"),
+	// When the SOURCE says it was published — not when we scraped it. Nullable:
+	// many pages never say, and a guessed date is worse than none, because it
+	// would let the knowledge doc confidently scope a claim to the wrong era.
+	// See migration 0015.
+	publishedAt: date("published_at"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [
@@ -389,6 +394,42 @@ export const artistVaultSources = pgTable("artist_vault_sources", {
 	pgPolicy("mnweb_insert_artist_vault_sources", { as: "permissive", for: "insert", to: ["mnweb"] }),
 	pgPolicy("mnweb_select_artist_vault_sources", { as: "permissive", for: "select", to: ["mnweb"] }),
 	pgPolicy("mnweb_update_artist_vault_sources", { as: "permissive", for: "update", to: ["mnweb"] }),
+]);
+
+/**
+ * What the artist has told us directly, which outranks anything we read.
+ *
+ * The knowledge document is regenerated whenever their sources change, so a
+ * correction typed into the document would be destroyed the next time they
+ * added one. These live outside it and are re-injected into every rebuild —
+ * the same durability the source rejections already have.
+ */
+export const artistDocCorrections = pgTable("artist_doc_corrections", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	/** The claim as it appeared. Keyed by TEXT, not position: a rebuild reorders
+	 *  and renumbers everything, but the wording largely survives. */
+	claim: text().notNull(),
+	/** The artist's replacement. Null for `kind: 'wrong'`. */
+	correction: text(),
+	/** 'wrong' — not true / not them. 'fix' — replaced with their own wording. */
+	kind: text().default('wrong').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("idx_artist_doc_corrections_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("artist_doc_corrections_artist_claim_uniq").on(table.artistId, table.claim),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_doc_corrections_artist_id_fkey"
+	}).onDelete("cascade"),
+	// Real expressions, not empty ones — see migration 0016 and the cautionary
+	// precedent in 0010.
+	pgPolicy("mnweb_select_artist_doc_corrections", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_doc_corrections", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_doc_corrections", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_doc_corrections", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
 ]);
 
 export const artistBioVersions = pgTable("artist_bio_versions", {
@@ -408,6 +449,76 @@ export const artistBioVersions = pgTable("artist_bio_versions", {
 	pgPolicy("mnweb_insert_artist_bio_versions", { as: "permissive", for: "insert", to: ["mnweb"] }),
 	pgPolicy("mnweb_update_artist_bio_versions", { as: "permissive", for: "update", to: ["mnweb"] }),
 	pgPolicy("mnweb_delete_artist_bio_versions", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// Post-claim onboarding: the artist knowledgebase doc (one current doc per artist).
+export const artistDocs = pgTable("artist_docs", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	content: text().notNull(),
+	// The numbered citation source list synthesizeArtistDoc built for this content's
+	// [n] markers — DocSource[] (id/kind/label/url), see artistDocService.ts. Defaults
+	// to an empty array so pre-citation-era rows (and any row inserted without an
+	// explicit value) read back as [] rather than null.
+	sources: jsonb().default([]).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_docs_artist_id_key").on(table.artistId),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_docs_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_docs", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_docs", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_docs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_docs", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// Raw interview answers — the artist's own words, never lost to doc regeneration.
+// answer NULL = explicitly skipped (counts as asked; returns to the follow-up bank).
+export const artistInterviewAnswers = pgTable("artist_interview_answers", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	questionKey: text("question_key").notNull(),
+	question: text().notNull(),
+	answer: text(),
+	source: text().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_interview_answers_artist_question_uniq").on(table.artistId, table.questionKey),
+	index("idx_artist_interview_answers_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_interview_answers_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_interview_answers", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_interview_answers", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_interview_answers", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_interview_answers", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// Step confirmations: "the artist saw and confirmed it", not "data exists".
+// Written ONLY by explicit artist actions in the onboarding chat.
+export const artistOnboardingSteps = pgTable("artist_onboarding_steps", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	step: text().notNull(),
+	confirmedAt: timestamp("confirmed_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_onboarding_steps_artist_step_uniq").on(table.artistId, table.step),
+	index("idx_artist_onboarding_steps_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_onboarding_steps_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_onboarding_steps", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_onboarding_steps", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_onboarding_steps", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+	// No UPDATE policy: confirmation rows are insert-once, delete-on-revoke.
 ]);
 
 export const exclusionReason = pgEnum("exclusion_reason", [
@@ -513,6 +624,134 @@ export const agentRuns = pgTable("agent_runs", {
 	pgPolicy("mnweb_update_agent_runs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true` }),
 ])
 
+// Post-claim onboarding: ingested social posts (Instagram today). A scraped
+// feed includes posts authored by OTHER people where the artist is a
+// collaborator — `owner_username` + `is_own_post` are load-bearing, never
+// attribute a foreign-owner caption to the artist. UNIQUE(artist, platform,
+// platform_post_id) makes re-ingest idempotent (ON CONFLICT DO UPDATE).
+export const artistSocialPosts = pgTable("artist_social_posts", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	platform: text().notNull(),
+	platformPostId: text("platform_post_id").notNull(),
+	ownerUsername: text("owner_username").notNull(),
+	isOwnPost: boolean("is_own_post").notNull(),
+	caption: text(),
+	url: text().notNull(),
+	postedAt: timestamp("posted_at", { withTimezone: true, mode: 'string' }),
+	likeCount: integer("like_count"),
+	commentCount: integer("comment_count"),
+	playCount: integer("play_count"),
+	hashtags: text().array().default([]).notNull(),
+	mentions: text().array().default([]).notNull(),
+	coauthors: text().array().default([]).notNull(),
+	musicTitle: text("music_title"),
+	musicArtist: text("music_artist"),
+	raw: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_social_posts_artist_platform_post_uniq").on(table.artistId, table.platform, table.platformPostId),
+	index("idx_artist_social_posts_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	index("idx_artist_social_posts_own").using("btree", table.artistId.asc().nullsLast(), table.isOwnPost.asc().nullsLast()),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_social_posts_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_social_posts", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_social_posts", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_social_posts", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_social_posts", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// Long research work that outlives the request that asked for it. See
+// drizzle/0021 for why status and cursor exist rather than "are there rows yet".
+export const artistResearchJobs = pgTable("artist_research_jobs", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	/** 'social_ingest' = fetch the feed; 'caption_extract' = read the captions. */
+	kind: text().notNull(),
+	status: text().default("pending").notNull(),
+	/** How far the work got — for extraction, the next caption batch. */
+	cursor: integer().default(0).notNull(),
+	total: integer(),
+	/** Lease: a claimed job whose lease expired is claimable again. */
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: 'string' }),
+	attempts: integer().default(0).notNull(),
+	lastError: text("last_error"),
+	/** Scratch the job owns — the Apify run id, so a killed request cannot
+	 *  orphan a run we can never find again. */
+	state: jsonb().default({}).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("artist_research_jobs_claimable").using("btree", table.status.asc().nullsLast(), table.claimedAt.asc().nullsLast(), table.createdAt.asc().nullsLast()),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_research_jobs_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_research_jobs", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_research_jobs", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_research_jobs", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_research_jobs", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// What an artist's own captions say: role credits and statements, extracted once
+// per ingest by socialCredits.ts and read by questionGenerator + artistDocService.
+// Every row cites the post it came from and carries the verified quote.
+export const artistSocialCredits = pgTable("artist_social_credits", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	platform: text().default("instagram").notNull(),
+	/** 'credit' = a person given a role; 'statement' = the artist on their own work. */
+	kind: text().notNull(),
+	subject: text(),
+	isHandle: boolean("is_handle").default(false).notNull(),
+	/** The artist crediting themselves. Keep the fact, never draw the edge. */
+	isSelf: boolean("is_self").default(false).notNull(),
+	label: text().notNull(),
+	quote: text().notNull(),
+	sourceUrl: text("source_url").notNull(),
+	postedAt: timestamp("posted_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	index("idx_artist_social_credits_artist").using("btree", table.artistId.asc().nullsLast(), table.kind.asc().nullsLast()),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_social_credits_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_social_credits", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_social_credits", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_social_credits", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_social_credits", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
+// One row per artist+platform — the scraped profile itself (follower count, bio, avatar).
+export const artistSocialProfiles = pgTable("artist_social_profiles", {
+	id: uuid().default(sql`uuid_generate_v4()`).primaryKey().notNull(),
+	artistId: uuid("artist_id").notNull(),
+	platform: text().notNull(),
+	handle: text().notNull(),
+	followersCount: integer("followers_count"),
+	bio: text(),
+	avatarUrl: text("avatar_url"),
+	scrapedAt: timestamp("scraped_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
+}, (table) => [
+	unique("artist_social_profiles_artist_platform_uniq").on(table.artistId, table.platform),
+	index("idx_artist_social_profiles_artist_id").using("btree", table.artistId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+		columns: [table.artistId],
+		foreignColumns: [artists.id],
+		name: "artist_social_profiles_artist_id_fkey"
+	}).onDelete("cascade"),
+	pgPolicy("mnweb_select_artist_social_profiles", { as: "permissive", for: "select", to: ["mnweb"], using: sql`true` }),
+	pgPolicy("mnweb_insert_artist_social_profiles", { as: "permissive", for: "insert", to: ["mnweb"], withCheck: sql`true` }),
+	pgPolicy("mnweb_update_artist_social_profiles", { as: "permissive", for: "update", to: ["mnweb"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("mnweb_delete_artist_social_profiles", { as: "permissive", for: "delete", to: ["mnweb"], using: sql`true` }),
+]);
+
 // Relations
 export const artistsRelations = relations(artists, ({one, many}) => ({
 	user: one(users, {
@@ -531,6 +770,11 @@ export const artistsRelations = relations(artists, ({one, many}) => ({
 	artistClaims: many(artistClaims),
 	artistVaultSources: many(artistVaultSources),
 	artistBioVersions: many(artistBioVersions),
+	artistDocs: many(artistDocs),
+	artistInterviewAnswers: many(artistInterviewAnswers),
+	artistOnboardingSteps: many(artistOnboardingSteps),
+	artistSocialPosts: many(artistSocialPosts),
+	artistSocialProfiles: many(artistSocialProfiles),
 }));
 
 export const artistBioVersionsRelations = relations(artistBioVersions, ({one}) => ({
@@ -600,4 +844,24 @@ export const artistMappingExclusionsRelations = relations(artistMappingExclusion
 		fields: [artistMappingExclusions.artistId],
 		references: [artists.id],
 	}),
+}));
+
+export const artistDocsRelations = relations(artistDocs, ({one}) => ({
+	artist: one(artists, { fields: [artistDocs.artistId], references: [artists.id] }),
+}));
+
+export const artistInterviewAnswersRelations = relations(artistInterviewAnswers, ({one}) => ({
+	artist: one(artists, { fields: [artistInterviewAnswers.artistId], references: [artists.id] }),
+}));
+
+export const artistOnboardingStepsRelations = relations(artistOnboardingSteps, ({one}) => ({
+	artist: one(artists, { fields: [artistOnboardingSteps.artistId], references: [artists.id] }),
+}));
+
+export const artistSocialPostsRelations = relations(artistSocialPosts, ({one}) => ({
+	artist: one(artists, { fields: [artistSocialPosts.artistId], references: [artists.id] }),
+}));
+
+export const artistSocialProfilesRelations = relations(artistSocialProfiles, ({one}) => ({
+	artist: one(artists, { fields: [artistSocialProfiles.artistId], references: [artists.id] }),
 }));

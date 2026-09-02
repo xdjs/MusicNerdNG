@@ -12,6 +12,7 @@ jest.mock("@/server/utils/queries/userQueries", () => ({
 }));
 jest.mock("@/server/utils/queries/dashboardQueries", () => ({
     createClaim: jest.fn(),
+    getVaultSourceById: jest.fn(),
     getClaimByArtistId: jest.fn(),
     getApprovedClaimByUserId: jest.fn(),
     getApprovedClaimForArtistByUserId: jest.fn(),
@@ -35,6 +36,9 @@ jest.mock("@/server/utils/queries/vaultWebSearch", () => ({
 }));
 jest.mock("@/server/utils/queries/artistBioQuery", () => ({
     generateArtistBio: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("@/server/utils/artistDocService", () => ({
+    refreshArtistDoc: jest.fn().mockResolvedValue("rebuilt"),
 }));
 jest.mock("@/server/utils/queries/discord", () => ({
     sendDiscordMessage: jest.fn().mockResolvedValue(undefined),
@@ -205,5 +209,64 @@ describe("dashboardActions.claimArtistProfile", () => {
         expect(result.success).toBe(false);
         expect(result.alreadyClaimed).toBe(true);
         expect(createClaim).not.toHaveBeenCalled();
+    });
+});
+
+
+describe("dashboardActions — the knowledge doc follows the sources", () => {
+    beforeEach(() => { jest.resetModules(); });
+
+    async function setup() {
+        const { getServerAuthSession } = await import("@/server/auth");
+        const dq = await import("@/server/utils/queries/dashboardQueries");
+        const { refreshArtistDoc } = await import("@/server/utils/artistDocService");
+        const actions = await import("../dashboardActions");
+        getServerAuthSession.mockResolvedValue({ user: { id: "u1" } });
+        dq.getVaultSourceById.mockResolvedValue({ id: "s1", artistId: "a1" });
+        // Authorize through the REAL canEditArtist by giving it the approved
+        // claim it reads, rather than stubbing the guard itself out.
+        dq.getApprovedClaimForArtistByUserId.mockResolvedValue({ id: "c1", artistId: "a1", userId: "u1" });
+        return { ...actions, dq, refreshArtistDoc };
+    }
+
+    it("rebuilds the doc when a source is REJECTED, not only when one is approved", async () => {
+        // The bug this fixes. updateSourceStatus regenerated only on "approved",
+        // and regenerated the About rather than the doc — so an artist removing a
+        // marketplace directory from their vault kept a document that cited it
+        // forever, and the Ask section kept answering from it. There is no UI for
+        // the document, so nothing ever surfaced that.
+        const { updateSourceStatus, refreshArtistDoc } = await setup();
+        await updateSourceStatus("s1", "rejected");
+        expect(refreshArtistDoc).toHaveBeenCalledWith("a1");
+    });
+
+    it("rebuilds the doc when a source is approved", async () => {
+        const { updateSourceStatus, refreshArtistDoc } = await setup();
+        await updateSourceStatus("s1", "approved");
+        expect(refreshArtistDoc).toHaveBeenCalledWith("a1");
+    });
+
+    it("rebuilds the doc when a source is deleted outright", async () => {
+        const { removeVaultSource, refreshArtistDoc } = await setup();
+        await removeVaultSource("s1");
+        expect(refreshArtistDoc).toHaveBeenCalledWith("a1");
+    });
+
+    it("debounces a burst so a multi-remove costs one rebuild, not one each", async () => {
+        // Rebuilding is a Gemini call; clearing out five bad sources should not
+        // buy five of them.
+        const { updateSourceStatus, refreshArtistDoc } = await setup();
+        await updateSourceStatus("s1", "rejected");
+        await updateSourceStatus("s1", "rejected");
+        await updateSourceStatus("s1", "rejected");
+        expect(refreshArtistDoc).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fail the user's action when the rebuild throws", async () => {
+        // Fire-and-forget behind an action that already succeeded — a bad Gemini
+        // day must not turn a successful removal into an error.
+        const { removeVaultSource, refreshArtistDoc } = await setup();
+        refreshArtistDoc.mockRejectedValueOnce(new Error("gemini down"));
+        await expect(removeVaultSource("s1")).resolves.toEqual({ success: true });
     });
 });

@@ -35,6 +35,10 @@ jest.mock('@/app/_components/ArtistLinksGrid', () => function ArtistLinksGrid() 
 jest.mock('@/app/_components/BookmarkButton', () => function BookmarkButton() { return <div data-testid="bookmark-button" />; });
 jest.mock('@/app/_components/EditModeContext', () => ({
     EditModeProvider: function EditModeProvider({ children }: { children: React.ReactNode }) { return <>{children}</>; },
+    // A real context, not a stub: KnowledgeSection and VaultSection both call
+    // useContext on it, and useContext(undefined) throws on $$typeof. Default is
+    // a visitor — not editing — so the owner-only sections render nothing here.
+    EditModeContext: require('react').createContext({ canEdit: false, isEditing: false, setIsEditing: () => {} }),
 }));
 jest.mock('@/app/_components/EditModeToggle', () => function EditModeToggle() { return <button data-testid="edit-mode-toggle">Edit</button>; });
 jest.mock('@/app/_components/AutoRefresh', () => function AutoRefresh() { return null; });
@@ -54,6 +58,9 @@ jest.mock('@/app/artist/[id]/_components/HeroSection', () => function HeroSectio
 jest.mock('@/app/artist/[id]/_components/FunFacts', () => function FunFacts() { return <div data-testid="fun-facts" />; });
 jest.mock('@/app/artist/[id]/_components/GrapevineIframe', () => function GrapevineIframe() { return <div data-testid="grapevine-iframe" />; });
 jest.mock('@/app/artist/[id]/_components/SeoArtistLinks', () => function SeoArtistLinks() { return null; });
+// Same reason as SeoArtistLinks: an async server component that reads the link
+// table, which this suite does not stand up.
+jest.mock('@/app/artist/[id]/_components/ArtistJsonLd', () => function ArtistJsonLd() { return null; });
 jest.mock('@/app/artist/[id]/_components/ClaimButton', () => function ClaimButton() { return <div data-testid="claim-button" />; });
 jest.mock('@/app/artist/[id]/_components/AskAboutArtist', () => function AskAboutArtist() { return <div data-testid="ask-about-artist" />; });
 jest.mock('@/app/artist/[id]/_components/VaultSection', () => function VaultSection() { return <div data-testid="vault-section" />; });
@@ -293,7 +300,40 @@ describe('ArtistProfile page', () => {
         it('returns correct title and description for an existing artist', async () => {
             const metadata = await generateMetadata({ params: Promise.resolve({ id: 'artist-uuid' }) });
             expect(metadata.title).toBe('Test Artist | Music Nerd');
-            expect(metadata.description).toContain('Test Artist');
+            // The fixture has an About, so that is the description now.
+            expect(metadata.description).toBe('A great artist.');
+            expect(metadata.alternates?.canonical).toBe('https://www.musicnerd.xyz/artist/artist-uuid');
+        });
+
+        it('describes the artist with their own About when one is written', async () => {
+            // "Discover X's social links and streaming profiles on Music Nerd"
+            // is the same sentence on every page in the directory. It is what a
+            // search result shows and what an assistant quotes, and it says
+            // nothing about the artist.
+            (getArtistById as jest.Mock).mockResolvedValue({
+                id: 'artist-uuid', name: 'Test Artist',
+                bio: 'Test Artist is a producer from Bogota who scores documentaries. They started on guitar at nine.',
+            });
+            const metadata = await generateMetadata({ params: Promise.resolve({ id: 'artist-uuid' }) });
+            expect(metadata.description).toContain('producer from Bogota');
+            expect(metadata.description).not.toContain('social links and streaming profiles');
+            expect(metadata.openGraph?.description).toBe(metadata.description);
+        });
+
+        it('cuts a long About on a sentence, not mid-clause', async () => {
+            const long = `${'Test Artist makes records in a converted water tower. '.repeat(8)}`;
+            (getArtistById as jest.Mock).mockResolvedValue({ id: 'artist-uuid', name: 'Test Artist', bio: long });
+            const metadata = await generateMetadata({ params: Promise.resolve({ id: 'artist-uuid' }) });
+            expect(metadata.description!.length).toBeLessThanOrEqual(300);
+            expect(metadata.description).toMatch(/\.$/);
+        });
+
+        it('falls back to the template when the About is the empty-state placeholder', async () => {
+            // isRealBio rejects it. Publishing the placeholder would tell a
+            // crawler the artist is "a musician on Music Nerd", forever.
+            (getArtistById as jest.Mock).mockResolvedValue({ id: 'artist-uuid', name: 'Test Artist', bio: '   ' });
+            const metadata = await generateMetadata({ params: Promise.resolve({ id: 'artist-uuid' }) });
+            expect(metadata.description).toContain('social links and streaming profiles');
         });
 
         it('returns not-found metadata when artist does not exist', async () => {

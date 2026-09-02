@@ -122,7 +122,10 @@ function SourceCard({ source }: { source: VaultSource }) {
     );
 }
 
-export default function PressAndFeatures({ sources }: PressAndFeaturesProps) {
+export default function PressAndFeatures({ sources: allSources }: PressAndFeaturesProps) {
+    // The artist's own site is surfaced beside Links (see OfficialSiteLinks) —
+    // it isn't press, and rendering it here too would show it twice.
+    const sources = allSources.filter((s) => s.type !== "website");
     const [activeFilter, setActiveFilter] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 

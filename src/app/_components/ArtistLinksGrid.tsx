@@ -32,7 +32,7 @@ export default async function ArtistLinksGrid({ isMonetized, artist, canEdit = f
             <p className="text-sm text-muted-foreground">
                 {isMonetized
                     ? "No support links yet."
-                    : "No social links yet — help out by adding some!"}
+                    : "No links yet — help out by adding some!"}
             </p>
         );
     }

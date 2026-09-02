@@ -61,10 +61,6 @@ describe('ClientWrapper', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Reset window.location so we can track redirects
-    delete (window as any).location;
-    (window as any).location = { href: 'http://localhost/profile', reload: jest.fn() };
-
     // Default: unauthenticated
     mockSessionData = null;
     mockSessionStatus = 'unauthenticated';

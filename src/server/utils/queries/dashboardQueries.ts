@@ -1,6 +1,6 @@
 import { db } from "@/server/db/drizzle";
 import { eq, and, or, sql } from "drizzle-orm";
-import { artistClaims, artistVaultSources, artistBioVersions, artists } from "@/server/db/schema";
+import { artistClaims, artistVaultSources, artistBioVersions, artists, artistDocs, artistInterviewAnswers, artistOnboardingSteps, artistSocialPosts, artistSocialProfiles } from "@/server/db/schema";
 
 /**
  * Returns the artist's **active** claim (pending or approved), if any.
@@ -189,6 +189,38 @@ export async function revokeApprovedClaim(claimId: string) {
                 .delete(artistVaultSources)
                 .where(eq(artistVaultSources.artistId, deleted.artistId));
 
+            // Scraped social data (posts + profile) is the revoked owner's too — a
+            // re-claimer must not inherit the previous owner's Instagram history or
+            // the grounded questions derived from it. Same tx, same invariant.
+            await tx
+                .delete(artistSocialPosts)
+                .where(eq(artistSocialPosts.artistId, deleted.artistId));
+            await tx
+                .delete(artistSocialProfiles)
+                .where(eq(artistSocialProfiles.artistId, deleted.artistId));
+
+            // Onboarding content is the revoked owner's — it must not survive for
+            // (or silently skip onboarding of) the next claimant. Same tx as the
+            // vault wipe, same invariant (see spec §5).
+            await tx
+                .delete(artistInterviewAnswers)
+                .where(eq(artistInterviewAnswers.artistId, deleted.artistId));
+            await tx
+                .delete(artistOnboardingSteps)
+                .where(eq(artistOnboardingSteps.artistId, deleted.artistId));
+            const deletedDocs = await tx
+                .delete(artistDocs)
+                .where(eq(artistDocs.artistId, deleted.artistId))
+                .returning();
+            if (deletedDocs.length > 0) {
+                // The owner published — the live bio (doc-generated or later hand-edited)
+                // is their content. Clear it so the next state regenerates from scratch.
+                await tx
+                    .update(artists)
+                    .set({ bio: null })
+                    .where(eq(artists.id, deleted.artistId));
+            }
+
             return deleted;
         });
     } catch (e) {
@@ -302,8 +334,15 @@ export async function insertVaultSource(data: {
     filePath?: string;
     contentType?: string;
     extractedText?: string | null;
+    ogImage?: string | null;
+    /** ISO date (YYYY-MM-DD) the source says it was published, or null. */
+    publishedAt?: string | null;
 }) {
     try {
+        // onConflictDoNothing pairs with the unique index on (artist_id, url)
+        // added in 0014. Dedup used to be a read-then-write with nothing
+        // underneath, so two overlapping discovery runs both read "absent" and
+        // both inserted — a real artist's vault held the same interview twice.
         const [source] = await db
             .insert(artistVaultSources)
             .values({
@@ -318,8 +357,14 @@ export async function insertVaultSource(data: {
                 filePath: data.filePath,
                 contentType: data.contentType,
                 extractedText: data.extractedText,
+                ogImage: data.ogImage,
+                publishedAt: data.publishedAt ?? null,
             })
+            .onConflictDoNothing({ target: [artistVaultSources.artistId, artistVaultSources.url] })
             .returning();
+        // Undefined when the row already existed — a concurrent run won the
+        // race. Callers treat a missing row as "nothing new to enrich", which is
+        // correct: the source is present either way.
         return source;
     } catch (e) {
         console.error("[insertVaultSource] Error:", e);
@@ -377,6 +422,7 @@ export async function updateVaultSourceContent(sourceId: string, data: {
     snippet?: string;
     extractedText?: string | null;
     ogImage?: string;
+    publishedAt?: string | null;
 }) {
     try {
         const [updated] = await db
@@ -386,6 +432,7 @@ export async function updateVaultSourceContent(sourceId: string, data: {
                 ...(data.snippet !== undefined ? { snippet: data.snippet } : {}),
                 ...(data.extractedText !== undefined ? { extractedText: data.extractedText } : {}),
                 ...(data.ogImage !== undefined ? { ogImage: data.ogImage } : {}),
+                ...(data.publishedAt !== undefined ? { publishedAt: data.publishedAt } : {}),
                 updatedAt: sql`(now() AT TIME ZONE 'utc'::text)`,
             })
             .where(eq(artistVaultSources.id, sourceId))
