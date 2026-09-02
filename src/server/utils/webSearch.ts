@@ -141,6 +141,11 @@ async function tavilySearch(query: string, opts: ResolvedWebSearchOptions): Prom
     return out;
 }
 
+/** Latched so the missing-key warning is said once, not once per parallel
+ *  call. Module scope, so it resets with the process — a redeploy says it
+ *  again, which is when somebody is likely to be reading. */
+let warnedNoKey = false;
+
 /** Backend registry, selected by `WEB_SEARCH_PROVIDER` (default "tavily").
  *  To add Perplexity: implement `perplexitySearch` against `POST
  *  https://api.perplexity.ai/search` / `search_domain_filter` and add a
@@ -165,7 +170,14 @@ export async function webSearch(query: string, opts?: WebSearchOptions): Promise
         // Expected in an environment that has not configured it, and
         // catastrophic in one that thinks it has: no key means no sources, no
         // knowledge document and no About, with nothing in the logs to say so.
-        console.warn("[webSearch] No TAVILY_API_KEY — web search is OFF. Discovery loses its last-resort tier and the vault finds no sources.");
+        //
+        // ONCE PER PROCESS. Discovery calls this up to eight times in parallel
+        // per pass, so warning on every call buried the log in identical,
+        // non-actionable lines on any preview deploy without the key.
+        if (!warnedNoKey) {
+            warnedNoKey = true;
+            console.warn("[webSearch] No TAVILY_API_KEY — web search is OFF. Discovery loses its last-resort tier and the vault finds no sources.");
+        }
         return [];
     }
 

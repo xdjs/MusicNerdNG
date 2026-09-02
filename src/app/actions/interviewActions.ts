@@ -8,7 +8,7 @@ import {
     recordInterviewOffered,
     upsertInterviewAnswer,
 } from "@/server/utils/queries/onboardingQueries";
-import { generateGroundedQuestions, sourceUrlForQuestionKey } from "@/server/utils/questionGenerator";
+import { generateGroundedQuestions, sourceUrlsForQuestionKeys } from "@/server/utils/questionGenerator";
 import { ONBOARDING_QUESTIONS } from "@/server/utils/onboarding/questions";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
@@ -135,17 +135,24 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // `sourceUrlForQuestionKey`. A resumed question used to arrive without
         // one, and I had put that down to needing a new column; the key
         // already carries the shortcode, or the credits table has the post.
-        // EACH LINK FAILS ALONE. A rejection inside Promise.all rejects the
-        // whole thing, and this sits inside the outer catch that returns
-        // { show: false } — so a hiccup resolving a link would have cost the
-        // artist the entire interview rather than one underline.
-        const resumed: InterviewQuestion[] = await Promise.all(
-            stillOpen.map(async r => ({
-                key: r.questionKey,
-                question: r.question,
-                sourceUrl: await sourceUrlForQuestionKey(artistId, r.questionKey).catch(() => undefined),
-            })),
-        );
+        // ONE RESOLVE FOR THE WHOLE SET. Doing it per question re-read the
+        // artist's entire post history each time — three open collaborator
+        // questions meant three full fetches plus three signal derivations, on
+        // a path that runs on every page load with an open sitting.
+        //
+        // Scoped with the same `since` the questions were generated under, so a
+        // "new material" sitting cannot link back to a pre-`since` post the
+        // model never saw. And it never throws: this sits inside the catch that
+        // returns { show: false }, so a failed lookup would have cost the
+        // artist the whole interview rather than one underline.
+        const links = await sourceUrlsForQuestionKeys(
+            artistId, stillOpen.map(r => r.questionKey), { since },
+        ).catch(() => new Map<string, string>());
+        const resumed: InterviewQuestion[] = stillOpen.map(r => ({
+            key: r.questionKey,
+            question: r.question,
+            sourceUrl: links.get(r.questionKey),
+        }));
         const generated = resumed.length >= QUESTION_COUNT
             ? []
             : await pickQuestions(artistId, since, new Set([...answeredKeys, ...resumed.map(q => q.key)]));

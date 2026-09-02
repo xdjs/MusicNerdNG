@@ -306,13 +306,15 @@ export function rankStatements(statements: ArtistStatement[]): ArtistStatement[]
  * Each asserts only what the join proves. Neither can put somebody on a record
  * they were not credited on, because the evidence travels with the claim.
  */
-function relationshipCandidates(artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
+function relationshipCandidates(artistName: string, extraction: CaptionExtraction, exclude: Set<string> = new Set()): SignalCandidate[] {
     const out: SignalCandidate[] = [];
 
     // A collaborator who keeps coming back. `creditedCollaborators` already
     // groups by person and collects every post they were credited on; two or
     // more is a relationship, one is an anecdote.
-    for (const c of creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2).slice(0, TOP_PARTNERSHIPS)) {
+    for (const c of pickUnasked(
+        creditedCollaborators(extraction).filter(c => c.evidenceUrls.length >= 2),
+        c => `social_partnership_${unicodeSlug(c.subject)}`, TOP_PARTNERSHIPS, exclude)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
         // UNICODE. `slug` is ASCII-only and reduces a Japanese or Korean name
         // to "x", so two such collaborators would share a signalId — the byId
@@ -376,6 +378,7 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
         // One credit beside something the artist said is unambiguous: there is
         // only one person in the post and only one thing to be talking about.
         .filter(([, v]) => v.credits.length === 1 && v.statements.length > 0)
+        .filter(([url]) => !exclude.has(`social_same_post_${shortCodeFromUrl(url)}`))
         .slice(0, TOP_SAME_POST);
     for (const [url, v] of pairs) {
         const credit = v.credits[0];
@@ -400,10 +403,33 @@ function relationshipCandidates(artistName: string, extraction: CaptionExtractio
     return out;
 }
 
-function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction): SignalCandidate[] {
+/**
+ * Take the first `n` items whose question has not been asked yet.
+ *
+ * EXCLUDE BEFORE TRUNCATING, which is the whole point. Every kind here slices
+ * to a small TOP_N, and `excludeKeys` used to be applied to the finished
+ * candidate list — so once an artist had answered the top-ranked items of a
+ * kind, that kind produced nothing forever, because the same top-N were
+ * recomputed and then stripped to zero. With TOP_THEMES at 1, a single answered
+ * theme question retired themes permanently.
+ *
+ * That is the same "filter the result instead of the pool" mistake this
+ * exclusion was written to fix, one layer further down. Found in review.
+ */
+function pickUnasked<T>(items: T[], keyOf: (item: T) => string, n: number, exclude: Set<string>): T[] {
+    const out: T[] = [];
+    for (const item of items) {
+        if (out.length >= n) break;
+        if (exclude.has(keyOf(item))) continue;
+        out.push(item);
+    }
+    return out;
+}
+
+function buildCandidates(signals: SocialSignals, artistName: string, extraction: CaptionExtraction, exclude: Set<string> = new Set()): SignalCandidate[] {
     // Relationships first: they are the only candidates that carry a verified
     // connection, and the prompt is told to reach for them.
-    const candidates: SignalCandidate[] = relationshipCandidates(artistName, extraction);
+    const candidates: SignalCandidate[] = relationshipCandidates(artistName, extraction, exclude);
 
     // Role credits first. "Mixing & Mastering Engineer: @p3t3rango" is a named
     // person doing a stated job, written by the artist — strictly better
@@ -412,7 +438,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // evidence that exists. Self-credits are excluded by creditedCollaborators:
     // "Recording Engineer: Pharaoh Sistare" is a fact about him, not a
     // relationship to ask him about.
-    for (const c of creditedCollaborators(extraction).slice(0, TOP_CREDITS)) {
+    for (const c of pickUnasked(creditedCollaborators(extraction),
+        c => `social_credit_${unicodeSlug(c.subject)}`, TOP_CREDITS, exclude)) {
         const subject = c.isHandle ? `@${c.subject}` : c.subject;
         // `unicodeSlug`, not `slug`. The ASCII one reduces a Japanese or Korean
         // name to "x", so two such collaborators collide on signalId — byId
@@ -449,7 +476,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
     // Things the artist said about their own work. The material IS the quote,
     // so a question built from it can respond to what they actually wrote
     // rather than to a word that appeared often.
-    for (const s of rankStatements(extraction.statements).slice(0, TOP_STATEMENTS)) {
+    for (const s of pickUnasked(rankStatements(extraction.statements),
+        s => `social_statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`, TOP_STATEMENTS, exclude)) {
         candidates.push({
             signalId: `statement_${shortCodeFromUrl(s.url)}_${slug(s.topic)}`,
             kind: "statement",
@@ -460,7 +488,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         });
     }
 
-    for (const c of [...signals.collaborators].sort((a, b) => b.postCount - a.postCount).slice(0, TOP_COLLABORATORS)) {
+    for (const c of pickUnasked([...signals.collaborators].sort((a, b) => b.postCount - a.postCount),
+        c => `social_collaborator_${slug(c.handle)}`, TOP_COLLABORATORS, exclude)) {
         candidates.push({
             signalId: `collab_${slug(c.handle)}`,
             kind: "collaborator",
@@ -484,7 +513,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
             themesByTerm.set(termKey, t);
         }
     }
-    for (const t of [...themesByTerm.values()].sort((a, b) => b.count - a.count).slice(0, TOP_THEMES)) {
+    for (const t of pickUnasked([...themesByTerm.values()].sort((a, b) => b.count - a.count),
+        t => `social_theme_${t.kind}_${slug(t.term)}`, TOP_THEMES, exclude)) {
         const termNoun = t.kind === "hashtag" ? "hashtag" : t.kind === "caption_phrase" ? "phrase" : "word";
         candidates.push({
             signalId: `theme_${t.kind}_${slug(t.term)}`,
@@ -496,7 +526,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         });
     }
 
-    for (const s of [...signals.standoutPosts].sort((a, b) => b.multiple - a.multiple).slice(0, TOP_STANDOUTS)) {
+    for (const s of pickUnasked([...signals.standoutPosts].sort((a, b) => b.multiple - a.multiple),
+        s => `social_standout_${shortCodeFromUrl(s.url)}`, TOP_STANDOUTS, exclude)) {
         candidates.push({
             signalId: `standout_${shortCodeFromUrl(s.url)}`,
             kind: "standout",
@@ -507,7 +538,8 @@ function buildCandidates(signals: SocialSignals, artistName: string, extraction:
         });
     }
 
-    for (const m of [...signals.musicReferences].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length).slice(0, TOP_MUSIC)) {
+    for (const m of pickUnasked([...signals.musicReferences].sort((a, b) => b.evidenceUrls.length - a.evidenceUrls.length),
+        m => `social_music_${slug(m.title)}_${slug(m.artist)}`, TOP_MUSIC, exclude)) {
         candidates.push({
             signalId: `music_${slug(m.title)}_${slug(m.artist)}`,
             kind: "music",
@@ -916,65 +948,122 @@ async function keepOnlySupported(
  * Returns undefined rather than guessing. A missing link is a small loss; a
  * link to the wrong post is the artist reading somebody else's caption.
  */
-export async function sourceUrlForQuestionKey(artistId: string, key: string): Promise<string | undefined> {
-    // NO SUFFIX on these two, so the rest of the key IS the shortcode and a
-    // greedy match to the end is exact.
-    const wholeTail = key.match(/^social_(?:standout|same_post)_(.+)$/);
-    if (wholeTail?.[1]) return `https://www.instagram.com/p/${wholeTail[1]}/`;
+export async function sourceUrlForQuestionKey(
+    artistId: string,
+    key: string,
+    opts?: { since?: string | null },
+): Promise<string | undefined> {
+    return (await sourceUrlsForQuestionKeys(artistId, [key], opts)).get(key);
+}
 
-    // A STATEMENT KEY CANNOT BE SPLIT BY REGEX. It is
-    // `social_statement_<shortcode>_<topic>` and BOTH halves can contain
-    // underscores — 29 of the 267 shortcodes in this database do, and a
-    // non-greedy match turned "Czb_V_lxFMA" into "Czb", linking the artist to
-    // instagram.com/p/Czb/. A wrong link is worse than no link, which is the
-    // rule this function is written to.
-    //
-    // So it is resolved by rebuilding the key from each stored statement and
-    // comparing — the same discipline as the person lookup below, and it
-    // cannot drift from the format because it uses the format.
-    const statement = key.startsWith("social_statement_");
-    const person = key.match(/^social_(?:partnership|credit)_(.+)$/);
-    // COLLABORATOR AND MUSIC COME FROM THE POSTS, NOT THE CAPTIONS. Both are
-    // built off `deriveSocialSignals`, so looking them up in the caption-parsed
-    // credits table could never match — the docstring claimed it did, and a
-    // resumed question of either kind silently lost the link this whole change
-    // exists to add. `music` was not even in the pattern. Found in review.
-    const fromPosts = /^social_(?:collaborator|music)_/.test(key);
-    if (!statement && !person?.[1] && !fromPosts) return undefined;
-    try {
-        if (fromPosts) {
-            const artist = await getArtistById(artistId);
-            if (!artist) return undefined;
-            const posts = await getSocialPostsForArtist(artistId);
-            const signals = deriveSocialSignals(posts, artist.instagram ?? "", artist.name ?? "");
-            // Rebuild-and-compare, the same discipline the statement branch
-            // uses: a two-part key like `music_<title>_<artist>` cannot be
-            // split by pattern any more than a shortcode could.
-            const collab = signals.collaborators.find(c => `social_collaborator_${slug(c.handle)}` === key);
-            if (collab) return collab.evidenceUrls[0];
-            const track = signals.musicReferences.find(
-                m => `social_music_${slug(m.title)}_${slug(m.artist)}` === key);
-            return track?.evidenceUrls[0];
-        }
+/**
+ * The posts a set of stored questions came from, recovered from their keys.
+ *
+ * A RESUMED question is rebuilt from the `questionKey` and text on its row, so
+ * the panel had no post to link to and I claimed that needed a new column.
+ * Pete: "don't we have links to all the posts in our database? why is that not
+ * possible?" It is — the key already carries it, or the stored signals do.
+ *
+ * BATCHED, because resolving one at a time re-read the artist's whole post
+ * history per question. Three open collaborator questions meant three full
+ * fetches plus three signal derivations, on a path that runs on every page
+ * load with an open sitting. Now each source is read at most once for the
+ * whole set, and only if some key actually needs it.
+ *
+ * FOUR SHAPES, each rebuilt with the function that BUILT the key so the two
+ * cannot drift:
+ *  - `standout` and `same_post` carry the shortcode and nothing else, so the
+ *    rest of the key IS the code — no query at all.
+ *  - `statement` carries a shortcode AND a topic, both of which can contain
+ *    underscores (29 of the 267 shortcodes here do), so it cannot be split by
+ *    pattern and is rebuilt and compared instead.
+ *  - `partnership` and `credit` are people, found in the stored credits.
+ *  - `collaborator`, `music` and `theme` come from `deriveSocialSignals` over
+ *    the POSTS — a different source entirely from the caption-parsed credits,
+ *    which is why looking them up there could never have worked.
+ *
+ * Returns nothing for a key it cannot place. A missing link is a small loss; a
+ * link to the wrong post is the artist reading somebody else's caption.
+ */
+export async function sourceUrlsForQuestionKeys(
+    artistId: string,
+    keys: string[],
+    opts?: { since?: string | null },
+): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    const needsCredits: string[] = [];
+    const needsSignals: string[] = [];
 
-        const { credits, statements } = await getSocialCredits(artistId);
-        if (statement) {
-            const hit = statements.find(
-                st => `social_statement_${shortCodeFromUrl(st.url)}_${slug(st.topic)}` === key);
-            return hit?.url;
-        }
-        // FIRST MATCH IN STORED ORDER, deliberately not the newest.
-        // `creditedCollaborators` collects evidenceUrls in exactly this order
-        // and the question was built from evidenceUrls[0], so this returns the
-        // post the question actually came from. Sorting by recency instead sent
-        // a question about "those first two tracks" to a post from years later
-        // — a real link to the wrong moment, which is worse than no link.
-        const match = credits.find(c => !c.isSelf && unicodeSlug(c.subject) === person![1]);
-        return match?.url;
-    } catch (e) {
-        console.error("[sourceUrlForQuestionKey] Could not resolve:", e);
-        return undefined;
+    for (const key of keys) {
+        const wholeTail = key.match(/^social_(?:standout|same_post)_(.+)$/);
+        if (wholeTail?.[1]) { found.set(key, `https://www.instagram.com/p/${wholeTail[1]}/`); continue; }
+        if (key.startsWith("social_statement_") || /^social_(?:partnership|credit)_/.test(key)) needsCredits.push(key);
+        else if (/^social_(?:collaborator|music|theme)_/.test(key)) needsSignals.push(key);
     }
+
+    if (needsCredits.length > 0) {
+        try {
+            const stored = await getSocialCredits(artistId);
+            // SCOPED THE SAME WAY THE QUESTION WAS. A "new material" invite
+            // builds its signals from credits newer than `since`, so resolving
+            // against full history could return a pre-`since` post the model
+            // never saw when it wrote the question.
+            const since = opts?.since ? Date.parse(opts.since) : NaN;
+            const newer = <T extends { postedAt?: string | null }>(rows: T[]): T[] =>
+                Number.isNaN(since) ? rows : rows.filter(r => {
+                    const at = Date.parse(r.postedAt ?? "");
+                    return !Number.isNaN(at) && at > since;
+                });
+            const statements = newer(stored.statements);
+            // GROUPED, not raw rows. `creditedCollaborators` folds names and
+            // promotes a handle-form subject over a bare name, so matching raw
+            // rows on the subject skipped the earlier post that used the name
+            // and returned a later one — the opposite of "the post the question
+            // came from". Grouping here uses the same collection the question
+            // was built from, and its evidenceUrls are in the same order.
+            const people = creditedCollaborators({ ...stored, credits: newer(stored.credits) });
+
+            for (const key of needsCredits) {
+                if (key.startsWith("social_statement_")) {
+                    const hit = statements.find(
+                        st => `social_statement_${shortCodeFromUrl(st.url)}_${slug(st.topic)}` === key);
+                    if (hit) found.set(key, hit.url);
+                    continue;
+                }
+                const person = people.find(c =>
+                    `social_partnership_${unicodeSlug(c.subject)}` === key
+                    || `social_credit_${unicodeSlug(c.subject)}` === key);
+                if (person?.evidenceUrls[0]) found.set(key, person.evidenceUrls[0]);
+            }
+        } catch (e) {
+            console.error("[sourceUrlsForQuestionKeys] Could not read stored credits:", e);
+        }
+    }
+
+    if (needsSignals.length > 0) {
+        try {
+            const artist = await getArtistById(artistId);
+            if (artist) {
+                const posts = await getSocialPostsForArtist(artistId);
+                const signals = deriveSocialSignals(posts, artist.instagram ?? "", artist.name ?? "");
+                for (const key of needsSignals) {
+                    const collab = signals.collaborators.find(c => `social_collaborator_${slug(c.handle)}` === key);
+                    if (collab?.evidenceUrls[0]) { found.set(key, collab.evidenceUrls[0]); continue; }
+                    const track = signals.musicReferences.find(
+                        m => `social_music_${slug(m.title)}_${slug(m.artist)}` === key);
+                    if (track?.evidenceUrls[0]) { found.set(key, track.evidenceUrls[0]); continue; }
+                    // Themes had no branch at all, so a resumed theme question
+                    // lost its link even though the signal carries evidence.
+                    const theme = signals.themes.find(t => `social_theme_${t.kind}_${slug(t.term)}` === key);
+                    if (theme?.evidenceUrls[0]) found.set(key, theme.evidenceUrls[0]);
+                }
+            }
+        } catch (e) {
+            console.error("[sourceUrlsForQuestionKeys] Could not derive post signals:", e);
+        }
+    }
+
+    return found;
 }
 
 export async function generateGroundedQuestions(
@@ -1050,8 +1139,7 @@ export async function generateGroundedQuestions(
             credits: newer(stored.credits),
             statements: newer(stored.statements),
         };
-        const candidates = buildCandidates(signals, artistName, extraction)
-            .filter(c => !exclude.has(c.key));
+        const candidates = buildCandidates(signals, artistName, extraction, exclude);
         if (candidates.length === 0) return [];
 
         // Draft more than we need — see DRAFT_OVERSAMPLE. Never more than there

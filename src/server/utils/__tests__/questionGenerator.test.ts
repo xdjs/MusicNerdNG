@@ -422,12 +422,103 @@ describe('generateGroundedQuestions', () => {
             expect(await sourceUrlForQuestionKey('a1', key)).toBe(expected);
         });
 
+        it('resolves a theme key, which had no branch at all', async () => {
+            // `social_theme_<kind>_<term>` matched none of the branches, so a
+            // resumed theme question lost its link even though the signal
+            // carries evidence urls. Found in review.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            jest.doMock('@/server/utils/socialIngest', () => ({
+                getSocialPostsForArtist: jest.fn(async () => Array.from({ length: 3 }, (_, i) => ({
+                    platform: 'instagram', platformPostId: `h${i}`, ownerUsername: 'p3t3rango', isOwnPost: true,
+                    caption: 'in the studio', url: `https://www.instagram.com/p/THEME${i}/`, postedAt: `2026-0${i + 1}-01`,
+                    likeCount: 10, commentCount: 1, playCount: 10, hashtags: ['housemusic'], mentions: [],
+                    coauthors: [], musicTitle: null, musicArtist: null,
+                }))),
+            }));
+            const { sourceUrlForQuestionKey } = await import('@/server/utils/questionGenerator');
+            expect(await sourceUrlForQuestionKey('a1', 'social_theme_hashtag_housemusic'))
+                .toMatch(/instagram\.com\/p\/THEME/);
+        });
+
+        it('reads each source ONCE for a whole batch of keys', async () => {
+            // Resolving per question re-read the artist's entire post history
+            // each time — three open collaborator questions meant three full
+            // fetches plus three signal derivations, on a path that runs on
+            // every page load with an open sitting.
+            const artistQ = await import('@/server/utils/queries/artistQueries');
+            artistQ.getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', instagram: 'p3t3rango' });
+            const getPosts = jest.fn(async () => []);
+            jest.doMock('@/server/utils/socialIngest', () => ({ getSocialPostsForArtist: getPosts }));
+            const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
+            await sourceUrlsForQuestionKeys('a1', [
+                'social_collaborator_a', 'social_music_b_c', 'social_theme_hashtag_d',
+            ]);
+            expect(getPosts).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not read the posts at all when no key needs them', async () => {
+            const getPosts = jest.fn(async () => []);
+            jest.doMock('@/server/utils/socialIngest', () => ({ getSocialPostsForArtist: getPosts }));
+            const { sourceUrlsForQuestionKeys } = await import('@/server/utils/questionGenerator');
+            const out = await sourceUrlsForQuestionKeys('a1', ['social_standout_ABC']);
+            expect(out.get('social_standout_ABC')).toBe('https://www.instagram.com/p/ABC/');
+            expect(getPosts).not.toHaveBeenCalled();
+        });
+
         it('returns nothing rather than guessing for a key with no post behind it', async () => {
             // A link to the wrong post is the artist reading somebody else's
             // caption — worse than no link.
             const r = await resolve();
             expect(await r('a1', 'describe_your_sound')).toBeUndefined();
             expect(await r('a1', 'social_theme_hashtag_housemusic')).toBeUndefined();
+        });
+    });
+
+    describe('exclusion reaches the pool, not just the finished list', () => {
+        it('offers the NEXT statement once the top ones have been asked', async () => {
+            // Each kind truncates to a small TOP_N, and the exclusion used to
+            // run on the finished candidate list — so once the top-ranked items
+            // of a kind were answered, the same top-N were recomputed and
+            // stripped to zero and that kind produced nothing ever again. With
+            // TOP_THEMES at 1, one answered theme question retired themes
+            // permanently. Found in review, and it is the same mistake the
+            // exclusion was written to fix, one layer down.
+            // More statements than TOP_STATEMENTS, so there is a next rank to
+            // come forward once the first ones are excluded.
+            jest.doMock('@/server/utils/queries/socialCreditQueries', () => ({
+                getSocialCredits: jest.fn(async () => ({
+                    credits: [],
+                    statements: Array.from({ length: 16 }, (_, i) => ({
+                        quote: `a distinct thing I said number ${i} about the record and the room`,
+                        topic: `topic ${i}`,
+                        url: `https://www.instagram.com/p/S${i}/`,
+                        postedAt: `2026-01-${String(i + 1).padStart(2, '0')}`,
+                    })),
+                })),
+            }));
+            let offered = [];
+            const capture = jest.fn(async (req) => {
+                const sys = String(req?.config?.systemInstruction ?? "");
+                const contents = String(req?.contents ?? "");
+                if (sys.startsWith("You are fact-checking")) return { text: '[]' };
+                offered = JSON.parse(contents.match(/SIGNALS:\n([\s\S]*?)\n\nChoose/)[1]);
+                return { text: '[]' };
+            });
+
+            const { generateGroundedQuestions } = await setup({ generateContentImpl: capture });
+            await generateGroundedQuestions('a1', { max: 3 });
+            const before = offered.filter(x => x.kind === 'statement').map(x => x.signalId);
+            expect(before.length).toBeGreaterThan(0);
+
+            // Exclude every statement it just offered. If exclusion happened
+            // after truncation there would be nothing left; reaching the pool
+            // means the next-ranked ones come forward.
+            const { generateGroundedQuestions: again } = await setup({ generateContentImpl: capture });
+            await again('a1', { max: 3, excludeKeys: before.map(id => `social_${id}`) });
+            const after = offered.filter(x => x.kind === 'statement').map(x => x.signalId);
+            expect(after.length).toBeGreaterThan(0);
+            expect(after.some(id => before.includes(id))).toBe(false);
         });
     });
 
@@ -472,7 +563,11 @@ describe('generateGroundedQuestions', () => {
             const dropped = everySignal.find(x => !String(x.signalId).startsWith('collab_')).signalId;
             await again('a1', { max: 3, excludeKeys: [`social_${dropped}`] });
             expect(offered.some(x => x.signalId === dropped)).toBe(false);
-            expect(offered.length).toBe(everySignal.length - 1);   // exactly one gone
+            // NOT length - 1. Exclusion now happens against each kind's full
+            // pool before it is truncated, so dropping one lets the next-ranked
+            // candidate take its place. A shrinking pool was the symptom of
+            // filtering the finished list — see the pool test above.
+            expect(offered.length).toBeGreaterThanOrEqual(everySignal.length - 1);
         });
 
         it('keys the cache on the exclusion set, so a second ask is not served the first answer', async () => {

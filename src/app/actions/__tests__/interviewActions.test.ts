@@ -30,11 +30,15 @@ jest.mock('@/server/utils/queries/onboardingQueries', () => ({
 // `sourceUrlForQuestionKey` undefined, and calling it threw inside
 // getInterviewInvite's try — which returns { show: false }, so every resume
 // test failed with "questions is undefined" rather than anything about links.
-const sourceUrlForQuestionKey = jest.fn(async (_artistId, key) =>
-    key.startsWith('social_') ? `https://www.instagram.com/p/${key}/` : undefined);
+// The BATCHED resolver — resolving per question re-read the artist's whole
+// post history for each one, on a path that runs on every page load with an
+// open sitting.
+const sourceUrlsForQuestionKeys = jest.fn(async (_artistId, keys) =>
+    new Map(keys.filter(k => k.startsWith('social_'))
+                .map(k => [k, `https://www.instagram.com/p/${k}/`])));
 jest.mock('@/server/utils/questionGenerator', () => ({
     generateGroundedQuestions: (...a) => generateGroundedQuestions(...a),
-    sourceUrlForQuestionKey: (...a) => sourceUrlForQuestionKey(...a),
+    sourceUrlsForQuestionKeys: (...a) => sourceUrlsForQuestionKeys(...a),
 }));
 jest.mock('@/server/utils/socialIngest', () => ({
     getSocialPostsForArtist: (...a) => getSocialPostsForArtist(...a),

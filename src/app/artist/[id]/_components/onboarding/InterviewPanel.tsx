@@ -144,8 +144,13 @@ export default function InterviewPanel({
                           * still may not be placeable from memory. Pete, on his
                           * own interview: "I may not remember at that moment."
                           *
-                          * Only shown when there is one: the static bank has no
-                          * post behind it, and neither does a resumed question. */}
+                          * Only shown when there is one. The static bank has no
+                          * post behind it; a RESUMED question does, recovered
+                          * from its stored key by `sourceUrlsForQuestionKeys`.
+                          * This comment used to say resumed questions had none,
+                          * which was true for about an hour and would have sent
+                          * the next reader looking for a bug that was not
+                          * there. */}
                         {current.sourceUrl && (
                             <a
                                 href={current.sourceUrl}
