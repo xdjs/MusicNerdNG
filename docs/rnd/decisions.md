@@ -133,3 +133,14 @@ Raised, not settled. Move up into a dated section when they close.
 
 - **How relationships in the database become explorable** — what counts as an edge, whether edges
   weigh equally, verified vs. inferred vs. artist-described. On the 8/20 agenda, never reached.
+
+- **Do long-running jobs need a server of their own?** Vercel kills a function at 60 seconds, and
+  the work that matters here does not fit: an Instagram scrape takes one to five minutes, caption
+  extraction seventy seconds for a small feed and several for a large one. Running it inside the
+  onboarding request meant the platform cut it off partway and the artist's credits never arrived.
+  The current answer is `artist_research_jobs` plus a once-a-minute cron that takes as many slices
+  as fit in an invocation and leaves a cursor behind — the work survives the request, at the cost
+  of a queue to maintain and completion arriving minutes later. A dedicated worker would remove the
+  time limit and the slicing, and add infrastructure we do not otherwise run. Not urgent while
+  volume is low; the thing to watch is whether artists wait noticeably for a profile. Raised by
+  Carl. *(9/2)*
