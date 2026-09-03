@@ -14,6 +14,12 @@
  */
 import { generateSitemaps } from "../sitemap";
 
+// REVALIDATE, NOT force-dynamic, deliberately. CLAUDE.md asks for
+// force-dynamic on routes that read the database, and this one does — but the
+// only thing it reads is the artist COUNT, to decide how many sitemap chunks
+// exist. That changes when the catalogue crosses a 20,000 boundary, not per
+// request. robots.ts makes the same call for the same reason. A day-stale
+// chunk list is correct; a database round trip per crawler hit is not.
 export const revalidate = 86_400;
 
 const BASE = "https://www.musicnerd.xyz";

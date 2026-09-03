@@ -28,11 +28,21 @@ import { renderKnowledgeMarkdown, type DocSource } from "@/server/utils/knowledg
 
 export const dynamic = "force-dynamic";
 
+/** `artists.id` is a uuid column, and getArtistById rethrows on a Postgres
+ *  "invalid input syntax for type uuid". Unchecked, /artist/not-a-uuid/llms.txt
+ *  lands in the catch below and answers 503 — telling a crawler to come back
+ *  and retry a URL that can never work. The shape is checkable without a round
+ *  trip, so check it. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(
     _req: Request,
     { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
     const { id } = await params;
+    if (!UUID.test(id)) {
+        return new Response("Not found\n", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
     try {
         // STRICT, so a failed read throws into the catch below and answers
         // 503. getArtistDoc swallows and returns undefined, which would take

@@ -255,7 +255,7 @@ describe('middleware rate limiting', () => {
     const { config } = await loadMiddleware();
     const patterns = Array.isArray(config.matcher) ? config.matcher : [config.matcher];
     expect(patterns).toContain('/llms.txt');
-    expect(patterns).toContain('/artist/:path*/llms.txt');
+    expect(patterns).toContain('/artist/:id/llms.txt');
   });
 
   it('rate limits the per-artist document at the default tier', async () => {

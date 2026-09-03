@@ -15,13 +15,12 @@
  * value of the thing is that a citation resolves to the same source either way.
  */
 
-export type DocSource = {
-    id: number;
-    kind: string;
-    label?: string;
-    url?: string | null;
-    publishedAt?: string | null;
-};
+// REUSED, NOT REDECLARED. artistDocService already exports this with
+// `kind: "vault" | "interview" | "social"` and a required `label`. A local
+// copy that widened both would let a caller pass an invalid kind or omit the
+// label, and the two would drift with nothing to catch it.
+export type { DocSource } from "@/server/utils/artistDocService";
+import type { DocSource } from "@/server/utils/artistDocService";
 
 export function renderKnowledgeMarkdown(input: {
     name: string;

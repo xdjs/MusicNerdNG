@@ -14,7 +14,9 @@ const getArtistById = jest.fn();
 jest.mock('@/server/utils/queries/onboardingQueries', () => ({ getArtistDocStrict: (...a) => getArtistDocStrict(...a) }));
 jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: (...a) => getArtistById(...a) }));
 
-async function get(id = 'a1') {
+const ID = '11111111-1111-1111-1111-111111111111';
+
+async function get(id = ID) {
     const { GET } = await import('../route');
     return GET(new Request(`https://www.musicnerd.xyz/artist/${id}/llms.txt`), { params: Promise.resolve({ id }) });
 }
@@ -24,7 +26,7 @@ describe('GET /artist/[id]/llms.txt', () => {
         jest.resetModules();
         getArtistDocStrict.mockReset();
         getArtistById.mockReset();
-        getArtistById.mockResolvedValue({ id: 'a1', name: 'Tom Vek' });
+        getArtistById.mockResolvedValue({ id: ID, name: 'Tom Vek' });
     });
 
     it('serves the document to nobody in particular — no session required', async () => {
@@ -61,9 +63,18 @@ describe('GET /artist/[id]/llms.txt', () => {
         expect(await res.text()).toContain('No knowledge document');
     });
 
+    it('404s a malformed id without touching the database', async () => {
+        // artists.id is a uuid column and getArtistById rethrows on a syntax
+        // error, so an unchecked bad id answered 503 — inviting a crawler to
+        // retry a URL that can never work.
+        const res = await get('not-a-uuid');
+        expect(res.status).toBe(404);
+        expect(getArtistById).not.toHaveBeenCalled();
+    });
+
     it('404s for an artist that does not exist', async () => {
         getArtistById.mockResolvedValue(null);
-        expect((await get('nope')).status).toBe(404);
+        expect((await get('22222222-2222-2222-2222-222222222222')).status).toBe(404);
     });
 
     it('answers 503 on a failed read, not a cacheable 404', async () => {
