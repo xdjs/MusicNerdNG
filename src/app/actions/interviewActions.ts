@@ -182,8 +182,19 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // lockout this guard exists to prevent. Mutation-testing caught that:
         // an earlier version exempted open sittings from the wait, and no test
         // could tell the two apart because both return the resumed questions.
-        const stillWorking = await isResearchInFlight(artistId, "caption_extract");
-        const generated = resumed.length >= QUESTION_COUNT || stillWorking
+        // BOTH STAGES. caption_extract is enqueued only once social_ingest
+        // completes, so during the scrape there is no extraction row and asking
+        // about extraction alone answers "nothing in flight" — false for the
+        // whole one-to-five minutes the scrape takes. Pete's questions were
+        // written at 13:18:08 with ingest still running and extraction not
+        // queued until 13:19:16, so a guard on extraction alone would have let
+        // his sitting through unchanged.
+        //
+        // Short-circuited: a sitting already full needs no generation and must
+        // not pay for this query on every page load, which is the same reason
+        // sourceUrlsForQuestionKeys resolves once for the whole set.
+        const generated = resumed.length >= QUESTION_COUNT
+            || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
             : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
         const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);

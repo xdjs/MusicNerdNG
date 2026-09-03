@@ -86,6 +86,9 @@ describe('getInterviewInvite', () => {
         hasPostsScrapedSince.mockResolvedValue(false);
         hasCreditsSince.mockResolvedValue(false);
         isResearchInFlight.mockResolvedValue(false);
+        // Per-kind, so a test can tell 'checks the wrong stage' from 'checks correctly'.
+        const inFlightKinds = (kinds) => (_a, k) => Promise.resolve((Array.isArray(k) ? k : [k]).some(x => kinds.includes(x)));
+        globalThis.__inFlightKinds = inFlightKinds;
         canEditArtist.mockResolvedValue(true);
         getSocialPostsForArtist.mockResolvedValue([]);
         getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: null });
@@ -121,6 +124,20 @@ describe('getInterviewInvite', () => {
     // gate then locked him out of the 187 credits extraction went on to find.
     // Tom Vek's ran two minutes after his extraction and read fine. Nothing
     // differed but timing.
+
+    it('does not ask while the SCRAPE is still running, before extraction is even queued', async () => {
+        // The state Pete's incident actually happened in. caption_extract is
+        // enqueued only after social_ingest completes, so at 13:18:08 there was
+        // no extraction row at all — a guard that asked only about extraction
+        // returned false and let the static bank through.
+        getInterviewAnswers.mockResolvedValue([]);
+        isResearchInFlight.mockImplementation(globalThis.__inFlightKinds(['social_ingest']));
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(false);
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+    });
 
     it('does not ask while caption extraction is still running', async () => {
         getInterviewAnswers.mockResolvedValue([]);

@@ -283,7 +283,15 @@ export async function isResearchComplete(artistId: string, kind: JobKind): Promi
 }
 
 /**
- * True when this kind of work is QUEUED OR RUNNING for this artist.
+ * True when ANY of these kinds of work is QUEUED OR RUNNING for this artist.
+ *
+ * TAKES A LIST BECAUSE ONE STAGE IS NOT THE QUESTION. `caption_extract` is
+ * enqueued only after `social_ingest` completes (runIngest, above), so while
+ * the scrape is running there is no extraction row to find. Asking only about
+ * extraction answers "false" for the entire scrape — which is the exact window
+ * Pete Rango's sitting fell into: questions at 13:18:08, ingest still running,
+ * extraction not queued until 13:19:16. A guard that checks one stage misses
+ * the state the incident actually happened in.
  *
  * Deliberately not `!isResearchComplete`. An artist with no job row at all —
  * no Instagram handle, nothing ever enqueued — is not in flight, and inverting
@@ -296,14 +304,16 @@ export async function isResearchComplete(artistId: string, kind: JobKind): Promi
  * that sets `since` and gates every later sitting. One is a delay; the other
  * is permanent.
  */
-export async function isResearchInFlight(artistId: string, kind: JobKind): Promise<boolean> {
+export async function isResearchInFlight(artistId: string, kinds: JobKind | JobKind[]): Promise<boolean> {
     if (!artistId) return false;
+    const wanted = Array.isArray(kinds) ? kinds : [kinds];
+    if (wanted.length === 0) return false;
     try {
         const rows = await db.select({ status: artistResearchJobs.status })
             .from(artistResearchJobs)
             .where(and(
                 eq(artistResearchJobs.artistId, artistId),
-                eq(artistResearchJobs.kind, kind),
+                inArray(artistResearchJobs.kind, wanted),
                 inArray(artistResearchJobs.status, ["pending", "running"]),
             ))
             .limit(1);
