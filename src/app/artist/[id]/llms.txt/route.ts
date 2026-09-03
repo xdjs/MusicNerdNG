@@ -22,7 +22,7 @@
  * SERVED INLINE, NOT AS A DOWNLOAD. A Content-Disposition attachment makes a
  * crawler save a file instead of reading a page.
  */
-import { getArtistDoc } from "@/server/utils/queries/onboardingQueries";
+import { getArtistDocStrict } from "@/server/utils/queries/onboardingQueries";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { renderKnowledgeMarkdown, type DocSource } from "@/server/utils/knowledgeDocMarkdown";
 
@@ -34,7 +34,11 @@ export async function GET(
 ): Promise<Response> {
     const { id } = await params;
     try {
-        const [artist, doc] = await Promise.all([getArtistById(id), getArtistDoc(id)]);
+        // STRICT, so a failed read throws into the catch below and answers
+        // 503. getArtistDoc swallows and returns undefined, which would take
+        // the "no document yet" branch and hand a crawler a cacheable 404 for
+        // an artist we have plenty about.
+        const [artist, doc] = await Promise.all([getArtistById(id), getArtistDocStrict(id)]);
 
         // 404, NOT AN EMPTY FILE. An artist with no document yet is not the
         // same as an artist we know nothing about, and a crawler that caches a

@@ -154,6 +154,23 @@ export async function upsertArtistDocSources(artistId: string, sources: unknown[
         .where(eq(artistDocs.artistId, artistId));
 }
 
+/**
+ * The same read as `getArtistDoc`, but it LETS THE ERROR OUT.
+ *
+ * `getArtistDoc` catches and returns `undefined`, which a caller cannot tell
+ * apart from "this artist has no document". That is right for a page that
+ * degrades to hiding a section, and wrong for anything that must answer
+ * differently: the public /artist/<id>/llms.txt returns 404 for no document, a
+ * status a crawler is entitled to cache and stop asking about. A database blip
+ * answering 404 would quietly tell every model that an artist we know plenty
+ * about has nothing.
+ */
+export async function getArtistDocStrict(artistId: string) {
+    return await db.query.artistDocs.findFirst({
+        where: eq(artistDocs.artistId, artistId),
+    });
+}
+
 export async function getArtistDoc(artistId: string) {
     try {
         return await db.query.artistDocs.findFirst({
