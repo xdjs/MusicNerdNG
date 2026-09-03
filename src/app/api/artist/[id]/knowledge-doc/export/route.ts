@@ -24,10 +24,9 @@ import { getArtistDoc } from "@/server/utils/queries/onboardingQueries";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import { getServerAuthSession } from "@/server/auth";
+import { renderKnowledgeMarkdown, type DocSource } from "@/server/utils/knowledgeDocMarkdown";
 
 export const dynamic = "force-dynamic";
-
-type DocSource = { id: number; kind: string; label?: string; url?: string | null; publishedAt?: string | null };
 
 /** RFC 4180: quote everything, double internal quotes. Titles contain commas
  *  and quotation marks constantly. */
@@ -76,26 +75,17 @@ export async function GET(
             });
         }
 
-        // Sources resolved at the end, numbered to match the [n] markers in the
-        // body. An LLM follows that without being told; a human can click it.
-        const lines: string[] = [
-            `# ${name}`,
-            "",
-            `> Verified profile compiled by Music Nerd from ${sources.length} source${sources.length === 1 ? "" : "s"}, exported ${stamp}.`,
-            `> Bracketed numbers in the text refer to the numbered sources at the end.`,
-            "",
-            doc.content.trim(),
-            "",
-            "## Sources",
-            "",
-        ];
-        for (const s of sources) {
-            const label = s.label ?? s.url ?? "(untitled)";
-            const when = s.publishedAt ? ` (${s.publishedAt.slice(0, 10)})` : "";
-            lines.push(s.url ? `${s.id}. ${label}${when} — ${s.url}` : `${s.id}. ${label}${when}`);
-        }
+        // Shared with the public /artist/<id>/llms.txt. Two renderers would
+        // drift, and a citation resolving differently depending on which door
+        // you came through defeats the point of citing at all.
+        const body = renderKnowledgeMarkdown({
+            name,
+            content: doc.content,
+            sources,
+            header: `> Verified profile compiled by Music Nerd from ${sources.length} source${sources.length === 1 ? "" : "s"}, exported ${stamp}.`,
+        });
 
-        return new Response(lines.join("\n"), {
+        return new Response(body, {
             headers: {
                 "Content-Type": "text/markdown; charset=utf-8",
                 "Content-Disposition": `attachment; filename="${slug(name)}-${stamp}.md"`,
