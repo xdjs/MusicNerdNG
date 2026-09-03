@@ -75,7 +75,15 @@ export async function generateMetadata({ params }: ArtistProfileProps): Promise<
     return {
         title: `${artistName} | Music Nerd`,
         description,
-        alternates: { canonical: pageUrl },
+        alternates: {
+            canonical: pageUrl,
+            // HOW A MODEL FINDS THE GOOD VERSION. The page is readable, but the
+            // markdown at /llms.txt is the same knowledge with every claim
+            // carrying a resolved citation and none of the navigation. A
+            // crawler that reads this tag fetches that instead, and can cite us
+            // rather than paraphrase us.
+            types: { "text/markdown": [{ url: `${pageUrl}/llms.txt`, title: `${artistName} — knowledge document` }] },
+        },
         openGraph: {
             type: "profile",
             title: `${artistName} | Music Nerd`,

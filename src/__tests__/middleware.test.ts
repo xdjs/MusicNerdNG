@@ -231,7 +231,10 @@ describe('middleware rate limiting', () => {
 
   it('auth paths are excluded by matcher config', async () => {
     const { config } = await loadMiddleware();
-    const matcher = new RegExp(config.matcher);
+    const patterns = Array.isArray(config.matcher) ? config.matcher : [config.matcher];
+    const apiPattern = patterns.find(p => p.startsWith('/api/'));
+    expect(apiPattern).toBeDefined();
+    const matcher = new RegExp(apiPattern as string);
 
     // Auth paths should NOT match
     expect(matcher.test('/api/auth/signin')).toBe(false);
@@ -242,5 +245,26 @@ describe('middleware rate limiting', () => {
     expect(matcher.test('/api/leaderboard')).toBe(true);
     expect(matcher.test('/api/funFacts/random')).toBe(true);
     expect(matcher.test('/api/validateLink')).toBe(true);
+  });
+
+  it('covers the LLM-facing routes, which are not under /api', async () => {
+    // /artist/<id>/llms.txt hands out a whole knowledge document and the
+    // sitemaps enumerate every artist id, so an unthrottled one is a bulk
+    // export of the catalogue. These live outside the /api matcher and were
+    // getting no rate limiting at all.
+    const { config } = await loadMiddleware();
+    const patterns = Array.isArray(config.matcher) ? config.matcher : [config.matcher];
+    expect(patterns).toContain('/llms.txt');
+    expect(patterns).toContain('/artist/:id/llms.txt');
+  });
+
+  it('rate limits the per-artist document at the default tier', async () => {
+    const { middleware } = await loadMiddleware();
+    const ip = '203.0.113.42';
+    for (let i = 0; i < 60; i++) {
+      const res = middleware(makeRequest('/artist/abc/llms.txt', ip));
+      expect(res.status).not.toBe(429);
+    }
+    expect(middleware(makeRequest('/artist/abc/llms.txt', ip)).status).toBe(429);
   });
 });

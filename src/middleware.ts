@@ -117,5 +117,9 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: '/api/((?!auth/).*)',
+  // The LLM-facing routes are not under /api but need the same protection:
+  // /artist/<id>/llms.txt hands out a whole knowledge document, and the
+  // sitemaps enumerate every artist id, so an unthrottled one is a bulk export
+  // of the catalogue for anyone who walks the list.
+  matcher: ['/api/((?!auth/).*)', '/llms.txt', '/artist/:id/llms.txt'],
 };
