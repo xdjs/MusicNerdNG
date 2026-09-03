@@ -11,7 +11,9 @@ import {
 import { generateGroundedQuestions, sourceUrlsForQuestionKeys } from "@/server/utils/questionGenerator";
 import { ONBOARDING_QUESTIONS } from "@/server/utils/onboarding/questions";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
-import { getSocialPostsForArtist } from "@/server/utils/socialIngest";
+import { getSocialPostsForArtist, hasPostsScrapedSince } from "@/server/utils/socialIngest";
+import { hasCreditsSince } from "@/server/utils/queries/socialCreditQueries";
+import { isResearchInFlight } from "@/server/utils/queries/researchJobQueries";
 import { getSpotifyCatalogDetail, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
 
 /**
@@ -125,7 +127,17 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // them.
         const since = stillOpen.length > 0 ? null : lastAnsweredAt;
 
-        if (since && !(await hasNewMaterialSince(artistId, since))) return { show: false };
+        // THE WINDOW THE QUESTIONS ARE BUILT IN, which is not always `since`.
+        // `newerThan` inside the generator filters posts, credits and
+        // statements by `postedAt`, so a "learned" reopening scoped to `since`
+        // would generate from an empty set and fall through to the static bank
+        // — the same failure, one layer down.
+        let window = since;
+        if (since) {
+            const material = await newMaterialSince(artistId, since);
+            if (material === "none") return { show: false };
+            if (material === "learned") window = null;
+        }
 
         // THE OPEN ROWS ARE THE QUESTIONS, not just a flag. Regenerating and
         // hoping the same keys come back leaves an outstanding question orphaned
@@ -146,16 +158,34 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // returns { show: false }, so a failed lookup would have cost the
         // artist the whole interview rather than one underline.
         const links = await sourceUrlsForQuestionKeys(
-            artistId, stillOpen.map(r => r.questionKey), { since },
+            artistId, stillOpen.map(r => r.questionKey), { since: window },
         ).catch(() => new Map<string, string>());
         const resumed: InterviewQuestion[] = stillOpen.map(r => ({
             key: r.questionKey,
             question: r.question,
             sourceUrl: links.get(r.questionKey),
         }));
-        const generated = resumed.length >= QUESTION_COUNT
+        // DO NOT ASK BEFORE THE MATERIAL EXISTS. Questions are written from
+        // what caption extraction produces, and extraction finishes seventy
+        // seconds to several minutes after the posts land. Generating inside
+        // that window fills every slot from the static bank — and those rows
+        // persist under (artist_id, question_key), which sets `since` and gates
+        // every later sitting. On production Pete Rango's questions were
+        // written at 13:18:08 and his extraction was queued at 13:19:16; the
+        // 187 credits it found arrived too late to be used. Tom Vek's ran two
+        // minutes after his and read fine. Nothing was different but timing.
+        //
+        // An open sitting still RESUMES — those questions exist and so does
+        // what they were built on — but it is not topped up to a full set
+        // while extraction runs. Topping up mid-extraction pulls static
+        // fillers from incomplete material and persists them, which is the
+        // lockout this guard exists to prevent. Mutation-testing caught that:
+        // an earlier version exempted open sittings from the wait, and no test
+        // could tell the two apart because both return the resumed questions.
+        const stillWorking = await isResearchInFlight(artistId, "caption_extract");
+        const generated = resumed.length >= QUESTION_COUNT || stillWorking
             ? []
-            : await pickQuestions(artistId, since, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
+            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
         const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);
         if (questions.length === 0) return { show: false };
 
@@ -181,25 +211,52 @@ async function newReleasesSince(artistId: string, since: string | null): Promise
         .map(r => ({ name: r.name, releaseDate: r.releaseDate ?? null }));
 }
 
-/** A post scraped or a record released since they last told us anything. */
-async function hasNewMaterialSince(artistId: string, since: string): Promise<boolean> {
-    const cutoff = Date.parse(since);
-    if (Number.isNaN(cutoff)) return false;
+/**
+ * WHY the interview may reopen — not just whether.
+ *
+ * "published" is something the artist put out since we last spoke: a post, a
+ * record. The date means something, so the questions are scoped to it and are
+ * about the new thing.
+ *
+ * "learned" is something WE found out since: posts stored, or credits read out
+ * of captions we already held. Just as real, but the posts behind it were
+ * published months ago. Scoping by publication date filters every one of them
+ * away — which is how an artist could be told there was nothing new minutes
+ * after we finished reading 199 of his posts and pulling 187 credits out of
+ * them. For "learned" the whole feed is the window; `excludeKeys` is what stops
+ * repeats, not the date.
+ *
+ * The old version of this returned a bare boolean and its docstring said "a
+ * post scraped" while the code checked `postedAt`. The comment described the
+ * intent and the code did something else.
+ */
+type NewMaterial = "none" | "published" | "learned";
 
+async function newMaterialSince(artistId: string, since: string): Promise<NewMaterial> {
+    const cutoff = Date.parse(since);
+    if (Number.isNaN(cutoff)) return "none";
+
+    // Published first: it is the more specific answer, and it is the one that
+    // makes the date-scoped window the right window.
     const posts = await getSocialPostsForArtist(artistId).catch(() => []);
-    const newPost = posts.some(p => {
+    if (posts.some(p => {
         const at = Date.parse(p.postedAt ?? "");
         return !Number.isNaN(at) && at > cutoff;
-    });
-    if (newPost) return true;
+    })) return "published";
 
     const artist = await getArtistById(artistId).catch(() => null);
-    if (!artist?.spotify) return false;
-    const releases = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders()).catch(() => []);
-    return releases.some(r => {
-        const at = Date.parse(r.releaseDate ?? "");
-        return !Number.isNaN(at) && at > cutoff;
-    });
+    if (artist?.spotify) {
+        const releases = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders()).catch(() => []);
+        if (releases.some(r => {
+            const at = Date.parse(r.releaseDate ?? "");
+            return !Number.isNaN(at) && at > cutoff;
+        })) return "published";
+    }
+
+    if (await hasPostsScrapedSince(artistId, since)) return "learned";
+    if (await hasCreditsSince(artistId, since)) return "learned";
+
+    return "none";
 }
 
 /**

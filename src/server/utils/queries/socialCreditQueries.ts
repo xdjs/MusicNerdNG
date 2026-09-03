@@ -5,7 +5,7 @@
  * database dependency, which is what makes it testable against plain-object
  * fixtures. This is the only file that knows the extraction is persisted.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { artistSocialCredits } from "@/server/db/schema";
 import type { CaptionExtraction, CaptionCredit, ArtistStatement } from "@/server/utils/socialCredits";
@@ -185,5 +185,27 @@ export async function claimedSourceUrls(artistId: string): Promise<Set<string>> 
     } catch (e) {
         console.error("[claimedSourceUrls] Error:", e);
         return new Set();
+    }
+}
+
+/**
+ * True when anything was read out of this artist's captions after `since`.
+ *
+ * The other half of "is there new material". Extraction can finish minutes
+ * after the posts land, so an artist whose sitting closed in that window has no
+ * newer post to point at but does have 187 credits we did not have before.
+ * Without this, `hasNewMaterialSince` says no and the interview never reopens.
+ */
+export async function hasCreditsSince(artistId: string, since: string): Promise<boolean> {
+    if (!artistId || !since) return false;
+    try {
+        const rows = await db.select({ id: artistSocialCredits.id })
+            .from(artistSocialCredits)
+            .where(and(eq(artistSocialCredits.artistId, artistId), gt(artistSocialCredits.createdAt, since)))
+            .limit(1);
+        return rows.length > 0;
+    } catch (e) {
+        console.error("[hasCreditsSince] Error:", e);
+        return false;
     }
 }

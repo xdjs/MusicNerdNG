@@ -17,6 +17,9 @@ const generateGroundedQuestions = jest.fn();
 const getSocialPostsForArtist = jest.fn();
 const getArtistById = jest.fn();
 const getSpotifyCatalogDetail = jest.fn();
+const hasPostsScrapedSince = jest.fn();
+const hasCreditsSince = jest.fn();
+const isResearchInFlight = jest.fn();
 
 jest.mock('@/server/auth', () => ({ getServerAuthSession: jest.fn(async () => ({ user: { id: 'u1' } })) }));
 jest.mock('@/server/utils/dev-auth', () => ({ getDevSession: jest.fn(async () => null) }));
@@ -42,6 +45,13 @@ jest.mock('@/server/utils/questionGenerator', () => ({
 }));
 jest.mock('@/server/utils/socialIngest', () => ({
     getSocialPostsForArtist: (...a) => getSocialPostsForArtist(...a),
+    hasPostsScrapedSince: (...a) => hasPostsScrapedSince(...a),
+}));
+jest.mock('@/server/utils/queries/socialCreditQueries', () => ({
+    hasCreditsSince: (...a) => hasCreditsSince(...a),
+}));
+jest.mock('@/server/utils/queries/researchJobQueries', () => ({
+    isResearchInFlight: (...a) => isResearchInFlight(...a),
 }));
 jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: (...a) => getArtistById(...a) }));
 jest.mock('@/server/utils/queries/externalApiQueries', () => ({
@@ -72,7 +82,10 @@ async function invite() {
 describe('getInterviewInvite', () => {
     beforeEach(() => {
         jest.resetModules();
-        for (const m of [canEditArtist, getInterviewAnswers, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail]) m.mockReset();
+        for (const m of [canEditArtist, getInterviewAnswers, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasPostsScrapedSince, hasCreditsSince, isResearchInFlight]) m.mockReset();
+        hasPostsScrapedSince.mockResolvedValue(false);
+        hasCreditsSince.mockResolvedValue(false);
+        isResearchInFlight.mockResolvedValue(false);
         canEditArtist.mockResolvedValue(true);
         getSocialPostsForArtist.mockResolvedValue([]);
         getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: null });
@@ -99,6 +112,94 @@ describe('getInterviewInvite', () => {
         expect(out.questions[0].sourceUrl).toBe('https://www.instagram.com/p/ABC/');
         // The static bank has no post behind it, and must not pretend to.
         expect(out.questions[1].sourceUrl).toBeUndefined();
+    });
+
+    // ── The production failure of 2026-09-03 ──────────────────────────────
+    // Pete Rango's questions were written at 13:18:08 and his caption
+    // extraction was queued at 13:19:16. With nothing extracted yet the static
+    // bank filled all three slots, those rows persisted, and the new-material
+    // gate then locked him out of the 187 credits extraction went on to find.
+    // Tom Vek's ran two minutes after his extraction and read fine. Nothing
+    // differed but timing.
+
+    it('does not ask while caption extraction is still running', async () => {
+        getInterviewAnswers.mockResolvedValue([]);
+        isResearchInFlight.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(false);
+        // AND DOES NOT GENERATE. Returning show:false is not enough — the harm
+        // is the static rows persisting under (artist_id, question_key).
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+    });
+
+    it('resumes an open sitting while extraction runs, without topping it up', async () => {
+        // Resuming is safe: the question exists and so does what it was built
+        // on. Topping it up is not — it would draw static fillers from
+        // incomplete material and persist them, which is the lockout itself.
+        getInterviewAnswers.mockResolvedValue([stillOpen('social_credit_7')]);
+        isResearchInFlight.mockResolvedValue(true);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions).toHaveLength(1);
+        expect(out.questions[0].key).toBe('social_credit_7');
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+    });
+
+    it('comes back when posts were SCRAPED since, though published long before', async () => {
+        // The whole feed of a first-time artist: published months ago, stored
+        // minutes ago. By publication date there is nothing new; to us it is
+        // all new. Asking by postedAt answered the wrong question.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasPostsScrapedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_9', question: 'Who played on it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.reason).toBe('new-material');
+    });
+
+    it('generates UNSCOPED when the new material is something we learned', async () => {
+        // The third layer. `newerThan` in the generator filters posts, credits
+        // and statements by postedAt, so passing `since` here would generate
+        // from an empty set and fall through to the static bank — the same
+        // failure one level down. What we learned has no publication date to
+        // scope to; excludeKeys is what prevents repeats.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-09-03T13:18:13Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasCreditsSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_x', question: 'Who engineered it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
+    });
+
+    it('still scopes to the window when the artist PUBLISHED something new', async () => {
+        // The date means something here: ask about the new thing, not the feed.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_theme_2', question: 'What was that show?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(generateGroundedQuestions.mock.calls[0][1].since).toBe('2026-08-01T00:00:00Z');
+    });
+
+    it('comes back when credits were extracted since, with no newer post at all', async () => {
+        // Extraction finishes minutes after the posts land. An artist whose
+        // sitting closed in that window has no newer post to point at and 187
+        // credits we did not have before.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasPostsScrapedSince.mockResolvedValue(false);
+        hasCreditsSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_statement_3', question: 'What made it difficult?' }]);
+
+        expect((await invite()).show).toBe(true);
     });
 
     it('stays quiet when they have answered and nothing has happened since', async () => {
