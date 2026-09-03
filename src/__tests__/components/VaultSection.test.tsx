@@ -22,18 +22,18 @@ describe('VaultSection visibility', () => {
   it('hides entirely for an idle editor with no approved sources', () => {
     const { container } = renderCtx({ isEditing: false, canEdit: true }, { approvedSources: [] });
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText('Artist Vault')).not.toBeInTheDocument();
+    expect(screen.queryByText('Lore')).not.toBeInTheDocument();
   });
 
   it('shows for a public viewer when approved sources exist', () => {
     renderCtx({ isEditing: false, canEdit: false }, { approvedSources: approved });
-    expect(screen.getByText('Artist Vault')).toBeInTheDocument();
+    expect(screen.getByText('Lore')).toBeInTheDocument();
     expect(screen.getByTestId('press')).toBeInTheDocument();
   });
 
   it('shows for an editor in edit mode even with no approved sources', () => {
     renderCtx({ isEditing: true, canEdit: true }, { approvedSources: [] });
-    expect(screen.getByText('Artist Vault')).toBeInTheDocument();
+    expect(screen.getByText('Lore')).toBeInTheDocument();
     expect(screen.getByTestId('vault-manager')).toBeInTheDocument();
   });
 

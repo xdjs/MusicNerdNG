@@ -21,7 +21,7 @@ export default function VaultSection({ artistId, pendingSources, approvedSources
 
   return (
     <RevealSection className="glass p-4 sm:p-5 space-y-3">
-      <h2 className="text-black dark:text-white text-xl font-bold">Artist Vault</h2>
+      <h2 className="text-black dark:text-white text-xl font-bold">Lore</h2>
       {/* Public carousel only outside edit mode; VaultManager owns the approved
           list while editing (its own optimistic state) to avoid a stale-card flash. */}
       {!isEditing && approvedSources.length > 0 && <PressAndFeatures sources={approvedSources} />}

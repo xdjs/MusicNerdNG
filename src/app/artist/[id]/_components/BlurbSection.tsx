@@ -94,7 +94,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
       const result = await saveCurrentBio(aiBlurb, artistId);
       if (result.success) {
         setSavedToVault(true);
-        toast({ title: "Bio saved to vault" });
+        toast({ title: "Bio saved to Lore" });
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
         savedTimerRef.current = setTimeout(() => setSavedToVault(false), 3000);
       } else {
@@ -194,7 +194,7 @@ export default function BlurbSection({ artistName, artistId, initialBio }: Blurb
                     Saved
                   </>
                 ) : (
-                  isSavingToVault ? "Saving..." : "Save to vault"
+                  isSavingToVault ? "Saving..." : "Save to Lore"
                 )}
               </Button>
             )}
