@@ -11,7 +11,7 @@
  * owner's caption to the artist. Every downstream consumer (socialSignals,
  * questionGenerator) trusts `isOwnPost` rather than re-deriving it.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { artistSocialPosts, artists } from "@/server/db/schema";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
@@ -320,6 +320,32 @@ export async function ingestInstagramPosts(
     } catch (e) {
         console.error("[ingestInstagramPosts] Error:", e);
         return EMPTY_RESULT;
+    }
+}
+
+/**
+ * True when any post was STORED for this artist after `since`.
+ *
+ * Not the same question as "did they post something new". A first-time artist's
+ * whole feed is published months ago and scraped in the last five minutes; by
+ * publication date none of it is new, while to us all of it is. Asking by
+ * `posted_at` answers the wrong one and told Pete Rango he had nothing new
+ * moments after we read 199 of his posts.
+ *
+ * A count, not a fetch. The caller only needs a boolean, and reading every row
+ * to check dates on a path that runs on page load is what this replaces.
+ */
+export async function hasPostsScrapedSince(artistId: string, since: string): Promise<boolean> {
+    if (!artistId || !since) return false;
+    try {
+        const rows = await db.select({ id: artistSocialPosts.id })
+            .from(artistSocialPosts)
+            .where(and(eq(artistSocialPosts.artistId, artistId), gt(artistSocialPosts.createdAt, since)))
+            .limit(1);
+        return rows.length > 0;
+    } catch (e) {
+        console.error("[hasPostsScrapedSince] Error:", e);
+        return false;
     }
 }
 
