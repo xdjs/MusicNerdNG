@@ -506,7 +506,7 @@ function buildVaultInsertFailedMessage(urls: string[]): string {
     const noun = pluralize(urls.length, "one of your links", `${urls.length} of your links`);
     const pronoun = pluralize(urls.length, "it", "them");
     const sourceNoun = pluralize(urls.length, "a source", "sources");
-    return `Heads up — I couldn't save ${noun} as ${sourceNoun} for your About: ${list}. Try again in a moment, or add ${pronoun} later from the vault step.`;
+    return `Heads up — I couldn't save ${noun} as ${sourceNoun} for your About: ${list}. Try again in a moment, or add ${pronoun} later from your Lore.`;
 }
 
 /** Bug 2 recovery copy: every submitted link failed and nothing ended up
