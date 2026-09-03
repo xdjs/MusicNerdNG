@@ -194,7 +194,7 @@ export async function claimedSourceUrls(artistId: string): Promise<Set<string>> 
  * The other half of "is there new material". Extraction can finish minutes
  * after the posts land, so an artist whose sitting closed in that window has no
  * newer post to point at but does have 187 credits we did not have before.
- * Without this, `hasNewMaterialSince` says no and the interview never reopens.
+ * Without this, `newMaterialSince` says no and the interview never reopens.
  */
 export async function hasCreditsSince(artistId: string, since: string): Promise<boolean> {
     if (!artistId || !since) return false;

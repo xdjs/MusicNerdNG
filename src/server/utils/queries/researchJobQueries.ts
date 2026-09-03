@@ -267,7 +267,12 @@ export async function getResearchJobs(artistId: string): Promise<ResearchJob[]> 
 }
 
 /** True when this kind of work has finished for this artist — including when it
- *  finished having found nothing. */
+ *  finished having found nothing.
+ *
+ *  NOT THE GUARD YOU WANT FOR "should I wait". Its negation is true both for
+ *  work in progress AND for work that was never enqueued, so gating on
+ *  `!isResearchComplete` blocks an artist with no Instagram handle forever.
+ *  Use `isResearchInFlight` below, which asks the question directly. */
 export async function isResearchComplete(artistId: string, kind: JobKind): Promise<boolean> {
     if (!artistId) return false;
     try {
