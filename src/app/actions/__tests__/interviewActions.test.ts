@@ -156,18 +156,29 @@ describe('getInterviewInvite', () => {
         expect(generateGroundedQuestions).not.toHaveBeenCalled();
     });
 
-    it('resumes an open sitting while extraction runs, without topping it up', async () => {
-        // Resuming is safe: the question exists and so does what it was built
-        // on. Topping it up is not — it would draw static fillers from
-        // incomplete material and persist them, which is the lockout itself.
+    it('defers an open sitting until extraction finishes, then resumes with what it learned', async () => {
+        // If the artist finishes while extraction is writing, their final
+        // answer gets a later timestamp than the learned rows. The next invite
+        // then sees nothing created after that answer, permanently skipping
+        // material that was never represented in this sitting's questions.
         getInterviewAnswers.mockResolvedValue([stillOpen('social_credit_7')]);
         isResearchInFlight.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([
+            { key: 'social_credit_8', question: 'What did the refresh find?' },
+        ]);
 
-        const out = await invite();
-        expect(out.show).toBe(true);
-        expect(out.questions).toHaveLength(1);
-        expect(out.questions[0].key).toBe('social_credit_7');
+        const during = await invite();
+        expect(during.show).toBe(false);
         expect(generateGroundedQuestions).not.toHaveBeenCalled();
+
+        isResearchInFlight.mockResolvedValue(false);
+        const after = await invite();
+        expect(after.show).toBe(true);
+        expect(after.questions.map(q => q.key)).toEqual([
+            'social_credit_7',
+            'social_credit_8',
+            'sound_in_own_words',
+        ]);
     });
 
     it('comes back when posts were SCRAPED since, though published long before', async () => {

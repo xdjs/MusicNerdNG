@@ -168,6 +168,23 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
             if (learned) window = null;
         }
 
+        // DO NOT OPEN OR RESUME WHILE RESEARCH IS STILL WRITING. Questions are
+        // built from caption extraction, which trails the scrape by up to
+        // several minutes. For a new sitting, asking early persists generic
+        // fillers before the grounded material exists. For an open sitting,
+        // letting the artist finish early is subtler but just as permanent:
+        // the final answer is stamped after material learned mid-sitting, so
+        // the next `created_at > lastAnsweredAt` check can never see that
+        // material. Waiting keeps the pre-research boundary alive and lets the
+        // resumed batch include what the refresh discovered.
+        //
+        // BOTH STAGES. caption_extract is enqueued only after social_ingest
+        // completes, so checking extraction alone misses the exact window in
+        // which Pete's production incident happened.
+        if (await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])) {
+            return { show: false };
+        }
+
         // THE OPEN ROWS ARE THE QUESTIONS, not just a flag. Regenerating and
         // hoping the same keys come back leaves an outstanding question orphaned
         // whenever the model picks differently — and an orphaned open row keeps
@@ -194,36 +211,10 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
             question: r.question,
             sourceUrl: links.get(r.questionKey),
         }));
-        // DO NOT ASK BEFORE THE MATERIAL EXISTS. Questions are written from
-        // what caption extraction produces, and extraction finishes seventy
-        // seconds to several minutes after the posts land. Generating inside
-        // that window fills every slot from the static bank — and those rows
-        // persist under (artist_id, question_key), which sets `since` and gates
-        // every later sitting. On production Pete Rango's questions were
-        // written at 13:18:08 and his extraction was queued at 13:19:16; the
-        // 187 credits it found arrived too late to be used. Tom Vek's ran two
-        // minutes after his and read fine. Nothing was different but timing.
-        //
-        // An open sitting still RESUMES — those questions exist and so does
-        // what they were built on — but it is not topped up to a full set
-        // while extraction runs. Topping up mid-extraction pulls static
-        // fillers from incomplete material and persists them, which is the
-        // lockout this guard exists to prevent. Mutation-testing caught that:
-        // an earlier version exempted open sittings from the wait, and no test
-        // could tell the two apart because both return the resumed questions.
-        // BOTH STAGES. caption_extract is enqueued only once social_ingest
-        // completes, so during the scrape there is no extraction row and asking
-        // about extraction alone answers "nothing in flight" — false for the
-        // whole one-to-five minutes the scrape takes. Pete's questions were
-        // written at 13:18:08 with ingest still running and extraction not
-        // queued until 13:19:16, so a guard on extraction alone would have let
-        // his sitting through unchanged.
-        //
-        // Short-circuited: a sitting already full needs no generation and must
-        // not pay for this query on every page load, which is the same reason
-        // sourceUrlsForQuestionKeys resolves once for the whole set.
+        // A full resumed sitting needs no generation. A shorter one is topped
+        // up only after the research guard above says its source material is
+        // complete.
         const generated = resumed.length >= QUESTION_COUNT
-            || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
             : await pickQuestions(
                 artistId,
