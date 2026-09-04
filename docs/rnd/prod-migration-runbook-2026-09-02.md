@@ -6,7 +6,11 @@ Each block is wrapped in `BEGIN` / `COMMIT`. Postgres DDL is transactional, so a
 
 ## Before you start
 
-`0011` and `0012` contain **no** `IF NOT EXISTS` — they will error if any of their five tables already exist. Everything from `0014` on is safe to re-run. Run this first:
+Do **not** treat any whole step below as safe to re-run. Some individual table
+and index statements use `IF NOT EXISTS`, but several migrations also contain
+unguarded constraints or `CREATE POLICY` statements that fail when the object
+already exists. This runbook is for a database where none of these migrations
+has landed. Run this first:
 
 ```sql
 SELECT
@@ -511,7 +515,6 @@ Check:
 ```sql
 SELECT * FROM (VALUES
   ('table', 'artist_social_credits', to_regclass('public.artist_social_credits') IS NOT NULL),
-  ('table', 'and', to_regclass('public.and') IS NOT NULL),
   ('index', 'artist_social_credits_uniq', to_regclass('public.artist_social_credits_uniq') IS NOT NULL),
   ('index', 'idx_artist_social_credits_artist', to_regclass('public.idx_artist_social_credits_artist') IS NOT NULL)
 ) AS t(kind, name, present);
@@ -727,4 +730,11 @@ Eight rows, all `true`. Then #1195 is safe to merge.
 
 ## One caveat
 
-These are being applied by hand rather than through `drizzle-kit migrate`, so nothing writes to Drizzle's migration journal. That matches how dev was done and how the July RLS fix went in, but it means a future `db:migrate` against production would try to re-apply them. Everything from `0014` on is idempotent; `0011`-`0013` are not.
+These are being applied by hand rather than through `drizzle-kit migrate`, so
+nothing writes to Drizzle's migration journal. That matches how dev was done
+and how the July RLS fix went in, but it means a future `db:migrate` against
+production would try to re-apply them. Do not use `db:migrate` to catch this
+database up until its journal has been reconciled: multiple steps are
+non-idempotent, including the unguarded `CREATE POLICY` statements in 0018 and
+0021, and migration would stop at the first existing object before
+later work could run.
