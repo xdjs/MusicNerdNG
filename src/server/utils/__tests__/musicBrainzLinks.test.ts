@@ -184,6 +184,62 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
+    it('abstains when distinct source URLs encode the same platform ID', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+                `https://www.deezer.com/us/artist/${DEEZER_ID}`,
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            )))
+            // The old implementation reached and accepted this response.
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('deezer', DEEZER_ID, 'spotify')))
+            .resolves.toBeNull();
+        await expect(findCounterpart('deezer', DEEZER_ID, 'spotify'))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('abstains when the only source relation is not the ownership-checked URL', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://www.deezer.com/us/artist/${DEEZER_ID}`,
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('deezer', DEEZER_ID, 'spotify')))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('allows duplicate relation rows for the ownership-checked source URL', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('deezer', DEEZER_ID, 'spotify')))
+            .resolves.toEqual({
+                platformId: SPOTIFY_ID,
+                musicbrainzId: MUSICBRAINZ_ID,
+            });
+        expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
     it.each([
         {
             sourcePlatform: 'spotify',

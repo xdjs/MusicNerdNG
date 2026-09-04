@@ -413,10 +413,22 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
 
-    const confirmsSource = platformRelations.some(({ source }) => (
-        source.status === "valid" && source.platformId === sourcePlatformId
-    ));
-    if (!confirmsSource) return { counterpart: null, definitiveMiss: false };
+    // The first lookup verified ownership of this exact canonical resource.
+    // Do not let another URL representation for the same platform ID inherit
+    // that proof: it may be a separate MusicBrainz URL entity with additional
+    // owners. Identical duplicate relation rows are harmless, but aliases fail
+    // closed without adding another paced request to the user-facing path.
+    const sourceRelationUrls = new Set(platformRelations
+        .filter(({ source }) => (
+            source.status === "valid" && source.platformId === sourcePlatformId
+        ))
+        .map(({ url }) => url));
+    if (sourceRelationUrls.size !== 1 || !sourceRelationUrls.has(sourceUrl)) {
+        return {
+            counterpart: null,
+            definitiveMiss: sourceRelationUrls.size > 1,
+        };
+    }
 
     const platformId = oneValue(platformRelations
         .map(({ target }) => target.status === "valid" ? target.platformId : null)
