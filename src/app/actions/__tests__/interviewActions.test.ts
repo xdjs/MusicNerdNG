@@ -212,6 +212,99 @@ describe('getInterviewInvite', () => {
         expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
     });
 
+    it('treats a half-answered FIRST sitting as still the first', async () => {
+        // Answer one question, close the tab, come back. A dealt-with row now
+        // exists, but the sitting in front of them is still their first — so
+        // the bank must still fill it out and the copy must still greet them
+        // as a first-timer. Counting dealt-with rows got this backwards.
+        // createdAt is RE-STAMPED on answer (onboardingQueries upsert), so the
+        // answered row of a sitting is NEWER than the ones still open — the
+        // sitting was offered, then one of it was answered. A prior sitting's
+        // rows are older than the open ones, which is what tells them apart.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-26T00:00:00Z'),
+            stillOpen('social_credit_2'),
+        ]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.reason).toBe('first');
+        // Resumed question plus the bank filling the rest.
+        expect(out.questions).toHaveLength(3);
+        expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
+    });
+
+    it('keeps an abandoned first sitting "first", however long they leave it', async () => {
+        // One question offered and never resolved, the artist gone for weeks,
+        // other activity in between. They are still finishing their first
+        // interview, so the bank still fills it and the copy still greets them
+        // as a first-timer. Pinned because it falls out of the boundary rule
+        // rather than being stated anywhere.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-26T00:00:00Z'),
+            answered('social_credit_2', '2026-08-26T00:01:00Z'),
+            stillOpen('social_credit_3'),
+        ]);
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-09-20T00:00:00Z' }]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.reason).toBe('first');
+        expect(out.questions.map(q => q.key)).toContain('social_credit_3');
+    });
+
+    it('does not top up a RESUMED sitting with the generic bank either', async () => {
+        // The third route to the same leak. `since` is null while an open
+        // sitting is being resumed, so reading first-ness off it made a
+        // returning artist look new and put the bank back in front of them.
+        // The existing resume test asserts only the generator's arguments, so
+        // this one asserts what the artist actually receives.
+        getInterviewAnswers.mockResolvedValue([
+            ...aFullSitting('2026-08-01T00:00:00Z'),
+            stillOpen('social_credit_open'),
+        ]);
+        // Nothing new to add — the only candidate is already resumed.
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions.map(q => q.key)).toEqual(['social_credit_open']);
+        expect(out.questions.map(q => q.key)).not.toContain('sound_in_own_words');
+        // And they are not greeted as a first-timer, having already answered.
+        expect(out.reason).toBe('new-material');
+    });
+
+    it('does not top a learned reopen up with the generic bank', async () => {
+        // The regression the window fix introduced. A learned reopen passes
+        // null as the generation window on purpose — the whole feed is the
+        // window — and pickQuestions used that same null to mean "they have
+        // never answered", so a returning artist got "How would you describe
+        // your sound?" appended. Exactly the re-ask this release exists to
+        // stop, arriving through the fix for it.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        // Fewer than a full sitting, which is what invites the top-up.
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_q', question: 'Who engineered it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions).toHaveLength(1);
+        expect(out.questions.map(q => q.key)).not.toContain('sound_in_own_words');
+    });
+
+    it('still fills a FIRST sitting from the bank when grounded questions run short', async () => {
+        // The other side of it: a genuine first interview still gets topped up,
+        // which is what the bank is for.
+        getInterviewAnswers.mockResolvedValue([]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_1', question: 'Who mixed it?' }]);
+
+        const out = await invite();
+        expect(out.questions).toHaveLength(3);
+        expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
+    });
+
     it('still scopes to the window when the artist PUBLISHED something new', async () => {
         // The date means something here: ask about the new thing, not the feed.
         getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));

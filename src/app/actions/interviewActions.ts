@@ -127,6 +127,35 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // them.
         const since = stillOpen.length > 0 ? null : lastAnsweredAt;
 
+        /**
+         * IS THE SITTING IN FRONT OF THEM THEIR FIRST — not "have they ever
+         * answered a question", which is a different question with a different
+         * answer half the time.
+         *
+         * Answering one question of a first sitting and closing the tab leaves
+         * a dealt-with row behind. Counting those makes somebody halfway
+         * through their first interview read as a returning artist: they get
+         * the returning greeting, and the static bank stops filling the sitting
+         * out, so they come back to fewer questions than they were offered.
+         *
+         * The boundary is the open rows. Anything dealt with BEFORE the oldest
+         * of them belongs to an earlier sitting; anything after is part of this
+         * one. With no open rows there is no sitting in progress, so any
+         * dealt-with row at all means this is not their first.
+         *
+         * Not derived from `since`, which is null for three unrelated reasons —
+         * never answered, resuming an open sitting, and a reopen triggered by
+         * newly-learned material — of which only the first means "new artist".
+         */
+        const oldestOpenAt = stillOpen.reduce<string | null>((oldest, r) => {
+            const at = r.createdAt ? String(r.createdAt) : null;
+            if (!at) return oldest;
+            return !oldest || at < oldest ? at : oldest;
+        }, null);
+        const isFirstInterview = oldestOpenAt
+            ? !dealtWith.some(r => r.createdAt && String(r.createdAt) < oldestOpenAt)
+            : dealtWith.length === 0;
+
         // THE WINDOW THE QUESTIONS ARE BUILT IN, which is not always `since`.
         // `newerThan` inside the generator filters posts, credits and
         // statements by `postedAt`, so a "learned" reopening scoped to `since`
@@ -202,11 +231,14 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         const generated = resumed.length >= QUESTION_COUNT
             || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
-            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
+            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]), isFirstInterview);
         const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);
         if (questions.length === 0) return { show: false };
 
-        return { show: true, reason: since ? "new-material" : "first", questions };
+        // The same fact drives the copy. An artist resuming an abandoned second
+        // sitting was being shown the first-interview introduction, because
+        // `since` is null while resuming.
+        return { show: true, reason: isFirstInterview ? "first" : "new-material", questions };
     } catch (e) {
         console.error("[getInterviewInvite] Error:", e);
         return { show: false };
@@ -299,8 +331,15 @@ async function newMaterialSince(artistId: string, since: string): Promise<NewMat
  */
 async function pickQuestions(
     artistId: string,
+    /** The date window to generate in. Null means the whole feed. */
     since: string | null,
     answeredKeys: Set<string>,
+    /** WHETHER THIS IS THEIR FIRST SITTING. Passed in rather than inferred from
+     *  `since`: a null window means "generate from the whole feed", which is
+     *  true for a returning artist as often as a new one, and topping a
+     *  returning artist's sitting up from the static bank asks them "How would
+     *  you describe your sound?" for the second time. */
+    isFirstInterview: boolean,
 ): Promise<InterviewQuestion[]> {
     // `excludeKeys`, not just the filter below. Passing them in removes them
     // from the candidate POOL, so the model spends its picks on things the
@@ -344,7 +383,7 @@ async function pickQuestions(
     // The static bank only fills a FIRST interview. Coming back with "what got
     // you started?" when the artist has just released a record is exactly the
     // generic re-ask this design exists to avoid — better to stay quiet.
-    if (since) return picked;
+    if (!isFirstInterview) return picked;
 
     for (const q of ONBOARDING_QUESTIONS) {
         if (picked.length >= QUESTION_COUNT) break;
