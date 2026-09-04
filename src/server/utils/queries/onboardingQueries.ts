@@ -77,16 +77,11 @@ export async function upsertInterviewAnswer(input: {
                 question: input.question,
                 answer: input.answer,
                 source: input.source,
-                // `createdAt` is answer chronology. `offeredAt` is the separate
-                // material watermark: panel questions preserve the time their
-                // `offered` row was inserted. A direct onboarding-chat upsert
-                // has no preceding offer row, so now is both clocks for it.
+                // `createdAt` is answer chronology. `offeredAt`, deliberately
+                // absent from this update, is the immutable material watermark
+                // established by the first insert. That also makes duplicate
+                // submits/two-tab retries unable to advance the cutoff.
                 createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
-                offeredAt: sql`CASE
-                    WHEN ${artistInterviewAnswers.source} = 'offered'
-                    THEN ${artistInterviewAnswers.offeredAt}
-                    ELSE (now() AT TIME ZONE 'utc'::text)
-                END`,
                 // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering
                 // a question must leave its stored membership intact.
             },

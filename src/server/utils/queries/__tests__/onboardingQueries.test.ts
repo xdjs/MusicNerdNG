@@ -167,13 +167,10 @@ describe('write paths use ON CONFLICT upserts', () => {
         });
 
         const createdAt = onConflictDoUpdate.mock.calls[0][0].set.createdAt;
-        const offeredAt = onConflictDoUpdate.mock.calls[0][0].set.offeredAt;
         const createdQuery = new PgDialect().sqlToQuery(createdAt).sql;
         expect(createdQuery).toContain("now() AT TIME ZONE 'utc'::text");
         expect(createdQuery).not.toContain('CASE');
-        const offeredQuery = new PgDialect().sqlToQuery(offeredAt).sql;
-        expect(offeredQuery).toContain('"artist_interview_answers"."source" = \'offered\'');
-        expect(offeredQuery).toContain('THEN "artist_interview_answers"."offered_at"');
+        expect(onConflictDoUpdate.mock.calls[0][0].set).not.toHaveProperty('offeredAt');
         expect(onConflictDoUpdate.mock.calls[0][0].set).not.toHaveProperty('sitting');
     });
 
