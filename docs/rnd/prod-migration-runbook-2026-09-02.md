@@ -769,16 +769,21 @@ SELECT
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'INSERT') AS mnweb_can_insert,
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'UPDATE') AS mnweb_can_update,
   (SELECT count(*) = 4
-   FROM pg_policies
-   WHERE schemaname = 'public'
-     AND tablename = 'artist_interview_answers'
-     AND policyname IN (
-       'mnweb_select_artist_interview_answers',
-       'mnweb_insert_artist_interview_answers',
-       'mnweb_update_artist_interview_answers',
-       'mnweb_delete_artist_interview_answers'
-     )
-     AND 'mnweb' = ANY(roles)) AS mnweb_policies_present;
+   FROM pg_policies p
+   JOIN (VALUES
+     ('mnweb_select_artist_interview_answers', 'SELECT', 'true'::text, NULL::text),
+     ('mnweb_insert_artist_interview_answers', 'INSERT', NULL::text, 'true'::text),
+     ('mnweb_update_artist_interview_answers', 'UPDATE', 'true'::text, 'true'::text),
+     ('mnweb_delete_artist_interview_answers', 'DELETE', 'true'::text, NULL::text)
+   ) AS expected(policyname, cmd, qual, with_check)
+     ON p.policyname = expected.policyname
+    AND p.cmd = expected.cmd
+    AND lower(btrim(p.qual, '() ')) IS NOT DISTINCT FROM expected.qual
+    AND lower(btrim(p.with_check, '() ')) IS NOT DISTINCT FROM expected.with_check
+   WHERE p.schemaname = 'public'
+     AND p.tablename = 'artist_interview_answers'
+     AND p.permissive = 'PERMISSIVE'
+     AND 'mnweb' = ANY(p.roles)) AS mnweb_policies_match_0011;
 ```
 
 Expected: `1 | 0 | true | true | true | true`.
@@ -823,16 +828,21 @@ SELECT
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'INSERT') AS mnweb_can_insert,
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'UPDATE') AS mnweb_can_update,
   (SELECT count(*) = 4
-   FROM pg_policies
-   WHERE schemaname = 'public'
-     AND tablename = 'artist_interview_answers'
-     AND policyname IN (
-       'mnweb_select_artist_interview_answers',
-       'mnweb_insert_artist_interview_answers',
-       'mnweb_update_artist_interview_answers',
-       'mnweb_delete_artist_interview_answers'
-     )
-     AND 'mnweb' = ANY(roles)) AS mnweb_policies_present;
+   FROM pg_policies p
+   JOIN (VALUES
+     ('mnweb_select_artist_interview_answers', 'SELECT', 'true'::text, NULL::text),
+     ('mnweb_insert_artist_interview_answers', 'INSERT', NULL::text, 'true'::text),
+     ('mnweb_update_artist_interview_answers', 'UPDATE', 'true'::text, 'true'::text),
+     ('mnweb_delete_artist_interview_answers', 'DELETE', 'true'::text, NULL::text)
+   ) AS expected(policyname, cmd, qual, with_check)
+     ON p.policyname = expected.policyname
+    AND p.cmd = expected.cmd
+    AND lower(btrim(p.qual, '() ')) IS NOT DISTINCT FROM expected.qual
+    AND lower(btrim(p.with_check, '() ')) IS NOT DISTINCT FROM expected.with_check
+   WHERE p.schemaname = 'public'
+     AND p.tablename = 'artist_interview_answers'
+     AND p.permissive = 'PERMISSIVE'
+     AND 'mnweb' = ANY(p.roles)) AS mnweb_policies_match_0011;
 ```
 
 Expected: `1 | 0 | true | true | true | true`.
