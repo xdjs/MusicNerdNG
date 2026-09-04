@@ -128,16 +128,33 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         const since = stillOpen.length > 0 ? null : lastAnsweredAt;
 
         /**
-         * HAVE THEY EVER ANSWERED ANYTHING. One fact, read off the rows, and
-         * deliberately not derived from `since`.
+         * IS THE SITTING IN FRONT OF THEM THEIR FIRST — not "have they ever
+         * answered a question", which is a different question with a different
+         * answer half the time.
          *
-         * `since` is null in three unrelated situations — never answered, an
-         * open sitting is being resumed, and a reopen triggered by newly-learned
-         * material — and only the first means "new artist". Anything that reads
-         * first-ness off it shows a returning artist the generic bank and the
-         * first-timer's greeting.
+         * Answering one question of a first sitting and closing the tab leaves
+         * a dealt-with row behind. Counting those makes somebody halfway
+         * through their first interview read as a returning artist: they get
+         * the returning greeting, and the static bank stops filling the sitting
+         * out, so they come back to fewer questions than they were offered.
+         *
+         * The boundary is the open rows. Anything dealt with BEFORE the oldest
+         * of them belongs to an earlier sitting; anything after is part of this
+         * one. With no open rows there is no sitting in progress, so any
+         * dealt-with row at all means this is not their first.
+         *
+         * Not derived from `since`, which is null for three unrelated reasons —
+         * never answered, resuming an open sitting, and a reopen triggered by
+         * newly-learned material — of which only the first means "new artist".
          */
-        const isFirstInterview = dealtWith.length === 0;
+        const oldestOpenAt = stillOpen.reduce<string | null>((oldest, r) => {
+            const at = r.createdAt ? String(r.createdAt) : null;
+            if (!at) return oldest;
+            return !oldest || at < oldest ? at : oldest;
+        }, null);
+        const isFirstInterview = oldestOpenAt
+            ? !dealtWith.some(r => r.createdAt && String(r.createdAt) < oldestOpenAt)
+            : dealtWith.length === 0;
 
         // THE WINDOW THE QUESTIONS ARE BUILT IN, which is not always `since`.
         // `newerThan` inside the generator filters posts, credits and

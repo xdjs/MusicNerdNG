@@ -212,6 +212,29 @@ describe('getInterviewInvite', () => {
         expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
     });
 
+    it('treats a half-answered FIRST sitting as still the first', async () => {
+        // Answer one question, close the tab, come back. A dealt-with row now
+        // exists, but the sitting in front of them is still their first — so
+        // the bank must still fill it out and the copy must still greet them
+        // as a first-timer. Counting dealt-with rows got this backwards.
+        // createdAt is RE-STAMPED on answer (onboardingQueries upsert), so the
+        // answered row of a sitting is NEWER than the ones still open — the
+        // sitting was offered, then one of it was answered. A prior sitting's
+        // rows are older than the open ones, which is what tells them apart.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-26T00:00:00Z'),
+            stillOpen('social_credit_2'),
+        ]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.reason).toBe('first');
+        // Resumed question plus the bank filling the rest.
+        expect(out.questions).toHaveLength(3);
+        expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
+    });
+
     it('does not top up a RESUMED sitting with the generic bank either', async () => {
         // The third route to the same leak. `since` is null while an open
         // sitting is being resumed, so reading first-ness off it made a
