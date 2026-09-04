@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { jest } from '@jest/globals';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import {
     ONBOARDING_STEPS,
     firstUnconfirmedStep,
@@ -155,6 +156,20 @@ describe('write paths use ON CONFLICT upserts', () => {
             question: 'q', answer: null, sitting: 1, source: 'onboarding',
         });
         expect(onConflictDoUpdate).toHaveBeenCalled();
+    });
+
+    it('preserves the offer-time watermark when an offered row is answered', async () => {
+        const onConflictDoUpdate = jest.fn().mockResolvedValue(undefined);
+        db.insert.mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoUpdate }) });
+        await upsertInterviewAnswer({
+            artistId: 'artist-1', questionKey: 'q1', question: 'q',
+            answer: 'a', sitting: 1, source: 'followup',
+        });
+
+        const createdAt = onConflictDoUpdate.mock.calls[0][0].set.createdAt;
+        const query = new PgDialect().sqlToQuery(createdAt);
+        expect(query.sql).toContain('"artist_interview_answers"."source" = \'offered\'');
+        expect(query.sql).toContain('THEN "artist_interview_answers"."created_at"');
     });
 
     it('upsertArtistDoc upserts on artistId', async () => {

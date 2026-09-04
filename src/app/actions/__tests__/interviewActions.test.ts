@@ -181,6 +181,45 @@ describe('getInterviewInvite', () => {
         ]);
     });
 
+    it('reopens after a full resumed sitting for research learned after its offer', async () => {
+        const offeredAt = '2026-08-01T00:00:00Z';
+        getInterviewAnswers.mockResolvedValue([
+            stillOpen('social_credit_1', 1, offeredAt),
+            stillOpen('social_credit_2', 1, offeredAt),
+            stillOpen('social_credit_3', 1, offeredAt),
+        ]);
+        isResearchInFlight.mockResolvedValue(true);
+
+        // A full sitting has no top-up slot, but still waits so the refresh can
+        // finish before the artist resumes it.
+        expect((await invite()).show).toBe(false);
+
+        isResearchInFlight.mockResolvedValue(false);
+        const resumed = await invite();
+        expect(resumed.show).toBe(true);
+        expect(resumed.questions.map(q => q.key)).toEqual([
+            'social_credit_1', 'social_credit_2', 'social_credit_3',
+        ]);
+
+        // Answering an offered row preserves `offeredAt`, so the material the
+        // completed refresh learned after that boundary remains eligible for a
+        // separate follow-up sitting rather than falling behind answer time.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', offeredAt),
+            answered('social_credit_2', offeredAt),
+            answered('social_credit_3', offeredAt),
+        ]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([
+            { key: 'social_credit_4', question: 'What did the refresh find?' },
+        ]);
+
+        const followup = await invite();
+        expect(hasOlderCreditsLearnedSince).toHaveBeenCalledWith('a1', offeredAt);
+        expect(followup.show).toBe(true);
+        expect(followup.questions.map(q => q.key)).toEqual(['social_credit_4']);
+    });
+
     it('comes back when posts were SCRAPED since, though published long before', async () => {
         // The whole feed of a first-time artist: published months ago, stored
         // minutes ago. By publication date there is nothing new; to us it is

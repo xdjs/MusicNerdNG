@@ -77,23 +77,20 @@ export async function upsertInterviewAnswer(input: {
                 question: input.question,
                 answer: input.answer,
                 source: input.source,
-                // RE-STAMPED, because this row may have been created when the
-                // question was OFFERED rather than when it was answered. The
-                // watermark that decides "has anything happened since they last
-                // spoke" read the offer time, so an artist who answered days
-                // later was immediately offered another interview about
-                // activity that predated their answer.
-                //
-                // AND IT DESTROYS THE OFFER TIME. Once a question is answered there
-                // is no record of when it was PUT to the artist, so nothing can work
-                // out which sitting it belonged to from timestamps. Five attempts
-                // tried; each had a hole. That is why `sitting` is a stored column.
-                //
-                // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering a
-                // question must leave its sitting intact — re-stamping it here would
-                // move a row into whatever sitting is current and put the generic
-                // bank back in front of a returning artist.
-                createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
+                // PRESERVE THE OFFER-TIME WATERMARK for panel questions. The
+                // questions can only represent material known when they were
+                // offered. If research finishes while a full sitting waits and
+                // answering re-stamps this later, the newly learned rows fall
+                // before the next cutoff and are never eligible for a follow-up.
+                // A direct onboarding-chat upsert has no preceding `offered`
+                // row, so it retains the existing answer-time behaviour.
+                createdAt: sql`CASE
+                    WHEN ${artistInterviewAnswers.source} = 'offered'
+                    THEN ${artistInterviewAnswers.createdAt}
+                    ELSE (now() AT TIME ZONE 'utc'::text)
+                END`,
+                // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering
+                // a question must leave its stored membership intact.
             },
         });
 }
