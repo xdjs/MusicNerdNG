@@ -20,7 +20,10 @@ const sourceLookup = (...musicbrainzIds: string[]) => ({
 
 const artistDetail = (...urls: string[]) => ({
     id: MUSICBRAINZ_ID,
-    relations: urls.map(resource => ({ url: { resource } })),
+    relations: urls.map(resource => ({
+        'target-type': 'url',
+        url: { resource },
+    })),
 });
 
 async function subject() {
@@ -118,6 +121,28 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+        ['a null relation', null],
+        ['an artist payload with no target type', { artist: { id: OTHER_MUSICBRAINZ_ID } }],
+        ['a relation with a malformed ended marker', {
+            ...sourceLookup(OTHER_MUSICBRAINZ_ID).relations[0],
+            ended: 'true',
+        }],
+    ])('fails closed when source data contains %s', async (_case, malformedRelation) => {
+        global.fetch = jest.fn().mockResolvedValueOnce(ok({
+            relations: [
+                ...sourceLookup(MUSICBRAINZ_ID).relations,
+                malformedRelation,
+            ],
+        }));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
     it('abstains when one artist exposes multiple target-platform IDs', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
@@ -172,6 +197,55 @@ describe('findMusicBrainzCounterpart', () => {
         const findCounterpart = await subject();
 
         await expect(finish(findCounterpart(sourcePlatform, sourceId, targetPlatform)))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        ['a missing URL payload', { 'target-type': 'url' }],
+        ['a non-string resource', { 'target-type': 'url', url: { resource: 123 } }],
+        ['a relation with no target type', {
+            url: { resource: `https://www.deezer.com/artist/${DEEZER_ID}` },
+        }],
+        ['a scheme-less resource', {
+            'target-type': 'url',
+            url: { resource: `www.deezer.com/artist/${DEEZER_ID}` },
+        }],
+    ])('fails closed when detail data contains %s', async (_case, malformedRelation) => {
+        const detail = artistDetail(
+            `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            `https://www.deezer.com/artist/${DEEZER_ID}`,
+        );
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok({
+                ...detail,
+                relations: [...detail.relations, malformedRelation],
+            }));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        ['an uppercase Spotify path', `https://open.spotify.com/ARTIST/${SPOTIFY_ID}`],
+        ['a non-canonical Deezer prefix', `https://www.deezer.com/garbage/artist/${DEEZER_ID}`],
+        ['a non-default Spotify port', `https://open.spotify.com:8443/artist/${SPOTIFY_ID}`],
+    ])('rejects %s', async (_case, malformedUrl) => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+                malformedUrl,
+            )));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
             .resolves.toBeNull();
         expect(global.fetch).toHaveBeenCalledTimes(2);
     });

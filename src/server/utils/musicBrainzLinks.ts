@@ -192,34 +192,65 @@ function matchPlatformArtistUrl(
 ): PlatformArtistUrlMatch {
     try {
         const parsed = new URL(url);
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-            return { status: "unrelated" };
-        }
         const hostname = parsed.hostname.toLowerCase();
         const validHost = platform === "spotify"
             ? hostname === "open.spotify.com"
             : hostname === "deezer.com" || hostname === "www.deezer.com";
         if (!validHost) return { status: "unrelated" };
 
+        if (
+            (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+            || parsed.port !== ""
+            || parsed.username !== ""
+            || parsed.password !== ""
+        ) {
+            return { status: "invalid" };
+        }
+
         const segments = parsed.pathname.split("/").filter(Boolean);
         const artistSegment = segments.findIndex(segment => segment.toLowerCase() === "artist");
         if (artistSegment < 0) return { status: "unrelated" };
-        if (artistSegment !== segments.length - 2) return { status: "invalid" };
-        if (platform === "spotify" && artistSegment !== 0) return { status: "invalid" };
-        const platformId = artistSegment >= 0 ? segments[artistSegment + 1]?.trim() : undefined;
+        const canonicalPath = platform === "spotify"
+            ? artistSegment === 0 && segments.length === 2 && segments[0] === "artist"
+            : (
+                (artistSegment === 0 && segments.length === 2 && segments[0] === "artist")
+                || (
+                    artistSegment === 1
+                    && segments.length === 3
+                    && /^[a-z]{2}$/.test(segments[0])
+                    && segments[1] === "artist"
+                )
+            );
+        if (!canonicalPath) return { status: "invalid" };
+        const platformId = segments[artistSegment + 1]?.trim();
         return platformId && isValidPlatformId(platform, platformId)
             ? { status: "valid", platformId }
             : { status: "invalid" };
     } catch {
-        return { status: "unrelated" };
+        return { status: "invalid" };
     }
 }
 
-function activeRelations(data: Record<string, unknown> | null): Array<Record<string, unknown>> {
+type ActiveRelationsResult =
+    | { status: "ok"; relations: Array<Record<string, unknown>> }
+    | { status: "invalid" };
+
+function activeRelations(data: Record<string, unknown> | null): ActiveRelationsResult {
     const relations = data?.relations;
-    if (!Array.isArray(relations)) return [];
-    return (relations as Array<Record<string, unknown>>)
-        .filter(relation => relation.ended !== true);
+    if (!Array.isArray(relations)) return { status: "invalid" };
+
+    const active: Array<Record<string, unknown>> = [];
+    for (const relation of relations) {
+        if (!relation || typeof relation !== "object" || Array.isArray(relation)) {
+            return { status: "invalid" };
+        }
+        const record = relation as Record<string, unknown>;
+        if ("ended" in record && typeof record.ended !== "boolean") {
+            return { status: "invalid" };
+        }
+        if (record.ended !== true) active.push(record);
+    }
+    return { status: "ok", relations: active };
 }
 
 function oneValue(values: Iterable<string>): string | null {
@@ -296,10 +327,15 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
     const sourceLookup = sourceResult.data;
-    const artistRelations = activeRelations(sourceLookup)
-        .filter(relation => relation["target-type"] === "artist");
+    const sourceRelations = activeRelations(sourceLookup);
+    if (sourceRelations.status === "invalid") {
+        return { counterpart: null, definitiveMiss: false };
+    }
     const musicbrainzIds = new Set<string>();
-    for (const relation of artistRelations) {
+    for (const relation of sourceRelations.relations) {
+        if (relation["target-type"] !== "artist") {
+            return { counterpart: null, definitiveMiss: false };
+        }
         const artist = relation.artist;
         const id = artist && typeof artist === "object" && !Array.isArray(artist)
             ? (artist as Record<string, unknown>).id
@@ -332,9 +368,28 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
 
-    const relationUrls = activeRelations(detail)
-        .map(relation => (relation.url as Record<string, unknown> | undefined)?.resource)
-        .filter((url): url is string => typeof url === "string");
+    const detailRelations = activeRelations(detail);
+    if (detailRelations.status === "invalid") {
+        return { counterpart: null, definitiveMiss: false };
+    }
+    const relationUrls: string[] = [];
+    for (const relation of detailRelations.relations) {
+        const url = relation.url;
+        const resource = url && typeof url === "object" && !Array.isArray(url)
+            ? (url as Record<string, unknown>).resource
+            : undefined;
+        if (relation["target-type"] !== "url" || typeof resource !== "string") {
+            return { counterpart: null, definitiveMiss: false };
+        }
+        try {
+            // Reject partial/malformed relation payloads before deciding that
+            // the remaining source and target IDs are unique.
+            new URL(resource);
+        } catch {
+            return { counterpart: null, definitiveMiss: false };
+        }
+        relationUrls.push(resource);
+    }
     const platformRelations = relationUrls.map(url => ({
         source: matchPlatformArtistUrl(url, sourcePlatform),
         target: matchPlatformArtistUrl(url, targetPlatform),
