@@ -1,6 +1,10 @@
 # Production migration runbook — 2026-09-02
 
-Run these against **production** Supabase (`cbabvmebugudeuylronz`) in the SQL editor, in order, **before** merging #1195. Merging first starts the every-minute cron against a table that `0021` creates.
+Run these against **production** Supabase (`cbabvmebugudeuylronz`) in the SQL
+editor, in order, before deploying code that depends on them. Migrations
+0011–0021 were required before #1195; 0022–0023 are required before #1200.
+Merging first starts application paths against tables or columns that do not
+exist yet.
 
 Each block is wrapped in `BEGIN` / `COMMIT`. Postgres DDL is transactional, so a failure rolls the whole step back rather than leaving the schema half-applied. Run one block, run its check, then move on.
 
@@ -9,8 +13,7 @@ Each block is wrapped in `BEGIN` / `COMMIT`. Postgres DDL is transactional, so a
 Do **not** treat any whole step below as safe to re-run. Some individual table
 and index statements use `IF NOT EXISTS`, but several migrations also contain
 unguarded constraints or `CREATE POLICY` statements that fail when the object
-already exists. This runbook is for a database where none of these migrations
-has landed. Run this first:
+already exists. Run this first:
 
 ```sql
 SELECT
@@ -23,7 +26,16 @@ FROM (VALUES
 ) AS t(name);
 ```
 
-All eight should read `absent`. If any says `ALREADY EXISTS`, stop and tell me which — `0011`/`0012` need editing before they'll apply cleanly.
+For a database starting at 0011, all eight should read `absent`. If 0011–0021
+were already applied, all eight should exist—but table presence alone is not
+proof that the column- and index-only migrations landed. Before skipping to
+0022, run the **Check** query after every 0011–0021 section except 0017 and
+confirm every result is true. The 0019 migration deliberately replaces and
+drops all 0017 indexes, so a database through 0021 must pass the 0019 check,
+not the superseded 0017 check. This includes the columns from 0013 and 0015,
+the current indexes from 0019 and 0020, and the explicit absence checks for
+the retired 0017 indexes. Any false result or mixed table result means a
+partial migration: stop and reconcile it instead of rerunning a whole block.
 
 
 ## 0011_flimsy_robbie_robertson.sql
@@ -414,7 +426,11 @@ CREATE INDEX IF NOT EXISTS artists_lower_deezer_idx         ON artists (lower(de
 COMMIT;
 ```
 
-Check:
+Check (only immediately after 0017 and before running 0019):
+
+If the database is already through 0019 or later, skip this check. Migration
+0019 intentionally drops these indexes and its check verifies both the
+replacement indexes and removal of this superseded generation.
 
 ```sql
 SELECT * FROM (VALUES
@@ -435,7 +451,7 @@ SELECT * FROM (VALUES
 
 ## 0018_artist_social_credits.sql
 
-Creates: `artist_social_credits` (table), `and` (table), `artist_social_credits_uniq` (index), `idx_artist_social_credits_artist` (index)
+Creates: `artist_social_credits` (table), `artist_social_credits_uniq` (index), `idx_artist_social_credits_artist` (index)
 
 ```sql
 BEGIN;
@@ -573,19 +589,32 @@ Check:
 
 ```sql
 SELECT * FROM (VALUES
-  ('index', 'artists_handle_instagram_idx', to_regclass('public.artists_handle_instagram_idx') IS NOT NULL),
-  ('index', 'artists_handle_x_idx', to_regclass('public.artists_handle_x_idx') IS NOT NULL),
-  ('index', 'artists_handle_tiktok_idx', to_regclass('public.artists_handle_tiktok_idx') IS NOT NULL),
-  ('index', 'artists_handle_youtube_idx', to_regclass('public.artists_handle_youtube_idx') IS NOT NULL),
-  ('index', 'artists_handle_youtubechannel_idx', to_regclass('public.artists_handle_youtubechannel_idx') IS NOT NULL),
-  ('index', 'artists_handle_soundcloud_idx', to_regclass('public.artists_handle_soundcloud_idx') IS NOT NULL),
-  ('index', 'artists_handle_bandcamp_idx', to_regclass('public.artists_handle_bandcamp_idx') IS NOT NULL),
-  ('index', 'artists_handle_twitch_idx', to_regclass('public.artists_handle_twitch_idx') IS NOT NULL),
-  ('index', 'artists_handle_facebook_idx', to_regclass('public.artists_handle_facebook_idx') IS NOT NULL),
-  ('index', 'artists_handle_spotify_idx', to_regclass('public.artists_handle_spotify_idx') IS NOT NULL),
-  ('index', 'artists_handle_deezer_idx', to_regclass('public.artists_handle_deezer_idx') IS NOT NULL)
-) AS t(kind, name, present);
+  ('replacement index', 'artists_handle_instagram_idx', to_regclass('public.artists_handle_instagram_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_x_idx', to_regclass('public.artists_handle_x_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_tiktok_idx', to_regclass('public.artists_handle_tiktok_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_youtube_idx', to_regclass('public.artists_handle_youtube_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_youtubechannel_idx', to_regclass('public.artists_handle_youtubechannel_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_soundcloud_idx', to_regclass('public.artists_handle_soundcloud_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_bandcamp_idx', to_regclass('public.artists_handle_bandcamp_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_twitch_idx', to_regclass('public.artists_handle_twitch_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_facebook_idx', to_regclass('public.artists_handle_facebook_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_spotify_idx', to_regclass('public.artists_handle_spotify_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_deezer_idx', to_regclass('public.artists_handle_deezer_idx') IS NOT NULL),
+  ('retired index absent', 'artists_lower_instagram_idx', to_regclass('public.artists_lower_instagram_idx') IS NULL),
+  ('retired index absent', 'artists_lower_x_idx', to_regclass('public.artists_lower_x_idx') IS NULL),
+  ('retired index absent', 'artists_lower_tiktok_idx', to_regclass('public.artists_lower_tiktok_idx') IS NULL),
+  ('retired index absent', 'artists_lower_youtube_idx', to_regclass('public.artists_lower_youtube_idx') IS NULL),
+  ('retired index absent', 'artists_lower_youtubechannel_idx', to_regclass('public.artists_lower_youtubechannel_idx') IS NULL),
+  ('retired index absent', 'artists_lower_soundcloud_idx', to_regclass('public.artists_lower_soundcloud_idx') IS NULL),
+  ('retired index absent', 'artists_lower_bandcamp_idx', to_regclass('public.artists_lower_bandcamp_idx') IS NULL),
+  ('retired index absent', 'artists_lower_twitch_idx', to_regclass('public.artists_lower_twitch_idx') IS NULL),
+  ('retired index absent', 'artists_lower_facebook_idx', to_regclass('public.artists_lower_facebook_idx') IS NULL),
+  ('retired index absent', 'artists_lower_spotify_idx', to_regclass('public.artists_lower_spotify_idx') IS NULL),
+  ('retired index absent', 'artists_lower_deezer_idx', to_regclass('public.artists_lower_deezer_idx') IS NULL)
+) AS t(kind, name, correct);
 ```
+
+Expected: every `correct` value is `true`.
 
 
 ## 0020_credit_uniqueness_includes_role.sql
@@ -618,10 +647,17 @@ COMMIT;
 Check:
 
 ```sql
-SELECT * FROM (VALUES
-  ('index', 'artist_social_credits_uniq', to_regclass('public.artist_social_credits_uniq') IS NOT NULL)
-) AS t(kind, name, present);
+SELECT
+  to_regclass('public.artist_social_credits_uniq') IS NOT NULL AS index_present,
+  coalesce(i.indisunique, false) AS is_unique,
+  coalesce(pg_get_indexdef(i.indexrelid) LIKE '%md5(label)%', false) AS includes_role
+FROM (VALUES (1)) AS required(dummy)
+LEFT JOIN pg_index i
+  ON i.indexrelid = to_regclass('public.artist_social_credits_uniq');
 ```
+
+Expected: `true | true | true`. The `includes_role` check distinguishes the
+0020 replacement from the older index with the same name created by 0018.
 
 
 ## 0021_artist_research_jobs.sql
@@ -715,18 +751,149 @@ SELECT * FROM (VALUES
 ```
 
 
-## After all eleven
+## 0022_interview_sitting.sql
+
+Adds: `artist_interview_answers.sitting`
+
+The app connects as `mnweb`, while the SQL editor runs with the privileged role
+needed for DDL. Existing table-level grants and RLS policies cover new columns;
+the check below verifies both assumptions explicitly.
 
 ```sql
-SELECT t.name, to_regclass('public.' || t.name) IS NOT NULL AS present
-FROM (VALUES
-  ('artist_docs'), ('artist_interview_answers'), ('artist_onboarding_steps'),
-  ('artist_social_posts'), ('artist_social_profiles'),
-  ('artist_doc_corrections'), ('artist_social_credits'), ('artist_research_jobs')
-) AS t(name);
+BEGIN;
+
+ALTER TABLE artist_interview_answers
+  ADD COLUMN IF NOT EXISTS sitting integer;
+
+UPDATE artist_interview_answers
+SET sitting = 1
+WHERE sitting IS NULL;
+
+COMMIT;
 ```
 
-Eight rows, all `true`. Then #1195 is safe to merge.
+Check:
+
+```sql
+SELECT
+  (SELECT count(*)
+   FROM information_schema.columns
+   WHERE table_schema = 'public'
+     AND table_name = 'artist_interview_answers'
+     AND column_name = 'sitting') AS column_exists,
+  (SELECT count(*)
+   FROM artist_interview_answers
+   WHERE sitting IS NULL) AS still_null,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'SELECT') AS mnweb_can_read,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'INSERT') AS mnweb_can_insert,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'UPDATE') AS mnweb_can_update,
+  (SELECT count(*) = 4
+   FROM pg_policies p
+   JOIN (VALUES
+     ('mnweb_select_artist_interview_answers', 'SELECT', 'true'::text, NULL::text),
+     ('mnweb_insert_artist_interview_answers', 'INSERT', NULL::text, 'true'::text),
+     ('mnweb_update_artist_interview_answers', 'UPDATE', 'true'::text, 'true'::text),
+     ('mnweb_delete_artist_interview_answers', 'DELETE', 'true'::text, NULL::text)
+   ) AS expected(policyname, cmd, qual, with_check)
+     ON p.policyname = expected.policyname
+    AND p.cmd = expected.cmd
+    AND lower(btrim(p.qual, '() ')) IS NOT DISTINCT FROM expected.qual
+    AND lower(btrim(p.with_check, '() ')) IS NOT DISTINCT FROM expected.with_check
+   WHERE p.schemaname = 'public'
+     AND p.tablename = 'artist_interview_answers'
+     AND p.permissive = 'PERMISSIVE'
+     AND 'mnweb' = ANY(p.roles)) AS mnweb_policies_match_0011;
+```
+
+Expected: `1 | 0 | true | true | true | true`.
+
+
+## 0023_interview_offer_watermark.sql
+
+Adds: `artist_interview_answers.offered_at`
+
+```sql
+BEGIN;
+
+ALTER TABLE artist_interview_answers
+  ADD COLUMN IF NOT EXISTS offered_at timestamp with time zone;
+
+ALTER TABLE artist_interview_answers
+  ALTER COLUMN offered_at SET DEFAULT (now() AT TIME ZONE 'utc'::text);
+
+UPDATE artist_interview_answers
+SET offered_at = created_at
+WHERE offered_at IS NULL;
+
+ALTER TABLE artist_interview_answers
+  ALTER COLUMN offered_at SET NOT NULL;
+
+COMMIT;
+```
+
+Check:
+
+```sql
+SELECT
+  (SELECT count(*)
+   FROM information_schema.columns
+   WHERE table_schema = 'public'
+     AND table_name = 'artist_interview_answers'
+     AND column_name = 'offered_at') AS column_exists,
+  (SELECT count(*)
+   FROM artist_interview_answers
+   WHERE offered_at IS NULL) AS still_null,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'SELECT') AS mnweb_can_read,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'INSERT') AS mnweb_can_insert,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'UPDATE') AS mnweb_can_update,
+  (SELECT count(*) = 4
+   FROM pg_policies p
+   JOIN (VALUES
+     ('mnweb_select_artist_interview_answers', 'SELECT', 'true'::text, NULL::text),
+     ('mnweb_insert_artist_interview_answers', 'INSERT', NULL::text, 'true'::text),
+     ('mnweb_update_artist_interview_answers', 'UPDATE', 'true'::text, 'true'::text),
+     ('mnweb_delete_artist_interview_answers', 'DELETE', 'true'::text, NULL::text)
+   ) AS expected(policyname, cmd, qual, with_check)
+     ON p.policyname = expected.policyname
+    AND p.cmd = expected.cmd
+    AND lower(btrim(p.qual, '() ')) IS NOT DISTINCT FROM expected.qual
+    AND lower(btrim(p.with_check, '() ')) IS NOT DISTINCT FROM expected.with_check
+   WHERE p.schemaname = 'public'
+     AND p.tablename = 'artist_interview_answers'
+     AND p.permissive = 'PERMISSIVE'
+     AND 'mnweb' = ANY(p.roles)) AS mnweb_policies_match_0011;
+```
+
+Expected: `1 | 0 | true | true | true | true`.
+
+
+## After all thirteen
+
+```sql
+SELECT * FROM (VALUES
+  ('table', 'artist_docs', to_regclass('public.artist_docs') IS NOT NULL),
+  ('table', 'artist_interview_answers', to_regclass('public.artist_interview_answers') IS NOT NULL),
+  ('table', 'artist_onboarding_steps', to_regclass('public.artist_onboarding_steps') IS NOT NULL),
+  ('table', 'artist_social_posts', to_regclass('public.artist_social_posts') IS NOT NULL),
+  ('table', 'artist_social_profiles', to_regclass('public.artist_social_profiles') IS NOT NULL),
+  ('table', 'artist_doc_corrections', to_regclass('public.artist_doc_corrections') IS NOT NULL),
+  ('table', 'artist_social_credits', to_regclass('public.artist_social_credits') IS NOT NULL),
+  ('table', 'artist_research_jobs', to_regclass('public.artist_research_jobs') IS NOT NULL),
+  ('column', 'artist_interview_answers.sitting', EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'artist_interview_answers' AND column_name = 'sitting'
+  )),
+  ('column', 'artist_interview_answers.offered_at', EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'artist_interview_answers' AND column_name = 'offered_at'
+  ))
+) AS t(kind, name, present);
+```
+
+Every per-step artifact check must pass. This final summary should show ten rows,
+all `true`, and both column checks above must return
+`1 | 0 | true | true | true | true`. Then #1200's database prerequisite is
+satisfied.
 
 ## One caveat
 
