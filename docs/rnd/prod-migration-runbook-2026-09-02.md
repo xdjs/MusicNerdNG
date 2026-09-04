@@ -29,11 +29,13 @@ FROM (VALUES
 For a database starting at 0011, all eight should read `absent`. If 0011–0021
 were already applied, all eight should exist—but table presence alone is not
 proof that the column- and index-only migrations landed. Before skipping to
-0022, run the **Check** query after every 0011–0021 section and confirm every
-named artifact is present, including the columns from 0013 and 0015 and the
-indexes from 0017, 0019, and 0020. Any missing artifact or mixed table result
-means a partial migration: stop and reconcile it instead of rerunning a whole
-block.
+0022, run the **Check** query after every 0011–0021 section except 0017 and
+confirm every result is true. The 0019 migration deliberately replaces and
+drops all 0017 indexes, so a database through 0021 must pass the 0019 check,
+not the superseded 0017 check. This includes the columns from 0013 and 0015,
+the current indexes from 0019 and 0020, and the explicit absence checks for
+the retired 0017 indexes. Any false result or mixed table result means a
+partial migration: stop and reconcile it instead of rerunning a whole block.
 
 
 ## 0011_flimsy_robbie_robertson.sql
@@ -424,7 +426,11 @@ CREATE INDEX IF NOT EXISTS artists_lower_deezer_idx         ON artists (lower(de
 COMMIT;
 ```
 
-Check:
+Check (only immediately after 0017 and before running 0019):
+
+If the database is already through 0019 or later, skip this check. Migration
+0019 intentionally drops these indexes and its check verifies both the
+replacement indexes and removal of this superseded generation.
 
 ```sql
 SELECT * FROM (VALUES
@@ -583,19 +589,32 @@ Check:
 
 ```sql
 SELECT * FROM (VALUES
-  ('index', 'artists_handle_instagram_idx', to_regclass('public.artists_handle_instagram_idx') IS NOT NULL),
-  ('index', 'artists_handle_x_idx', to_regclass('public.artists_handle_x_idx') IS NOT NULL),
-  ('index', 'artists_handle_tiktok_idx', to_regclass('public.artists_handle_tiktok_idx') IS NOT NULL),
-  ('index', 'artists_handle_youtube_idx', to_regclass('public.artists_handle_youtube_idx') IS NOT NULL),
-  ('index', 'artists_handle_youtubechannel_idx', to_regclass('public.artists_handle_youtubechannel_idx') IS NOT NULL),
-  ('index', 'artists_handle_soundcloud_idx', to_regclass('public.artists_handle_soundcloud_idx') IS NOT NULL),
-  ('index', 'artists_handle_bandcamp_idx', to_regclass('public.artists_handle_bandcamp_idx') IS NOT NULL),
-  ('index', 'artists_handle_twitch_idx', to_regclass('public.artists_handle_twitch_idx') IS NOT NULL),
-  ('index', 'artists_handle_facebook_idx', to_regclass('public.artists_handle_facebook_idx') IS NOT NULL),
-  ('index', 'artists_handle_spotify_idx', to_regclass('public.artists_handle_spotify_idx') IS NOT NULL),
-  ('index', 'artists_handle_deezer_idx', to_regclass('public.artists_handle_deezer_idx') IS NOT NULL)
-) AS t(kind, name, present);
+  ('replacement index', 'artists_handle_instagram_idx', to_regclass('public.artists_handle_instagram_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_x_idx', to_regclass('public.artists_handle_x_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_tiktok_idx', to_regclass('public.artists_handle_tiktok_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_youtube_idx', to_regclass('public.artists_handle_youtube_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_youtubechannel_idx', to_regclass('public.artists_handle_youtubechannel_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_soundcloud_idx', to_regclass('public.artists_handle_soundcloud_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_bandcamp_idx', to_regclass('public.artists_handle_bandcamp_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_twitch_idx', to_regclass('public.artists_handle_twitch_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_facebook_idx', to_regclass('public.artists_handle_facebook_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_spotify_idx', to_regclass('public.artists_handle_spotify_idx') IS NOT NULL),
+  ('replacement index', 'artists_handle_deezer_idx', to_regclass('public.artists_handle_deezer_idx') IS NOT NULL),
+  ('retired index absent', 'artists_lower_instagram_idx', to_regclass('public.artists_lower_instagram_idx') IS NULL),
+  ('retired index absent', 'artists_lower_x_idx', to_regclass('public.artists_lower_x_idx') IS NULL),
+  ('retired index absent', 'artists_lower_tiktok_idx', to_regclass('public.artists_lower_tiktok_idx') IS NULL),
+  ('retired index absent', 'artists_lower_youtube_idx', to_regclass('public.artists_lower_youtube_idx') IS NULL),
+  ('retired index absent', 'artists_lower_youtubechannel_idx', to_regclass('public.artists_lower_youtubechannel_idx') IS NULL),
+  ('retired index absent', 'artists_lower_soundcloud_idx', to_regclass('public.artists_lower_soundcloud_idx') IS NULL),
+  ('retired index absent', 'artists_lower_bandcamp_idx', to_regclass('public.artists_lower_bandcamp_idx') IS NULL),
+  ('retired index absent', 'artists_lower_twitch_idx', to_regclass('public.artists_lower_twitch_idx') IS NULL),
+  ('retired index absent', 'artists_lower_facebook_idx', to_regclass('public.artists_lower_facebook_idx') IS NULL),
+  ('retired index absent', 'artists_lower_spotify_idx', to_regclass('public.artists_lower_spotify_idx') IS NULL),
+  ('retired index absent', 'artists_lower_deezer_idx', to_regclass('public.artists_lower_deezer_idx') IS NULL)
+) AS t(kind, name, correct);
 ```
+
+Expected: every `correct` value is `true`.
 
 
 ## 0020_credit_uniqueness_includes_role.sql
