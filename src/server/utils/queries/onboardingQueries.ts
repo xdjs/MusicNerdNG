@@ -77,23 +77,13 @@ export async function upsertInterviewAnswer(input: {
                 question: input.question,
                 answer: input.answer,
                 source: input.source,
-                // RE-STAMPED, because this row may have been created when the
-                // question was OFFERED rather than when it was answered. The
-                // watermark that decides "has anything happened since they last
-                // spoke" read the offer time, so an artist who answered days
-                // later was immediately offered another interview about
-                // activity that predated their answer.
-                //
-                // AND IT DESTROYS THE OFFER TIME. Once a question is answered there
-                // is no record of when it was PUT to the artist, so nothing can work
-                // out which sitting it belonged to from timestamps. Five attempts
-                // tried; each had a hole. That is why `sitting` is a stored column.
-                //
-                // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering a
-                // question must leave its sitting intact — re-stamping it here would
-                // move a row into whatever sitting is current and put the generic
-                // bank back in front of a returning artist.
+                // `createdAt` is answer chronology. `offeredAt`, deliberately
+                // absent from this update, is the immutable material watermark
+                // established by the first insert. That also makes duplicate
+                // submits/two-tab retries unable to advance the cutoff.
                 createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
+                // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering
+                // a question must leave its stored membership intact.
             },
         });
 }
@@ -128,10 +118,10 @@ export async function recordInterviewBatchOffered(
     // sitting has fewer questions left than a full one. Otherwise this starts a
     // new sitting.
     //
-    // NOT DERIVED FROM TIMESTAMPS. Five attempts did that and each had a hole,
-    // because `upsertInterviewAnswer` re-stamps `created_at` on answer and
-    // destroys the offer time that identifies the sitting. A topped-up row
-    // outliving the rows it was added to then reads as a sitting of its own.
+    // NOT DERIVED FROM TIMESTAMPS. Five attempts did that and each had a hole.
+    // `created_at` moves when the answer arrives, while `offered_at` moves when
+    // a top-up is added; neither clock can say that differently timed rows were
+    // visible together. A topped-up row needs the stored membership instead.
     let sitting = 1;
     try {
         const rows = await db.select({ sitting: artistInterviewAnswers.sitting, source: artistInterviewAnswers.source })

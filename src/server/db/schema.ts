@@ -488,6 +488,10 @@ export const artistInterviewAnswers = pgTable("artist_interview_answers", {
 	/** Which sitting this question was offered in. Nullable for rows that
 	 *  predate 0022; a null reads as 1, which is what every such row is. */
 	sitting: integer(),
+	/** When this question was put to the artist. Unlike `createdAt`, this does
+	 *  not move when the answer arrives; it is the material cutoff for the
+	 *  sitting. */
+	offeredAt: timestamp("offered_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [
 	unique("artist_interview_answers_artist_question_uniq").on(table.artistId, table.questionKey),

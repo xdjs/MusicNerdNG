@@ -162,6 +162,13 @@
       "when": 1788527590000,
       "tag": "0022_interview_sitting",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788552000000,
+      "tag": "0023_interview_offer_watermark",
+      "breakpoints": true
     }
   ]
 }

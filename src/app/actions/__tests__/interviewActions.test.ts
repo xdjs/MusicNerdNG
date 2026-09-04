@@ -59,17 +59,18 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyCatalogDetail: (...a) => getSpotifyCatalogDetail(...a),
 }));
 
-const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', createdAt: at, source: 'followup' });
+const answered = (key, at, offeredAt = at) => ({
+    questionKey: key, question: 'q', answer: 'a', createdAt: at, offeredAt, source: 'followup',
+});
 /** A question put to them that they have not dealt with — the boundary of a
  *  sitting, and the only thing that can tell an abandoned one from a finished
  *  one. A lifetime row count cannot: after a completed first sitting, one
  *  answer into a second gives four rows, which is not "fewer than a set". */
-/** `sitting` and `createdAt` are both parameterised: which sitting a question
- *  belongs to is now stored on the row, and the timestamps matter for the
- *  new-material watermark. Defaults are sitting 1 at a fixed time, which is the
- *  ordinary first-interview case. */
-const stillOpen = (key, sitting = 1, createdAt = '2026-08-25T00:00:00Z') =>
-    ({ questionKey: key, question: 'q', answer: null, createdAt, source: 'offered', sitting });
+/** `sitting` and `offeredAt` are both parameterised: one stores membership and
+ *  the other is the new-material watermark. Defaults are sitting 1 at a fixed
+ *  time, which is the ordinary first-interview case. */
+const stillOpen = (key, sitting = 1, offeredAt = '2026-08-25T00:00:00Z') =>
+    ({ questionKey: key, question: 'q', answer: null, createdAt: offeredAt, offeredAt, source: 'offered', sitting });
 /** A COMPLETED sitting. Fewer rows than this means they started and stopped,
  *  and the remaining questions are still owed — the new-material gate does not
  *  apply until a full set has been dealt with, one way or another. Dismissing
@@ -156,18 +157,69 @@ describe('getInterviewInvite', () => {
         expect(generateGroundedQuestions).not.toHaveBeenCalled();
     });
 
-    it('resumes an open sitting while extraction runs, without topping it up', async () => {
-        // Resuming is safe: the question exists and so does what it was built
-        // on. Topping it up is not — it would draw static fillers from
-        // incomplete material and persist them, which is the lockout itself.
+    it('defers an open sitting until extraction finishes, then resumes with what it learned', async () => {
+        // If the artist finishes while extraction is writing, their final
+        // answer gets a later timestamp than the learned rows. The next invite
+        // then sees nothing created after that answer, permanently skipping
+        // material that was never represented in this sitting's questions.
         getInterviewAnswers.mockResolvedValue([stillOpen('social_credit_7')]);
         isResearchInFlight.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([
+            { key: 'social_credit_8', question: 'What did the refresh find?' },
+        ]);
 
-        const out = await invite();
-        expect(out.show).toBe(true);
-        expect(out.questions).toHaveLength(1);
-        expect(out.questions[0].key).toBe('social_credit_7');
+        const during = await invite();
+        expect(during.show).toBe(false);
         expect(generateGroundedQuestions).not.toHaveBeenCalled();
+
+        isResearchInFlight.mockResolvedValue(false);
+        const after = await invite();
+        expect(after.show).toBe(true);
+        expect(after.questions.map(q => q.key)).toEqual([
+            'social_credit_7',
+            'social_credit_8',
+            'sound_in_own_words',
+        ]);
+    });
+
+    it('reopens after a full resumed sitting for research learned after its offer', async () => {
+        const offeredAt = '2026-08-01T00:00:00Z';
+        getInterviewAnswers.mockResolvedValue([
+            stillOpen('social_credit_1', 1, offeredAt),
+            stillOpen('social_credit_2', 1, offeredAt),
+            stillOpen('social_credit_3', 1, offeredAt),
+        ]);
+        isResearchInFlight.mockResolvedValue(true);
+
+        // A full sitting has no top-up slot, but still waits so the refresh can
+        // finish before the artist resumes it.
+        expect((await invite()).show).toBe(false);
+
+        isResearchInFlight.mockResolvedValue(false);
+        const resumed = await invite();
+        expect(resumed.show).toBe(true);
+        expect(resumed.questions.map(q => q.key)).toEqual([
+            'social_credit_1', 'social_credit_2', 'social_credit_3',
+        ]);
+
+        // Answering preserves `offeredAt` but stamps `createdAt` with the real
+        // answer time. The completed refresh remains eligible for a separate
+        // follow-up without making these new words look old to Ask.
+        const answeredAt = '2026-09-01T00:00:00Z';
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', answeredAt, offeredAt),
+            answered('social_credit_2', answeredAt, offeredAt),
+            answered('social_credit_3', answeredAt, offeredAt),
+        ]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([
+            { key: 'social_credit_4', question: 'What did the refresh find?' },
+        ]);
+
+        const followup = await invite();
+        expect(hasOlderCreditsLearnedSince).toHaveBeenCalledWith('a1', offeredAt);
+        expect(followup.show).toBe(true);
+        expect(followup.questions.map(q => q.key)).toEqual(['social_credit_4']);
     });
 
     it('comes back when posts were SCRAPED since, though published long before', async () => {
@@ -222,10 +274,9 @@ describe('getInterviewInvite', () => {
         // exists, but the sitting in front of them is still their first — so
         // the bank must still fill it out and the copy must still greet them
         // as a first-timer. Counting dealt-with rows got this backwards.
-        // createdAt is RE-STAMPED on answer (onboardingQueries upsert), so the
-        // answered row of a sitting is NEWER than the ones still open — the
-        // sitting was offered, then one of it was answered. A prior sitting's
-        // rows are older than the open ones, which is what tells them apart.
+        // createdAt is re-stamped on answer, so timestamps cannot identify the
+        // sitting. The stored membership on the open row is what keeps this a
+        // first interview.
         getInterviewAnswers.mockResolvedValue([
             answered('social_credit_1', '2026-08-26T00:00:00Z'),
             stillOpen('social_credit_2'),

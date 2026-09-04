@@ -108,8 +108,16 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // Skipped questions count as dealt with: they were asked and answered
         // by being declined, and re-offering them is the nagging we avoid.
         const answeredKeys = new Set(dealtWith.map(a => a.questionKey));
-        const lastAnsweredAt = dealtWith.reduce<string | null>((latest, a) => {
-            const at = a.createdAt ? String(a.createdAt) : null;
+        // The reopening boundary is when the latest batch was OFFERED, not
+        // when its last answer arrived. Research learned between those two
+        // moments was not represented in the questions. `createdAt` remains
+        // answer chronology for consumers such as Ask's newest-answers list.
+        const lastOfferedAt = dealtWith.reduce<string | null>((latest, a) => {
+            const at = a.offeredAt
+                ? String(a.offeredAt)
+                // Deployment is migration-first, but this keeps old fixture
+                // rows and any pre-0023 nullable data safe.
+                : a.createdAt ? String(a.createdAt) : null;
             if (!at) return latest;
             return !latest || at > latest ? at : latest;
         }, null);
@@ -125,7 +133,7 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // hidden for good. The open rows are the boundary: they say which
         // questions are outstanding from the offer that is actually in front of
         // them.
-        const since = stillOpen.length > 0 ? null : lastAnsweredAt;
+        const since = stillOpen.length > 0 ? null : lastOfferedAt;
 
         /**
          * IS THE SITTING IN FRONT OF THEM THEIR FIRST.
@@ -138,10 +146,9 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
          * hole. The last one compared dealt-with rows against the oldest still
          * open, which breaks the moment a sitting is topped up: the added row
          * outlives the ones it joined, becomes the oldest open row, and the
-         * rows it was added to start looking like an earlier sitting. The fact
-         * was never in the timestamps to begin with — answering a question
-         * re-stamps `created_at` and destroys the offer time that identifies
-         * its sitting.
+         * rows it was added to start looking like an earlier sitting. Even a
+         * preserved `offered_at` cannot encode membership: a top-up is offered
+         * later but still belongs to the sitting already in front of them.
          *
          * Null is a row from before the column existed. Every artist with rows
          * then had been offered exactly one sitting.
@@ -166,6 +173,22 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
             // still in the pool, still the most recent thing there, and
             // `excludeKeys` is what stops old questions being repeated.
             if (learned) window = null;
+        }
+
+        // DO NOT OPEN OR RESUME WHILE RESEARCH IS STILL WRITING. Questions are
+        // built from caption extraction, which trails the scrape by up to
+        // several minutes. For a new sitting, asking early persists generic
+        // fillers before the grounded material exists. For an open sitting,
+        // letting the artist finish early is subtler: a full old batch has no
+        // slot for the material learned mid-sitting. Waiting avoids presenting
+        // an immediately stale panel; `offered_at` keeps the pre-research
+        // boundary alive so the refresh can still trigger a follow-up.
+        //
+        // BOTH STAGES. caption_extract is enqueued only after social_ingest
+        // completes, so checking extraction alone misses the exact window in
+        // which Pete's production incident happened.
+        if (await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])) {
+            return { show: false };
         }
 
         // THE OPEN ROWS ARE THE QUESTIONS, not just a flag. Regenerating and
@@ -194,36 +217,10 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
             question: r.question,
             sourceUrl: links.get(r.questionKey),
         }));
-        // DO NOT ASK BEFORE THE MATERIAL EXISTS. Questions are written from
-        // what caption extraction produces, and extraction finishes seventy
-        // seconds to several minutes after the posts land. Generating inside
-        // that window fills every slot from the static bank — and those rows
-        // persist under (artist_id, question_key), which sets `since` and gates
-        // every later sitting. On production Pete Rango's questions were
-        // written at 13:18:08 and his extraction was queued at 13:19:16; the
-        // 187 credits it found arrived too late to be used. Tom Vek's ran two
-        // minutes after his and read fine. Nothing was different but timing.
-        //
-        // An open sitting still RESUMES — those questions exist and so does
-        // what they were built on — but it is not topped up to a full set
-        // while extraction runs. Topping up mid-extraction pulls static
-        // fillers from incomplete material and persists them, which is the
-        // lockout this guard exists to prevent. Mutation-testing caught that:
-        // an earlier version exempted open sittings from the wait, and no test
-        // could tell the two apart because both return the resumed questions.
-        // BOTH STAGES. caption_extract is enqueued only once social_ingest
-        // completes, so during the scrape there is no extraction row and asking
-        // about extraction alone answers "nothing in flight" — false for the
-        // whole one-to-five minutes the scrape takes. Pete's questions were
-        // written at 13:18:08 with ingest still running and extraction not
-        // queued until 13:19:16, so a guard on extraction alone would have let
-        // his sitting through unchanged.
-        //
-        // Short-circuited: a sitting already full needs no generation and must
-        // not pay for this query on every page load, which is the same reason
-        // sourceUrlsForQuestionKeys resolves once for the whole set.
+        // A full resumed sitting needs no generation. A shorter one is topped
+        // up only after the research guard above says its source material is
+        // complete.
         const generated = resumed.length >= QUESTION_COUNT
-            || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
             : await pickQuestions(
                 artistId,
