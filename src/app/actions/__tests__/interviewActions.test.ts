@@ -66,12 +66,11 @@ const answered = (key, at, offeredAt = at) => ({
  *  sitting, and the only thing that can tell an abandoned one from a finished
  *  one. A lifetime row count cannot: after a completed first sitting, one
  *  answer into a second gives four rows, which is not "fewer than a set". */
-/** `sitting` and `createdAt` are both parameterised: which sitting a question
- *  belongs to is now stored on the row, and the timestamps matter for the
- *  new-material watermark. Defaults are sitting 1 at a fixed time, which is the
- *  ordinary first-interview case. */
-const stillOpen = (key, sitting = 1, createdAt = '2026-08-25T00:00:00Z') =>
-    ({ questionKey: key, question: 'q', answer: null, createdAt, offeredAt: createdAt, source: 'offered', sitting });
+/** `sitting` and `offeredAt` are both parameterised: one stores membership and
+ *  the other is the new-material watermark. Defaults are sitting 1 at a fixed
+ *  time, which is the ordinary first-interview case. */
+const stillOpen = (key, sitting = 1, offeredAt = '2026-08-25T00:00:00Z') =>
+    ({ questionKey: key, question: 'q', answer: null, createdAt: offeredAt, offeredAt, source: 'offered', sitting });
 /** A COMPLETED sitting. Fewer rows than this means they started and stopped,
  *  and the remaining questions are still owed — the new-material gate does not
  *  apply until a full set has been dealt with, one way or another. Dismissing
@@ -275,10 +274,9 @@ describe('getInterviewInvite', () => {
         // exists, but the sitting in front of them is still their first — so
         // the bank must still fill it out and the copy must still greet them
         // as a first-timer. Counting dealt-with rows got this backwards.
-        // createdAt is RE-STAMPED on answer (onboardingQueries upsert), so the
-        // answered row of a sitting is NEWER than the ones still open — the
-        // sitting was offered, then one of it was answered. A prior sitting's
-        // rows are older than the open ones, which is what tells them apart.
+        // createdAt is re-stamped on answer, so timestamps cannot identify the
+        // sitting. The stored membership on the open row is what keeps this a
+        // first interview.
         getInterviewAnswers.mockResolvedValue([
             answered('social_credit_1', '2026-08-26T00:00:00Z'),
             stillOpen('social_credit_2'),

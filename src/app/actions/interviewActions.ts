@@ -146,10 +146,9 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
          * hole. The last one compared dealt-with rows against the oldest still
          * open, which breaks the moment a sitting is topped up: the added row
          * outlives the ones it joined, becomes the oldest open row, and the
-         * rows it was added to start looking like an earlier sitting. The fact
-         * was never in the timestamps to begin with — answering a question
-         * re-stamps `created_at` and destroys the offer time that identifies
-         * its sitting.
+         * rows it was added to start looking like an earlier sitting. Even a
+         * preserved `offered_at` cannot encode membership: a top-up is offered
+         * later but still belongs to the sitting already in front of them.
          *
          * Null is a row from before the column existed. Every artist with rows
          * then had been offered exactly one sitting.

@@ -123,10 +123,10 @@ export async function recordInterviewBatchOffered(
     // sitting has fewer questions left than a full one. Otherwise this starts a
     // new sitting.
     //
-    // NOT DERIVED FROM TIMESTAMPS. Five attempts did that and each had a hole,
-    // because `upsertInterviewAnswer` re-stamps `created_at` on answer and
-    // destroys the offer time that identifies the sitting. A topped-up row
-    // outliving the rows it was added to then reads as a sitting of its own.
+    // NOT DERIVED FROM TIMESTAMPS. Five attempts did that and each had a hole.
+    // `created_at` moves when the answer arrives, while `offered_at` moves when
+    // a top-up is added; neither clock can say that differently timed rows were
+    // visible together. A topped-up row needs the stored membership instead.
     let sitting = 1;
     try {
         const rows = await db.select({ sitting: artistInterviewAnswers.sitting, source: artistInterviewAnswers.source })
