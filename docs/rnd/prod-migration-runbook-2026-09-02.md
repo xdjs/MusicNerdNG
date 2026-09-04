@@ -628,10 +628,17 @@ COMMIT;
 Check:
 
 ```sql
-SELECT * FROM (VALUES
-  ('index', 'artist_social_credits_uniq', to_regclass('public.artist_social_credits_uniq') IS NOT NULL)
-) AS t(kind, name, present);
+SELECT
+  to_regclass('public.artist_social_credits_uniq') IS NOT NULL AS index_present,
+  coalesce(i.indisunique, false) AS is_unique,
+  coalesce(pg_get_indexdef(i.indexrelid) LIKE '%md5(label)%', false) AS includes_role
+FROM (VALUES (1)) AS required(dummy)
+LEFT JOIN pg_index i
+  ON i.indexrelid = to_regclass('public.artist_social_credits_uniq');
 ```
+
+Expected: `true | true | true`. The `includes_role` check distinguishes the
+0020 replacement from the older index with the same name created by 0018.
 
 
 ## 0021_artist_research_jobs.sql
@@ -731,7 +738,7 @@ Adds: `artist_interview_answers.sitting`
 
 The app connects as `mnweb`, while the SQL editor runs with the privileged role
 needed for DDL. Existing table-level grants and RLS policies cover new columns;
-the check below verifies that assumption explicitly.
+the check below verifies both assumptions explicitly.
 
 ```sql
 BEGIN;
@@ -760,10 +767,21 @@ SELECT
    WHERE sitting IS NULL) AS still_null,
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'SELECT') AS mnweb_can_read,
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'INSERT') AS mnweb_can_insert,
-  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'UPDATE') AS mnweb_can_update;
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'UPDATE') AS mnweb_can_update,
+  (SELECT count(*) = 4
+   FROM pg_policies
+   WHERE schemaname = 'public'
+     AND tablename = 'artist_interview_answers'
+     AND policyname IN (
+       'mnweb_select_artist_interview_answers',
+       'mnweb_insert_artist_interview_answers',
+       'mnweb_update_artist_interview_answers',
+       'mnweb_delete_artist_interview_answers'
+     )
+     AND 'mnweb' = ANY(roles)) AS mnweb_policies_present;
 ```
 
-Expected: `1 | 0 | true | true | true`.
+Expected: `1 | 0 | true | true | true | true`.
 
 
 ## 0023_interview_offer_watermark.sql
@@ -803,10 +821,21 @@ SELECT
    WHERE offered_at IS NULL) AS still_null,
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'SELECT') AS mnweb_can_read,
   has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'INSERT') AS mnweb_can_insert,
-  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'UPDATE') AS mnweb_can_update;
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'UPDATE') AS mnweb_can_update,
+  (SELECT count(*) = 4
+   FROM pg_policies
+   WHERE schemaname = 'public'
+     AND tablename = 'artist_interview_answers'
+     AND policyname IN (
+       'mnweb_select_artist_interview_answers',
+       'mnweb_insert_artist_interview_answers',
+       'mnweb_update_artist_interview_answers',
+       'mnweb_delete_artist_interview_answers'
+     )
+     AND 'mnweb' = ANY(roles)) AS mnweb_policies_present;
 ```
 
-Expected: `1 | 0 | true | true | true`.
+Expected: `1 | 0 | true | true | true | true`.
 
 
 ## After all thirteen
@@ -834,7 +863,8 @@ SELECT * FROM (VALUES
 
 Every per-step artifact check must pass. This final summary should show ten rows,
 all `true`, and both column checks above must return
-`1 | 0 | true | true | true`. Then #1200's database prerequisite is satisfied.
+`1 | 0 | true | true | true | true`. Then #1200's database prerequisite is
+satisfied.
 
 ## One caveat
 
