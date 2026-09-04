@@ -133,11 +133,9 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
          *
          * `since` is null in three unrelated situations — never answered, an
          * open sitting is being resumed, and a reopen triggered by newly-learned
-         * material — and only the first means "new artist". Reading first-ness
-         * off it made a returning artist with a half-finished sitting look new,
-         * which put the generic bank back in front of somebody who had already
-         * answered it. That is the third route to the same leak; the previous
-         * two were the `learned` window and the original missing guard.
+         * material — and only the first means "new artist". Anything that reads
+         * first-ness off it shows a returning artist the generic bank and the
+         * first-timer's greeting.
          */
         const isFirstInterview = dealtWith.length === 0;
 
@@ -319,14 +317,11 @@ async function pickQuestions(
     /** The date window to generate in. Null means the whole feed. */
     since: string | null,
     answeredKeys: Set<string>,
-    /** WHETHER THIS IS THEIR FIRST SITTING — which `since` used to stand in for
-     *  and can no longer. It was a safe proxy while the window was always the
-     *  artist's last answer, so null meant "never answered". Once a reopen
-     *  triggered by newly-learned material started passing null deliberately —
-     *  the whole feed is the window, there being no publication date to scope
-     *  to — a returning artist began reading as a new one, and the static bank
-     *  topped their sitting up with "How would you describe your sound?". That
-     *  is the generic re-ask this whole release exists to stop. */
+    /** WHETHER THIS IS THEIR FIRST SITTING. Passed in rather than inferred from
+     *  `since`: a null window means "generate from the whole feed", which is
+     *  true for a returning artist as often as a new one, and topping a
+     *  returning artist's sitting up from the static bank asks them "How would
+     *  you describe your sound?" for the second time. */
     isFirstInterview: boolean,
 ): Promise<InterviewQuestion[]> {
     // `excludeKeys`, not just the filter below. Passing them in removes them
