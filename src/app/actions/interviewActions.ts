@@ -128,32 +128,26 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         const since = stillOpen.length > 0 ? null : lastAnsweredAt;
 
         /**
-         * IS THE SITTING IN FRONT OF THEM THEIR FIRST — not "have they ever
-         * answered a question", which is a different question with a different
-         * answer half the time.
+         * IS THE SITTING IN FRONT OF THEM THEIR FIRST.
          *
-         * Answering one question of a first sitting and closing the tab leaves
-         * a dealt-with row behind. Counting those makes somebody halfway
-         * through their first interview read as a returning artist: they get
-         * the returning greeting, and the static bank stops filling the sitting
-         * out, so they come back to fewer questions than they were offered.
+         * Read off the row, not worked out. `sitting` is assigned when a
+         * question is offered and never changes, so a sitting topped up across
+         * several visits keeps one number and a return gets the next.
          *
-         * The boundary is the open rows. Anything dealt with BEFORE the oldest
-         * of them belongs to an earlier sitting; anything after is part of this
-         * one. With no open rows there is no sitting in progress, so any
-         * dealt-with row at all means this is not their first.
+         * Five earlier versions derived this from timestamps and each had a
+         * hole. The last one compared dealt-with rows against the oldest still
+         * open, which breaks the moment a sitting is topped up: the added row
+         * outlives the ones it joined, becomes the oldest open row, and the
+         * rows it was added to start looking like an earlier sitting. The fact
+         * was never in the timestamps to begin with — answering a question
+         * re-stamps `created_at` and destroys the offer time that identifies
+         * its sitting.
          *
-         * Not derived from `since`, which is null for three unrelated reasons —
-         * never answered, resuming an open sitting, and a reopen triggered by
-         * newly-learned material — of which only the first means "new artist".
+         * Null is a row from before the column existed. Every artist with rows
+         * then had been offered exactly one sitting.
          */
-        const oldestOpenAt = stillOpen.reduce<string | null>((oldest, r) => {
-            const at = r.createdAt ? String(r.createdAt) : null;
-            if (!at) return oldest;
-            return !oldest || at < oldest ? at : oldest;
-        }, null);
-        const isFirstInterview = oldestOpenAt
-            ? !dealtWith.some(r => r.createdAt && String(r.createdAt) < oldestOpenAt)
+        const isFirstInterview = stillOpen.length > 0
+            ? (stillOpen[0].sitting ?? 1) === 1
             : dealtWith.length === 0;
 
         // THE WINDOW THE QUESTIONS ARE BUILT IN, which is not always `since`.

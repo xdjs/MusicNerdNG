@@ -7,6 +7,7 @@ import {
     getConfirmedSteps,
     confirmOnboardingStep,
     upsertInterviewAnswer,
+    recordInterviewOffered,
     upsertArtistDoc,
 } from '@/server/utils/queries/onboardingQueries';
 import { db } from '@/server/db/drizzle';
@@ -77,6 +78,57 @@ describe('write paths use ON CONFLICT upserts', () => {
         db.insert.mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoNothing }) });
         await confirmOnboardingStep('artist-1', 'profiles');
         expect(onConflictDoNothing).toHaveBeenCalled();
+    });
+
+    /** WHICH SITTING A QUESTION IS OFFERED IN — the half of the fix that decides
+     *  the number. The read side is meaningless if this writes the wrong one. */
+    describe('recordInterviewOffered assigns a sitting', () => {
+        function withRows(rows) {
+            const values = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn().mockResolvedValue(undefined) });
+            db.select.mockReturnValue({ from: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(rows) }) });
+            db.insert.mockReturnValue({ values });
+            return values;
+        }
+
+        it('starts at 1 when the artist has never been offered anything', async () => {
+            const values = withRows([]);
+            await recordInterviewOffered({ artistId: 'a1', questionKey: 'k', question: 'q' });
+            expect(values.mock.calls[0][0].sitting).toBe(1);
+        });
+
+        it('JOINS the sitting in progress when one is open — this is a top-up', async () => {
+            // The route-5 case at the write end. A question added to a sitting
+            // already in front of the artist belongs to that sitting, however
+            // much later it is offered.
+            const values = withRows([
+                { sitting: 1, source: 'followup' },
+                { sitting: 1, source: 'offered' },
+            ]);
+            await recordInterviewOffered({ artistId: 'a1', questionKey: 'k', question: 'q' });
+            expect(values.mock.calls[0][0].sitting).toBe(1);
+        });
+
+        it('starts the next sitting when nothing is open', async () => {
+            const values = withRows([{ sitting: 1, source: 'followup' }, { sitting: 1, source: 'followup' }]);
+            await recordInterviewOffered({ artistId: 'a1', questionKey: 'k', question: 'q' });
+            expect(values.mock.calls[0][0].sitting).toBe(2);
+        });
+
+        it('treats a pre-0022 row as sitting 1', async () => {
+            // Backfilled rows are 1, but a null must not become NaN and land a
+            // row in no sitting at all.
+            const values = withRows([{ sitting: null, source: 'followup' }]);
+            await recordInterviewOffered({ artistId: 'a1', questionKey: 'k', question: 'q' });
+            expect(values.mock.calls[0][0].sitting).toBe(2);
+        });
+
+        it('still offers the question when the sitting cannot be read', async () => {
+            const values = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn().mockResolvedValue(undefined) });
+            db.select.mockReturnValue({ from: jest.fn().mockReturnValue({ where: jest.fn().mockRejectedValue(new Error('db down')) }) });
+            db.insert.mockReturnValue({ values });
+            await recordInterviewOffered({ artistId: 'a1', questionKey: 'k', question: 'q' });
+            expect(values.mock.calls[0][0].sitting).toBe(1);
+        });
     });
 
     it('upsertInterviewAnswer upserts on (artistId, questionKey)', async () => {

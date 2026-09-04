@@ -485,6 +485,9 @@ export const artistInterviewAnswers = pgTable("artist_interview_answers", {
 	question: text().notNull(),
 	answer: text(),
 	source: text().notNull(),
+	/** Which sitting this question was offered in. Nullable for rows that
+	 *  predate 0022; a null reads as 1, which is what every such row is. */
+	sitting: integer(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).default(sql`(now() AT TIME ZONE 'utc'::text)`).notNull(),
 }, (table) => [
 	unique("artist_interview_answers_artist_question_uniq").on(table.artistId, table.questionKey),

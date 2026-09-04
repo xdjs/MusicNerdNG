@@ -81,12 +81,15 @@ export async function upsertInterviewAnswer(input: {
                 // later was immediately offered another interview about
                 // activity that predated their answer.
                 //
-                // A SECOND CALLER DEPENDS ON THIS NOW. getInterviewInvite tells a
-                // first sitting from a return by comparing dealt-with rows against
-                // the oldest still-open one, which only works because answering
-                // moves a row AFTER the offer it came from. Stop re-stamping and a
-                // half-answered first sitting reads as a return: the artist gets
-                // the returning greeting and a sitting the bank no longer fills.
+                // AND IT DESTROYS THE OFFER TIME. Once a question is answered there
+                // is no record of when it was PUT to the artist, so nothing can work
+                // out which sitting it belonged to from timestamps. Five attempts
+                // tried; each had a hole. That is why `sitting` is a stored column.
+                //
+                // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering a
+                // question must leave its sitting intact — re-stamping it here would
+                // move a row into whatever sitting is current and put the generic
+                // bank back in front of a returning artist.
                 createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
             },
         });
@@ -109,9 +112,41 @@ export async function recordInterviewOffered(input: {
     questionKey: string;
     question: string;
 }): Promise<void> {
+    // WHICH SITTING THIS BELONGS TO, decided here because this is the only
+    // place a question is put to an artist.
+    //
+    // An open row means a sitting is already in front of them, and anything
+    // offered now is part of it — that is what a top-up is, when a resumed
+    // sitting has fewer questions left than a full one. Otherwise this starts a
+    // new sitting.
+    //
+    // NOT DERIVED FROM TIMESTAMPS. Five attempts did that and each had a hole,
+    // because `upsertInterviewAnswer` re-stamps `created_at` on answer and
+    // destroys the offer time that identifies the sitting. A topped-up row
+    // outliving the rows it was added to then reads as a sitting of its own.
+    let sitting = 1;
+    try {
+        const rows = await db.select({ sitting: artistInterviewAnswers.sitting, source: artistInterviewAnswers.source })
+            .from(artistInterviewAnswers)
+            .where(eq(artistInterviewAnswers.artistId, input.artistId));
+        const open = rows.find(r => r.source === "offered");
+        if (open) {
+            // Join the sitting in progress. Null is a pre-0022 row, which is
+            // always sitting 1.
+            sitting = open.sitting ?? 1;
+        } else if (rows.length > 0) {
+            sitting = Math.max(...rows.map(r => r.sitting ?? 1)) + 1;
+        }
+    } catch (e) {
+        // Falling back to 1 makes a returning artist look new, which offers
+        // them a generic question they may not want — annoying, and better
+        // than throwing away the offer entirely.
+        console.error("[recordInterviewOffered] Could not read sitting:", e);
+    }
+
     await db
         .insert(artistInterviewAnswers)
-        .values({ ...input, answer: null, source: "offered" })
+        .values({ ...input, answer: null, source: "offered", sitting })
         .onConflictDoNothing({
             target: [artistInterviewAnswers.artistId, artistInterviewAnswers.questionKey],
         });
