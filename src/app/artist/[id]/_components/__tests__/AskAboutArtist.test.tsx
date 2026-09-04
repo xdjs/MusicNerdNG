@@ -127,8 +127,19 @@ describe("an answer, rendered", () => {
         await ask(ANSWER, [{ service: "Apple Music", url: "https://music.apple.com/us/album/x" }]);
         fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
 
-        expect(screen.getByText("Spotify")).toHaveAttribute("href", "https://open.spotify.com/album/4Kka");
-        await waitFor(() => expect(screen.getByText("Apple Music")).toHaveAttribute("href", "https://music.apple.com/us/album/x"));
+        expect(screen.getByRole("link", { name: /Spotify/ })).toHaveAttribute("href", "https://open.spotify.com/album/4Kka");
+        await waitFor(() => expect(screen.getByRole("link", { name: /Apple Music/ })).toHaveAttribute("href", "https://music.apple.com/us/album/x"));
+    });
+
+    it("closes on Escape, not only on a click elsewhere", async () => {
+        // A click-outside handler alone leaves anyone on a keyboard stuck
+        // inside the menu with no way back to the answer.
+        await ask();
+        fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+        fireEvent.keyDown(document, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     });
 
     it("calls Bandcamp the artist's page, because that is all it is", async () => {
@@ -136,7 +147,11 @@ describe("an answer, rendered", () => {
         // fan to a store page for a different one.
         await ask();
         fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
-        expect(screen.getByText(/Bandcamp \(artist page\)/)).toHaveAttribute("href", "https://peterango.bandcamp.com");
+        // The caveat is a second line under the icon now rather than one text
+        // node, so assert the ACCESSIBLE NAME — what a reader actually gets —
+        // instead of the markup that happens to carry it.
+        const link = screen.getByRole("link", { name: /Bandcamp[\s\S]*artist page/i });
+        expect(link).toHaveAttribute("href", "https://peterango.bandcamp.com");
     });
 
     it("keeps the song a plain button when the lookup fails", async () => {

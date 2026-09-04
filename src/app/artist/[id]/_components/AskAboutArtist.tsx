@@ -202,6 +202,34 @@ function renderAnswer(
 }
 
 /**
+ * The same icons the Links row on this page uses, so the menu reads as part of
+ * the profile rather than a stray dropdown.
+ *
+ * Apple Music has no icon in `public/siteIcons`, and adding a platform logo is
+ * an asset decision rather than a styling one — so a service without an icon
+ * gets a lettered chip in the same circle. It looks deliberate next to the
+ * others instead of leaving a hole.
+ */
+const SERVICE_ICON: Record<string, string> = {
+    Spotify: "/siteIcons/spotify_icon.svg",
+    Deezer: "/siteIcons/deezer_icon.svg",
+    Bandcamp: "/siteIcons/bandcamp_icon.svg",
+};
+
+function ServiceIcon({ service }: { service: string }) {
+    // "Bandcamp (artist page)" carries its caveat in the label; the icon lookup
+    // wants the bare name.
+    const src = SERVICE_ICON[service.split(" (")[0]];
+    return (
+        <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/40 bg-white/70 shadow-sm transition-all duration-200 group-hover/opt:scale-110 group-hover/opt:bg-white/90 dark:border-white/15 dark:bg-white/10 dark:group-hover/opt:bg-white/20">
+            {src
+                ? <img src={src} alt="" aria-hidden className="h-6 w-6 object-contain" />
+                : <span className="text-sm font-semibold text-black/70 dark:text-white/70">{service.slice(0, 1)}</span>}
+        </span>
+    );
+}
+
+/**
  * A record, and everywhere you can hear it.
  *
  * Opens on click rather than resolving up front: two provider lookups per song,
@@ -233,8 +261,13 @@ function SongLink({
         const away = (e: MouseEvent) => {
             if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
         };
+        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
         document.addEventListener("mousedown", away);
-        return () => document.removeEventListener("mousedown", away);
+        document.addEventListener("keydown", esc);
+        return () => {
+            document.removeEventListener("mousedown", away);
+            document.removeEventListener("keydown", esc);
+        };
     }, [open]);
 
     const toggle = async () => {
@@ -279,23 +312,56 @@ function SongLink({
                 {label}
             </button>
             {open && (
-                <span className="absolute left-0 top-full z-30 mt-1 flex min-w-[13rem] flex-col rounded-lg border border-black/10 bg-white p-1 shadow-lg dark:border-white/15 dark:bg-[#151515]">
-                    {options.map(o => (
-                        <a
-                            key={o.service}
-                            href={o.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded px-2 py-1.5 text-xs text-black hover:bg-black/5 dark:text-white dark:hover:bg-white/10"
-                        >
-                            {o.service}
-                        </a>
-                    ))}
-                    {loading && (
-                        <span className="px-2 py-1.5 text-xs text-muted-foreground">Looking elsewhere…</span>
-                    )}
+                <span
+                    role="dialog"
+                    aria-label={`Where to hear ${song.title}`}
+                    className="glass absolute left-0 top-full z-30 mt-2 flex w-max max-w-[min(20rem,80vw)] flex-col gap-2 rounded-xl border border-black/10 p-3 shadow-xl dark:border-white/15"
+                >
+                    <span className="max-w-[16rem] truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Where to hear “{song.title}”
+                    </span>
+                    <span className="flex flex-wrap items-start gap-3">
+                        {options.map(o => (
+                            <a
+                                key={o.service}
+                                href={o.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group/opt flex w-16 flex-col items-center gap-1.5 no-underline"
+                            >
+                                <ServiceIcon service={o.service} />
+                                {/* THE CAVEAT SURVIVES THE REDESIGN. "Bandcamp
+                                    (artist page)" says it is their store and not
+                                    this record, because Bandcamp has no API and
+                                    we cannot claim more. Truncating that to
+                                    "Bandcamp" under an icon would quietly turn an
+                                    honest link into a false one, so the
+                                    parenthetical becomes a second line rather
+                                    than disappearing. */}
+                                <span className="w-full text-center text-[11px] leading-tight text-muted-foreground">
+                                    {o.service.split(" (")[0]}
+                                    {o.service.includes(" (") && (
+                                        <span className="block text-[10px] leading-tight text-muted-foreground/70">
+                                            {o.service.slice(o.service.indexOf("(") + 1, -1)}
+                                        </span>
+                                    )}
+                                </span>
+                            </a>
+                        ))}
+                        {/* Same footprint as an option, so the row does not jump
+                            when the lookup lands — the old menu grew a text line
+                            underneath and shifted everything already rendered. */}
+                        {loading && (
+                            <span className="flex w-16 flex-col items-center gap-1.5" aria-live="polite">
+                                <span className="h-10 w-10 animate-pulse rounded-full border border-white/40 bg-white/40 dark:border-white/15 dark:bg-white/10" />
+                                <span className="w-full truncate text-center text-[11px] leading-tight text-muted-foreground">
+                                    Looking…
+                                </span>
+                            </span>
+                        )}
+                    </span>
                     {!loading && links?.length === 0 && options.length === 1 && (
-                        <span className="px-2 py-1.5 text-xs text-muted-foreground">Nowhere else we could find</span>
+                        <span className="text-[11px] text-muted-foreground">Nowhere else we could find it.</span>
                     )}
                 </span>
             )}
