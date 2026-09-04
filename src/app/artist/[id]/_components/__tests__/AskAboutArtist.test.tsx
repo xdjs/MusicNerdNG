@@ -139,9 +139,40 @@ describe("an answer, rendered", () => {
         fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
         expect(screen.getByRole("group", { name: /where to hear/i })).toBeInTheDocument();
 
-        fireEvent.keyDown(document, { key: "Escape" });
+        const title = screen.getByRole("button", { name: /crying on the floor/i });
+        title.focus();
+        fireEvent.keyDown(title, { key: "Escape" });
         await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear/i })).not.toBeInTheDocument());
-        expect(screen.getByRole("button", { name: /crying on the floor/i })).toHaveFocus();
+        expect(title).toHaveFocus();
+    });
+
+    it("Escape closes only the song menu that contains focus", async () => {
+        // Keyboard activation does not fire the mousedown used by the
+        // click-outside path, so two menus can legitimately be open. Their
+        // document listeners must not both handle one Escape press.
+        await ask(answerWith({
+            answer: 'He recently released "First Song" and "Second Song".',
+            sources: [],
+            mentions: [],
+            songs: [
+                { title: "First Song", spotifyUrl: "https://open.spotify.com/album/first" },
+                { title: "Second Song", spotifyUrl: "https://open.spotify.com/album/second" },
+            ],
+        }), [{ service: "Apple Music", url: "https://music.apple.com/us/album/x" }]);
+        const first = screen.getByRole("button", { name: "First Song" });
+        const second = screen.getByRole("button", { name: "Second Song" });
+        fireEvent.click(first);
+        fireEvent.click(second);
+        expect(screen.getByRole("group", { name: /where to hear First Song/i })).toBeInTheDocument();
+        expect(screen.getByRole("group", { name: /where to hear Second Song/i })).toBeInTheDocument();
+        // Let both async provider lookups settle before closing either menu.
+        await waitFor(() => expect(screen.getAllByRole("link", { name: /Apple Music/ })).toHaveLength(2));
+
+        second.focus();
+        fireEvent.keyDown(second, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear Second Song/i })).not.toBeInTheDocument());
+        expect(screen.getByRole("group", { name: /where to hear First Song/i })).toBeInTheDocument();
+        expect(second).toHaveFocus();
     });
 
     it("gives a service with no icon a lettered chip rather than a broken image", async () => {

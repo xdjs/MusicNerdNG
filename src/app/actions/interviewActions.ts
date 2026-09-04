@@ -225,7 +225,17 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         const generated = resumed.length >= QUESTION_COUNT
             || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
-            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]), isFirstInterview);
+            : await pickQuestions(
+                artistId,
+                window,
+                // The grounded-material window may be widened to the whole
+                // feed when we learned old material. A release still needs the
+                // real answer-time cutoff: otherwise a simultaneous release +
+                // learned reopen silently drops the release fallback.
+                since,
+                new Set([...answeredKeys, ...resumed.map(q => q.key)]),
+                isFirstInterview,
+            );
         const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);
         if (questions.length === 0) return { show: false };
 
@@ -326,7 +336,11 @@ async function newMaterialSince(artistId: string, since: string): Promise<NewMat
 async function pickQuestions(
     artistId: string,
     /** The date window to generate in. Null means the whole feed. */
-    since: string | null,
+    generationSince: string | null,
+    /** The actual previous-answer cutoff for release fallback. Unlike the
+     *  grounded-material window, this must not be widened when old captions
+     *  were learned at the same time as a new Spotify release. */
+    releaseSince: string | null,
     answeredKeys: Set<string>,
     /** WHETHER THIS IS THEIR FIRST SITTING. Passed in rather than inferred from
      *  `since`: a null window means "generate from the whole feed", which is
@@ -339,7 +353,7 @@ async function pickQuestions(
     // from the candidate POOL, so the model spends its picks on things the
     // artist has not been asked yet — filtering afterwards threw away work
     // already done and left the static bank to fill the gap.
-    const grounded = await generateGroundedQuestions(artistId, { max: QUESTION_COUNT, since, excludeKeys: answeredKeys })
+    const grounded = await generateGroundedQuestions(artistId, { max: QUESTION_COUNT, since: generationSince, excludeKeys: answeredKeys })
         .catch(() => []);
     const picked: InterviewQuestion[] = grounded
         .filter(q => !answeredKeys.has(q.key))
@@ -356,7 +370,7 @@ async function pickQuestions(
     // nothing, silently, which is the half of the design that would have looked
     // like it worked.
     if (picked.length < QUESTION_COUNT) {
-        for (const r of await newReleasesSince(artistId, since)) {
+        for (const r of await newReleasesSince(artistId, releaseSince)) {
             if (picked.length >= QUESTION_COUNT) break;
             // UNICODE, AND THE DATE. [^a-z0-9] reduces a Korean or Japanese
             // title to nothing, so every non-Latin release collapsed onto the
@@ -409,11 +423,23 @@ export async function answerInterviewQuestion(input: {
         const question = input.question.trim().slice(0, 500);
         if (!input.questionKey || !question) return { success: false, error: "Nothing to save" };
 
+        // InterviewPanel marks the batch on mount without blocking the UI. A
+        // very fast answer can beat that request, so ensure this row has its
+        // sitting before the answer upsert. Concurrent marks are insert-only
+        // and the unique key makes the loser a harmless no-op.
+        await recordInterviewOffered({
+            artistId: input.artistId,
+            questionKey: input.questionKey,
+            question,
+        });
         await upsertInterviewAnswer({
             artistId: input.artistId,
             questionKey: input.questionKey,
             question,
             answer: input.answer?.trim().slice(0, MAX_ANSWER_CHARS) || null,
+            // Only used if the preceding insert somehow did not create the
+            // row. Existing rows keep their stored sitting on conflict.
+            sitting: 1,
             // "followup" is what the column was always for; the first sitting
             // through this surface is still a follow-up to the auto-build,
             // which is what actually happened.
@@ -461,12 +487,28 @@ export async function declineInterview(
     if (!session) return { success: false };
     try {
         if (!(await canEditArtist(session.user.id, artistId))) return { success: false };
-        for (const q of questions.slice(0, QUESTION_COUNT)) {
+        const declined = questions.slice(0, QUESTION_COUNT);
+
+        // The card can be dismissed before InterviewPanel mounts, so its
+        // normal markInterviewOffered effect has not run. Assign the whole
+        // batch to a sitting first; the answer upsert below deliberately keeps
+        // that stored number unchanged while turning each row into a skip.
+        await Promise.all(declined.map(q =>
+            recordInterviewOffered({
+                artistId,
+                questionKey: q.key,
+                question: q.question.trim().slice(0, 500),
+            })));
+
+        for (const q of declined) {
             await upsertInterviewAnswer({
                 artistId,
                 questionKey: q.key,
                 question: q.question.trim().slice(0, 500),
                 answer: null,
+                // recordInterviewOffered just created the row. This is the
+                // insert-side fallback; conflicts preserve the stored number.
+                sitting: 1,
                 source: "followup",
             });
         }
@@ -493,10 +535,10 @@ export async function markInterviewOffered(
     if (!session) return { success: false };
     try {
         if (!(await canEditArtist(session.user.id, artistId))) return { success: false };
-        // Insert-only, and no read first. Reading the existing rows and then
-        // writing nulls left a window in which an answer typed in the moment
-        // between the two was overwritten with `answer: null` — losing what the
-        // artist had just written, on the one screen where the words are theirs.
+        // Insert-only after the sitting lookup. Reading an existing answer and
+        // then writing nulls left a window in which an answer typed in between
+        // was overwritten — losing what the artist had just written, on the
+        // one screen where the words are theirs. The conflict is now a no-op.
         await Promise.all(questions.slice(0, QUESTION_COUNT).map(q =>
             recordInterviewOffered({
                 artistId,

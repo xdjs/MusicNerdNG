@@ -58,6 +58,9 @@ export async function upsertInterviewAnswer(input: {
     questionKey: string;
     question: string;
     answer: string | null;
+    /** Used only if this is the INSERT side of the upsert. The conflict update
+     *  deliberately never changes the sitting already stored on the row. */
+    sitting: number;
     /** "offered" is a question we PUT to them that they have not dealt with
      *  yet — the boundary of a sitting. It becomes "followup" the moment they
      *  answer it or skip it. Without it there is no way to tell a sitting

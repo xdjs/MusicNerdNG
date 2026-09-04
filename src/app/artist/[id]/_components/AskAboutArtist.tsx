@@ -283,7 +283,13 @@ function SongLink({
         const away = (e: MouseEvent) => {
             if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
         };
-        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") closeAndRestore(); };
+        // More than one song menu can be opened with the keyboard because no
+        // mousedown occurs to close the first. Escape belongs to the menu that
+        // currently contains focus; letting every document listener handle it
+        // closes all open menus and makes the last listener steal focus.
+        const esc = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && box.current?.contains(e.target as Node)) closeAndRestore();
+        };
         document.addEventListener("mousedown", away);
         document.addEventListener("keydown", esc);
         return () => {

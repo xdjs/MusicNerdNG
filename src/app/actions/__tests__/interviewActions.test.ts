@@ -87,7 +87,7 @@ async function invite() {
 describe('getInterviewInvite', () => {
     beforeEach(() => {
         jest.resetModules();
-        for (const m of [canEditArtist, getInterviewAnswers, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasOlderPostsLearnedSince, hasOlderCreditsLearnedSince, isResearchInFlight]) m.mockReset();
+        for (const m of [canEditArtist, getInterviewAnswers, upsertInterviewAnswer, recordInterviewOffered, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasOlderPostsLearnedSince, hasOlderCreditsLearnedSince, isResearchInFlight]) m.mockReset();
         hasOlderPostsLearnedSince.mockResolvedValue(false);
         hasOlderCreditsLearnedSince.mockResolvedValue(false);
         isResearchInFlight.mockResolvedValue(false);
@@ -460,6 +460,27 @@ describe('getInterviewInvite', () => {
         expect(out.questions[0].question).toContain('"rush"');
     });
 
+    it('keeps the release fallback when learned material widens the grounded window', async () => {
+        // Both can happen in the same scrape: a new release triggers the
+        // return, while old captions yield credits we only just learned. The
+        // grounded generator needs the whole feed, but the Spotify fallback
+        // still needs the real previous-answer cutoff. Reusing the widened
+        // null window silently discarded the release.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([]);
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
+        getSpotifyCatalogDetail.mockResolvedValue([{ name: 'rush', releaseDate: '2026-08-20' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_new', question: 'Who played on it?' }]);
+
+        const out = await invite();
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ since: null }));
+        expect(out.questions.map(q => q.question)).toContain(
+            'You put out "rush" — what would you want somebody to notice about it first?',
+        );
+    });
+
     it('truncates an oversized answer rather than storing it', async () => {
         // A server action is a public endpoint and the textarea's maxLength is
         // a suggestion. An unbounded answer goes straight into the ask prompt
@@ -472,13 +493,40 @@ describe('getInterviewInvite', () => {
         expect(upsertInterviewAnswer.mock.calls[0][0].answer).toHaveLength(2000);
     });
 
+    it('assigns the sitting before saving an answer that can beat the panel mount effect', async () => {
+        // InterviewPanel marks the batch without awaiting it. A fast answer can
+        // reach the server first; inserting that answer directly would leave a
+        // post-0022 null sitting and the later mark would lose on the unique
+        // key. Ensuring the offer first makes either request order safe.
+        const order = [];
+        recordInterviewOffered.mockImplementation(async () => { order.push('offered'); });
+        upsertInterviewAnswer.mockImplementation(async () => { order.push('answered'); });
+        const { answerInterviewQuestion } = await import('../interviewActions');
+
+        await answerInterviewQuestion({
+            artistId: 'a1', questionKey: 'k', question: 'q', answer: 'a',
+        });
+
+        expect(recordInterviewOffered).toHaveBeenCalledWith({
+            artistId: 'a1', questionKey: 'k', question: 'q',
+        });
+        expect(order).toEqual(['offered', 'answered']);
+        expect(upsertInterviewAnswer.mock.calls[0][0].sitting).toBe(1);
+    });
+
     it('records a dismissal, so the same three do not come back next visit', async () => {
         upsertInterviewAnswer.mockClear();
+        recordInterviewOffered.mockClear();
         const { declineInterview } = await import('../interviewActions');
         await declineInterview('a1', [
             { key: 'k1', question: 'one' },
             { key: 'k2', question: 'two' },
         ]);
+        // The card can be dismissed before its panel mounts, so nothing else
+        // has assigned these rows to a sitting. Mark the whole batch first;
+        // the upsert then changes only answer/source and preserves that number.
+        expect(recordInterviewOffered).toHaveBeenCalledTimes(2);
+        expect(recordInterviewOffered.mock.calls[0][0]).toMatchObject({ questionKey: 'k1' });
         expect(upsertInterviewAnswer).toHaveBeenCalledTimes(2);
         // Written as skips — the same shape skipping one inside the panel uses.
         expect(upsertInterviewAnswer.mock.calls[0][0]).toMatchObject({ questionKey: 'k1', answer: null });

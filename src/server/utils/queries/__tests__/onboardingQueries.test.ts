@@ -136,7 +136,7 @@ describe('write paths use ON CONFLICT upserts', () => {
         db.insert.mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoUpdate }) });
         await upsertInterviewAnswer({
             artistId: 'artist-1', questionKey: 'offline_fact',
-            question: 'q', answer: null, source: 'onboarding',
+            question: 'q', answer: null, sitting: 1, source: 'onboarding',
         });
         expect(onConflictDoUpdate).toHaveBeenCalled();
     });
