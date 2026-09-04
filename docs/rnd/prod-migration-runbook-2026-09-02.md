@@ -735,6 +735,6 @@ nothing writes to Drizzle's migration journal. That matches how dev was done
 and how the July RLS fix went in, but it means a future `db:migrate` against
 production would try to re-apply them. Do not use `db:migrate` to catch this
 database up until its journal has been reconciled: multiple steps are
-non-idempotent, including the unguarded `CREATE POLICY` statements in 0016,
-0018, and 0021, and migration would stop at the first existing object before
+non-idempotent, including the unguarded `CREATE POLICY` statements in 0018 and
+0021, and migration would stop at the first existing object before
 later work could run.
