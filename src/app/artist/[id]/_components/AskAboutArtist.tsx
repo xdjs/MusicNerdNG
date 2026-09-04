@@ -210,6 +210,19 @@ function renderAnswer(
  * gets a lettered chip in the same circle. It looks deliberate next to the
  * others instead of leaving a hole.
  */
+/** "Bandcamp (artist page)" -> { name, caveat }. Parsed in ONE place: the icon
+ *  lookup and the label both needed it, and two copies meant the assumption
+ *  that a parenthetical always closes was made twice. */
+function parseServiceLabel(service: string): { name: string; caveat: string | null } {
+    const open = service.indexOf(" (");
+    if (open === -1) return { name: service, caveat: null };
+    const close = service.lastIndexOf(")");
+    return {
+        name: service.slice(0, open),
+        caveat: close > open ? service.slice(open + 2, close) : service.slice(open + 2),
+    };
+}
+
 const SERVICE_ICON: Record<string, string> = {
     Spotify: "/siteIcons/spotify_icon.svg",
     Deezer: "/siteIcons/deezer_icon.svg",
@@ -219,7 +232,7 @@ const SERVICE_ICON: Record<string, string> = {
 function ServiceIcon({ service }: { service: string }) {
     // "Bandcamp (artist page)" carries its caveat in the label; the icon lookup
     // wants the bare name.
-    const src = SERVICE_ICON[service.split(" (")[0]];
+    const src = SERVICE_ICON[parseServiceLabel(service).name];
     return (
         <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/40 bg-white/70 shadow-sm transition-all duration-200 group-hover/opt:scale-110 group-hover/opt:bg-white/90 dark:border-white/15 dark:bg-white/10 dark:group-hover/opt:bg-white/20">
             {src
@@ -255,13 +268,22 @@ function SongLink({
     const [links, setLinks] = useState<TrackLink[] | null>(null);
     const [loading, setLoading] = useState(false);
     const box = useRef<HTMLSpanElement>(null);
+    const toggleRef = useRef<HTMLButtonElement>(null);
+
+    /** Escape from inside the menu would otherwise unmount the focused link and
+     *  drop focus to <body>, leaving a keyboard reader at the top of the page
+     *  with no idea where they were. */
+    const closeAndRestore = () => {
+        setOpen(false);
+        toggleRef.current?.focus();
+    };
 
     useEffect(() => {
         if (!open) return;
         const away = (e: MouseEvent) => {
             if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
         };
-        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") closeAndRestore(); };
         document.addEventListener("mousedown", away);
         document.addEventListener("keydown", esc);
         return () => {
@@ -303,6 +325,7 @@ function SongLink({
     return (
         <span className="relative inline-block" ref={box}>
             <button
+                ref={toggleRef}
                 type="button"
                 onClick={toggle}
                 aria-expanded={open}
@@ -313,7 +336,13 @@ function SongLink({
             </button>
             {open && (
                 <span
-                    role="dialog"
+                    // NOT role="dialog". The rest of the page stays live behind
+                    // this, and none of the conventions a dialog promises —
+                    // focus moved in, focus trapped, focus restored — were
+                    // implemented. Announcing "dialog" and then doing none of it
+                    // is worse for a screen reader than announcing nothing. A
+                    // labelled group of links is what this actually is.
+                    role="group"
                     aria-label={`Where to hear ${song.title}`}
                     className="glass absolute left-0 top-full z-30 mt-2 flex w-max max-w-[min(20rem,80vw)] flex-col gap-2 rounded-xl border border-black/10 p-3 shadow-xl dark:border-white/15"
                 >

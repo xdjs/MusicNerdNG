@@ -131,15 +131,28 @@ describe("an answer, rendered", () => {
         await waitFor(() => expect(screen.getByRole("link", { name: /Apple Music/ })).toHaveAttribute("href", "https://music.apple.com/us/album/x"));
     });
 
-    it("closes on Escape, not only on a click elsewhere", async () => {
+    it("closes on Escape and puts focus back on the title", async () => {
         // A click-outside handler alone leaves anyone on a keyboard stuck
-        // inside the menu with no way back to the answer.
+        // inside the menu. And closing without restoring focus drops it to
+        // <body>, which is worse than not opening the menu at all.
         await ask();
         fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(screen.getByRole("group", { name: /where to hear/i })).toBeInTheDocument();
 
         fireEvent.keyDown(document, { key: "Escape" });
-        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear/i })).not.toBeInTheDocument());
+        expect(screen.getByRole("button", { name: /crying on the floor/i })).toHaveFocus();
+    });
+
+    it("gives a service with no icon a lettered chip rather than a broken image", async () => {
+        // Apple Music has no file in public/siteIcons. A missing icon must read
+        // as deliberate next to the others, not as a hole or a broken <img>.
+        await ask(ANSWER, [{ service: "Apple Music", url: "https://music.apple.com/us/album/x" }]);
+        fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
+
+        const apple = await screen.findByRole("link", { name: /Apple Music/ });
+        expect(apple.querySelector("img")).toBeNull();
+        expect(apple.textContent).toContain("A");
     });
 
     it("calls Bandcamp the artist's page, because that is all it is", async () => {
