@@ -39,7 +39,7 @@ const HEADERS = {
 const RATE_LIMIT_MS = 1_100;
 const TIMEOUT_MS = 8_000;
 /** User-facing artist creation must remain bounded even when the shared
- *  MusicBrainz queue is busy. Two 2.5s requests plus pacing fit inside this. */
+ *  MusicBrainz queue is busy. Each request is clipped to the remaining budget. */
 const RECIPROCAL_BUDGET_MS = 6_000;
 const RECIPROCAL_REQUEST_TIMEOUT_MS = 2_500;
 const RECIPROCAL_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -235,6 +235,10 @@ type ActiveRelationsResult =
     | { status: "ok"; relations: Array<Record<string, unknown>> }
     | { status: "invalid" };
 
+type ArtistRelationIdsResult =
+    | { status: "ok"; ids: Set<string> }
+    | { status: "invalid" };
+
 function activeRelations(data: Record<string, unknown> | null): ActiveRelationsResult {
     const relations = data?.relations;
     if (!Array.isArray(relations)) return { status: "invalid" };
@@ -251,6 +255,30 @@ function activeRelations(data: Record<string, unknown> | null): ActiveRelationsR
         if (record.ended !== true) active.push(record);
     }
     return { status: "ok", relations: active };
+}
+
+function artistRelationIds(data: Record<string, unknown> | null): ArtistRelationIdsResult {
+    const active = activeRelations(data);
+    if (active.status === "invalid") return active;
+
+    const ids = new Set<string>();
+    for (const relation of active.relations) {
+        if (relation["target-type"] !== "artist") {
+            return { status: "invalid" };
+        }
+        const artist = relation.artist;
+        const id = artist && typeof artist === "object" && !Array.isArray(artist)
+            ? (artist as Record<string, unknown>).id
+            : undefined;
+        if (
+            typeof id !== "string"
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+        ) {
+            return { status: "invalid" };
+        }
+        ids.add(id);
+    }
+    return { status: "ok", ids };
 }
 
 function oneValue(values: Iterable<string>): string | null {
@@ -327,27 +355,11 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
     const sourceLookup = sourceResult.data;
-    const sourceRelations = activeRelations(sourceLookup);
-    if (sourceRelations.status === "invalid") {
+    const sourceOwners = artistRelationIds(sourceLookup);
+    if (sourceOwners.status === "invalid") {
         return { counterpart: null, definitiveMiss: false };
     }
-    const musicbrainzIds = new Set<string>();
-    for (const relation of sourceRelations.relations) {
-        if (relation["target-type"] !== "artist") {
-            return { counterpart: null, definitiveMiss: false };
-        }
-        const artist = relation.artist;
-        const id = artist && typeof artist === "object" && !Array.isArray(artist)
-            ? (artist as Record<string, unknown>).id
-            : undefined;
-        if (
-            typeof id !== "string"
-            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
-        ) {
-            return { counterpart: null, definitiveMiss: false };
-        }
-        musicbrainzIds.add(id);
-    }
+    const musicbrainzIds = sourceOwners.ids;
     if (musicbrainzIds.size !== 1) {
         return {
             counterpart: null,
@@ -391,6 +403,7 @@ async function findMusicBrainzCounterpartUncached(
         relationUrls.push(resource);
     }
     const platformRelations = relationUrls.map(url => ({
+        url,
         source: matchPlatformArtistUrl(url, sourcePlatform),
         target: matchPlatformArtistUrl(url, targetPlatform),
     }));
@@ -413,6 +426,33 @@ async function findMusicBrainzCounterpartUncached(
     // coverage miss (or an ambiguity), so avoid repeating both paced calls on
     // every retry. Transient HTTP/JSON failures above remain uncached.
     if (!platformId) return { counterpart: null, definitiveMiss: true };
+
+    const targetRelationUrl = platformRelations.find(({ target }) => (
+        target.status === "valid" && target.platformId === platformId
+    ))?.url;
+    if (!targetRelationUrl || !(await sinceLastCall(deadline))) {
+        return { counterpart: null, definitiveMiss: false };
+    }
+
+    const targetParams = new URLSearchParams({
+        resource: targetRelationUrl,
+        inc: "artist-rels",
+        fmt: "json",
+    });
+    const targetResult = await requestMusicBrainz(
+        `/url?${targetParams.toString()}`,
+        Math.max(1, Math.min(RECIPROCAL_REQUEST_TIMEOUT_MS, deadline - Date.now())),
+    );
+    if (targetResult.status !== "ok") {
+        return { counterpart: null, definitiveMiss: false };
+    }
+    const targetOwners = artistRelationIds(targetResult.data);
+    if (targetOwners.status === "invalid") {
+        return { counterpart: null, definitiveMiss: false };
+    }
+    if (targetOwners.ids.size !== 1 || !targetOwners.ids.has(musicbrainzId)) {
+        return { counterpart: null, definitiveMiss: true };
+    }
 
     return {
         counterpart: { platformId, musicbrainzId },

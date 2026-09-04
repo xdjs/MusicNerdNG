@@ -48,13 +48,14 @@ describe('findMusicBrainzCounterpart', () => {
         jest.useRealTimers();
     });
 
-    it('resolves a NOMELON-style Spotify-to-Deezer match in exactly two calls', async () => {
+    it('resolves a NOMELON-style Spotify-to-Deezer match with reciprocal ownership', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
             .mockResolvedValueOnce(ok(artistDetail(
                 `https://open.spotify.com/artist/${SPOTIFY_ID}`,
                 `https://www.deezer.com/artist/${DEEZER_ID}`,
-            )));
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
 
         const findCounterpart = await subject();
         const result = await finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer'));
@@ -63,12 +64,15 @@ describe('findMusicBrainzCounterpart', () => {
             platformId: DEEZER_ID,
             musicbrainzId: MUSICBRAINZ_ID,
         });
-        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(global.fetch).toHaveBeenCalledTimes(3);
         expect(global.fetch.mock.calls[0][0]).toContain('/url?');
         expect(global.fetch.mock.calls[0][0]).toContain(
             `resource=${encodeURIComponent(`https://open.spotify.com/artist/${SPOTIFY_ID}`)}`,
         );
         expect(global.fetch.mock.calls[1][0]).toContain(`/artist/${MUSICBRAINZ_ID}?`);
+        expect(global.fetch.mock.calls[2][0]).toContain(
+            `resource=${encodeURIComponent(`https://www.deezer.com/artist/${DEEZER_ID}`)}`,
+        );
     });
 
     it('resolves the NOMELON Deezer ID to its Spotify counterpart', async () => {
@@ -77,7 +81,8 @@ describe('findMusicBrainzCounterpart', () => {
             .mockResolvedValueOnce(ok(artistDetail(
                 `https://www.deezer.com/artist/${DEEZER_ID}`,
                 `https://open.spotify.com/artist/${SPOTIFY_ID}`,
-            )));
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
 
         const findCounterpart = await subject();
         const result = await finish(findCounterpart('deezer', DEEZER_ID, 'spotify'));
@@ -86,7 +91,7 @@ describe('findMusicBrainzCounterpart', () => {
             platformId: SPOTIFY_ID,
             musicbrainzId: MUSICBRAINZ_ID,
         });
-        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
     it('abstains when the source URL is related to multiple MusicBrainz artists', async () => {
@@ -290,7 +295,8 @@ describe('findMusicBrainzCounterpart', () => {
             .mockResolvedValueOnce(ok(artistDetail(
                 `https://open.spotify.com/artist/${SPOTIFY_ID}`,
                 `https://www.deezer.com/artist/${DEEZER_ID}`,
-            )));
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
 
         const findCounterpart = await subject();
         const first = findCounterpart('spotify', SPOTIFY_ID, 'deezer');
@@ -298,11 +304,32 @@ describe('findMusicBrainzCounterpart', () => {
         const [firstResult, concurrentResult] = await finish(Promise.all([first, concurrent]));
 
         expect(firstResult).toEqual(concurrentResult);
-        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(global.fetch).toHaveBeenCalledTimes(3);
 
         await expect(findCounterpart('spotify', SPOTIFY_ID, 'deezer'))
             .resolves.toEqual(firstResult);
-        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('abstains when the target URL belongs to multiple MusicBrainz artists', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(
+                MUSICBRAINZ_ID,
+                OTHER_MUSICBRAINZ_ID,
+            )));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toBeNull();
+        await expect(findCounterpart('spotify', SPOTIFY_ID, 'deezer'))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
     it('does not infer or cache the unverified reverse direction', async () => {
@@ -313,10 +340,12 @@ describe('findMusicBrainzCounterpart', () => {
                 `https://www.deezer.com/artist/${DEEZER_ID}`,
             )))
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
             .mockResolvedValueOnce(ok(artistDetail(
                 `https://www.deezer.com/artist/${DEEZER_ID}`,
                 `https://open.spotify.com/artist/${SPOTIFY_ID}`,
-            )));
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
 
         const findCounterpart = await subject();
 
@@ -330,7 +359,7 @@ describe('findMusicBrainzCounterpart', () => {
                 platformId: SPOTIFY_ID,
                 musicbrainzId: MUSICBRAINZ_ID,
             });
-        expect(global.fetch).toHaveBeenCalledTimes(4);
+        expect(global.fetch).toHaveBeenCalledTimes(6);
     });
 
     it('drops expired queue reservations without delaying a later lookup', async () => {
