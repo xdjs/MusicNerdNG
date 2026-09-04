@@ -202,6 +202,47 @@ function renderAnswer(
 }
 
 /**
+ * The same icons the Links row on this page uses, so the menu reads as part of
+ * the profile rather than a stray dropdown.
+ *
+ * Apple Music has no icon in `public/siteIcons`, and adding a platform logo is
+ * an asset decision rather than a styling one — so a service without an icon
+ * gets a lettered chip in the same circle. It looks deliberate next to the
+ * others instead of leaving a hole.
+ */
+/** "Bandcamp (artist page)" -> { name, caveat }. Parsed in ONE place: the icon
+ *  lookup and the label both needed it, and two copies meant the assumption
+ *  that a parenthetical always closes was made twice. */
+function parseServiceLabel(service: string): { name: string; caveat: string | null } {
+    const open = service.indexOf(" (");
+    if (open === -1) return { name: service, caveat: null };
+    const close = service.lastIndexOf(")");
+    return {
+        name: service.slice(0, open),
+        caveat: close > open ? service.slice(open + 2, close) : service.slice(open + 2),
+    };
+}
+
+const SERVICE_ICON: Record<string, string> = {
+    Spotify: "/siteIcons/spotify_icon.svg",
+    Deezer: "/siteIcons/deezer_icon.svg",
+    Bandcamp: "/siteIcons/bandcamp_icon.svg",
+};
+
+function ServiceIcon({ service }: { service: string }) {
+    // "Bandcamp (artist page)" carries its caveat in the label; the icon lookup
+    // wants the bare name.
+    const src = SERVICE_ICON[parseServiceLabel(service).name];
+    return (
+        <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/40 bg-white/70 shadow-sm transition-all duration-200 group-hover/opt:scale-110 group-hover/opt:bg-white/90 dark:border-white/15 dark:bg-white/10 dark:group-hover/opt:bg-white/20">
+            {src
+                ? <img src={src} alt="" className="h-6 w-6 object-contain" />
+                : <span className="text-sm font-semibold text-black/70 dark:text-white/70">{service.slice(0, 1)}</span>}
+        </span>
+    );
+}
+
+/**
  * A record, and everywhere you can hear it.
  *
  * Opens on click rather than resolving up front: two provider lookups per song,
@@ -227,17 +268,41 @@ function SongLink({
     const [links, setLinks] = useState<TrackLink[] | null>(null);
     const [loading, setLoading] = useState(false);
     const box = useRef<HTMLSpanElement>(null);
+    const toggleRef = useRef<HTMLButtonElement>(null);
+
+    /** Escape from inside the menu would otherwise unmount the focused link and
+     *  drop focus to <body>, leaving a keyboard reader at the top of the page
+     *  with no idea where they were. */
+    const closeAndRestore = () => {
+        setOpen(false);
+        toggleRef.current?.focus();
+    };
 
     useEffect(() => {
         if (!open) return;
         const away = (e: MouseEvent) => {
             if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
         };
+        // More than one song menu can be opened with the keyboard because no
+        // mousedown occurs to close the first. Escape belongs to the menu that
+        // currently contains focus; letting every document listener handle it
+        // closes all open menus and makes the last listener steal focus.
+        const esc = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && box.current?.contains(e.target as Node)) closeAndRestore();
+        };
         document.addEventListener("mousedown", away);
-        return () => document.removeEventListener("mousedown", away);
+        document.addEventListener("keydown", esc);
+        return () => {
+            document.removeEventListener("mousedown", away);
+            document.removeEventListener("keydown", esc);
+        };
     }, [open]);
 
     const toggle = async () => {
+        // Safari and Firefox on macOS do not consistently focus a button after
+        // a pointer click. Taking focus explicitly makes the focused-menu
+        // Escape rule work for mouse-opened menus too.
+        toggleRef.current?.focus();
         const next = !open;
         setOpen(next);
         if (!next || links !== null || loading) return;
@@ -270,6 +335,7 @@ function SongLink({
     return (
         <span className="relative inline-block" ref={box}>
             <button
+                ref={toggleRef}
                 type="button"
                 onClick={toggle}
                 aria-expanded={open}
@@ -279,23 +345,69 @@ function SongLink({
                 {label}
             </button>
             {open && (
-                <span className="absolute left-0 top-full z-30 mt-1 flex min-w-[13rem] flex-col rounded-lg border border-black/10 bg-white p-1 shadow-lg dark:border-white/15 dark:bg-[#151515]">
-                    {options.map(o => (
-                        <a
-                            key={o.service}
-                            href={o.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded px-2 py-1.5 text-xs text-black hover:bg-black/5 dark:text-white dark:hover:bg-white/10"
-                        >
-                            {o.service}
-                        </a>
-                    ))}
-                    {loading && (
-                        <span className="px-2 py-1.5 text-xs text-muted-foreground">Looking elsewhere…</span>
-                    )}
+                <span
+                    // NOT role="dialog". The rest of the page stays live behind
+                    // this, and none of the conventions a dialog promises —
+                    // focus moved in, focus trapped, focus restored — were
+                    // implemented. Announcing "dialog" and then doing none of it
+                    // is worse for a screen reader than announcing nothing. A
+                    // labelled group of links is what this actually is.
+                    role="group"
+                    aria-label={`Where to hear ${song.title}`}
+                    className="glass absolute left-0 top-full z-30 mt-2 flex w-max max-w-[min(20rem,80vw)] flex-col gap-2 rounded-xl border border-black/10 p-3 shadow-xl dark:border-white/15"
+                >
+                    <span className="max-w-[16rem] truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Where to hear “{song.title}”
+                    </span>
+                    <span className="flex flex-wrap items-start gap-3">
+                        {options.map(o => (
+                            <a
+                                key={o.service}
+                                href={o.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group/opt flex w-16 flex-col items-center gap-1.5 no-underline"
+                            >
+                                <ServiceIcon service={o.service} />
+                                {/* THE CAVEAT SURVIVES THE REDESIGN. "Bandcamp
+                                    (artist page)" says it is their store and not
+                                    this record, because Bandcamp has no API and
+                                    we cannot claim more. Truncating that to
+                                    "Bandcamp" under an icon would quietly turn an
+                                    honest link into a false one, so the
+                                    parenthetical becomes a second line rather
+                                    than disappearing.
+
+                                    KEPT IN BRACKETS. Two adjacent text nodes can
+                                    be concatenated without a separator when the
+                                    accessible name is computed — "Bandcampartist
+                                    page" — and the brackets make the boundary
+                                    part of the text rather than something the
+                                    layout has to supply. */}
+                                <span className="w-full text-center text-[11px] leading-tight text-muted-foreground">
+                                    {parseServiceLabel(o.service).name}
+                                    {parseServiceLabel(o.service).caveat && (
+                                        <span className="block text-[10px] leading-tight text-muted-foreground/70">
+                                            ({parseServiceLabel(o.service).caveat})
+                                        </span>
+                                    )}
+                                </span>
+                            </a>
+                        ))}
+                        {/* Same footprint as an option, so the row does not jump
+                            when the lookup lands — the old menu grew a text line
+                            underneath and shifted everything already rendered. */}
+                        {loading && (
+                            <span className="flex w-16 flex-col items-center gap-1.5" aria-live="polite">
+                                <span className="h-10 w-10 animate-pulse rounded-full border border-white/40 bg-white/40 dark:border-white/15 dark:bg-white/10" />
+                                <span className="w-full truncate text-center text-[11px] leading-tight text-muted-foreground">
+                                    Looking…
+                                </span>
+                            </span>
+                        )}
+                    </span>
                     {!loading && links?.length === 0 && options.length === 1 && (
-                        <span className="px-2 py-1.5 text-xs text-muted-foreground">Nowhere else we could find</span>
+                        <span className="text-[11px] text-muted-foreground">Nowhere else we could find it.</span>
                     )}
                 </span>
             )}

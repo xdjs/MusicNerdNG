@@ -11,7 +11,7 @@
  * owner's caption to the artist. Every downstream consumer (socialSignals,
  * questionGenerator) trusts `isOwnPost` rather than re-deriving it.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/server/db/drizzle";
 import { artistSocialPosts, artists } from "@/server/db/schema";
 import type { SocialPostRow } from "@/server/utils/socialSignals";
@@ -320,6 +320,48 @@ export async function ingestInstagramPosts(
     } catch (e) {
         console.error("[ingestInstagramPosts] Error:", e);
         return EMPTY_RESULT;
+    }
+}
+
+/**
+ * True when a post the artist published BEFORE `since` was stored AFTER it —
+ * old material we only just learned about.
+ *
+ * NOT "stored since". A post published after the cutoff was necessarily stored
+ * after it too (we cannot scrape what does not exist yet), so "stored since" is
+ * true whenever there is any genuinely new post, and cannot tell the two apart.
+ * The distinction matters because it decides the generation window: material
+ * they just published deserves a window scoped to it, while a feed we just read
+ * for the first time has no meaningful date to scope to and must be unscoped or
+ * the generator filters all of it away.
+ *
+ * Not the same question as "did they post something new". A first-time artist's
+ * whole feed is published months ago and scraped in the last five minutes; by
+ * publication date none of it is new, while to us all of it is. Asking by
+ * `posted_at` answers the wrong one and told Pete Rango he had nothing new
+ * moments after we read 199 of his posts.
+ *
+ * A count, not a fetch. The caller only needs a boolean, and reading every row
+ * to check dates on a path that runs on page load is what this replaces.
+ */
+export async function hasOlderPostsLearnedSince(artistId: string, since: string): Promise<boolean> {
+    if (!artistId || !since) return false;
+    try {
+        const rows = await db.select({ id: artistSocialPosts.id })
+            .from(artistSocialPosts)
+            .where(and(
+                eq(artistSocialPosts.artistId, artistId),
+                gt(artistSocialPosts.createdAt, since),
+                // A post with no posted_at is undatable, so it cannot be shown
+                // to be new — treat it as old material, which is the safe read:
+                // it widens the window rather than dropping the post.
+                or(isNull(artistSocialPosts.postedAt), lte(artistSocialPosts.postedAt, since)),
+            ))
+            .limit(1);
+        return rows.length > 0;
+    } catch (e) {
+        console.error("[hasOlderPostsLearnedSince] Error:", e);
+        return false;
     }
 }
 

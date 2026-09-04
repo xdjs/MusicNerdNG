@@ -335,23 +335,23 @@ describe('BlurbSection', () => {
             });
         });
 
-        it('does NOT show Regenerate or Save to vault in the read view, even for an editor not in edit mode', () => {
+        it('does NOT show Regenerate or Save to Lore in the read view, even for an editor not in edit mode', () => {
             render(
                 <EditModeContext.Provider value={{ isEditing: false, canEdit: true, toggle: jest.fn() }}>
                     <BlurbSection {...defaultProps} />
                 </EditModeContext.Provider>
             );
-            expect(screen.queryByText('Save to vault')).not.toBeInTheDocument();
+            expect(screen.queryByText('Save to Lore')).not.toBeInTheDocument();
             expect(screen.queryByText('Regenerate')).not.toBeInTheDocument();
         });
 
-        it('shows Regenerate and Save to vault only in edit mode', () => {
+        it('shows Regenerate and Save to Lore only in edit mode', () => {
             render(
                 <EditModeContext.Provider value={{ isEditing: true, canEdit: true, toggle: jest.fn() }}>
                     <BlurbSection {...defaultProps} />
                 </EditModeContext.Provider>
             );
-            expect(screen.getByText('Save to vault')).toBeInTheDocument();
+            expect(screen.getByText('Save to Lore')).toBeInTheDocument();
             expect(screen.getByText('Regenerate')).toBeInTheDocument();
         });
     });

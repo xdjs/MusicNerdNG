@@ -12,11 +12,14 @@ import { jest } from '@jest/globals';
 const canEditArtist = jest.fn();
 const getInterviewAnswers = jest.fn();
 const upsertInterviewAnswer = jest.fn();
-const recordInterviewOffered = jest.fn();
+const recordInterviewBatchOffered = jest.fn();
 const generateGroundedQuestions = jest.fn();
 const getSocialPostsForArtist = jest.fn();
 const getArtistById = jest.fn();
 const getSpotifyCatalogDetail = jest.fn();
+const hasOlderPostsLearnedSince = jest.fn();
+const hasOlderCreditsLearnedSince = jest.fn();
+const isResearchInFlight = jest.fn();
 
 jest.mock('@/server/auth', () => ({ getServerAuthSession: jest.fn(async () => ({ user: { id: 'u1' } })) }));
 jest.mock('@/server/utils/dev-auth', () => ({ getDevSession: jest.fn(async () => null) }));
@@ -24,7 +27,7 @@ jest.mock('@/server/utils/artistEditAuth', () => ({ canEditArtist: (...a) => can
 jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     getInterviewAnswers: (...a) => getInterviewAnswers(...a),
     upsertInterviewAnswer: (...a) => upsertInterviewAnswer(...a),
-    recordInterviewOffered: (...a) => recordInterviewOffered(...a),
+    recordInterviewBatchOffered: (...a) => recordInterviewBatchOffered(...a),
 }));
 // Both exports. Mocking only `generateGroundedQuestions` left
 // `sourceUrlForQuestionKey` undefined, and calling it threw inside
@@ -42,6 +45,13 @@ jest.mock('@/server/utils/questionGenerator', () => ({
 }));
 jest.mock('@/server/utils/socialIngest', () => ({
     getSocialPostsForArtist: (...a) => getSocialPostsForArtist(...a),
+    hasOlderPostsLearnedSince: (...a) => hasOlderPostsLearnedSince(...a),
+}));
+jest.mock('@/server/utils/queries/socialCreditQueries', () => ({
+    hasOlderCreditsLearnedSince: (...a) => hasOlderCreditsLearnedSince(...a),
+}));
+jest.mock('@/server/utils/queries/researchJobQueries', () => ({
+    isResearchInFlight: (...a) => isResearchInFlight(...a),
 }));
 jest.mock('@/server/utils/queries/artistQueries', () => ({ getArtistById: (...a) => getArtistById(...a) }));
 jest.mock('@/server/utils/queries/externalApiQueries', () => ({
@@ -49,12 +59,18 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyCatalogDetail: (...a) => getSpotifyCatalogDetail(...a),
 }));
 
-const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', createdAt: at, source: 'followup' });
+const answered = (key, at, offeredAt = at) => ({
+    questionKey: key, question: 'q', answer: 'a', createdAt: at, offeredAt, source: 'followup',
+});
 /** A question put to them that they have not dealt with — the boundary of a
  *  sitting, and the only thing that can tell an abandoned one from a finished
  *  one. A lifetime row count cannot: after a completed first sitting, one
  *  answer into a second gives four rows, which is not "fewer than a set". */
-const stillOpen = (key) => ({ questionKey: key, question: 'q', answer: null, createdAt: '2026-08-25T00:00:00Z', source: 'offered' });
+/** `sitting` and `offeredAt` are both parameterised: one stores membership and
+ *  the other is the new-material watermark. Defaults are sitting 1 at a fixed
+ *  time, which is the ordinary first-interview case. */
+const stillOpen = (key, sitting = 1, offeredAt = '2026-08-25T00:00:00Z') =>
+    ({ questionKey: key, question: 'q', answer: null, createdAt: offeredAt, offeredAt, source: 'offered', sitting });
 /** A COMPLETED sitting. Fewer rows than this means they started and stopped,
  *  and the remaining questions are still owed — the new-material gate does not
  *  apply until a full set has been dealt with, one way or another. Dismissing
@@ -72,7 +88,13 @@ async function invite() {
 describe('getInterviewInvite', () => {
     beforeEach(() => {
         jest.resetModules();
-        for (const m of [canEditArtist, getInterviewAnswers, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail]) m.mockReset();
+        for (const m of [canEditArtist, getInterviewAnswers, upsertInterviewAnswer, recordInterviewBatchOffered, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasOlderPostsLearnedSince, hasOlderCreditsLearnedSince, isResearchInFlight]) m.mockReset();
+        hasOlderPostsLearnedSince.mockResolvedValue(false);
+        hasOlderCreditsLearnedSince.mockResolvedValue(false);
+        isResearchInFlight.mockResolvedValue(false);
+        // Per-kind, so a test can tell 'checks the wrong stage' from 'checks correctly'.
+        const inFlightKinds = (kinds) => (_a, k) => Promise.resolve((Array.isArray(k) ? k : [k]).some(x => kinds.includes(x)));
+        globalThis.__inFlightKinds = inFlightKinds;
         canEditArtist.mockResolvedValue(true);
         getSocialPostsForArtist.mockResolvedValue([]);
         getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: null });
@@ -99,6 +121,291 @@ describe('getInterviewInvite', () => {
         expect(out.questions[0].sourceUrl).toBe('https://www.instagram.com/p/ABC/');
         // The static bank has no post behind it, and must not pretend to.
         expect(out.questions[1].sourceUrl).toBeUndefined();
+    });
+
+    // ── The production failure of 2026-09-03 ──────────────────────────────
+    // Pete Rango's questions were written at 13:18:08 and his caption
+    // extraction was queued at 13:19:16. With nothing extracted yet the static
+    // bank filled all three slots, those rows persisted, and the new-material
+    // gate then locked him out of the 187 credits extraction went on to find.
+    // Tom Vek's ran two minutes after his extraction and read fine. Nothing
+    // differed but timing.
+
+    it('does not ask while the SCRAPE is still running, before extraction is even queued', async () => {
+        // The state Pete's incident actually happened in. caption_extract is
+        // enqueued only after social_ingest completes, so at 13:18:08 there was
+        // no extraction row at all — a guard that asked only about extraction
+        // returned false and let the static bank through.
+        getInterviewAnswers.mockResolvedValue([]);
+        isResearchInFlight.mockImplementation(globalThis.__inFlightKinds(['social_ingest']));
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(false);
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+    });
+
+    it('does not ask while caption extraction is still running', async () => {
+        getInterviewAnswers.mockResolvedValue([]);
+        isResearchInFlight.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(false);
+        // AND DOES NOT GENERATE. Returning show:false is not enough — the harm
+        // is the static rows persisting under (artist_id, question_key).
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+    });
+
+    it('defers an open sitting until extraction finishes, then resumes with what it learned', async () => {
+        // If the artist finishes while extraction is writing, their final
+        // answer gets a later timestamp than the learned rows. The next invite
+        // then sees nothing created after that answer, permanently skipping
+        // material that was never represented in this sitting's questions.
+        getInterviewAnswers.mockResolvedValue([stillOpen('social_credit_7')]);
+        isResearchInFlight.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([
+            { key: 'social_credit_8', question: 'What did the refresh find?' },
+        ]);
+
+        const during = await invite();
+        expect(during.show).toBe(false);
+        expect(generateGroundedQuestions).not.toHaveBeenCalled();
+
+        isResearchInFlight.mockResolvedValue(false);
+        const after = await invite();
+        expect(after.show).toBe(true);
+        expect(after.questions.map(q => q.key)).toEqual([
+            'social_credit_7',
+            'social_credit_8',
+            'sound_in_own_words',
+        ]);
+    });
+
+    it('reopens after a full resumed sitting for research learned after its offer', async () => {
+        const offeredAt = '2026-08-01T00:00:00Z';
+        getInterviewAnswers.mockResolvedValue([
+            stillOpen('social_credit_1', 1, offeredAt),
+            stillOpen('social_credit_2', 1, offeredAt),
+            stillOpen('social_credit_3', 1, offeredAt),
+        ]);
+        isResearchInFlight.mockResolvedValue(true);
+
+        // A full sitting has no top-up slot, but still waits so the refresh can
+        // finish before the artist resumes it.
+        expect((await invite()).show).toBe(false);
+
+        isResearchInFlight.mockResolvedValue(false);
+        const resumed = await invite();
+        expect(resumed.show).toBe(true);
+        expect(resumed.questions.map(q => q.key)).toEqual([
+            'social_credit_1', 'social_credit_2', 'social_credit_3',
+        ]);
+
+        // Answering preserves `offeredAt` but stamps `createdAt` with the real
+        // answer time. The completed refresh remains eligible for a separate
+        // follow-up without making these new words look old to Ask.
+        const answeredAt = '2026-09-01T00:00:00Z';
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', answeredAt, offeredAt),
+            answered('social_credit_2', answeredAt, offeredAt),
+            answered('social_credit_3', answeredAt, offeredAt),
+        ]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([
+            { key: 'social_credit_4', question: 'What did the refresh find?' },
+        ]);
+
+        const followup = await invite();
+        expect(hasOlderCreditsLearnedSince).toHaveBeenCalledWith('a1', offeredAt);
+        expect(followup.show).toBe(true);
+        expect(followup.questions.map(q => q.key)).toEqual(['social_credit_4']);
+    });
+
+    it('comes back when posts were SCRAPED since, though published long before', async () => {
+        // The whole feed of a first-time artist: published months ago, stored
+        // minutes ago. By publication date there is nothing new; to us it is
+        // all new. Asking by postedAt answered the wrong question.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasOlderPostsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_9', question: 'Who played on it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.reason).toBe('new-material');
+    });
+
+    it('generates UNSCOPED when the new material is something we learned', async () => {
+        // The third layer. `newerThan` in the generator filters posts, credits
+        // and statements by postedAt, so passing `since` here would generate
+        // from an empty set and fall through to the static bank — the same
+        // failure one level down. What we learned has no publication date to
+        // scope to; excludeKeys is what prevents repeats.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-09-03T13:18:13Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_x', question: 'Who engineered it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
+    });
+
+    it('unscopes when a scrape brings BOTH a new post and older credits', async () => {
+        // The common case for a returning artist, and the one the enum could
+        // not express: newMaterialSince used to answer "published" the moment
+        // it saw a newer post and never ask about learned material, so the
+        // window stayed scoped and the generator dropped every older credit.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_z', question: 'Who played bass?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        // Unscoped, so the older credits are reachable. The new post is still
+        // in the pool — it is the newest thing in it.
+        expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
+    });
+
+    it('treats a half-answered FIRST sitting as still the first', async () => {
+        // Answer one question, close the tab, come back. A dealt-with row now
+        // exists, but the sitting in front of them is still their first — so
+        // the bank must still fill it out and the copy must still greet them
+        // as a first-timer. Counting dealt-with rows got this backwards.
+        // createdAt is re-stamped on answer, so timestamps cannot identify the
+        // sitting. The stored membership on the open row is what keeps this a
+        // first interview.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-26T00:00:00Z'),
+            stillOpen('social_credit_2'),
+        ]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.reason).toBe('first');
+        // Resumed question plus the bank filling the rest.
+        expect(out.questions).toHaveLength(3);
+        expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
+    });
+
+    it('survives a first sitting topped up across visits — route 5', async () => {
+        // The sequence that broke every timestamp version. Visit 1 offers three
+        // questions at T1; the artist answers two, which RE-STAMPS them later
+        // than T1. Visit 2 tops the sitting up with a question offered at T3.
+        // The artist finishes the original leftovers, so the only row still open
+        // is the topped-up one at T3 — newer than the answers from its own
+        // sitting. "Is any dealt-with row older than the oldest open one" then
+        // said yes, and a first-timer became a returning artist mid-sitting.
+        //
+        // The sitting number does not move, so none of that matters.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_a', '2026-08-26T00:00:00Z'),   // offered T1, answered later
+            answered('social_b', '2026-08-26T00:01:00Z'),
+            answered('bank_leftover', '2026-08-28T00:00:00Z'),
+            stillOpen('social_d', 1, '2026-08-27T00:00:00Z'), // topped up at T3, still sitting 1
+        ]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.reason).toBe('first');
+        expect(out.questions.map(q => q.key)).toContain('social_d');
+    });
+
+    it('keeps an abandoned first sitting "first", however long they leave it', async () => {
+        // One question offered and never resolved, the artist gone for weeks,
+        // other activity in between. They are still finishing their first
+        // interview, so the bank still fills it and the copy still greets them
+        // as a first-timer. Pinned because it falls out of the boundary rule
+        // rather than being stated anywhere.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-26T00:00:00Z'),
+            answered('social_credit_2', '2026-08-26T00:01:00Z'),
+            stillOpen('social_credit_3'),
+        ]);
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-09-20T00:00:00Z' }]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.reason).toBe('first');
+        expect(out.questions.map(q => q.key)).toContain('social_credit_3');
+    });
+
+    it('does not top up a RESUMED sitting with the generic bank either', async () => {
+        // The third route to the same leak. `since` is null while an open
+        // sitting is being resumed, so reading first-ness off it made a
+        // returning artist look new and put the bank back in front of them.
+        // The existing resume test asserts only the generator's arguments, so
+        // this one asserts what the artist actually receives.
+        getInterviewAnswers.mockResolvedValue([
+            ...aFullSitting('2026-08-01T00:00:00Z'),
+            stillOpen('social_credit_open', 2),
+        ]);
+        // Nothing new to add — the only candidate is already resumed.
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions.map(q => q.key)).toEqual(['social_credit_open']);
+        expect(out.questions.map(q => q.key)).not.toContain('sound_in_own_words');
+        // And they are not greeted as a first-timer, having already answered.
+        expect(out.reason).toBe('new-material');
+    });
+
+    it('does not top a learned reopen up with the generic bank', async () => {
+        // The regression the window fix introduced. A learned reopen passes
+        // null as the generation window on purpose — the whole feed is the
+        // window — and pickQuestions used that same null to mean "they have
+        // never answered", so a returning artist got "How would you describe
+        // your sound?" appended. Exactly the re-ask this release exists to
+        // stop, arriving through the fix for it.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        // Fewer than a full sitting, which is what invites the top-up.
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_q', question: 'Who engineered it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions).toHaveLength(1);
+        expect(out.questions.map(q => q.key)).not.toContain('sound_in_own_words');
+    });
+
+    it('still fills a FIRST sitting from the bank when grounded questions run short', async () => {
+        // The other side of it: a genuine first interview still gets topped up,
+        // which is what the bank is for.
+        getInterviewAnswers.mockResolvedValue([]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_1', question: 'Who mixed it?' }]);
+
+        const out = await invite();
+        expect(out.questions).toHaveLength(3);
+        expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
+    });
+
+    it('still scopes to the window when the artist PUBLISHED something new', async () => {
+        // The date means something here: ask about the new thing, not the feed.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_theme_2', question: 'What was that show?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(generateGroundedQuestions.mock.calls[0][1].since).toBe('2026-08-01T00:00:00Z');
+    });
+
+    it('comes back when credits were extracted since, with no newer post at all', async () => {
+        // Extraction finishes minutes after the posts land. An artist whose
+        // sitting closed in that window has no newer post to point at and 187
+        // credits we did not have before.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasOlderPostsLearnedSince.mockResolvedValue(false);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_statement_3', question: 'What made it difficult?' }]);
+
+        expect((await invite()).show).toBe(true);
     });
 
     it('stays quiet when they have answered and nothing has happened since', async () => {
@@ -204,6 +511,27 @@ describe('getInterviewInvite', () => {
         expect(out.questions[0].question).toContain('"rush"');
     });
 
+    it('keeps the release fallback when learned material widens the grounded window', async () => {
+        // Both can happen in the same scrape: a new release triggers the
+        // return, while old captions yield credits we only just learned. The
+        // grounded generator needs the whole feed, but the Spotify fallback
+        // still needs the real previous-answer cutoff. Reusing the widened
+        // null window silently discarded the release.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([]);
+        getArtistById.mockResolvedValue({ id: 'a1', name: 'Pete Rango', spotify: 'SPOT1' });
+        getSpotifyCatalogDetail.mockResolvedValue([{ name: 'rush', releaseDate: '2026-08-20' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_new', question: 'Who played on it?' }]);
+
+        const out = await invite();
+        expect(generateGroundedQuestions).toHaveBeenCalledWith('a1',
+            expect.objectContaining({ since: null }));
+        expect(out.questions.map(q => q.question)).toContain(
+            'You put out "rush" — what would you want somebody to notice about it first?',
+        );
+    });
+
     it('truncates an oversized answer rather than storing it', async () => {
         // A server action is a public endpoint and the textarea's maxLength is
         // a suggestion. An unbounded answer goes straight into the ask prompt
@@ -212,16 +540,54 @@ describe('getInterviewInvite', () => {
         const { answerInterviewQuestion } = await import('../interviewActions');
         await answerInterviewQuestion({
             artistId: 'a1', questionKey: 'k', question: 'q', answer: 'x'.repeat(9000),
+            questions: [{ key: 'k', question: 'q' }],
         });
         expect(upsertInterviewAnswer.mock.calls[0][0].answer).toHaveLength(2000);
     });
 
+    it('assigns the sitting before saving an answer that can beat the panel mount effect', async () => {
+        // InterviewPanel marks the batch without awaiting it. A fast answer can
+        // reach the server first; inserting that answer directly would leave a
+        // post-0022 null sitting and the later mark would lose on the unique
+        // key. Ensuring the offer first makes either request order safe.
+        const order = [];
+        recordInterviewBatchOffered.mockImplementation(async () => { order.push('offered'); });
+        upsertInterviewAnswer.mockImplementation(async () => { order.push('answered'); });
+        const { answerInterviewQuestion } = await import('../interviewActions');
+
+        await answerInterviewQuestion({
+            artistId: 'a1', questionKey: 'k', question: 'q', answer: 'a',
+            questions: [
+                { key: 'k', question: 'q' },
+                { key: 'k2', question: 'q2' },
+                { key: 'k3', question: 'q3' },
+            ],
+        });
+
+        expect(recordInterviewBatchOffered).toHaveBeenCalledWith('a1', [
+            { questionKey: 'k', question: 'q' },
+            { questionKey: 'k2', question: 'q2' },
+            { questionKey: 'k3', question: 'q3' },
+        ]);
+        expect(order).toEqual(['offered', 'answered']);
+        expect(upsertInterviewAnswer.mock.calls[0][0].sitting).toBe(1);
+    });
+
     it('records a dismissal, so the same three do not come back next visit', async () => {
         upsertInterviewAnswer.mockClear();
+        recordInterviewBatchOffered.mockClear();
         const { declineInterview } = await import('../interviewActions');
         await declineInterview('a1', [
             { key: 'k1', question: 'one' },
             { key: 'k2', question: 'two' },
+        ]);
+        // The card can be dismissed before its panel mounts, so nothing else
+        // has assigned these rows to a sitting. Mark the whole batch first;
+        // the upsert then changes only answer/source and preserves that number.
+        expect(recordInterviewBatchOffered).toHaveBeenCalledTimes(1);
+        expect(recordInterviewBatchOffered).toHaveBeenCalledWith('a1', [
+            { questionKey: 'k1', question: 'one' },
+            { questionKey: 'k2', question: 'two' },
         ]);
         expect(upsertInterviewAnswer).toHaveBeenCalledTimes(2);
         // Written as skips — the same shape skipping one inside the panel uses.
@@ -280,14 +646,17 @@ describe('getInterviewInvite', () => {
         // with answer: null — losing what the artist had just written, on the
         // one screen where the words are theirs. Insert-only removes the race
         // rather than narrowing it.
-        recordInterviewOffered.mockClear();
+        recordInterviewBatchOffered.mockClear();
         upsertInterviewAnswer.mockClear();
         const { markInterviewOffered } = await import('../interviewActions');
         await markInterviewOffered('a1', [{ key: 'k1', question: 'one' }, { key: 'k2', question: 'two' }]);
 
-        expect(recordInterviewOffered).toHaveBeenCalledTimes(2);
+        expect(recordInterviewBatchOffered).toHaveBeenCalledTimes(1);
         expect(upsertInterviewAnswer).not.toHaveBeenCalled();
-        expect(recordInterviewOffered.mock.calls[0][0]).toMatchObject({ questionKey: 'k1' });
+        expect(recordInterviewBatchOffered).toHaveBeenCalledWith('a1', [
+            { questionKey: 'k1', question: 'one' },
+            { questionKey: 'k2', question: 'two' },
+        ]);
     });
 
     it('stops rather than guessing when the answer history cannot be read', async () => {

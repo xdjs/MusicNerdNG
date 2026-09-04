@@ -58,6 +58,9 @@ export async function upsertInterviewAnswer(input: {
     questionKey: string;
     question: string;
     answer: string | null;
+    /** Used only if this is the INSERT side of the upsert. The conflict update
+     *  deliberately never changes the sitting already stored on the row. */
+    sitting: number;
     /** "offered" is a question we PUT to them that they have not dealt with
      *  yet — the boundary of a sitting. It becomes "followup" the moment they
      *  answer it or skip it. Without it there is no way to tell a sitting
@@ -74,19 +77,19 @@ export async function upsertInterviewAnswer(input: {
                 question: input.question,
                 answer: input.answer,
                 source: input.source,
-                // RE-STAMPED, because this row may have been created when the
-                // question was OFFERED rather than when it was answered. The
-                // watermark that decides "has anything happened since they last
-                // spoke" read the offer time, so an artist who answered days
-                // later was immediately offered another interview about
-                // activity that predated their answer.
+                // `createdAt` is answer chronology. `offeredAt`, deliberately
+                // absent from this update, is the immutable material watermark
+                // established by the first insert. That also makes duplicate
+                // submits/two-tab retries unable to advance the cutoff.
                 createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
+                // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering
+                // a question must leave its stored membership intact.
             },
         });
 }
 
 /**
- * Write down that a question was PUT to somebody, and never anything more.
+ * Write down a batch of questions PUT to somebody, and never anything more.
  *
  * Insert-only, deliberately. The upsert version read the existing rows and then
  * wrote nulls, so an artist who answered the first question in the moment
@@ -97,14 +100,57 @@ export async function upsertInterviewAnswer(input: {
  * `onConflictDoNothing` removes the race rather than narrowing it: a row that
  * exists, for any reason, in any order, is left exactly as it is.
  */
-export async function recordInterviewOffered(input: {
-    artistId: string;
-    questionKey: string;
-    question: string;
-}): Promise<void> {
+export async function recordInterviewBatchOffered(
+    artistId: string,
+    questions: Array<{
+        questionKey: string;
+        question: string;
+    }>,
+): Promise<void> {
+    if (questions.length === 0) return;
+
+    // WHICH SITTING THIS BELONGS TO, decided here because this is the only
+    // place questions are put to an artist. Computing it once for the batch is
+    // what guarantees every question visible in one panel shares a boundary.
+    //
+    // An open row means a sitting is already in front of them, and anything
+    // offered now is part of it — that is what a top-up is, when a resumed
+    // sitting has fewer questions left than a full one. Otherwise this starts a
+    // new sitting.
+    //
+    // NOT DERIVED FROM TIMESTAMPS. Five attempts did that and each had a hole.
+    // `created_at` moves when the answer arrives, while `offered_at` moves when
+    // a top-up is added; neither clock can say that differently timed rows were
+    // visible together. A topped-up row needs the stored membership instead.
+    let sitting = 1;
+    try {
+        const rows = await db.select({ sitting: artistInterviewAnswers.sitting, source: artistInterviewAnswers.source })
+            .from(artistInterviewAnswers)
+            .where(eq(artistInterviewAnswers.artistId, artistId));
+        const open = rows.find(r => r.source === "offered");
+        if (open) {
+            // Join the sitting in progress. Null is a pre-0022 row, which is
+            // always sitting 1.
+            sitting = open.sitting ?? 1;
+        } else if (rows.length > 0) {
+            sitting = Math.max(...rows.map(r => r.sitting ?? 1)) + 1;
+        }
+    } catch (e) {
+        // Falling back to 1 makes a returning artist look new, which offers
+        // them a generic question they may not want — annoying, and better
+        // than throwing away the offer entirely.
+        console.error("[recordInterviewBatchOffered] Could not read sitting:", e);
+    }
+
     await db
         .insert(artistInterviewAnswers)
-        .values({ ...input, answer: null, source: "offered" })
+        .values(questions.map(question => ({
+            artistId,
+            ...question,
+            answer: null,
+            source: "offered" as const,
+            sitting,
+        })))
         .onConflictDoNothing({
             target: [artistInterviewAnswers.artistId, artistInterviewAnswers.questionKey],
         });
@@ -152,6 +198,23 @@ export async function upsertArtistDocSources(artistId: string, sources: unknown[
         .update(artistDocs)
         .set({ sources, updatedAt: sql`(now() AT TIME ZONE 'utc'::text)` })
         .where(eq(artistDocs.artistId, artistId));
+}
+
+/**
+ * The same read as `getArtistDoc`, but it LETS THE ERROR OUT.
+ *
+ * `getArtistDoc` catches and returns `undefined`, which a caller cannot tell
+ * apart from "this artist has no document". That is right for a page that
+ * degrades to hiding a section, and wrong for anything that must answer
+ * differently: the public /artist/<id>/llms.txt returns 404 for no document, a
+ * status a crawler is entitled to cache and stop asking about. A database blip
+ * answering 404 would quietly tell every model that an artist we know plenty
+ * about has nothing.
+ */
+export async function getArtistDocStrict(artistId: string) {
+    return await db.query.artistDocs.findFirst({
+        where: eq(artistDocs.artistId, artistId),
+    });
 }
 
 export async function getArtistDoc(artistId: string) {
