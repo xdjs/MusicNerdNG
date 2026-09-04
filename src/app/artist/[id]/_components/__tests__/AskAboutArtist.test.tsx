@@ -155,6 +155,17 @@ describe("an answer, rendered", () => {
         expect(apple.textContent).toContain("A");
     });
 
+    it("still closes on a click elsewhere", async () => {
+        // The mousedown path is untouched by the Escape work, but it is the
+        // way most people close this and nothing was holding it.
+        await ask();
+        fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
+        expect(screen.getByRole("group", { name: /where to hear/i })).toBeInTheDocument();
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear/i })).not.toBeInTheDocument());
+    });
+
     it("calls Bandcamp the artist's page, because that is all it is", async () => {
         // Bandcamp has no API. Claiming this link is the RECORD would send a
         // fan to a store page for a different one.
@@ -163,7 +174,10 @@ describe("an answer, rendered", () => {
         // The caveat is a second line under the icon now rather than one text
         // node, so assert the ACCESSIBLE NAME — what a reader actually gets —
         // instead of the markup that happens to carry it.
-        const link = screen.getByRole("link", { name: /Bandcamp[\s\S]*artist page/i });
+        // STRICT ABOUT THE BRACKETS. The old matcher allowed anything between
+        // the two words, so it passed even when the accessible name collapsed
+        // to "Bandcampartist page" with no boundary at all.
+        const link = screen.getByRole("link", { name: /Bandcamp\s*\(artist page\)/i });
         expect(link).toHaveAttribute("href", "https://peterango.bandcamp.com");
     });
 

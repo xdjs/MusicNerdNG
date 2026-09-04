@@ -236,7 +236,7 @@ function ServiceIcon({ service }: { service: string }) {
     return (
         <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/40 bg-white/70 shadow-sm transition-all duration-200 group-hover/opt:scale-110 group-hover/opt:bg-white/90 dark:border-white/15 dark:bg-white/10 dark:group-hover/opt:bg-white/20">
             {src
-                ? <img src={src} alt="" aria-hidden className="h-6 w-6 object-contain" />
+                ? <img src={src} alt="" className="h-6 w-6 object-contain" />
                 : <span className="text-sm font-semibold text-black/70 dark:text-white/70">{service.slice(0, 1)}</span>}
         </span>
     );
@@ -366,12 +366,19 @@ function SongLink({
                                     "Bandcamp" under an icon would quietly turn an
                                     honest link into a false one, so the
                                     parenthetical becomes a second line rather
-                                    than disappearing. */}
+                                    than disappearing.
+
+                                    KEPT IN BRACKETS. Two adjacent text nodes can
+                                    be concatenated without a separator when the
+                                    accessible name is computed — "Bandcampartist
+                                    page" — and the brackets make the boundary
+                                    part of the text rather than something the
+                                    layout has to supply. */}
                                 <span className="w-full text-center text-[11px] leading-tight text-muted-foreground">
-                                    {o.service.split(" (")[0]}
-                                    {o.service.includes(" (") && (
+                                    {parseServiceLabel(o.service).name}
+                                    {parseServiceLabel(o.service).caveat && (
                                         <span className="block text-[10px] leading-tight text-muted-foreground/70">
-                                            {o.service.slice(o.service.indexOf("(") + 1, -1)}
+                                            ({parseServiceLabel(o.service).caveat})
                                         </span>
                                     )}
                                 </span>
