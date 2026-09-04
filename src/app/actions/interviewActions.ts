@@ -202,7 +202,10 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         const generated = resumed.length >= QUESTION_COUNT
             || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
-            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]));
+            // `since`, not `window`: whether they have ever answered is a fact
+            // about the artist, while `window` is a generation detail that is
+            // deliberately null for a learned reopen.
+            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]), !since);
         const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);
         if (questions.length === 0) return { show: false };
 
@@ -299,8 +302,18 @@ async function newMaterialSince(artistId: string, since: string): Promise<NewMat
  */
 async function pickQuestions(
     artistId: string,
+    /** The date window to generate in. Null means the whole feed. */
     since: string | null,
     answeredKeys: Set<string>,
+    /** WHETHER THIS IS THEIR FIRST SITTING — which `since` used to stand in for
+     *  and can no longer. It was a safe proxy while the window was always the
+     *  artist's last answer, so null meant "never answered". Once a reopen
+     *  triggered by newly-learned material started passing null deliberately —
+     *  the whole feed is the window, there being no publication date to scope
+     *  to — a returning artist began reading as a new one, and the static bank
+     *  topped their sitting up with "How would you describe your sound?". That
+     *  is the generic re-ask this whole release exists to stop. */
+    isFirstInterview: boolean,
 ): Promise<InterviewQuestion[]> {
     // `excludeKeys`, not just the filter below. Passing them in removes them
     // from the candidate POOL, so the model spends its picks on things the
@@ -344,7 +357,7 @@ async function pickQuestions(
     // The static bank only fills a FIRST interview. Coming back with "what got
     // you started?" when the artist has just released a record is exactly the
     // generic re-ask this design exists to avoid — better to stay quiet.
-    if (since) return picked;
+    if (!isFirstInterview) return picked;
 
     for (const q of ONBOARDING_QUESTIONS) {
         if (picked.length >= QUESTION_COUNT) break;

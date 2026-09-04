@@ -212,6 +212,36 @@ describe('getInterviewInvite', () => {
         expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
     });
 
+    it('does not top a learned reopen up with the generic bank', async () => {
+        // The regression the window fix introduced. A learned reopen passes
+        // null as the generation window on purpose — the whole feed is the
+        // window — and pickQuestions used that same null to mean "they have
+        // never answered", so a returning artist got "How would you describe
+        // your sound?" appended. Exactly the re-ask this release exists to
+        // stop, arriving through the fix for it.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        // Fewer than a full sitting, which is what invites the top-up.
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_q', question: 'Who engineered it?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions).toHaveLength(1);
+        expect(out.questions.map(q => q.key)).not.toContain('sound_in_own_words');
+    });
+
+    it('still fills a FIRST sitting from the bank when grounded questions run short', async () => {
+        // The other side of it: a genuine first interview still gets topped up,
+        // which is what the bank is for.
+        getInterviewAnswers.mockResolvedValue([]);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_1', question: 'Who mixed it?' }]);
+
+        const out = await invite();
+        expect(out.questions).toHaveLength(3);
+        expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
+    });
+
     it('still scopes to the window when the artist PUBLISHED something new', async () => {
         // The date means something here: ask about the new thing, not the feed.
         getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
