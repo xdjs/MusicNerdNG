@@ -127,8 +127,43 @@ describe("an answer, rendered", () => {
         await ask(ANSWER, [{ service: "Apple Music", url: "https://music.apple.com/us/album/x" }]);
         fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
 
-        expect(screen.getByText("Spotify")).toHaveAttribute("href", "https://open.spotify.com/album/4Kka");
-        await waitFor(() => expect(screen.getByText("Apple Music")).toHaveAttribute("href", "https://music.apple.com/us/album/x"));
+        expect(screen.getByRole("link", { name: /Spotify/ })).toHaveAttribute("href", "https://open.spotify.com/album/4Kka");
+        await waitFor(() => expect(screen.getByRole("link", { name: /Apple Music/ })).toHaveAttribute("href", "https://music.apple.com/us/album/x"));
+    });
+
+    it("closes on Escape and puts focus back on the title", async () => {
+        // A click-outside handler alone leaves anyone on a keyboard stuck
+        // inside the menu. And closing without restoring focus drops it to
+        // <body>, which is worse than not opening the menu at all.
+        await ask();
+        fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
+        expect(screen.getByRole("group", { name: /where to hear/i })).toBeInTheDocument();
+
+        fireEvent.keyDown(document, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear/i })).not.toBeInTheDocument());
+        expect(screen.getByRole("button", { name: /crying on the floor/i })).toHaveFocus();
+    });
+
+    it("gives a service with no icon a lettered chip rather than a broken image", async () => {
+        // Apple Music has no file in public/siteIcons. A missing icon must read
+        // as deliberate next to the others, not as a hole or a broken <img>.
+        await ask(ANSWER, [{ service: "Apple Music", url: "https://music.apple.com/us/album/x" }]);
+        fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
+
+        const apple = await screen.findByRole("link", { name: /Apple Music/ });
+        expect(apple.querySelector("img")).toBeNull();
+        expect(apple.textContent).toContain("A");
+    });
+
+    it("still closes on a click elsewhere", async () => {
+        // The mousedown path is untouched by the Escape work, but it is the
+        // way most people close this and nothing was holding it.
+        await ask();
+        fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
+        expect(screen.getByRole("group", { name: /where to hear/i })).toBeInTheDocument();
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear/i })).not.toBeInTheDocument());
     });
 
     it("calls Bandcamp the artist's page, because that is all it is", async () => {
@@ -136,7 +171,14 @@ describe("an answer, rendered", () => {
         // fan to a store page for a different one.
         await ask();
         fireEvent.click(screen.getByRole("button", { name: /crying on the floor/i }));
-        expect(screen.getByText(/Bandcamp \(artist page\)/)).toHaveAttribute("href", "https://peterango.bandcamp.com");
+        // The caveat is a second line under the icon now rather than one text
+        // node, so assert the ACCESSIBLE NAME — what a reader actually gets —
+        // instead of the markup that happens to carry it.
+        // STRICT ABOUT THE BRACKETS. The old matcher allowed anything between
+        // the two words, so it passed even when the accessible name collapsed
+        // to "Bandcampartist page" with no boundary at all.
+        const link = screen.getByRole("link", { name: /Bandcamp\s*\(artist page\)/i });
+        expect(link).toHaveAttribute("href", "https://peterango.bandcamp.com");
     });
 
     it("keeps the song a plain button when the lookup fails", async () => {
