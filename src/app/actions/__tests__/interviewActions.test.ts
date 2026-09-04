@@ -17,8 +17,8 @@ const generateGroundedQuestions = jest.fn();
 const getSocialPostsForArtist = jest.fn();
 const getArtistById = jest.fn();
 const getSpotifyCatalogDetail = jest.fn();
-const hasPostsScrapedSince = jest.fn();
-const hasCreditsSince = jest.fn();
+const hasOlderPostsLearnedSince = jest.fn();
+const hasOlderCreditsLearnedSince = jest.fn();
 const isResearchInFlight = jest.fn();
 
 jest.mock('@/server/auth', () => ({ getServerAuthSession: jest.fn(async () => ({ user: { id: 'u1' } })) }));
@@ -45,10 +45,10 @@ jest.mock('@/server/utils/questionGenerator', () => ({
 }));
 jest.mock('@/server/utils/socialIngest', () => ({
     getSocialPostsForArtist: (...a) => getSocialPostsForArtist(...a),
-    hasPostsScrapedSince: (...a) => hasPostsScrapedSince(...a),
+    hasOlderPostsLearnedSince: (...a) => hasOlderPostsLearnedSince(...a),
 }));
 jest.mock('@/server/utils/queries/socialCreditQueries', () => ({
-    hasCreditsSince: (...a) => hasCreditsSince(...a),
+    hasOlderCreditsLearnedSince: (...a) => hasOlderCreditsLearnedSince(...a),
 }));
 jest.mock('@/server/utils/queries/researchJobQueries', () => ({
     isResearchInFlight: (...a) => isResearchInFlight(...a),
@@ -82,9 +82,9 @@ async function invite() {
 describe('getInterviewInvite', () => {
     beforeEach(() => {
         jest.resetModules();
-        for (const m of [canEditArtist, getInterviewAnswers, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasPostsScrapedSince, hasCreditsSince, isResearchInFlight]) m.mockReset();
-        hasPostsScrapedSince.mockResolvedValue(false);
-        hasCreditsSince.mockResolvedValue(false);
+        for (const m of [canEditArtist, getInterviewAnswers, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasOlderPostsLearnedSince, hasOlderCreditsLearnedSince, isResearchInFlight]) m.mockReset();
+        hasOlderPostsLearnedSince.mockResolvedValue(false);
+        hasOlderCreditsLearnedSince.mockResolvedValue(false);
         isResearchInFlight.mockResolvedValue(false);
         // Per-kind, so a test can tell 'checks the wrong stage' from 'checks correctly'.
         const inFlightKinds = (kinds) => (_a, k) => Promise.resolve((Array.isArray(k) ? k : [k]).some(x => kinds.includes(x)));
@@ -171,7 +171,7 @@ describe('getInterviewInvite', () => {
         // all new. Asking by postedAt answered the wrong question.
         getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
-        hasPostsScrapedSince.mockResolvedValue(true);
+        hasOlderPostsLearnedSince.mockResolvedValue(true);
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_9', question: 'Who played on it?' }]);
 
         const out = await invite();
@@ -187,11 +187,28 @@ describe('getInterviewInvite', () => {
         // scope to; excludeKeys is what prevents repeats.
         getInterviewAnswers.mockResolvedValue(aFullSitting('2026-09-03T13:18:13Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
-        hasCreditsSince.mockResolvedValue(true);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_x', question: 'Who engineered it?' }]);
 
         const out = await invite();
         expect(out.show).toBe(true);
+        expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
+    });
+
+    it('unscopes when a scrape brings BOTH a new post and older credits', async () => {
+        // The common case for a returning artist, and the one the enum could
+        // not express: newMaterialSince used to answer "published" the moment
+        // it saw a newer post and never ask about learned material, so the
+        // window stayed scoped and the generator dropped every older credit.
+        getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-08-20T00:00:00Z' }]);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
+        generateGroundedQuestions.mockResolvedValue([{ key: 'social_credit_z', question: 'Who played bass?' }]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        // Unscoped, so the older credits are reachable. The new post is still
+        // in the pool — it is the newest thing in it.
         expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
     });
 
@@ -212,8 +229,8 @@ describe('getInterviewInvite', () => {
         // credits we did not have before.
         getInterviewAnswers.mockResolvedValue(aFullSitting('2026-08-01T00:00:00Z'));
         getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2025-01-01T00:00:00Z' }]);
-        hasPostsScrapedSince.mockResolvedValue(false);
-        hasCreditsSince.mockResolvedValue(true);
+        hasOlderPostsLearnedSince.mockResolvedValue(false);
+        hasOlderCreditsLearnedSince.mockResolvedValue(true);
         generateGroundedQuestions.mockResolvedValue([{ key: 'social_statement_3', question: 'What made it difficult?' }]);
 
         expect((await invite()).show).toBe(true);
