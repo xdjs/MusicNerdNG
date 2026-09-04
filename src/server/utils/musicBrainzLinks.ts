@@ -450,7 +450,10 @@ async function findMusicBrainzCounterpartUncached(
     if (targetOwners.status === "invalid") {
         return { counterpart: null, definitiveMiss: false };
     }
-    if (targetOwners.ids.size !== 1 || !targetOwners.ids.has(musicbrainzId)) {
+    if (targetOwners.ids.size === 0) {
+        return { counterpart: null, definitiveMiss: false };
+    }
+    if (targetOwners.ids.size > 1 || !targetOwners.ids.has(musicbrainzId)) {
         return { counterpart: null, definitiveMiss: true };
     }
 

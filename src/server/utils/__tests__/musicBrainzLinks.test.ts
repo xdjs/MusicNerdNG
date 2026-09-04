@@ -332,6 +332,33 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
+    it('retries when target ownership is temporarily empty', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup()))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+            )))
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toBeNull();
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toEqual({
+                platformId: DEEZER_ID,
+                musicbrainzId: MUSICBRAINZ_ID,
+            });
+        expect(global.fetch).toHaveBeenCalledTimes(6);
+    });
+
     it('does not infer or cache the unverified reverse direction', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
