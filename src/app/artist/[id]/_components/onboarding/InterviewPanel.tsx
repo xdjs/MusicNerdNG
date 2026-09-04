@@ -64,6 +64,7 @@ export default function InterviewPanel({
             questionKey: current.key,
             question: current.question,
             answer: text,
+            questions,
         });
         if (!res.success) {
             setError(res.error ?? "Could not save that.");

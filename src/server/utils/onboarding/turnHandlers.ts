@@ -1491,6 +1491,8 @@ async function* runAutoBuild(artistId: string): AsyncGenerator<TurnEvent> {
             questionKey: turn.questionKey,
             question: questionText,
             answer,
+            // The onboarding interview is the first sitting by definition.
+            sitting: 1,
             source: "onboarding",
         });
         if (answer) {
