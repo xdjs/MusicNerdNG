@@ -59,7 +59,9 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getSpotifyCatalogDetail: (...a) => getSpotifyCatalogDetail(...a),
 }));
 
-const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', createdAt: at, source: 'followup' });
+const answered = (key, at, offeredAt = at) => ({
+    questionKey: key, question: 'q', answer: 'a', createdAt: at, offeredAt, source: 'followup',
+});
 /** A question put to them that they have not dealt with — the boundary of a
  *  sitting, and the only thing that can tell an abandoned one from a finished
  *  one. A lifetime row count cannot: after a completed first sitting, one
@@ -69,7 +71,7 @@ const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', c
  *  new-material watermark. Defaults are sitting 1 at a fixed time, which is the
  *  ordinary first-interview case. */
 const stillOpen = (key, sitting = 1, createdAt = '2026-08-25T00:00:00Z') =>
-    ({ questionKey: key, question: 'q', answer: null, createdAt, source: 'offered', sitting });
+    ({ questionKey: key, question: 'q', answer: null, createdAt, offeredAt: createdAt, source: 'offered', sitting });
 /** A COMPLETED sitting. Fewer rows than this means they started and stopped,
  *  and the remaining questions are still owed — the new-material gate does not
  *  apply until a full set has been dealt with, one way or another. Dismissing
@@ -201,13 +203,14 @@ describe('getInterviewInvite', () => {
             'social_credit_1', 'social_credit_2', 'social_credit_3',
         ]);
 
-        // Answering an offered row preserves `offeredAt`, so the material the
-        // completed refresh learned after that boundary remains eligible for a
-        // separate follow-up sitting rather than falling behind answer time.
+        // Answering preserves `offeredAt` but stamps `createdAt` with the real
+        // answer time. The completed refresh remains eligible for a separate
+        // follow-up without making these new words look old to Ask.
+        const answeredAt = '2026-09-01T00:00:00Z';
         getInterviewAnswers.mockResolvedValue([
-            answered('social_credit_1', offeredAt),
-            answered('social_credit_2', offeredAt),
-            answered('social_credit_3', offeredAt),
+            answered('social_credit_1', answeredAt, offeredAt),
+            answered('social_credit_2', answeredAt, offeredAt),
+            answered('social_credit_3', answeredAt, offeredAt),
         ]);
         hasOlderCreditsLearnedSince.mockResolvedValue(true);
         generateGroundedQuestions.mockResolvedValue([

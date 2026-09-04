@@ -77,16 +77,14 @@ export async function upsertInterviewAnswer(input: {
                 question: input.question,
                 answer: input.answer,
                 source: input.source,
-                // PRESERVE THE OFFER-TIME WATERMARK for panel questions. The
-                // questions can only represent material known when they were
-                // offered. If research finishes while a full sitting waits and
-                // answering re-stamps this later, the newly learned rows fall
-                // before the next cutoff and are never eligible for a follow-up.
-                // A direct onboarding-chat upsert has no preceding `offered`
-                // row, so it retains the existing answer-time behaviour.
-                createdAt: sql`CASE
+                // `createdAt` is answer chronology. `offeredAt` is the separate
+                // material watermark: panel questions preserve the time their
+                // `offered` row was inserted. A direct onboarding-chat upsert
+                // has no preceding offer row, so now is both clocks for it.
+                createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
+                offeredAt: sql`CASE
                     WHEN ${artistInterviewAnswers.source} = 'offered'
-                    THEN ${artistInterviewAnswers.createdAt}
+                    THEN ${artistInterviewAnswers.offeredAt}
                     ELSE (now() AT TIME ZONE 'utc'::text)
                 END`,
                 // `sitting` IS DELIBERATELY ABSENT FROM THIS SET LIST. Answering

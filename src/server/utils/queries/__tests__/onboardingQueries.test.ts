@@ -158,7 +158,7 @@ describe('write paths use ON CONFLICT upserts', () => {
         expect(onConflictDoUpdate).toHaveBeenCalled();
     });
 
-    it('preserves the offer-time watermark when an offered row is answered', async () => {
+    it('keeps answer chronology separate from the offer-time watermark', async () => {
         const onConflictDoUpdate = jest.fn().mockResolvedValue(undefined);
         db.insert.mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoUpdate }) });
         await upsertInterviewAnswer({
@@ -167,9 +167,14 @@ describe('write paths use ON CONFLICT upserts', () => {
         });
 
         const createdAt = onConflictDoUpdate.mock.calls[0][0].set.createdAt;
-        const query = new PgDialect().sqlToQuery(createdAt);
-        expect(query.sql).toContain('"artist_interview_answers"."source" = \'offered\'');
-        expect(query.sql).toContain('THEN "artist_interview_answers"."created_at"');
+        const offeredAt = onConflictDoUpdate.mock.calls[0][0].set.offeredAt;
+        const createdQuery = new PgDialect().sqlToQuery(createdAt).sql;
+        expect(createdQuery).toContain("now() AT TIME ZONE 'utc'::text");
+        expect(createdQuery).not.toContain('CASE');
+        const offeredQuery = new PgDialect().sqlToQuery(offeredAt).sql;
+        expect(offeredQuery).toContain('"artist_interview_answers"."source" = \'offered\'');
+        expect(offeredQuery).toContain('THEN "artist_interview_answers"."offered_at"');
+        expect(onConflictDoUpdate.mock.calls[0][0].set).not.toHaveProperty('sitting');
     });
 
     it('upsertArtistDoc upserts on artistId', async () => {

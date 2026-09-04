@@ -108,8 +108,16 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // Skipped questions count as dealt with: they were asked and answered
         // by being declined, and re-offering them is the nagging we avoid.
         const answeredKeys = new Set(dealtWith.map(a => a.questionKey));
-        const lastAnsweredAt = dealtWith.reduce<string | null>((latest, a) => {
-            const at = a.createdAt ? String(a.createdAt) : null;
+        // The reopening boundary is when the latest batch was OFFERED, not
+        // when its last answer arrived. Research learned between those two
+        // moments was not represented in the questions. `createdAt` remains
+        // answer chronology for consumers such as Ask's newest-answers list.
+        const lastOfferedAt = dealtWith.reduce<string | null>((latest, a) => {
+            const at = a.offeredAt
+                ? String(a.offeredAt)
+                // Deployment is migration-first, but this keeps old fixture
+                // rows and any pre-0023 nullable data safe.
+                : a.createdAt ? String(a.createdAt) : null;
             if (!at) return latest;
             return !latest || at > latest ? at : latest;
         }, null);
@@ -125,7 +133,7 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // hidden for good. The open rows are the boundary: they say which
         // questions are outstanding from the offer that is actually in front of
         // them.
-        const since = stillOpen.length > 0 ? null : lastAnsweredAt;
+        const since = stillOpen.length > 0 ? null : lastOfferedAt;
 
         /**
          * IS THE SITTING IN FRONT OF THEM THEIR FIRST.
@@ -172,11 +180,10 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // built from caption extraction, which trails the scrape by up to
         // several minutes. For a new sitting, asking early persists generic
         // fillers before the grounded material exists. For an open sitting,
-        // letting the artist finish early is subtler but just as permanent:
-        // the final answer is stamped after material learned mid-sitting, so
-        // the next `created_at > lastAnsweredAt` check can never see that
-        // material. Waiting keeps the pre-research boundary alive and lets the
-        // resumed batch include what the refresh discovered.
+        // letting the artist finish early is subtler: a full old batch has no
+        // slot for the material learned mid-sitting. Waiting avoids presenting
+        // an immediately stale panel; `offered_at` keeps the pre-research
+        // boundary alive so the refresh can still trigger a follow-up.
         //
         // BOTH STAGES. caption_extract is enqueued only after social_ingest
         // completes, so checking extraction alone misses the exact window in
