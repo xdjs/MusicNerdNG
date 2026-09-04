@@ -204,6 +204,50 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
+    it.each([
+        {
+            sourcePlatform: 'spotify',
+            sourceId: SPOTIFY_ID,
+            targetPlatform: 'deezer',
+            sourceUrl: `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            otherSourceUrl: 'https://open.spotify.com/artist/ZYXWVUTSRQPONMLKJIHGFE',
+            targetUrl: `https://www.deezer.com/artist/${DEEZER_ID}`,
+        },
+        {
+            sourcePlatform: 'deezer',
+            sourceId: DEEZER_ID,
+            targetPlatform: 'spotify',
+            sourceUrl: `https://www.deezer.com/artist/${DEEZER_ID}`,
+            otherSourceUrl: 'https://www.deezer.com/artist/987654321',
+            targetUrl: `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+        },
+    ])('abstains when one artist exposes multiple $sourcePlatform IDs', async ({
+        sourcePlatform,
+        sourceId,
+        targetPlatform,
+        sourceUrl,
+        otherSourceUrl,
+        targetUrl,
+    }) => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                sourceUrl,
+                otherSourceUrl,
+                targetUrl,
+            )))
+            // The old implementation reached and accepted this response.
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart(sourcePlatform, sourceId, targetPlatform)))
+            .resolves.toBeNull();
+        await expect(findCounterpart(sourcePlatform, sourceId, targetPlatform))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('abstains when the only source relation is not the ownership-checked URL', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))

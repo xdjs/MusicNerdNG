@@ -225,7 +225,7 @@ describe('findReciprocalArtistIdentity', () => {
         expect(mockSpotifyGetArtistIdentity).not.toHaveBeenCalled();
     });
 
-    it('returns the target provider canonical ID after verification', async () => {
+    it('rejects a Wikidata counterpart canonicalized to a different provider ID', async () => {
         mockFetch.mockResolvedValue(wikidataResponse([{
             entity: 'Q36153',
             targetId: '000145',
@@ -240,12 +240,26 @@ describe('findReciprocalArtistIdentity', () => {
             platform: 'spotify',
             platformId: 'spotify123',
             name: 'Beyonce',
-        })).resolves.toEqual({
+        })).resolves.toBeNull();
+        expect(mockDeezerGetArtistIdentity).toHaveBeenCalledWith('000145');
+    });
+
+    it('rejects a MusicBrainz counterpart canonicalized to a different provider ID', async () => {
+        mockFindMusicBrainzCounterpart.mockResolvedValue({
+            platformId: '000145',
+            musicbrainzId: 'cdea97c2-b1a1-488f-bb71-5d3d78b8bed4',
+        });
+        mockDeezerGetArtistIdentity.mockResolvedValue({
             platform: 'deezer',
             platformId: '145',
-            source: 'wikidata',
-            wikidataId: 'Q36153',
+            name: 'Beyonce',
         });
+
+        await expect(findReciprocalArtistIdentity({
+            platform: 'spotify',
+            platformId: 'spotify123',
+            name: 'Beyonce',
+        })).resolves.toBeNull();
         expect(mockDeezerGetArtistIdentity).toHaveBeenCalledWith('000145');
     });
 

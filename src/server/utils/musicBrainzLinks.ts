@@ -413,6 +413,16 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
 
+    const sourcePlatformIds = new Set(platformRelations.flatMap(({ source }) => (
+        source.status === "valid" ? [source.platformId] : []
+    )));
+    if (sourcePlatformIds.size !== 1 || !sourcePlatformIds.has(sourcePlatformId)) {
+        return {
+            counterpart: null,
+            definitiveMiss: sourcePlatformIds.size > 1,
+        };
+    }
+
     // The first lookup verified ownership of this exact canonical resource.
     // Do not let another URL representation for the same platform ID inherit
     // that proof: it may be a separate MusicBrainz URL entity with additional

@@ -256,6 +256,10 @@ export async function findReciprocalArtistIdentity(
             !verifiedArtist
             || !verifiedPlatformId
             || !isValidPlatformId(targetPlatform, verifiedPlatformId)
+            // Ownership was proved for counterpart.platformId exactly. A
+            // provider redirect/canonicalization may point at a different ID
+            // whose ownership has not been checked, even when the name agrees.
+            || verifiedPlatformId !== counterpart.platformId
             || normalizeArtistName(verifiedArtist.name) !== normalizedName
         ) {
             return null;
