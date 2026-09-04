@@ -80,6 +80,13 @@ export async function upsertInterviewAnswer(input: {
                 // spoke" read the offer time, so an artist who answered days
                 // later was immediately offered another interview about
                 // activity that predated their answer.
+                //
+                // A SECOND CALLER DEPENDS ON THIS NOW. getInterviewInvite tells a
+                // first sitting from a return by comparing dealt-with rows against
+                // the oldest still-open one, which only works because answering
+                // moves a row AFTER the offer it came from. Stop re-stamping and a
+                // half-answered first sitting reads as a return: the artist gets
+                // the returning greeting and a sitting the bank no longer fills.
                 createdAt: sql`(now() AT TIME ZONE 'utc'::text)`,
             },
         });

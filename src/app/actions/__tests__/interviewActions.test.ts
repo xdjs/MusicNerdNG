@@ -235,6 +235,25 @@ describe('getInterviewInvite', () => {
         expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
     });
 
+    it('keeps an abandoned first sitting "first", however long they leave it', async () => {
+        // One question offered and never resolved, the artist gone for weeks,
+        // other activity in between. They are still finishing their first
+        // interview, so the bank still fills it and the copy still greets them
+        // as a first-timer. Pinned because it falls out of the boundary rule
+        // rather than being stated anywhere.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_credit_1', '2026-08-26T00:00:00Z'),
+            answered('social_credit_2', '2026-08-26T00:01:00Z'),
+            stillOpen('social_credit_3'),
+        ]);
+        getSocialPostsForArtist.mockResolvedValue([{ postedAt: '2026-09-20T00:00:00Z' }]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.reason).toBe('first');
+        expect(out.questions.map(q => q.key)).toContain('social_credit_3');
+    });
+
     it('does not top up a RESUMED sitting with the generic bank either', async () => {
         // The third route to the same leak. `since` is null while an open
         // sitting is being resumed, so reading first-ness off it made a
