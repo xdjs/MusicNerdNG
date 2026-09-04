@@ -246,8 +246,7 @@ async function newReleasesSince(artistId: string, since: string | null): Promise
  * The old version of this returned a bare boolean and its docstring said "a
  * post scraped" while the code checked `postedAt`. The comment described the
  * intent and the code did something else.
- */
-/**
+ *
  * BOTH CAN BE TRUE AT ONCE, which is why this is not an enum.
  *
  * The first version returned one of "none" | "published" | "learned" and
