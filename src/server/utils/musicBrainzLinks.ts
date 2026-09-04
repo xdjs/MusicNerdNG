@@ -427,10 +427,17 @@ async function findMusicBrainzCounterpartUncached(
     // every retry. Transient HTTP/JSON failures above remain uncached.
     if (!platformId) return { counterpart: null, definitiveMiss: true };
 
-    const targetRelationUrl = platformRelations.find(({ target }) => (
-        target.status === "valid" && target.platformId === platformId
-    ))?.url;
-    if (!targetRelationUrl || !(await sinceLastCall(deadline))) {
+    const targetRelationUrls = new Set(platformRelations
+        .filter(({ target }) => target.status === "valid" && target.platformId === platformId)
+        .map(({ url }) => url));
+    if (targetRelationUrls.size !== 1) {
+        return {
+            counterpart: null,
+            definitiveMiss: targetRelationUrls.size > 1,
+        };
+    }
+    const targetRelationUrl = targetRelationUrls.values().next().value!;
+    if (!(await sinceLastCall(deadline))) {
         return { counterpart: null, definitiveMiss: false };
     }
 

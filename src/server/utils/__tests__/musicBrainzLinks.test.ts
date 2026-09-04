@@ -166,6 +166,24 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
+    it('abstains when distinct target URLs encode the same platform ID', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+                `https://www.deezer.com/artist/${DEEZER_ID}`,
+                `https://www.deezer.com/us/artist/${DEEZER_ID}`,
+            )));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toBeNull();
+        await expect(findCounterpart('spotify', SPOTIFY_ID, 'deezer'))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it.each([
         {
             sourcePlatform: 'spotify',
