@@ -1,4 +1,9 @@
-export type { MusicPlatform, MusicPlatformArtist, MusicPlatformProvider } from './types';
+export type {
+    MusicPlatform,
+    MusicPlatformArtist,
+    MusicPlatformArtistIdentity,
+    MusicPlatformProvider,
+} from './types';
 export { SpotifyProvider, spotifyProvider } from './spotifyProvider';
 export { DeezerProvider, deezerProvider } from './deezerProvider';
 export { ArtistMusicPlatformDataProvider } from './artistMusicPlatformDataProvider';

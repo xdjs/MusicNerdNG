@@ -5,7 +5,10 @@ import {
     findReciprocalArtistIdentity,
     spotifyProvider,
 } from "@/server/utils/musicPlatform";
-import type { MusicPlatform } from "@/server/utils/musicPlatform";
+import type {
+    MusicPlatform,
+    ReciprocalArtistIdentity,
+} from "@/server/utils/musicPlatform";
 import { eq, sql, inArray, and, arrayContains, asc } from "drizzle-orm";
 import { artists, artistIdMappings, ugcresearch } from "@/server/db/schema";
 import { Artist, UrlMap } from "@/server/db/DbTypes";
@@ -467,10 +470,20 @@ function dedupeAddArtistCandidates(
     return [...new Map(candidates.map((candidate) => [candidate.id, candidate])).values()];
 }
 
+function reciprocalSourceLabel(identity: ReciprocalArtistIdentity): string {
+    return identity.source === "wikidata" ? "Wikidata" : "MusicBrainz";
+}
+
+function reciprocalSourceEvidence(identity: ReciprocalArtistIdentity): string {
+    return identity.source === "wikidata"
+        ? `Wikidata ${identity.wikidataId}`
+        : `MusicBrainz ${identity.musicbrainzId}`;
+}
+
 function getIdentityOwnershipResponse(params: {
     submittedIdentity: ArtistPlatformIdentity;
     submittedOwnership: PlatformIdOwnerResolution;
-    reciprocalIdentity: ArtistPlatformIdentity | null;
+    reciprocalIdentity: ReciprocalArtistIdentity | null;
     reciprocalOwnership: PlatformIdOwnerResolution;
     forceCreate: boolean;
 }): AddArtistResp | null {
@@ -541,7 +554,7 @@ function getIdentityOwnershipResponse(params: {
             platform: submittedIdentity.platform,
             platformId: submittedIdentity.platformId,
             canCreateSeparate: false,
-            message: `Wikidata links this profile to an existing artist's ${reciprocalIdentity.platform} profile. Add the submitted link to that artist.`,
+            message: `${reciprocalSourceLabel(reciprocalIdentity)} links this profile to an existing artist's ${reciprocalIdentity.platform} profile. Add the submitted link to that artist.`,
         };
     }
 
@@ -703,7 +716,7 @@ export async function addArtist(
             // Deezer side of a verified pair, even when Deezer was submitted.
             const mappedDeezerId = platformIds.deezer;
             if (reciprocalIdentity && mappedDeezerId) {
-                const reasoning = `Wikidata ${reciprocalIdentity.wikidataId} links Spotify and Deezer for ${platformArtist.name}`;
+                const reasoning = `${reciprocalSourceEvidence(reciprocalIdentity)} links Spotify and Deezer for ${platformArtist.name}`;
                 await database.execute(sql`
                     INSERT INTO artist_id_mappings (
                         artist_id,
