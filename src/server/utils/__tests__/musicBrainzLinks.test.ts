@@ -95,6 +95,8 @@ describe('findMusicBrainzCounterpart', () => {
 
         await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
             .resolves.toBeNull();
+        await expect(findCounterpart('spotify', SPOTIFY_ID, 'deezer'))
+            .resolves.toBeNull();
         expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -217,6 +219,32 @@ describe('findMusicBrainzCounterpart', () => {
         await jest.advanceTimersByTimeAsync(1);
         await expect(later).resolves.toBeNull();
         expect(global.fetch).toHaveBeenCalledTimes(7);
+    });
+
+    it('honors the reciprocal budget when background lookups fill the shared queue', async () => {
+        global.fetch = jest.fn().mockResolvedValue(ok({ artists: [] }));
+        const {
+            fetchMusicBrainzLinks,
+            findMusicBrainzCounterpart,
+        } = await import('../musicBrainzLinks');
+        const background = Array.from({ length: 10 }, (_, index) => (
+            fetchMusicBrainzLinks(`Background Artist ${index}`, {})
+        ));
+        const startedAt = Date.now();
+        const bounded = findMusicBrainzCounterpart('spotify', SPOTIFY_ID, 'deezer');
+
+        await jest.advanceTimersByTimeAsync(5_999);
+        let settled = false;
+        void bounded.finally(() => { settled = true; });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        await jest.advanceTimersByTimeAsync(1);
+        await expect(bounded).resolves.toBeNull();
+        expect(Date.now() - startedAt).toBe(6_000);
+
+        await jest.runAllTimersAsync();
+        await expect(Promise.all(background)).resolves.toEqual(Array(10).fill(null));
     });
 
     it('returns null rather than throwing when MusicBrainz returns malformed JSON', async () => {

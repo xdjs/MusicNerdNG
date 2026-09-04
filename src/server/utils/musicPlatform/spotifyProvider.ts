@@ -45,8 +45,12 @@ export class SpotifyProvider implements MusicPlatformProvider {
     readonly platform = 'spotify' as const;
 
     async getArtistIdentity(id: string): Promise<MusicPlatformArtistIdentity | null> {
-        const headers = await getSpotifyHeaders();
-        const artistResponse = await getSpotifyArtist(id, headers);
+        let headers = await getSpotifyHeaders();
+        let artistResponse = await getSpotifyArtist(id, headers);
+        if (artistResponse.error === 'Spotify authentication failed') {
+            headers = await refreshSpotifyToken();
+            artistResponse = await getSpotifyArtist(id, headers);
+        }
         if (artistResponse.error || !artistResponse.data) return null;
 
         return {

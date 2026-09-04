@@ -130,18 +130,43 @@ let paceQueue: Promise<void> = Promise.resolve();
 let lastCallAt = 0;
 async function sinceLastCall(deadline: number = Number.POSITIVE_INFINITY): Promise<boolean> {
     let reserved = false;
+    let cancelled = false;
     const mine: Promise<void> = paceQueue.then(async () => {
+        if (cancelled) return;
         const delay = Math.max(0, lastCallAt + RATE_LIMIT_MS - Date.now());
         if (Date.now() + delay >= deadline) return;
         if (delay > 0) await wait(delay);
-        if (Date.now() >= deadline) return;
+        if (cancelled || Date.now() >= deadline) return;
         lastCallAt = Date.now();
         reserved = true;
     });
     // Swallow rejections so one failure cannot poison the queue for everyone.
     paceQueue = mine.then(() => undefined, () => undefined);
-    await mine;
-    return reserved;
+
+    if (!Number.isFinite(deadline)) {
+        await mine;
+        return reserved;
+    }
+
+    const remaining = Math.max(0, deadline - Date.now());
+    if (remaining === 0) {
+        cancelled = true;
+        return false;
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const deadlineReached = new Promise<boolean>((resolve) => {
+        timeoutId = setTimeout(() => {
+            cancelled = true;
+            resolve(false);
+        }, remaining);
+    });
+    const result = await Promise.race([
+        mine.then(() => reserved),
+        deadlineReached,
+    ]);
+    if (timeoutId) clearTimeout(timeoutId);
+    return result;
 }
 
 function isValidPlatformId(platform: MusicPlatform, platformId: string): boolean {
@@ -258,14 +283,21 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
     const sourceLookup = sourceResult.data;
-    const musicbrainzId = oneValue(activeRelations(sourceLookup)
+    const musicbrainzIds = new Set(activeRelations(sourceLookup)
         .filter(relation => relation["target-type"] === "artist")
         .map(relation => (relation.artist as Record<string, unknown> | undefined)?.id)
         .filter((id): id is string => (
             typeof id === "string"
             && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
         )));
-    if (!musicbrainzId || !(await sinceLastCall(deadline))) {
+    if (musicbrainzIds.size !== 1) {
+        return {
+            counterpart: null,
+            definitiveMiss: musicbrainzIds.size > 1,
+        };
+    }
+    const musicbrainzId = musicbrainzIds.values().next().value!;
+    if (!(await sinceLastCall(deadline))) {
         return { counterpart: null, definitiveMiss: false };
     }
 
