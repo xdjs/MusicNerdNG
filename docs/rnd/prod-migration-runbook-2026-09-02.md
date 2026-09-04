@@ -1,6 +1,10 @@
 # Production migration runbook — 2026-09-02
 
-Run these against **production** Supabase (`cbabvmebugudeuylronz`) in the SQL editor, in order, **before** merging #1195. Merging first starts the every-minute cron against a table that `0021` creates.
+Run these against **production** Supabase (`cbabvmebugudeuylronz`) in the SQL
+editor, in order, before deploying code that depends on them. Migrations
+0011–0021 were required before #1195; 0022–0023 are required before #1200.
+Merging first starts application paths against tables or columns that do not
+exist yet.
 
 Each block is wrapped in `BEGIN` / `COMMIT`. Postgres DDL is transactional, so a failure rolls the whole step back rather than leaving the schema half-applied. Run one block, run its check, then move on.
 
@@ -9,8 +13,7 @@ Each block is wrapped in `BEGIN` / `COMMIT`. Postgres DDL is transactional, so a
 Do **not** treat any whole step below as safe to re-run. Some individual table
 and index statements use `IF NOT EXISTS`, but several migrations also contain
 unguarded constraints or `CREATE POLICY` statements that fail when the object
-already exists. This runbook is for a database where none of these migrations
-has landed. Run this first:
+already exists. Run this first:
 
 ```sql
 SELECT
@@ -23,7 +26,10 @@ FROM (VALUES
 ) AS t(name);
 ```
 
-All eight should read `absent`. If any says `ALREADY EXISTS`, stop and tell me which — `0011`/`0012` need editing before they'll apply cleanly.
+For a database starting at 0011, all eight should read `absent`. If 0011–0021
+were already applied, all eight should exist; skip directly to 0022. A mixed
+result means a partial migration: stop and reconcile it instead of rerunning a
+whole block.
 
 
 ## 0011_flimsy_robbie_robertson.sql
@@ -715,18 +721,115 @@ SELECT * FROM (VALUES
 ```
 
 
-## After all eleven
+## 0022_interview_sitting.sql
+
+Adds: `artist_interview_answers.sitting`
+
+The app connects as `mnweb`, while the SQL editor runs with the privileged role
+needed for DDL. Existing table-level grants and RLS policies cover new columns;
+the check below verifies that assumption explicitly.
 
 ```sql
-SELECT t.name, to_regclass('public.' || t.name) IS NOT NULL AS present
-FROM (VALUES
-  ('artist_docs'), ('artist_interview_answers'), ('artist_onboarding_steps'),
-  ('artist_social_posts'), ('artist_social_profiles'),
-  ('artist_doc_corrections'), ('artist_social_credits'), ('artist_research_jobs')
-) AS t(name);
+BEGIN;
+
+ALTER TABLE artist_interview_answers
+  ADD COLUMN IF NOT EXISTS sitting integer;
+
+UPDATE artist_interview_answers
+SET sitting = 1
+WHERE sitting IS NULL;
+
+COMMIT;
 ```
 
-Eight rows, all `true`. Then #1195 is safe to merge.
+Check:
+
+```sql
+SELECT
+  (SELECT count(*)
+   FROM information_schema.columns
+   WHERE table_schema = 'public'
+     AND table_name = 'artist_interview_answers'
+     AND column_name = 'sitting') AS column_exists,
+  (SELECT count(*)
+   FROM artist_interview_answers
+   WHERE sitting IS NULL) AS still_null,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'SELECT') AS mnweb_can_read,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'INSERT') AS mnweb_can_insert,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'sitting', 'UPDATE') AS mnweb_can_update;
+```
+
+Expected: `1 | 0 | true | true | true`.
+
+
+## 0023_interview_offer_watermark.sql
+
+Adds: `artist_interview_answers.offered_at`
+
+```sql
+BEGIN;
+
+ALTER TABLE artist_interview_answers
+  ADD COLUMN IF NOT EXISTS offered_at timestamp with time zone;
+
+ALTER TABLE artist_interview_answers
+  ALTER COLUMN offered_at SET DEFAULT (now() AT TIME ZONE 'utc'::text);
+
+UPDATE artist_interview_answers
+SET offered_at = created_at
+WHERE offered_at IS NULL;
+
+ALTER TABLE artist_interview_answers
+  ALTER COLUMN offered_at SET NOT NULL;
+
+COMMIT;
+```
+
+Check:
+
+```sql
+SELECT
+  (SELECT count(*)
+   FROM information_schema.columns
+   WHERE table_schema = 'public'
+     AND table_name = 'artist_interview_answers'
+     AND column_name = 'offered_at') AS column_exists,
+  (SELECT count(*)
+   FROM artist_interview_answers
+   WHERE offered_at IS NULL) AS still_null,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'SELECT') AS mnweb_can_read,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'INSERT') AS mnweb_can_insert,
+  has_column_privilege('mnweb', 'public.artist_interview_answers', 'offered_at', 'UPDATE') AS mnweb_can_update;
+```
+
+Expected: `1 | 0 | true | true | true`.
+
+
+## After all thirteen
+
+```sql
+SELECT * FROM (VALUES
+  ('table', 'artist_docs', to_regclass('public.artist_docs') IS NOT NULL),
+  ('table', 'artist_interview_answers', to_regclass('public.artist_interview_answers') IS NOT NULL),
+  ('table', 'artist_onboarding_steps', to_regclass('public.artist_onboarding_steps') IS NOT NULL),
+  ('table', 'artist_social_posts', to_regclass('public.artist_social_posts') IS NOT NULL),
+  ('table', 'artist_social_profiles', to_regclass('public.artist_social_profiles') IS NOT NULL),
+  ('table', 'artist_doc_corrections', to_regclass('public.artist_doc_corrections') IS NOT NULL),
+  ('table', 'artist_social_credits', to_regclass('public.artist_social_credits') IS NOT NULL),
+  ('table', 'artist_research_jobs', to_regclass('public.artist_research_jobs') IS NOT NULL),
+  ('column', 'artist_interview_answers.sitting', EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'artist_interview_answers' AND column_name = 'sitting'
+  )),
+  ('column', 'artist_interview_answers.offered_at', EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'artist_interview_answers' AND column_name = 'offered_at'
+  ))
+) AS t(kind, name, present);
+```
+
+Ten rows, all `true`, plus both column checks above returning
+`1 | 0 | true | true | true`. Then #1200's database prerequisite is satisfied.
 
 ## One caveat
 
