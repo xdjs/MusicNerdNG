@@ -27,9 +27,13 @@ FROM (VALUES
 ```
 
 For a database starting at 0011, all eight should read `absent`. If 0011–0021
-were already applied, all eight should exist; skip directly to 0022. A mixed
-result means a partial migration: stop and reconcile it instead of rerunning a
-whole block.
+were already applied, all eight should exist—but table presence alone is not
+proof that the column- and index-only migrations landed. Before skipping to
+0022, run the **Check** query after every 0011–0021 section and confirm every
+named artifact is present, including the columns from 0013 and 0015 and the
+indexes from 0017, 0019, and 0020. Any missing artifact or mixed table result
+means a partial migration: stop and reconcile it instead of rerunning a whole
+block.
 
 
 ## 0011_flimsy_robbie_robertson.sql
@@ -441,7 +445,7 @@ SELECT * FROM (VALUES
 
 ## 0018_artist_social_credits.sql
 
-Creates: `artist_social_credits` (table), `and` (table), `artist_social_credits_uniq` (index), `idx_artist_social_credits_artist` (index)
+Creates: `artist_social_credits` (table), `artist_social_credits_uniq` (index), `idx_artist_social_credits_artist` (index)
 
 ```sql
 BEGIN;
@@ -828,7 +832,8 @@ SELECT * FROM (VALUES
 ) AS t(kind, name, present);
 ```
 
-Ten rows, all `true`, plus both column checks above returning
+Every per-step artifact check must pass. This final summary should show ten rows,
+all `true`, and both column checks above must return
 `1 | 0 | true | true | true`. Then #1200's database prerequisite is satisfied.
 
 ## One caveat
