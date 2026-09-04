@@ -311,17 +311,17 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
-    it('abstains when the target URL belongs to multiple MusicBrainz artists', async () => {
+    it.each([
+        ['multiple artists', sourceLookup(MUSICBRAINZ_ID, OTHER_MUSICBRAINZ_ID)],
+        ['a different artist', sourceLookup(OTHER_MUSICBRAINZ_ID)],
+    ])('abstains when the target URL belongs to %s', async (_case, targetOwners) => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
             .mockResolvedValueOnce(ok(artistDetail(
                 `https://open.spotify.com/artist/${SPOTIFY_ID}`,
                 `https://www.deezer.com/artist/${DEEZER_ID}`,
             )))
-            .mockResolvedValueOnce(ok(sourceLookup(
-                MUSICBRAINZ_ID,
-                OTHER_MUSICBRAINZ_ID,
-            )));
+            .mockResolvedValueOnce(ok(targetOwners));
 
         const findCounterpart = await subject();
 
