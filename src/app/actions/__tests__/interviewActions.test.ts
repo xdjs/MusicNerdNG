@@ -64,7 +64,12 @@ const answered = (key, at) => ({ questionKey: key, question: 'q', answer: 'a', c
  *  sitting, and the only thing that can tell an abandoned one from a finished
  *  one. A lifetime row count cannot: after a completed first sitting, one
  *  answer into a second gives four rows, which is not "fewer than a set". */
-const stillOpen = (key) => ({ questionKey: key, question: 'q', answer: null, createdAt: '2026-08-25T00:00:00Z', source: 'offered' });
+/** `sitting` and `createdAt` are both parameterised: which sitting a question
+ *  belongs to is now stored on the row, and the timestamps matter for the
+ *  new-material watermark. Defaults are sitting 1 at a fixed time, which is the
+ *  ordinary first-interview case. */
+const stillOpen = (key, sitting = 1, createdAt = '2026-08-25T00:00:00Z') =>
+    ({ questionKey: key, question: 'q', answer: null, createdAt, source: 'offered', sitting });
 /** A COMPLETED sitting. Fewer rows than this means they started and stopped,
  *  and the remaining questions are still owed — the new-material gate does not
  *  apply until a full set has been dealt with, one way or another. Dismissing
@@ -235,6 +240,29 @@ describe('getInterviewInvite', () => {
         expect(out.questions.map(q => q.key)).toContain('sound_in_own_words');
     });
 
+    it('survives a first sitting topped up across visits — route 5', async () => {
+        // The sequence that broke every timestamp version. Visit 1 offers three
+        // questions at T1; the artist answers two, which RE-STAMPS them later
+        // than T1. Visit 2 tops the sitting up with a question offered at T3.
+        // The artist finishes the original leftovers, so the only row still open
+        // is the topped-up one at T3 — newer than the answers from its own
+        // sitting. "Is any dealt-with row older than the oldest open one" then
+        // said yes, and a first-timer became a returning artist mid-sitting.
+        //
+        // The sitting number does not move, so none of that matters.
+        getInterviewAnswers.mockResolvedValue([
+            answered('social_a', '2026-08-26T00:00:00Z'),   // offered T1, answered later
+            answered('social_b', '2026-08-26T00:01:00Z'),
+            answered('bank_leftover', '2026-08-28T00:00:00Z'),
+            stillOpen('social_d', 1, '2026-08-27T00:00:00Z'), // topped up at T3, still sitting 1
+        ]);
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.reason).toBe('first');
+        expect(out.questions.map(q => q.key)).toContain('social_d');
+    });
+
     it('keeps an abandoned first sitting "first", however long they leave it', async () => {
         // One question offered and never resolved, the artist gone for weeks,
         // other activity in between. They are still finishing their first
@@ -262,7 +290,7 @@ describe('getInterviewInvite', () => {
         // this one asserts what the artist actually receives.
         getInterviewAnswers.mockResolvedValue([
             ...aFullSitting('2026-08-01T00:00:00Z'),
-            stillOpen('social_credit_open'),
+            stillOpen('social_credit_open', 2),
         ]);
         // Nothing new to add — the only candidate is already resumed.
         generateGroundedQuestions.mockResolvedValue([]);
