@@ -140,7 +140,9 @@ describe("an answer, rendered", () => {
         expect(screen.getByRole("group", { name: /where to hear/i })).toBeInTheDocument();
 
         const title = screen.getByRole("button", { name: /crying on the floor/i });
-        title.focus();
+        // Pointer clicks do not focus buttons in Safari/macOS. SongLink takes
+        // focus explicitly so Escape still belongs to the menu just opened.
+        expect(title).toHaveFocus();
         fireEvent.keyDown(title, { key: "Escape" });
         await waitFor(() => expect(screen.queryByRole("group", { name: /where to hear/i })).not.toBeInTheDocument());
         expect(title).toHaveFocus();

@@ -299,6 +299,10 @@ function SongLink({
     }, [open]);
 
     const toggle = async () => {
+        // Safari and Firefox on macOS do not consistently focus a button after
+        // a pointer click. Taking focus explicitly makes the focused-menu
+        // Escape rule work for mouse-opened menus too.
+        toggleRef.current?.focus();
         const next = !open;
         setOpen(next);
         if (!next || links !== null || loading) return;

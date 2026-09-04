@@ -12,7 +12,7 @@ import { jest } from '@jest/globals';
 const canEditArtist = jest.fn();
 const getInterviewAnswers = jest.fn();
 const upsertInterviewAnswer = jest.fn();
-const recordInterviewOffered = jest.fn();
+const recordInterviewBatchOffered = jest.fn();
 const generateGroundedQuestions = jest.fn();
 const getSocialPostsForArtist = jest.fn();
 const getArtistById = jest.fn();
@@ -27,7 +27,7 @@ jest.mock('@/server/utils/artistEditAuth', () => ({ canEditArtist: (...a) => can
 jest.mock('@/server/utils/queries/onboardingQueries', () => ({
     getInterviewAnswers: (...a) => getInterviewAnswers(...a),
     upsertInterviewAnswer: (...a) => upsertInterviewAnswer(...a),
-    recordInterviewOffered: (...a) => recordInterviewOffered(...a),
+    recordInterviewBatchOffered: (...a) => recordInterviewBatchOffered(...a),
 }));
 // Both exports. Mocking only `generateGroundedQuestions` left
 // `sourceUrlForQuestionKey` undefined, and calling it threw inside
@@ -87,7 +87,7 @@ async function invite() {
 describe('getInterviewInvite', () => {
     beforeEach(() => {
         jest.resetModules();
-        for (const m of [canEditArtist, getInterviewAnswers, upsertInterviewAnswer, recordInterviewOffered, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasOlderPostsLearnedSince, hasOlderCreditsLearnedSince, isResearchInFlight]) m.mockReset();
+        for (const m of [canEditArtist, getInterviewAnswers, upsertInterviewAnswer, recordInterviewBatchOffered, generateGroundedQuestions, getSocialPostsForArtist, getArtistById, getSpotifyCatalogDetail, hasOlderPostsLearnedSince, hasOlderCreditsLearnedSince, isResearchInFlight]) m.mockReset();
         hasOlderPostsLearnedSince.mockResolvedValue(false);
         hasOlderCreditsLearnedSince.mockResolvedValue(false);
         isResearchInFlight.mockResolvedValue(false);
@@ -489,6 +489,7 @@ describe('getInterviewInvite', () => {
         const { answerInterviewQuestion } = await import('../interviewActions');
         await answerInterviewQuestion({
             artistId: 'a1', questionKey: 'k', question: 'q', answer: 'x'.repeat(9000),
+            questions: [{ key: 'k', question: 'q' }],
         });
         expect(upsertInterviewAnswer.mock.calls[0][0].answer).toHaveLength(2000);
     });
@@ -499,24 +500,31 @@ describe('getInterviewInvite', () => {
         // post-0022 null sitting and the later mark would lose on the unique
         // key. Ensuring the offer first makes either request order safe.
         const order = [];
-        recordInterviewOffered.mockImplementation(async () => { order.push('offered'); });
+        recordInterviewBatchOffered.mockImplementation(async () => { order.push('offered'); });
         upsertInterviewAnswer.mockImplementation(async () => { order.push('answered'); });
         const { answerInterviewQuestion } = await import('../interviewActions');
 
         await answerInterviewQuestion({
             artistId: 'a1', questionKey: 'k', question: 'q', answer: 'a',
+            questions: [
+                { key: 'k', question: 'q' },
+                { key: 'k2', question: 'q2' },
+                { key: 'k3', question: 'q3' },
+            ],
         });
 
-        expect(recordInterviewOffered).toHaveBeenCalledWith({
-            artistId: 'a1', questionKey: 'k', question: 'q',
-        });
+        expect(recordInterviewBatchOffered).toHaveBeenCalledWith('a1', [
+            { questionKey: 'k', question: 'q' },
+            { questionKey: 'k2', question: 'q2' },
+            { questionKey: 'k3', question: 'q3' },
+        ]);
         expect(order).toEqual(['offered', 'answered']);
         expect(upsertInterviewAnswer.mock.calls[0][0].sitting).toBe(1);
     });
 
     it('records a dismissal, so the same three do not come back next visit', async () => {
         upsertInterviewAnswer.mockClear();
-        recordInterviewOffered.mockClear();
+        recordInterviewBatchOffered.mockClear();
         const { declineInterview } = await import('../interviewActions');
         await declineInterview('a1', [
             { key: 'k1', question: 'one' },
@@ -525,8 +533,11 @@ describe('getInterviewInvite', () => {
         // The card can be dismissed before its panel mounts, so nothing else
         // has assigned these rows to a sitting. Mark the whole batch first;
         // the upsert then changes only answer/source and preserves that number.
-        expect(recordInterviewOffered).toHaveBeenCalledTimes(2);
-        expect(recordInterviewOffered.mock.calls[0][0]).toMatchObject({ questionKey: 'k1' });
+        expect(recordInterviewBatchOffered).toHaveBeenCalledTimes(1);
+        expect(recordInterviewBatchOffered).toHaveBeenCalledWith('a1', [
+            { questionKey: 'k1', question: 'one' },
+            { questionKey: 'k2', question: 'two' },
+        ]);
         expect(upsertInterviewAnswer).toHaveBeenCalledTimes(2);
         // Written as skips — the same shape skipping one inside the panel uses.
         expect(upsertInterviewAnswer.mock.calls[0][0]).toMatchObject({ questionKey: 'k1', answer: null });
@@ -584,14 +595,17 @@ describe('getInterviewInvite', () => {
         // with answer: null — losing what the artist had just written, on the
         // one screen where the words are theirs. Insert-only removes the race
         // rather than narrowing it.
-        recordInterviewOffered.mockClear();
+        recordInterviewBatchOffered.mockClear();
         upsertInterviewAnswer.mockClear();
         const { markInterviewOffered } = await import('../interviewActions');
         await markInterviewOffered('a1', [{ key: 'k1', question: 'one' }, { key: 'k2', question: 'two' }]);
 
-        expect(recordInterviewOffered).toHaveBeenCalledTimes(2);
+        expect(recordInterviewBatchOffered).toHaveBeenCalledTimes(1);
         expect(upsertInterviewAnswer).not.toHaveBeenCalled();
-        expect(recordInterviewOffered.mock.calls[0][0]).toMatchObject({ questionKey: 'k1' });
+        expect(recordInterviewBatchOffered).toHaveBeenCalledWith('a1', [
+            { questionKey: 'k1', question: 'one' },
+            { questionKey: 'k2', question: 'two' },
+        ]);
     });
 
     it('stops rather than guessing when the answer history cannot be read', async () => {

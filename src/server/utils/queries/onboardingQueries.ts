@@ -99,7 +99,7 @@ export async function upsertInterviewAnswer(input: {
 }
 
 /**
- * Write down that a question was PUT to somebody, and never anything more.
+ * Write down a batch of questions PUT to somebody, and never anything more.
  *
  * Insert-only, deliberately. The upsert version read the existing rows and then
  * wrote nulls, so an artist who answered the first question in the moment
@@ -110,13 +110,18 @@ export async function upsertInterviewAnswer(input: {
  * `onConflictDoNothing` removes the race rather than narrowing it: a row that
  * exists, for any reason, in any order, is left exactly as it is.
  */
-export async function recordInterviewOffered(input: {
-    artistId: string;
-    questionKey: string;
-    question: string;
-}): Promise<void> {
+export async function recordInterviewBatchOffered(
+    artistId: string,
+    questions: Array<{
+        questionKey: string;
+        question: string;
+    }>,
+): Promise<void> {
+    if (questions.length === 0) return;
+
     // WHICH SITTING THIS BELONGS TO, decided here because this is the only
-    // place a question is put to an artist.
+    // place questions are put to an artist. Computing it once for the batch is
+    // what guarantees every question visible in one panel shares a boundary.
     //
     // An open row means a sitting is already in front of them, and anything
     // offered now is part of it — that is what a top-up is, when a resumed
@@ -131,7 +136,7 @@ export async function recordInterviewOffered(input: {
     try {
         const rows = await db.select({ sitting: artistInterviewAnswers.sitting, source: artistInterviewAnswers.source })
             .from(artistInterviewAnswers)
-            .where(eq(artistInterviewAnswers.artistId, input.artistId));
+            .where(eq(artistInterviewAnswers.artistId, artistId));
         const open = rows.find(r => r.source === "offered");
         if (open) {
             // Join the sitting in progress. Null is a pre-0022 row, which is
@@ -144,12 +149,18 @@ export async function recordInterviewOffered(input: {
         // Falling back to 1 makes a returning artist look new, which offers
         // them a generic question they may not want — annoying, and better
         // than throwing away the offer entirely.
-        console.error("[recordInterviewOffered] Could not read sitting:", e);
+        console.error("[recordInterviewBatchOffered] Could not read sitting:", e);
     }
 
     await db
         .insert(artistInterviewAnswers)
-        .values({ ...input, answer: null, source: "offered", sitting })
+        .values(questions.map(question => ({
+            artistId,
+            ...question,
+            answer: null,
+            source: "offered" as const,
+            sitting,
+        })))
         .onConflictDoNothing({
             target: [artistInterviewAnswers.artistId, artistInterviewAnswers.questionKey],
         });

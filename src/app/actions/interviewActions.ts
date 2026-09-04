@@ -5,7 +5,7 @@ import { getDevSession } from "@/server/utils/dev-auth";
 import { canEditArtist } from "@/server/utils/artistEditAuth";
 import {
     getInterviewAnswers,
-    recordInterviewOffered,
+    recordInterviewBatchOffered,
     upsertInterviewAnswer,
 } from "@/server/utils/queries/onboardingQueries";
 import { generateGroundedQuestions, sourceUrlsForQuestionKeys } from "@/server/utils/questionGenerator";
@@ -412,6 +412,7 @@ export async function answerInterviewQuestion(input: {
     questionKey: string;
     question: string;
     answer: string | null;
+    questions: InterviewQuestion[];
 }): Promise<{ success: boolean; error?: string }> {
     const session = await getServerAuthSession() ?? await getDevSession();
     if (!session) return { success: false, error: "Not authenticated" };
@@ -423,15 +424,20 @@ export async function answerInterviewQuestion(input: {
         const question = input.question.trim().slice(0, 500);
         if (!input.questionKey || !question) return { success: false, error: "Nothing to save" };
 
+        const offered = input.questions.slice(0, QUESTION_COUNT).map(q => ({
+            questionKey: q.key,
+            question: q.question.trim().slice(0, 500),
+        }));
+        if (!offered.some(q => q.questionKey === input.questionKey)) {
+            return { success: false, error: "Question is not in this interview" };
+        }
+
         // InterviewPanel marks the batch on mount without blocking the UI. A
-        // very fast answer can beat that request, so ensure this row has its
-        // sitting before the answer upsert. Concurrent marks are insert-only
-        // and the unique key makes the loser a harmless no-op.
-        await recordInterviewOffered({
-            artistId: input.artistId,
-            questionKey: input.questionKey,
-            question,
-        });
+        // very fast answer can beat that request, so ensure the WHOLE batch has
+        // one sitting before converting this row to an answer. Marking only
+        // this question would let the delayed mount request put the remaining
+        // questions into the next sitting after this row stops being open.
+        await recordInterviewBatchOffered(input.artistId, offered);
         await upsertInterviewAnswer({
             artistId: input.artistId,
             questionKey: input.questionKey,
@@ -493,12 +499,13 @@ export async function declineInterview(
         // normal markInterviewOffered effect has not run. Assign the whole
         // batch to a sitting first; the answer upsert below deliberately keeps
         // that stored number unchanged while turning each row into a skip.
-        await Promise.all(declined.map(q =>
-            recordInterviewOffered({
-                artistId,
+        await recordInterviewBatchOffered(
+            artistId,
+            declined.map(q => ({
                 questionKey: q.key,
                 question: q.question.trim().slice(0, 500),
-            })));
+            })),
+        );
 
         for (const q of declined) {
             await upsertInterviewAnswer({
@@ -506,7 +513,7 @@ export async function declineInterview(
                 questionKey: q.key,
                 question: q.question.trim().slice(0, 500),
                 answer: null,
-                // recordInterviewOffered just created the row. This is the
+                // recordInterviewBatchOffered just created the row. This is the
                 // insert-side fallback; conflicts preserve the stored number.
                 sitting: 1,
                 source: "followup",
@@ -539,12 +546,13 @@ export async function markInterviewOffered(
         // then writing nulls left a window in which an answer typed in between
         // was overwritten — losing what the artist had just written, on the
         // one screen where the words are theirs. The conflict is now a no-op.
-        await Promise.all(questions.slice(0, QUESTION_COUNT).map(q =>
-            recordInterviewOffered({
-                artistId,
+        await recordInterviewBatchOffered(
+            artistId,
+            questions.slice(0, QUESTION_COUNT).map(q => ({
                 questionKey: q.key,
                 question: q.question.trim().slice(0, 500),
-            })));
+            })),
+        );
         return { success: true };
     } catch (e) {
         console.error("[markInterviewOffered] Error:", e);
