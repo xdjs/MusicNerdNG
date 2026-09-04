@@ -212,6 +212,27 @@ describe('getInterviewInvite', () => {
         expect(generateGroundedQuestions.mock.calls[0][1].since).toBeNull();
     });
 
+    it('does not top up a RESUMED sitting with the generic bank either', async () => {
+        // The third route to the same leak. `since` is null while an open
+        // sitting is being resumed, so reading first-ness off it made a
+        // returning artist look new and put the bank back in front of them.
+        // The existing resume test asserts only the generator's arguments, so
+        // this one asserts what the artist actually receives.
+        getInterviewAnswers.mockResolvedValue([
+            ...aFullSitting('2026-08-01T00:00:00Z'),
+            stillOpen('social_credit_open'),
+        ]);
+        // Nothing new to add — the only candidate is already resumed.
+        generateGroundedQuestions.mockResolvedValue([]);
+
+        const out = await invite();
+        expect(out.show).toBe(true);
+        expect(out.questions.map(q => q.key)).toEqual(['social_credit_open']);
+        expect(out.questions.map(q => q.key)).not.toContain('sound_in_own_words');
+        // And they are not greeted as a first-timer, having already answered.
+        expect(out.reason).toBe('new-material');
+    });
+
     it('does not top a learned reopen up with the generic bank', async () => {
         // The regression the window fix introduced. A learned reopen passes
         // null as the generation window on purpose — the whole feed is the

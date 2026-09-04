@@ -127,6 +127,20 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // them.
         const since = stillOpen.length > 0 ? null : lastAnsweredAt;
 
+        /**
+         * HAVE THEY EVER ANSWERED ANYTHING. One fact, read off the rows, and
+         * deliberately not derived from `since`.
+         *
+         * `since` is null in three unrelated situations — never answered, an
+         * open sitting is being resumed, and a reopen triggered by newly-learned
+         * material — and only the first means "new artist". Reading first-ness
+         * off it made a returning artist with a half-finished sitting look new,
+         * which put the generic bank back in front of somebody who had already
+         * answered it. That is the third route to the same leak; the previous
+         * two were the `learned` window and the original missing guard.
+         */
+        const isFirstInterview = dealtWith.length === 0;
+
         // THE WINDOW THE QUESTIONS ARE BUILT IN, which is not always `since`.
         // `newerThan` inside the generator filters posts, credits and
         // statements by `postedAt`, so a "learned" reopening scoped to `since`
@@ -202,14 +216,14 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         const generated = resumed.length >= QUESTION_COUNT
             || await isResearchInFlight(artistId, ["social_ingest", "caption_extract"])
             ? []
-            // `since`, not `window`: whether they have ever answered is a fact
-            // about the artist, while `window` is a generation detail that is
-            // deliberately null for a learned reopen.
-            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]), !since);
+            : await pickQuestions(artistId, window, new Set([...answeredKeys, ...resumed.map(q => q.key)]), isFirstInterview);
         const questions = [...resumed, ...generated].slice(0, QUESTION_COUNT);
         if (questions.length === 0) return { show: false };
 
-        return { show: true, reason: since ? "new-material" : "first", questions };
+        // The same fact drives the copy. An artist resuming an abandoned second
+        // sitting was being shown the first-interview introduction, because
+        // `since` is null while resuming.
+        return { show: true, reason: isFirstInterview ? "first" : "new-material", questions };
     } catch (e) {
         console.error("[getInterviewInvite] Error:", e);
         return { show: false };
