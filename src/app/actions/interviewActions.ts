@@ -11,8 +11,8 @@ import {
 import { generateGroundedQuestions, sourceUrlsForQuestionKeys } from "@/server/utils/questionGenerator";
 import { ONBOARDING_QUESTIONS } from "@/server/utils/onboarding/questions";
 import { getArtistById } from "@/server/utils/queries/artistQueries";
-import { getSocialPostsForArtist, hasPostsScrapedSince } from "@/server/utils/socialIngest";
-import { hasCreditsSince } from "@/server/utils/queries/socialCreditQueries";
+import { getSocialPostsForArtist, hasOlderPostsLearnedSince } from "@/server/utils/socialIngest";
+import { hasOlderCreditsLearnedSince } from "@/server/utils/queries/socialCreditQueries";
 import { isResearchInFlight } from "@/server/utils/queries/researchJobQueries";
 import { getSpotifyCatalogDetail, getSpotifyHeaders } from "@/server/utils/queries/externalApiQueries";
 
@@ -134,9 +134,15 @@ export async function getInterviewInvite(artistId: string): Promise<InterviewInv
         // — the same failure, one layer down.
         let window = since;
         if (since) {
-            const material = await newMaterialSince(artistId, since);
-            if (material === "none") return { show: false };
-            if (material === "learned") window = null;
+            const { published, learned } = await newMaterialSince(artistId, since);
+            if (!published && !learned) return { show: false };
+            // LEARNED WINS THE WINDOW WHEN BOTH ARE TRUE. Scoping to `since`
+            // would make the generator drop everything published before it,
+            // which is exactly the material `learned` is reporting. Unscoping
+            // costs nothing the other way: a post published since the cutoff is
+            // still in the pool, still the most recent thing there, and
+            // `excludeKeys` is what stops old questions being repeated.
+            if (learned) window = null;
         }
 
         // THE OPEN ROWS ARE THE QUESTIONS, not just a flag. Regenerating and
@@ -241,33 +247,50 @@ async function newReleasesSince(artistId: string, since: string | null): Promise
  * post scraped" while the code checked `postedAt`. The comment described the
  * intent and the code did something else.
  */
-type NewMaterial = "none" | "published" | "learned";
+/**
+ * BOTH CAN BE TRUE AT ONCE, which is why this is not an enum.
+ *
+ * The first version returned one of "none" | "published" | "learned" and
+ * answered "published" the moment it found a newer post, without ever asking
+ * about learned material. A scrape that brings in one new post AND finally
+ * extracts credits from two years of older captions is the common case for a
+ * returning artist — and that version kept the window scoped to `since`, so
+ * `newerThan` dropped every one of the older credits. Not the full lockout the
+ * rest of this fix is about, but the same loss in miniature, and no test caught
+ * it because the tests exercised the two branches separately.
+ */
+type NewMaterial = { published: boolean; learned: boolean };
 
 async function newMaterialSince(artistId: string, since: string): Promise<NewMaterial> {
+    const none = { published: false, learned: false };
     const cutoff = Date.parse(since);
-    if (Number.isNaN(cutoff)) return "none";
+    if (Number.isNaN(cutoff)) return none;
 
-    // Published first: it is the more specific answer, and it is the one that
-    // makes the date-scoped window the right window.
     const posts = await getSocialPostsForArtist(artistId).catch(() => []);
-    if (posts.some(p => {
+    let published = posts.some(p => {
         const at = Date.parse(p.postedAt ?? "");
         return !Number.isNaN(at) && at > cutoff;
-    })) return "published";
+    });
 
-    const artist = await getArtistById(artistId).catch(() => null);
-    if (artist?.spotify) {
-        const releases = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders()).catch(() => []);
-        if (releases.some(r => {
-            const at = Date.parse(r.releaseDate ?? "");
-            return !Number.isNaN(at) && at > cutoff;
-        })) return "published";
+    if (!published) {
+        const artist = await getArtistById(artistId).catch(() => null);
+        if (artist?.spotify) {
+            const releases = await getSpotifyCatalogDetail(artist.spotify, await getSpotifyHeaders()).catch(() => []);
+            published = releases.some(r => {
+                const at = Date.parse(r.releaseDate ?? "");
+                return !Number.isNaN(at) && at > cutoff;
+            });
+        }
     }
 
-    if (await hasPostsScrapedSince(artistId, since)) return "learned";
-    if (await hasCreditsSince(artistId, since)) return "learned";
+    // Deliberately asked even when `published` is already true. These queries
+    // are bounded by posted_at <= since, so they answer specifically "is there
+    // OLD material we only just learned" — a question a new post cannot answer
+    // and does not make redundant.
+    const learned = await hasOlderPostsLearnedSince(artistId, since)
+        || await hasOlderCreditsLearnedSince(artistId, since);
 
-    return "none";
+    return { published, learned };
 }
 
 /**
