@@ -181,24 +181,37 @@ function platformArtistUrl(platform: MusicPlatform, platformId: string): string 
         : `https://www.deezer.com/artist/${platformId}`;
 }
 
-function artistIdFromPlatformUrl(url: string, platform: MusicPlatform): string | null {
+type PlatformArtistUrlMatch =
+    | { status: "unrelated" }
+    | { status: "invalid" }
+    | { status: "valid"; platformId: string };
+
+function matchPlatformArtistUrl(
+    url: string,
+    platform: MusicPlatform,
+): PlatformArtistUrlMatch {
     try {
         const parsed = new URL(url);
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            return { status: "unrelated" };
+        }
         const hostname = parsed.hostname.toLowerCase();
         const validHost = platform === "spotify"
             ? hostname === "open.spotify.com"
             : hostname === "deezer.com" || hostname === "www.deezer.com";
-        if (!validHost) return null;
+        if (!validHost) return { status: "unrelated" };
 
         const segments = parsed.pathname.split("/").filter(Boolean);
         const artistSegment = segments.findIndex(segment => segment.toLowerCase() === "artist");
-        if (artistSegment < 0 || artistSegment !== segments.length - 2) return null;
-        if (platform === "spotify" && artistSegment !== 0) return null;
+        if (artistSegment < 0) return { status: "unrelated" };
+        if (artistSegment !== segments.length - 2) return { status: "invalid" };
+        if (platform === "spotify" && artistSegment !== 0) return { status: "invalid" };
         const platformId = artistSegment >= 0 ? segments[artistSegment + 1]?.trim() : undefined;
-        return platformId && isValidPlatformId(platform, platformId) ? platformId : null;
+        return platformId && isValidPlatformId(platform, platformId)
+            ? { status: "valid", platformId }
+            : { status: "invalid" };
     } catch {
-        return null;
+        return { status: "unrelated" };
     }
 }
 
@@ -322,13 +335,23 @@ async function findMusicBrainzCounterpartUncached(
     const relationUrls = activeRelations(detail)
         .map(relation => (relation.url as Record<string, unknown> | undefined)?.resource)
         .filter((url): url is string => typeof url === "string");
-    const confirmsSource = relationUrls.some(url => (
-        artistIdFromPlatformUrl(url, sourcePlatform) === sourcePlatformId
+    const platformRelations = relationUrls.map(url => ({
+        source: matchPlatformArtistUrl(url, sourcePlatform),
+        target: matchPlatformArtistUrl(url, targetPlatform),
+    }));
+    if (platformRelations.some(({ source, target }) => (
+        source.status === "invalid" || target.status === "invalid"
+    ))) {
+        return { counterpart: null, definitiveMiss: false };
+    }
+
+    const confirmsSource = platformRelations.some(({ source }) => (
+        source.status === "valid" && source.platformId === sourcePlatformId
     ));
     if (!confirmsSource) return { counterpart: null, definitiveMiss: false };
 
-    const platformId = oneValue(relationUrls
-        .map(url => artistIdFromPlatformUrl(url, targetPlatform))
+    const platformId = oneValue(platformRelations
+        .map(({ target }) => target.status === "valid" ? target.platformId : null)
         .filter((id): id is string => id !== null));
     // At this point MusicBrainz returned a well-formed artist, reconfirmed the
     // exact source ID, and simply has no unique target ID. That is a stable

@@ -136,6 +136,46 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
+    it.each([
+        {
+            sourcePlatform: 'spotify',
+            sourceId: SPOTIFY_ID,
+            targetPlatform: 'deezer',
+            validSource: `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            validTarget: `https://www.deezer.com/artist/${DEEZER_ID}`,
+            invalidTarget: 'https://www.deezer.com/artist/not-a-number',
+        },
+        {
+            sourcePlatform: 'deezer',
+            sourceId: DEEZER_ID,
+            targetPlatform: 'spotify',
+            validSource: `https://www.deezer.com/artist/${DEEZER_ID}`,
+            validTarget: `https://open.spotify.com/artist/${SPOTIFY_ID}`,
+            invalidTarget: 'https://open.spotify.com/artist/not-a-valid-id',
+        },
+    ])('fails closed when a valid $targetPlatform relation accompanies a malformed one', async ({
+        sourcePlatform,
+        sourceId,
+        targetPlatform,
+        validSource,
+        validTarget,
+        invalidTarget,
+    }) => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
+            .mockResolvedValueOnce(ok(artistDetail(
+                validSource,
+                validTarget,
+                invalidTarget,
+            )));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart(sourcePlatform, sourceId, targetPlatform)))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('briefly caches a confirmed artist with no target-platform ID', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))
