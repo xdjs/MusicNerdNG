@@ -99,3 +99,12 @@ docs/rnd/recipients.md
 
 # Throwaway debug scripts — never committed.
 scripts/_tmp-*
+
+# Discord server layout (internal ops doc — never committed)
+docs/discord-layout.md
+
+# Local agent/runtime state — machine-specific, never committed
+/.local-data/
+
+# Generated Substack publication captures — keep outside the code repository
+/artifacts/substack-profile-update/
