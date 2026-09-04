@@ -100,6 +100,24 @@ describe('findMusicBrainzCounterpart', () => {
         expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+        ['missing', {}],
+        ['malformed', { id: 'not-a-musicbrainz-id' }],
+    ])('fails closed when a %s artist relation accompanies a valid one', async (_case, artist) => {
+        global.fetch = jest.fn().mockResolvedValueOnce(ok({
+            relations: [
+                ...sourceLookup(MUSICBRAINZ_ID).relations,
+                { 'target-type': 'artist', artist },
+            ],
+        }));
+
+        const findCounterpart = await subject();
+
+        await expect(finish(findCounterpart('spotify', SPOTIFY_ID, 'deezer')))
+            .resolves.toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
     it('abstains when one artist exposes multiple target-platform IDs', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce(ok(sourceLookup(MUSICBRAINZ_ID)))

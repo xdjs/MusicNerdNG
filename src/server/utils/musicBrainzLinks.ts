@@ -283,13 +283,22 @@ async function findMusicBrainzCounterpartUncached(
         return { counterpart: null, definitiveMiss: false };
     }
     const sourceLookup = sourceResult.data;
-    const musicbrainzIds = new Set(activeRelations(sourceLookup)
-        .filter(relation => relation["target-type"] === "artist")
-        .map(relation => (relation.artist as Record<string, unknown> | undefined)?.id)
-        .filter((id): id is string => (
-            typeof id === "string"
-            && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
-        )));
+    const artistRelations = activeRelations(sourceLookup)
+        .filter(relation => relation["target-type"] === "artist");
+    const musicbrainzIds = new Set<string>();
+    for (const relation of artistRelations) {
+        const artist = relation.artist;
+        const id = artist && typeof artist === "object" && !Array.isArray(artist)
+            ? (artist as Record<string, unknown>).id
+            : undefined;
+        if (
+            typeof id !== "string"
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+        ) {
+            return { counterpart: null, definitiveMiss: false };
+        }
+        musicbrainzIds.add(id);
+    }
     if (musicbrainzIds.size !== 1) {
         return {
             counterpart: null,
