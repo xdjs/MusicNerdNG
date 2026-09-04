@@ -51,6 +51,26 @@ describe('DeezerProvider', () => {
         expect(provider.platform).toBe('deezer');
     });
 
+    describe('getArtistIdentity', () => {
+        it('should return identity fields without fetching top tracks', async () => {
+            const { provider, axiosGet } = await setup();
+            axiosGet.mockResolvedValueOnce({ data: mockDeezerArtist });
+
+            const result = await provider.getArtistIdentity('4738512');
+
+            expect(result).toEqual({
+                platform: 'deezer',
+                platformId: '4738512',
+                name: 'FKJ',
+            });
+            expect(axiosGet).toHaveBeenCalledTimes(1);
+            expect(axiosGet).toHaveBeenCalledWith(
+                'https://api.deezer.com/artist/4738512',
+                { timeout: 5000 },
+            );
+        });
+    });
+
     describe('getArtist', () => {
         it('should normalize Deezer response to MusicPlatformArtist', async () => {
             const { provider, axiosGet } = await setup();

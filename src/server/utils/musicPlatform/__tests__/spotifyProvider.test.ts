@@ -8,6 +8,7 @@ jest.mock('@/server/utils/queries/externalApiQueries', () => ({
     getNumberOfSpotifyReleases: jest.fn(),
     getArtistTopTrackName: jest.fn(),
     getSpotifyArtists: jest.fn(),
+    refreshSpotifyToken: jest.fn(),
 }));
 
 jest.mock('axios', () => ({
@@ -45,10 +46,14 @@ describe('SpotifyProvider', () => {
             getNumberOfSpotifyReleases: externalApi.getNumberOfSpotifyReleases as jest.Mock,
             getArtistTopTrackName: externalApi.getArtistTopTrackName as jest.Mock,
             getSpotifyArtists: externalApi.getSpotifyArtists as jest.Mock,
+            refreshSpotifyToken: externalApi.refreshSpotifyToken as jest.Mock,
             axiosGet: axios.get as jest.Mock,
         };
 
         mocks.getSpotifyHeaders.mockResolvedValue(mockHeaders);
+        mocks.refreshSpotifyToken.mockResolvedValue({
+            headers: { Authorization: 'Bearer refreshed-token' },
+        });
 
         return { provider: new SpotifyProvider(), ...mocks };
     }
@@ -56,6 +61,50 @@ describe('SpotifyProvider', () => {
     it('should have platform set to spotify', async () => {
         const { provider } = await setup();
         expect(provider.platform).toBe('spotify');
+    });
+
+    describe('getArtistIdentity', () => {
+        it('should return identity fields without fetching releases or top tracks', async () => {
+            const { provider, getSpotifyArtist, getNumberOfSpotifyReleases, getArtistTopTrackName } = await setup();
+            getSpotifyArtist.mockResolvedValue({ data: mockSpotifyArtist, error: null });
+
+            const result = await provider.getArtistIdentity('spotify-123');
+
+            expect(result).toEqual({
+                platform: 'spotify',
+                platformId: 'spotify-123',
+                name: 'Test Artist',
+            });
+            expect(getNumberOfSpotifyReleases).not.toHaveBeenCalled();
+            expect(getArtistTopTrackName).not.toHaveBeenCalled();
+        });
+
+        it('refreshes once when a stale token fails authentication', async () => {
+            const {
+                provider,
+                getSpotifyArtist,
+                refreshSpotifyToken,
+            } = await setup();
+            const refreshedHeaders = {
+                headers: { Authorization: 'Bearer refreshed-token' },
+            };
+            refreshSpotifyToken.mockResolvedValue(refreshedHeaders);
+            getSpotifyArtist
+                .mockResolvedValueOnce({
+                    data: null,
+                    error: 'Spotify authentication failed',
+                })
+                .mockResolvedValueOnce({ data: mockSpotifyArtist, error: null });
+
+            await expect(provider.getArtistIdentity('spotify-123')).resolves.toEqual({
+                platform: 'spotify',
+                platformId: 'spotify-123',
+                name: 'Test Artist',
+            });
+            expect(refreshSpotifyToken).toHaveBeenCalledTimes(1);
+            expect(getSpotifyArtist).toHaveBeenNthCalledWith(1, 'spotify-123', mockHeaders);
+            expect(getSpotifyArtist).toHaveBeenNthCalledWith(2, 'spotify-123', refreshedHeaders);
+        });
     });
 
     describe('getArtist', () => {

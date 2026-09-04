@@ -12,11 +12,19 @@ export interface MusicPlatformArtist {
   topTrackName: string | null;
 }
 
+export type MusicPlatformArtistIdentity = Pick<
+  MusicPlatformArtist,
+  'platform' | 'platformId' | 'name'
+>;
+
 export interface MusicPlatformProvider {
   readonly platform: MusicPlatform;
 
   /** Full artist data including top track. */
   getArtist(id: string): Promise<MusicPlatformArtist | null>;
+
+  /** Canonical ID and name only — avoids catalog calls during identity checks. */
+  getArtistIdentity(id: string): Promise<MusicPlatformArtistIdentity | null>;
 
   /** Image only — lighter than getArtist when only image is needed. */
   getArtistImage(id: string): Promise<string | null>;

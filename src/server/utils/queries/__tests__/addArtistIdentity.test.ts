@@ -57,6 +57,18 @@ function reciprocalIdentity(platform: "spotify" | "deezer", platformId: string) 
     };
 }
 
+function musicBrainzReciprocalIdentity(
+    platform: "spotify" | "deezer",
+    platformId: string,
+) {
+    return {
+        platform,
+        platformId,
+        source: "musicbrainz",
+        musicbrainzId: "cdea97c2-b1a1-488f-bb71-5d3d78b8bed4",
+    };
+}
+
 function mockInsertReturning(mockDb: any, rows: unknown[]) {
     const returning = jest.fn().mockResolvedValue(rows);
     const onConflictDoNothing = jest.fn().mockReturnValue({ returning });
@@ -296,6 +308,40 @@ describe("addArtist identity resolution", () => {
         },
     );
 
+    it("records MusicBrainz provenance for a resolved Deezer-to-Spotify pair", async () => {
+        const { addArtist, mockDb } = await setup();
+        mockDeezerGetArtist.mockResolvedValue({
+            platform: "deezer",
+            platformId: "139294362",
+            name: "NOMELON NOLEMON",
+        });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            musicBrainzReciprocalIdentity("spotify", "3PRXdiVu8lUkeCKw4ZUX4B"),
+        );
+        const insert = mockInsertReturning(mockDb, [artist({
+            id: "new-artist",
+            name: "NOMELON NOLEMON",
+            spotify: "3PRXdiVu8lUkeCKw4ZUX4B",
+            deezer: "139294362",
+        })]);
+
+        const result = await addArtist("139294362", "deezer", { forceCreate: true });
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "success",
+            artistId: "new-artist",
+        }));
+        expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({
+            spotify: "3PRXdiVu8lUkeCKw4ZUX4B",
+            deezer: "139294362",
+        }));
+        const mappingQuery = mockDb.execute.mock.calls[0][0];
+        expect(mappingQuery.queryChunks).toEqual(expect.arrayContaining([
+            "musicbrainz",
+            "MusicBrainz cdea97c2-b1a1-488f-bb71-5d3d78b8bed4 links Spotify and Deezer for NOMELON NOLEMON",
+        ]));
+    });
+
     it("creates with only the submitted ID when no reciprocal identity is resolved", async () => {
         const { addArtist, mockDb } = await setup();
         const insert = mockInsertReturning(mockDb, [
@@ -389,6 +435,35 @@ describe("addArtist identity resolution", () => {
             platform: "spotify",
             platformId: "spotify-123",
             canCreateSeparate: false,
+        }));
+        expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("identifies MusicBrainz as the source when its counterpart already exists", async () => {
+        const { addArtist, mockDb } = await setup();
+        const reciprocalOwner = artist({
+            id: "spotify-owner",
+            spotify: "3PRXdiVu8lUkeCKw4ZUX4B",
+        });
+        mockDeezerGetArtist.mockResolvedValue({
+            platform: "deezer",
+            platformId: "139294362",
+            name: "NOMELON NOLEMON",
+        });
+        mockFindReciprocalArtistIdentity.mockResolvedValue(
+            musicBrainzReciprocalIdentity("spotify", "3PRXdiVu8lUkeCKw4ZUX4B"),
+        );
+        mockDb.query.artists.findFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(reciprocalOwner);
+
+        const result = await addArtist("139294362", "deezer");
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "possible_duplicate",
+            candidates: [reciprocalOwner],
+            canCreateSeparate: false,
+            message: "MusicBrainz links this profile to an existing artist's spotify profile. Add the submitted link to that artist.",
         }));
         expect(mockDb.insert).not.toHaveBeenCalled();
     });
