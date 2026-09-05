@@ -55,6 +55,7 @@ const mockSpotifyResult: MusicPlatformArtist = {
 
 function createMockProvider(platform: 'deezer' | 'spotify', defaultResult: MusicPlatformArtist | null): MusicPlatformProvider & {
     getArtist: jest.Mock;
+    getArtistIdentity: jest.Mock;
     getArtistImage: jest.Mock;
     getTopTrackName: jest.Mock;
     searchArtists: jest.Mock;
@@ -63,6 +64,11 @@ function createMockProvider(platform: 'deezer' | 'spotify', defaultResult: Music
     return {
         platform,
         getArtist: jest.fn<() => Promise<MusicPlatformArtist | null>>().mockResolvedValue(defaultResult),
+        getArtistIdentity: jest.fn().mockResolvedValue(defaultResult && {
+            platform: defaultResult.platform,
+            platformId: defaultResult.platformId,
+            name: defaultResult.name,
+        }),
         getArtistImage: jest.fn<() => Promise<string | null>>().mockResolvedValue(defaultResult?.imageUrl ?? null),
         getTopTrackName: jest.fn<() => Promise<string | null>>().mockResolvedValue(defaultResult?.topTrackName ?? null),
         searchArtists: jest.fn<() => Promise<MusicPlatformArtist[]>>().mockResolvedValue(defaultResult ? [defaultResult] : []),
