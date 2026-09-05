@@ -5,9 +5,9 @@ linked PRs, issues, and decision notes for history.
 
 ## Live and verified
 
-- **Production / `main`:** [`#1200`](https://github.com/xdjs/MusicNerdWeb/pull/1200) merged as
-  `db8ef758`. Main CI, the production deployment, and the post-deploy smoke workflow all passed on
-  that release.
+- **Production / `main`:** [`#1211`](https://github.com/xdjs/MusicNerdWeb/pull/1211) merged as
+  `ff1e4472`, carrying the MusicBrainz fallback from #1209 on top of release #1200. Main CI, the
+  production deployment, and post-deploy smoke all passed on that exact merge SHA.
 - **Database migrations 0022 and 0023:** applied and directly verified in both dev and production.
   `artist_interview_answers.sitting` is backfilled with no nulls; `offered_at` is `timestamptz`,
   backfilled, `NOT NULL`, and defaulted. The app role `mnweb` has SELECT/INSERT/UPDATE on both
@@ -23,10 +23,12 @@ linked PRs, issues, and decision notes for history.
 
 ## Staging differs from main
 
-- `staging` is at `c67b409f`, one merged feature ahead of `main`:
-  [`#1209`](https://github.com/xdjs/MusicNerdWeb/pull/1209) adds a fail-closed MusicBrainz artist-ID
-  fallback and removes the two Claude GitHub Action workflows. It needs the normal staging-to-main
-  release and production verification when the team chooses to ship it.
+- There is no product-code delta at this handoff. #1211 carried
+  [`#1209`](https://github.com/xdjs/MusicNerdWeb/pull/1209) to `main`: its fail-closed MusicBrainz
+  artist-ID fallback is live, and the two Claude GitHub Action workflows are removed.
+- `staging` additionally contains the public operating-guide and handoff refresh from
+  [`#1212`](https://github.com/xdjs/MusicNerdWeb/pull/1212). Those docs will reach `main` with the
+  next normal release; do not create a release solely to move the handoff.
 - There were no open PRs at the 2026-09-04 handoff. Old draft
   [`#1159`](https://github.com/xdjs/MusicNerdWeb/pull/1159) was closed without merging because its
   artist-research foundation overlaps the shipped research-job and resolver work. Do not revive
@@ -38,9 +40,7 @@ linked PRs, issues, and decision notes for history.
    ("nuggets") beside social updates, with a call to action back to the source post. The decision
    is in `docs/rnd/decisions.md`; the existing `ActivityFeed` is homepage-only, so the artist-page
    implementation has not been built. Define source-link behavior and test the display/query path.
-2. **Release the staging delta when ready.** Create the next `staging` → `main` release for #1209,
-   then verify CI, the production deployment, and post-deploy smoke on the merge SHA.
-3. **Later product queue:** bookmarks, user-profile redesign, and the Dupes/YouTube-playlist
+2. **Later product queue:** bookmarks, user-profile redesign, and the Dupes/YouTube-playlist
    prototype.
 
 ## Reliability and cleanup
