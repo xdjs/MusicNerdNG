@@ -780,13 +780,14 @@ artist has one, let alone read their posts.
 5. **3.1** — structural, and it should land before 4.1 rebuilds the flow around it.
 6. **4.x** — take to Carl and CY on Thursday first.
 
-## 5. The interview should be opt-in, and repeatable
+## 5. The interview should be opt-in, and repeatable `done`
 
-Decided 2026-08-26 with the product owner. Today the interview is three
-questions, asked once, at claim time, and never again; the "follow-up bank" the
-spec describes exists only as a `source: "onboarding" | "followup"` string union.
+Decided 2026-08-26 with the product owner. **Shipped to production 2026-09-04** through #1197 and
+release #1200. The interview now lives outside onboarding as an invitation artists can accept or
+decline, and it can be started again from the profile when new material supports another sitting.
+Each offer stores its sitting and `offered_at` once; answering no longer destroys offer time.
 
-The shape we want instead:
+The original target shape was:
 
 1. **An invitation, not a step.** Once a profile has generated, offer it:
    "Want to be interviewed by Music Nerd?" Yes or no. The offer has to say what
@@ -797,33 +798,32 @@ The shape we want instead:
    whenever they want rather than only in the minutes after claiming. Questions
    are generated from the posts we think are currently relevant.
 
-This replaces "three questions, once, forever" with something the artist opts
-into and can return to. It also gives the grounded-question work somewhere to
-land: an artist who releases something new has new posts, and therefore new
-questions, without us having to email them.
+This replaced "three questions, once, forever" with something the artist opts into and can return
+to. The shipped flow resumes unanswered questions, offers a new sitting only when new research
+material exists, and gates generation on research readiness.
 
 Not yet decided: whether there is ever an email path. Return visits come first.
 
-## 6. Caption extraction needs a durable job, not a request callback
+## 6. Caption extraction needs a durable job, not a request callback `done`
 
-Found by review, 2026-08-26, and NOT fixed.
+Found by review, 2026-08-26. **Fixed before the 2026-09-04 release.** Research now persists in
+`artist_research_jobs`; a scheduled worker takes bounded slices, stores its cursor, and resumes on
+the next run. Migration 0021 added the job state, and #1200 made interview generation wait on the
+durable research-readiness state rather than a request callback.
 
-The Instagram ingest and the caption extraction are scheduled with `after()`
-from the onboarding turn. `after()` work is bounded by the route's
-`maxDuration`, so the whole callback shares the request's ~60 seconds. A scrape
-takes one to five minutes. Extraction takes about seventy seconds for a
-sixty-post feed and roughly seven minutes for a three-hundred-post one.
+The failure mode that required this fix was:
 
-So for a genuinely fresh artist the platform stops the invocation partway and
-the credits never arrive — which means the primary onboarding flow still
-produces a document with none of this work in it, even after the hook was added
-to `runAutoBuild`.
+At the time, Instagram ingest and caption extraction were scheduled with `after()` from the
+onboarding turn. `after()` work was bounded by the route's `maxDuration`, so the whole callback
+shared the request's ~60 seconds. A scrape took one to five minutes. Extraction took about seventy
+seconds for a sixty-post feed and roughly seven minutes for a three-hundred-post one.
 
-It works today only where the posts are already stored and the feed is small,
-or where they were pre-warmed by hand.
+For a genuinely fresh artist the platform stopped the invocation partway and the credits never
+arrived, which meant the primary onboarding flow produced a document with none of this work in it
+even after the hook was added to `runAutoBuild`.
 
-The fix is a durable job: enqueue the ingest and the extraction, run them
-outside the request lifecycle, and rebuild the document when they finish. That
-is infrastructure this repo does not have, and it should not be improvised at
-the end of a long night. Until it exists, treat pre-warming as the mechanism
-and the hook as best-effort.
+It worked only where the posts were already stored and the feed was small, or where they were
+pre-warmed by hand.
+
+The durable job is now the mechanism. Do not move this work back into `after()` or widen a request
+timeout to absorb it; that would reintroduce the partial-extraction failure this section records.

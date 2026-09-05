@@ -1,4 +1,22 @@
-# MusicNerdWeb - Claude AI Assistant Guide
+# MusicNerdWeb - Agent Guide
+
+This is the canonical operating guide for every coding assistant working in this repository.
+Platform-specific tools differ; the engineering, safety, documentation, and release rules do not.
+
+## Start Here
+
+1. Read `AGENTS.md`, this file, and `MEMORY.md` before making changes.
+2. Read the current task's relevant file in `docs/rnd/` (especially `decisions.md`) rather than
+   reconstructing product direction from chat history.
+3. Inspect the actual branch, worktree, open PRs, and current remote heads. Documentation and PR
+   descriptions are context, not proof of live state.
+4. For database work, verify the target project and the app role's effective access before drawing
+   conclusions from an owner/superuser query.
+
+`MEMORY.md` is the single engineering handoff. Keep it concise and current: shipped state,
+verified environment state, work in flight, next priorities, and blockers. Update it after a
+material release, migration, priority change, or newly discovered constraint. It is not a
+chronological diary; PRs and commits hold the history.
 
 ## Project Overview
 MusicNerdWeb is a Next.js web application that serves as a crowd-sourced directory for music artists. It enables users to discover artists, manage artist data, and explore social media/platform connections across the music ecosystem.
@@ -11,7 +29,8 @@ MusicNerdWeb is a Next.js web application that serves as a crowd-sourced directo
 - **Styling**: Tailwind CSS + SCSS
 - **UI Components**: Radix UI primitives + custom components
 - **Web3**: Privy SDK handles wallet signature verification for optional wallet linking (legacy account migration)
-- **AI Integration**: OpenAI API for artist bios and fun facts
+- **AI Integration**: Gemini for artist research/profile synthesis and interview questions;
+  OpenAI remains for legacy/fun-fact paths
 - **Testing**: Jest 30 with React Testing Library
 - **State Management**: React Query (@tanstack/react-query)
 
@@ -25,6 +44,8 @@ MusicNerdWeb is a Next.js web application that serves as a crowd-sourced directo
 7. **Admin Dashboard**: Manage users, whitelist contributors, moderate UGC, manage MCP keys, and view agent work
 8. **Spotify Integration**: Rich artist data, images, and music embeds
 9. **Cross-Platform ID Mapping**: Agent-driven mapping of artist IDs across Deezer, Apple Music, MusicBrainz, Wikidata, Tidal, Amazon Music, YouTube Music
+10. **Artist Research & Interviews**: Durable social research jobs, source-backed knowledge
+    documents, and repeatable interview sittings
 
 ## Project Structure
 ```
@@ -72,6 +93,14 @@ Key entities in the PostgreSQL database:
 - **funFacts**: AI-generated fun facts about artists
 - **mcp_api_keys**: API keys for MCP write tool authentication (SHA-256 hashed, revocable)
 - **mcp_audit_log**: Append-only audit trail for MCP write operations
+- **artist_claims / artist_vault_sources / artist_docs**: Claimed-profile ownership, curated source
+  material, and generated artist knowledge documents
+- **artist_interview_answers**: Questions offered to artists and their raw answers. `sitting` and
+  `offered_at` describe the offer and must not be re-stamped when the answer is updated.
+- **artist_social_posts / artist_social_credits / artist_social_profiles**: Ingested social
+  material, extracted source-backed facts, and discovered profiles
+- **artist_research_jobs**: Durable, resumable social-ingest and caption-extraction work that must
+  outlive an individual Vercel request
 - **artist_id_mappings**: Cross-platform artist ID mappings (Deezer, Apple Music, MusicBrainz, Wikidata, Tidal, Amazon Music, YouTube Music). Tracks `confidence_level` (high/medium/low/manual) and `source` (wikidata/musicbrainz/name_search/web_search/manual).
 - **artist_mapping_exclusions**: Tracks artists that cannot be mapped to a platform. Uses `exclusion_reason` enum: conflict, name_mismatch, too_ambiguous. Supports soft-deletion.
 
@@ -285,6 +314,12 @@ Required in `.env.local`:
 
 Optional (in `.env.local`):
 - `OPENAI_TIMEOUT_MS` (default 60000ms) / `OPENAI_MODEL` - OpenAI config overrides
+- `GEMINI_API_KEY` - Artist research, profile synthesis, and interview generation
+- `TAVILY_API_KEY` / `WEB_SEARCH_PROVIDER` - Profile-discovery web search
+- `APIFY_API_TOKEN` - Instagram ingestion
+- `CRON_SECRET` - Protects the scheduled research-job advancement route in deployed environments
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` - Supabase Storage and storage health checks
+- `RESEND_API_KEY` - Approval-notification email; sending is skipped when absent
 - `RATE_LIMIT_STRICT` / `RATE_LIMIT_MEDIUM` / `RATE_LIMIT_DEFAULT` / `RATE_LIMIT_WINDOW_MS` - Rate limit tuning
 - `NEXT_PUBLIC_ALLOWED_ORIGIN` (default `"*"`) - CORS origin for select API routes (read via `process.env`, not `@/env`)
 - `TIMEOUT_COUNT` (default 900s) - Discord UGC notification cooldown (read via `process.env`, not `@/env`)
@@ -339,39 +374,75 @@ Environment variables are validated via `src/env.ts` — review before adding ne
 - **Branching**: Feature branches off `staging` → PR to `staging` → PR from `staging` to `main`
 - **Branch naming**: `username/feature-name` (e.g. `clt/new-endpoint`, `Piper/darkmode`)
 - **Commit messages**: Conventional commits — `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`, `revert:`
-- **PRs always target `staging`**, never `main` directly
+- **PRs always target `staging`**, never `main` directly. Documentation follows the same route so
+  the shared context present on `staging` is carried into the next `main` release.
+- **Protect the user's worktree**: inspect `git status` first, preserve unrelated changes and
+  ignored files, and stage only the named files intended for the PR. Do not use `git add -A`.
 - **Before pushing**: Run all checks and fix any failures:
   ```bash
   npm run type-check && npm run lint && npm run test && npm run build
   ```
-  Note: `npm run test` works without `.env.local` (env vars fall back to `'test-value'` when `NODE_ENV=test`), but `npm run build` requires `.env.local` or the build will throw. If no `.env.local` exists, stub one with the minimum required vars:
+  Note: `npm run test` works without `.env.local` (env vars fall back to `'test-value'` when
+  `NODE_ENV=test`), but `npm run build` requires three values. Never create or overwrite the
+  user's `.env.local` just to run a check. If it is absent, supply temporary values to that one
+  command:
   ```bash
-  printf 'NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID=stub\nNEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET=stub\nOPENAI_API_KEY=stub\n' > .env.local
+  NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_ID=stub \
+  NEXT_PUBLIC_SPOTIFY_WEB_CLIENT_SECRET=stub \
+  OPENAI_API_KEY=stub \
+  npm run build
   ```
   These three are the only vars that throw on missing values (see `src/env.ts`). All others default to `""`.
-- **CI**: GitHub Actions automatically runs the same checks (type-check → lint → test → build) on every push and PR
+- **CI**: GitHub Actions runs the same checks (type-check → lint → test → build) on both pushes
+  and PR events. A PR can therefore show two identical workflow runs for the same commit; that is
+  duplicate workflow triggering, not two different test suites.
 
-## Important Notes for Claude
+### Review and release verification
+
+- Confirm every required check and review applies to the PR's current head SHA, not an earlier
+  commit.
+- Read logs before retrying a failed check. Separate a deterministic code/test failure from a
+  reviewer or CI service outage.
+- After two or three identical failures before review or test execution, stop blind retries,
+  record the infrastructure failure, and use the deterministic local/CI gates plus a substantive
+  human or agent review.
+- Release order is reviewer green light → Pete tells Carl → Carl merges `staging` to `main`.
+  Afterward, verify the production deployment and post-deploy smoke run on the merged SHA.
+
+### Database migration protocol
+
+- A migration SQL file and `drizzle/meta/_journal.json` are one change. Commit them together and
+  run `npx drizzle-kit check`.
+- Apply required migrations before deploying code that selects, inserts, or updates the new
+  schema. Use dev first, then production at the agreed release gate.
+- Verify the end state, not only a successful SQL message: column types/defaults/nullability,
+  backfills, table and column privileges, RLS enablement, and exact policy roles/expressions.
+  Verify as or for `mnweb`; owner/superuser success is insufficient.
+- Direct SQL can make the schema correct without reconciling Drizzle's migration history. Do not
+  enable or trust automated `db:migrate` until the drift tracked in GitHub issue #1148 is
+  reconciled. `IF NOT EXISTS` on one statement does not make an entire migration safely rerunnable.
+
+## Public documentation and handoff
+
+This is a public repository. Durable product decisions, engineering reasoning, runbooks, and
+useful agent notes should be committed. Raw transcripts, contact data, private operational notes,
+secrets, generated captures, and disposable scratch work belong only in the ignored locations
+documented in `docs/rnd/README.md`.
+
+At the end of material work, leave the next agent a short, evidence-backed update in `MEMORY.md`:
+what shipped, what is live and verified, what differs between `staging` and `main`, what comes
+next, and any real blocker. Include exact PR, issue, or commit references instead of relying on a
+chat recap.
+
+## Important Notes for All Agents
 1. **Database First**: Most data operations go through Drizzle ORM queries. Import types from `@/server/db/DbTypes`, not from drizzle-orm directly.
 2. **External Dependencies**: Heavy integration with Spotify API and OpenAI — these are mocked in tests.
 3. **ESLint**: Flat config (`eslint.config.mjs`). `@typescript-eslint/no-explicit-any` and `@typescript-eslint/ban-ts-comment` are warnings, not errors. Test files have these rules disabled entirely.
 
 ## Skill routing
 
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
-The skill has specialized workflows that produce better results than ad-hoc answers.
-
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke office-hours
-- Bugs, errors, "why is this broken", 500 errors → invoke investigate
-- Ship, deploy, push, create PR → invoke ship
-- QA, test the site, find bugs → invoke qa
-- Code review, check my diff → invoke review
-- Update docs after shipping → invoke document-release
-- Weekly retro → invoke retro
-- Design system, brand → invoke design-consultation
-- Visual audit, design polish → invoke design-review
-- Architecture review → invoke plan-eng-review
-- Save progress, checkpoint, resume → invoke checkpoint
-- Code quality, health check → invoke health
+Use the platform's specialized skill or workflow when one is available and relevant (for example,
+investigation for a bug, review for a diff, or release verification for a deployment). Read its
+instructions before acting and translate its intent to the tools actually available in the
+current assistant. Names recorded by another assistant are not proof that a tool exists, and a
+missing platform-specific skill is not a blocker: follow this guide and the repository's scripts.
