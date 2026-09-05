@@ -119,6 +119,8 @@ repo. Claude drafts, Pete sends.
 
 ## Branching
 
-Docs-only commits can go straight to `main` — Carl's call on 8/20. Carl also floated dropping
-the staging branch in favor of feature branches merging directly into `main`; not decided yet,
-so code still follows the existing flow in `CLAUDE.md`.
+Carl allowed docs-only commits to go straight to `main` on 8/20. Current operating practice is to
+route them through `staging` anyway, so the handoff and public documentation travel with the code
+being verified there and reach `main` in the same release. Carl also floated dropping the staging
+branch in favor of feature branches merging directly into `main`; that is still not decided, so
+all work follows the flow in `CLAUDE.md`.
