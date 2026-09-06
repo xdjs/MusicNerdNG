@@ -1,38 +1,63 @@
-# MEMORY.md — Music Nerd project log
+# MEMORY.md — Music Nerd engineering handoff
 
-Living doc for where the project is, what's in flight, and ideas/backlog. Committed to the repo so it stays shared and current. Update as we go — add to "Recently shipped" when something lands, move items out of "Backlog" as we pick them up.
+Updated 2026-09-04. Read this after `CLAUDE.md`. This is current state, not a changelog; use the
+linked PRs, issues, and decision notes for history.
 
-## Recently shipped
-- **Artist asset uploads fixed** (profile photos + vault files): storage env vars provisioned on staging + prod; prod `vault-files` bucket created; `.md`/empty-MIME recovery + a clear "storage not configured" 503 instead of a generic 500. (#1153 → #1154)
-- **Real (unmocked) test layers**: `/api/health` + post-deploy smoke workflow, real-storage integration smoke, a browser E2E (login → upload → verify), and a vault → "Ask About" chat E2E proving uploaded files feed the answers.
-- **De-flaked** the `referenceCode` "unique codes" test (#1155).
+## Live and verified
 
-## In progress
-- **Artist "About" accuracy** — fixing same-name conflation (e.g. Black Dave MK2 was getting a different "Black Dave"'s discography) and relationship-inflation (Pete Rango "collaborated with" artists he actually did live sound for).
-  - Spec: `docs/superpowers/specs/2026-08-16-about-primary-source-first-design.md`
-  - Plan: `docs/superpowers/plans/2026-08-16-about-verified-grounding.md`
-  - **Committed so far** (branch `pete/about-verified-grounding`): verified-ID grounding (Spotify → Wikidata → Wikipedia), real-catalog injection, hard guardrails, "About" rename, claim-nudge empty-state, stop-auto-regen-on-link-change, sources→vault discovery. Full suite green.
-  - **DECISION (2026-08-16): unify on the vault as the single source system.** Empirically, the vault "Search web for sources" (Flash, identity-anchored, structured) finds cleaner, conflation-safe sources than the About's own free grounding (which pulled the *wrong* Black Dave's skate pages). So: **the About should synthesize from vault sources + verified catalog with its own web grounding turned OFF** — conflation is killed at the source, not patched in output.
-  - **Refined rules from scenario testing:** (1) has Spotify/socials → identity-anchored discovery → synthesize from discovered sources + real catalog (grounding off); if discovery returns nothing (it's flaky — 8 sources one run, 0 the next), fall back to catalog-only + retry. (2) **NO identity links → do NOT run name-only discovery** (it conflates — validated on link-less "Black Dave") → conservative/empty-state + nudge to add a link/claim. Catalog is the reliable floor.
-  - **Accuracy-layer PR (shipped):** discovery **retry** until parseable-non-empty (fixes Grimes → 0 sources; root cause = transient empty Gemini responses); **catalog-anchor disambiguation rule** in the generator prompt (fixes the Sammie namesake conflation). Verified-ID grounding + catalog injection + guardrails. (#1162 → staging; #1163 staging→main.)
-  - **UNIFIED FLOW (built + validated 2026-08-16, PR #1164):** the About now **synthesizes from curated vault sources with Gemini's own web search OFF**. Generator tiers the context: **approved** vault sources (claimed) → else already-**pending** discovered sources → else **awaits discovery** (identity-anchored, retries, writes results to the vault as pending) and synthesizes from what it finds. **No sources → claim-nudge** (shared `ABOUT_EMPTY_STATE` / `isRealBio()` in `bioConstants.ts`), never a hollow catalog list. Chat + MCP transformer exclude the nudge so it's never fed back as a real bio. **Validated on the real grounding-off path:** Black Dave → accurate (Charleston / Worst Generation / anime-rap, real catalog, zero Bronx-namesake conflation); Grimes → full rich bio. Full suite green (1147), build clean.
-  - **Timing / recovery decisions (from real measurement, non-obvious — don't undo):** grounded discovery calls measured **~12–33s and intermittently return empty** (retry loop is load-bearing) → the full path is wide. So: (1) all identity I/O (platform/grounding/catalog) runs **concurrently** with discovery (grounding+catalog ~1s, overlap for free); (2) **page-content enrichment is fire-and-forget**, NOT on the synth path — snippets were validated sufficient, and awaiting it blew the budget; (3) budget retuned: `DISCOVERY_TIMEOUT_MS` 38s, synthesis 15s, route race 57s, `maxDuration` 60s; (4) the cached nudge **self-heals** — the bio route re-checks for vault sources and regenerates from them (synthesis only, no re-discovery) if a truncated discovery left pending sources; genuinely-sourceless artists still serve the nudge without re-discovering; (5) a **thrown** vault lookup returns 500 and caches nothing (transient error ≠ "found nothing"). **If prod telemetry shows frequent discovery truncation, the honest next step is an async "generating…" state the client polls** (second poll picks up pending sources) rather than widening the synchronous budget further.
-  - **Black Dave MK2 prod bio fix** handed to Pete as a one-line `UPDATE` (prod `cbabvmebugudeuylronz`, artist `96bc3fc9-d2e5-48b9-a022-fe7a6414b1cb`) — I can't write prod; awaiting him to run it.
-  - **Still deferred (follow-up, NOT in this PR):** the catalog anchor + verified grounding are still **Spotify-only**; a **Deezer→Spotify abstraction for catalog names** + **verified-ID grounding via Deezer P2722** would make it consistent with the Deezer-primary platform data (coverage-wise a non-issue today — only ~36 artists are Deezer-only — so it's consistency/Phase-5, not a gap). The grounded fact-check pass is likely unnecessary now that grounding is off + sources curated (revisit if needed).
+- **Production / `main`:** [`#1211`](https://github.com/xdjs/MusicNerdWeb/pull/1211) merged as
+  `ff1e4472`, carrying the MusicBrainz fallback from #1209 on top of release #1200. Main CI, the
+  production deployment, and post-deploy smoke all passed on that exact merge SHA.
+- **Database migrations 0022 and 0023:** applied and directly verified in both dev and production.
+  `artist_interview_answers.sitting` is backfilled with no nulls; `offered_at` is `timestamptz`,
+  backfilled, `NOT NULL`, and defaulted. The app role `mnweb` has SELECT/INSERT/UPDATE on both
+  columns. RLS is enabled and the expected four `mnweb` policies are the only policies on the
+  table. Owner/superuser success was not used as the access check.
+- **Interview flow:** the repeatable, opt-in interview and research readiness work is live. A
+  sitting is assigned when questions are offered and is not changed when answers are upserted;
+  `offered_at` preserves offer time. See [`#1204`](https://github.com/xdjs/MusicNerdWeb/pull/1204)
+  and the release PR above.
+- **Repository hygiene:** [`#1210`](https://github.com/xdjs/MusicNerdWeb/pull/1210) keeps local
+  Substack artifacts, local data, and the Discord layout scratch file out of Git. Durable public
+  docs and agent reasoning remain tracked per `docs/rnd/README.md`.
 
-## Backlog / ideas
-- **About-flow known limitations (accepted for PR #1164, recorded 2026-08-17 from the review):** these are consequences of making discovery synchronous and are deferred, not blockers:
-  - **Async "generating…" polling state** — the real fix if prod shows discovery truncation / 408s (discovery tail is wide; Sammie namesake measured 50s vs the 57s route race). Client polls; second poll picks up pending sources. Supersedes widening the synchronous budget further.
-  - **`waitUntil()` for background work** — the fire-and-forget enrichment + a timed-out discovery's continuation may be frozen by Vercel after the response flushes, so the self-heal's "pending sources appear later" can silently never happen. No `waitUntil`/`after()` in the repo yet; add it (or the polling state) to make the self-heal reliable on serverless.
-  - **Concurrent first-view dedup** — two simultaneous first-time viewers of a never-generated artist can both pass the empty-vault check and both run discovery → duplicate `pending` rows + 2× Gemini. Needs a per-artist advisory lock or a unique constraint on (artist_id, normalized_url).
-  - **PUT regenerate has no outer timeout race** (GET does). Internally bounded ~53s by the discovery(38s)+synthesis(15s) caps, under `maxDuration` 60s, so it won't be killed raw — but it lacks GET's graceful JSON-error path. Low risk.
-- **Guard the "regenerate About" action** so only an **admin or the artist who claimed the profile** can trigger it (currently the regenerate path isn't role-gated). *[not started — recorded 2026-08-16]*
-- **Strict fact-check**: diff generated claims (releases, collaborators) against the artist's **real Spotify catalog** — needs valid Spotify creds (see Known issues).
-- **Real-catalog injection**: feed the artist's real release/collaborator names into the generator as ground truth — needs valid Spotify creds.
-- Preserve artist-authored About via an `about_source` marker — largely moot once auto-regen-on-link-change is removed; revisit only if a non-deliberate regen path returns.
-- CI hardening (#1150), Vercel ~4.5 MB serverless body cap on uploads (#1151), wire `db:migrate` into deploy + reconcile untracked migrations 0007–0010 (#1148), reconcile `schema.ts` RLS policy text (#1149).
+## Staging differs from main
 
-## Known issues / tech debt
-- **Spotify creds now authenticate locally (2026-08-16)** — `.env.local` updated, token request returns 200 and real artist catalog data comes back. Confirm the same values are in Vercel (Production + Preview) so prod matches. This **unblocks real-catalog injection + strict fact-check** for the About feature.
-- **Minor hardening (low severity, separate pass):** the Spotify Client Secret env var is `NEXT_PUBLIC_`-prefixed, which inlines it into the browser bundle. It's used only server-side, so it should be renamed to a non-`NEXT_PUBLIC_` name (server-only). Do it as its own backward-compatible change (accept either name during migration) + verify with type-check/build/test. Not urgent — read-only client-credentials secret, no user data.
-- Storage env-var + bucket provisioning was tracked in #1152 (now resolved).
+- There is no product-code delta at this handoff. #1211 carried
+  [`#1209`](https://github.com/xdjs/MusicNerdWeb/pull/1209) to `main`: its fail-closed MusicBrainz
+  artist-ID fallback is live, and the two Claude GitHub Action workflows are removed.
+- `staging` additionally contains the public operating-guide and handoff refresh from
+  [`#1212`](https://github.com/xdjs/MusicNerdWeb/pull/1212). Those docs will reach `main` with the
+  next normal release; do not create a release solely to move the handoff.
+- There were no open PRs at the 2026-09-04 handoff. Old draft
+  [`#1159`](https://github.com/xdjs/MusicNerdWeb/pull/1159) was closed without merging because its
+  artist-research foundation overlaps the shipped research-job and resolver work. Do not revive
+  its branch without comparing it to current `staging` and re-scoping it.
+
+## Next work
+
+1. **Artist-profile latest activity.** This is the agreed next product task: show interview answers
+   ("nuggets") beside social updates, with a call to action back to the source post. The decision
+   is in `docs/rnd/decisions.md`; the existing `ActivityFeed` is homepage-only, so the artist-page
+   implementation has not been built. Define source-link behavior and test the display/query path.
+2. **Later product queue:** bookmarks, user-profile redesign, and the Dupes/YouTube-playlist
+   prototype.
+
+## Reliability and cleanup
+
+- [`#1148`](https://github.com/xdjs/MusicNerdWeb/issues/1148): reconcile manual database state
+  with Drizzle migration history before wiring `db:migrate` into deployment. This remains the most
+  important migration-process debt.
+- [`#1149`](https://github.com/xdjs/MusicNerdWeb/issues/1149): reconcile `schema.ts` RLS policy
+  definitions with the live policies.
+- Supabase reports GraphQL schema-discoverability warnings for `artist_interview_answers` because
+  broad table grants exist. Direct verification found no `anon` or `authenticated` policy and no
+  public row access; treat schema hardening as separate follow-up, not a release blocker.
+- CI currently triggers the same workflow for both push and pull-request events. The resulting
+  duplicate runs are redundant executions, not different tests; optimize later if queue time
+  becomes a problem.
+- Triage [`#1150`](https://github.com/xdjs/MusicNerdWeb/issues/1150): CI and post-deploy smoke now
+  exist and passed for #1200, so the issue is at least partly obsolete.
+- Other active debt: the Spotify client secret still uses a `NEXT_PUBLIC_` name and should move to
+  a backward-compatible server-only variable; upload size remains tracked in
+  [`#1151`](https://github.com/xdjs/MusicNerdWeb/issues/1151).
